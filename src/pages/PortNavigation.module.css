@@ -1,0 +1,163 @@
+.page {
+  min-height: 100vh;
+  background: var(--light-bg);
+  display: flex;
+  flex-direction: column;
+  max-width: 430px;
+  margin: 0 auto;
+  padding-bottom: 72px;
+}
+
+/* Top Bar */
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: var(--light-surface);
+  border-bottom: 1px solid var(--light-border);
+}
+
+.menuBtn, .bellBtn {
+  background: transparent;
+  color: #555;
+  display: flex;
+  align-items: center;
+  padding: 4px;
+}
+
+.topTitle {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: var(--light-text);
+}
+
+/* Map */
+.mapArea {
+  background: #f5f5f5;
+  overflow: hidden;
+  position: relative;
+}
+
+.map {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Steps */
+.stepsArea {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stepRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  background: var(--light-card);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+  box-shadow: var(--shadow-card);
+}
+
+.stepNum {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  color: #444;
+  flex-shrink: 0;
+}
+
+.stepText {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--light-text);
+}
+
+.stepSub {
+  font-size: 12px;
+  color: var(--light-muted);
+  margin-top: 2px;
+}
+
+/* ETA Bar */
+.etaBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  background: var(--light-card);
+  border-top: 1px solid var(--light-border);
+  margin-top: auto;
+}
+
+.etaText {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--light-text);
+}
+
+.etaDist {
+  font-size: 13px;
+  color: var(--light-muted);
+  margin-top: 2px;
+}
+
+.endBtn {
+  background: transparent;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--light-text);
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1.5px solid #e0e0e0;
+  transition: all 0.2s;
+}
+.endBtn:hover { border-color: #ff5c1a; color: #ff5c1a; }
+
+/* Bottom Nav */
+.bottomNav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 430px;
+  background: #fff;
+  border-top: 1px solid #ececec;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 12px 0 20px;
+}
+
+.navItem {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  background: transparent;
+  color: #ccc;
+  font-size: 20px;
+}
+
+.navItemActive { color: #111; }
+
+.navIndicator {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 36px; height: 4px;
+  background: var(--orange);
+  border-radius: 100px;
+}

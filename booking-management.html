@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html class="light" lang="vi">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NexusPort — Quản lý Đặt chỗ</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "chalk": "#e8e8e8",
+          "signal-orange": "#ff682c",
+          "primary-container": "#202020",
+          "slate": "#828282",
+          "primary": "#080808",
+          "graphite": "#4d4d4d",
+          "mist": "#efefef",
+          "fog": "#f5f5f5",
+          "paper": "#ffffff",
+          "on-primary": "#ffffff",
+          "on-primary-container": "#898787",
+          "carbon": "#202020",
+          "error": "#ba1a1a",
+          "on-error": "#ffffff",
+          "surface-variant": "#e5e2e1",
+          "tertiary-container": "#21201f"
+        },
+        fontFamily: {
+          "caption": ["Inter", "sans-serif"],
+          "headline-md": ["Space Grotesk", "sans-serif"],
+          "label-xs": ["Inter", "sans-serif"],
+          "ui-standard": ["Inter", "sans-serif"],
+          "ui-compact": ["Inter", "sans-serif"],
+          "section-head": ["Space Grotesk", "sans-serif"],
+          "body-md": ["Inter", "sans-serif"],
+          "headline-lg": ["Space Grotesk", "sans-serif"],
+        },
+        fontSize: {
+          "caption": ["12px", { lineHeight: "1.5", fontWeight: "400" }],
+          "headline-md": ["32px", { lineHeight: "1.19", letterSpacing: "-0.64px", fontWeight: "400" }],
+          "label-xs": ["11px", { lineHeight: "1.5", fontWeight: "600" }],
+          "ui-standard": ["14px", { lineHeight: "1.43", fontWeight: "500" }],
+          "ui-compact": ["13px", { lineHeight: "1.5", fontWeight: "500" }],
+          "section-head": ["16px", { lineHeight: "1.2", letterSpacing: "-0.02em", fontWeight: "400" }],
+          "body-md": ["16px", { lineHeight: "1.38", fontWeight: "400" }],
+          "headline-lg": ["40px", { lineHeight: "1.13", letterSpacing: "-0.8px", fontWeight: "400" }],
+        },
+        spacing: {
+          "sidebar-width": "200px",
+          "gutter": "24px",
+          "margin-desktop": "32px",
+          "card-padding-sm": "32px",
+          "card-padding-lg": "40px"
+        }
+      }
+    }
+  }
+</script>
+<style>
+  @keyframes tabSwitchFade {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-tab-content {
+    animation: tabSwitchFade 0.25s ease-out forwards;
+  }
+  @keyframes slideUpStagger {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-card-stagger {
+    opacity: 0;
+    animation: slideUpStagger 0.4s ease-out forwards;
+  }
+  .delay-100 { animation-delay: 0.1s; }
+  .delay-150 { animation-delay: 0.15s; }
+  .delay-200 { animation-delay: 0.2s; }
+  
+  @keyframes fillTimeline {
+    from { width: 0; }
+    to { width: 62%; }
+  }
+  .animate-timeline-fill::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    background-color: #ff682c;
+    animation: fillTimeline 1.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+  .nav-link { display:flex; align-items:center; padding:8px 12px; font-size:13px; font-weight:500; line-height:1.5; border-left:4px solid transparent; color:#4d4d4d; transition:all .15s; }
+  .nav-link:hover { color:#080808; background:#efefef; }
+  .nav-link.active { background:#f5f5f5; border-left-color:#ff682c; color:#080808; font-weight:600; }
+
+  .slot-btn { transition: all 0.15s ease; }
+  .slot-btn.selected { background: #202020; color: #fff; ring-width: 2px; ring-color: #202020; ring-offset-width: 2px; }
+  .slot-btn.available:hover { border-color: #202020; background: #f9f9f9; transform: translateY(-1px); }
+</style>
+</head>
+<body class="bg-mist text-primary font-body-md antialiased overflow-x-hidden">
+<div class="flex h-screen w-full">
+
+  <!-- ═══════════════════════════ SIDEBAR ═══════════════════════════ -->
+  <aside class="w-[200px] h-screen fixed left-0 top-0 bg-paper border-r border-chalk flex flex-col z-20">
+    <div class="p-6">
+      <h1 class="font-headline-md text-headline-md text-primary flex items-center gap-1 font-bold leading-none">
+        NexusPort<span class="text-signal-orange text-4xl leading-none">.</span>
+      </h1>
+      <p class="text-caption text-slate mt-1">Quản trị hệ thống</p>
+    </div>
+
+    <nav class="flex-1 px-4 py-2 space-y-0.5">
+      <a class="nav-link" href="operator-dashboard.html">
+        <span class="material-symbols-outlined mr-3 text-[20px]">dashboard</span>Tổng quan
+      </a>
+      <a class="nav-link" href="yard-map.html">
+        <span class="material-symbols-outlined mr-3 text-[20px]">grid_view</span>Bản đồ bãi
+      </a>
+      <a class="nav-link active" href="booking-management.html">
+        <span class="material-symbols-outlined mr-3 text-[20px]" style="font-variation-settings:'FILL' 1">event_seat</span>Quản lý Đặt chỗ
+      </a>
+      <a class="nav-link" href="billing-payment.html">
+        <span class="material-symbols-outlined mr-3 text-[20px]">receipt_long</span>Thanh toán
+      </a>
+      <a class="nav-link" href="user-role-management.html">
+        <span class="material-symbols-outlined mr-3 text-[20px]">manage_accounts</span>Phân quyền
+      </a>
+    </nav>
+
+    <div class="p-4 border-t border-chalk">
+      <button class="w-full bg-error text-on-error h-[40px] rounded-full text-ui-standard flex justify-center items-center gap-2 hover:opacity-90 transition-opacity mb-3">
+        <span class="material-symbols-outlined text-[18px]">warning</span>Cảnh báo hệ thống
+      </button>
+      <div class="flex flex-col gap-1">
+        <a class="nav-link" href="#"><span class="material-symbols-outlined mr-3 text-[18px]">settings</span>Cài đặt</a>
+        <a class="nav-link" href="#"><span class="material-symbols-outlined mr-3 text-[18px]">help</span>Hỗ trợ</a>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══════════════════════════ MAIN CONTENT ═══════════════════════════ -->
+  <main class="ml-[200px] flex-1 flex flex-col min-h-screen overflow-y-auto">
+
+    <!-- TOP BAR -->
+    <header class="h-16 px-8 flex justify-between items-center border-b border-chalk bg-paper sticky top-0 z-10">
+      <div class="text-graphite text-ui-compact">
+        NexusPort Terminal Management <span class="mx-2 text-slate">/</span> Quản lý Đặt chỗ & Cổng bãi
+      </div>
+      <div class="flex items-center gap-4">
+        <button class="w-9 h-9 rounded-full border border-chalk flex items-center justify-center text-graphite hover:text-primary hover:bg-fog transition-colors">
+          <span class="material-symbols-outlined text-[20px]">notifications</span>
+        </button>
+        <button class="w-9 h-9 rounded-full border border-chalk flex items-center justify-center text-graphite hover:text-primary hover:bg-fog transition-colors">
+          <span class="material-symbols-outlined text-[20px]">schedule</span>
+        </button>
+        <div class="flex items-center gap-2.5 pl-2 border-l border-chalk">
+          <div class="w-8 h-8 rounded-full bg-carbon text-white flex items-center justify-center text-xs font-bold">OP</div>
+          <span class="text-ui-compact font-semibold text-primary">Lê Thiện Quang</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- CONTENT -->
+    <div class="p-8 max-w-[1280px] mx-auto w-full flex-1 flex flex-col">
+      <h2 class="font-headline-lg text-headline-lg text-primary mb-6">Quản lý Đặt chỗ</h2>
+
+      <!-- Tabs -->
+      <div class="flex gap-8 border-b border-chalk mb-8">
+        <button class="pb-3 px-1 font-ui-standard text-ui-standard text-primary border-b-2 border-signal-orange font-semibold tab-btn active" data-tab="tab-wizard">Tạo đặt chỗ mới</button>
+        <button class="pb-3 px-1 font-ui-standard text-ui-standard text-graphite hover:text-primary transition-colors tab-btn" data-tab="tab-my">Đặt chỗ của tôi (12)</button>
+        <button class="pb-3 px-1 font-ui-standard text-ui-standard text-graphite hover:text-primary transition-colors tab-btn" data-tab="tab-status">Trạng thái container</button>
+        <button class="pb-3 px-1 font-ui-standard text-ui-standard text-graphite hover:text-primary transition-colors tab-btn" data-tab="tab-queue">Hàng đợi phê duyệt (3)</button>
+      </div>
+
+      <!-- TAB 1: WIZARD & ALL SECTIONS (Default visible) -->
+      <div class="animate-tab-content space-y-8" id="tab-content">
+        
+        <!-- Create Booking Wizard (Step 2) -->
+        <section class="bg-paper border border-chalk rounded-lg p-10 shadow-sm relative overflow-hidden">
+          <div class="flex items-center justify-between mb-8">
+            <div>
+              <h3 class="font-section-head text-section-head text-primary mb-1">Tạo đặt chỗ lệnh xuất / nhập cổng</h3>
+              <p class="text-caption text-slate">Bước 2 trên 3: Chọn khung giờ và cổng giao nhận mong muốn</p>
+            </div>
+            <!-- Step Indicators -->
+            <div class="flex items-center gap-0">
+              <div class="flex items-center">
+                <div class="w-[28px] h-[28px] rounded-full bg-signal-orange text-white flex items-center justify-center font-label-xs shadow-sm">
+                  <span class="material-symbols-outlined text-[16px]">check</span>
+                </div>
+                <div class="w-12 h-0.5 bg-signal-orange"></div>
+              </div>
+              <div class="flex items-center">
+                <div class="w-[28px] h-[28px] rounded-full bg-carbon text-white flex items-center justify-center font-label-xs shadow-sm ring-4 ring-orange-100">
+                  2
+                </div>
+                <div class="w-12 h-0.5 bg-chalk"></div>
+              </div>
+              <div class="flex items-center">
+                <div class="w-[28px] h-[28px] rounded-full bg-chalk text-graphite flex items-center justify-center font-label-xs">
+                  3
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Time Slot Grid -->
+          <div class="grid grid-cols-6 gap-3 mb-6">
+            <!-- Row 08:00 -->
+            <div class="col-span-1 flex flex-col justify-center"><span class="font-label-xs text-slate uppercase">08:00 — 09:00</span></div>
+            <button class="slot-btn available h-12 border border-chalk rounded-md flex items-center justify-center font-ui-compact text-primary font-medium">Gate A (2 slot)</button>
+            <button class="slot-btn available h-12 border border-chalk rounded-md flex items-center justify-center font-ui-compact text-primary font-medium">Gate B (4 slot)</button>
+            <button class="h-12 bg-fog border border-transparent rounded-md flex items-center justify-center font-ui-compact text-slate line-through cursor-not-allowed" title="Đầy chỗ">Gate C (Đầy)</button>
+            <button class="slot-btn available h-12 border border-chalk rounded-md flex items-center justify-center font-ui-compact text-primary font-medium">Gate D (1 slot)</button>
+            <button class="slot-btn available h-12 border border-chalk rounded-md flex items-center justify-center font-ui-compact text-primary font-medium">Gate E (5 slot)</button>
+
+            <!-- Row 09:00 -->
+            <div class="col-span-1 flex flex-col justify-center"><span class="font-label-xs text-slate uppercase">09:00 — 10:00</span></div>
+            <button class="h-12 bg-fog border border-transparent rounded-md flex items-center justify-center font-ui-compact text-slate line-through cursor-not-allowed" title="Đầy chỗ">Gate A (Đầy)</button>
+            <button class="slot-btn selected h-12 bg-carbon text-white rounded-md flex items-center justify-center font-ui-compact font-semibold shadow-sm ring-2 ring-carbon ring-offset-2">Gate B (Đã chọn)</button>
+            <button class="slot-btn available h-12 border border-chalk rounded-md flex items-center justify-center font-ui-compact text-primary font-medium">Gate C (3 slot)</button>
+            <button class="h-12 bg-fog border border-transparent rounded-md flex items-center justify-center font-ui-compact text-slate line-through cursor-not-allowed" title="Đầy chỗ">Gate D (Đầy)</button>
+            <button class="slot-btn available h-12 border border-chalk rounded-md flex items-center justify-center font-ui-compact text-primary font-medium">Gate E (2 slot)</button>
+
+            <!-- Row 10:00 -->
+            <div class="col-span-1 flex flex-col justify-center"><span class="font-label-xs text-slate uppercase">10:00 — 11:00</span></div>
+            <button class="slot-btn available h-12 border border-chalk rounded-md flex items-center justify-center font-ui-compact text-primary font-medium">Gate A (5 slot)</button>
+            <button class="slot-btn available h-12 border border-chalk rounded-md flex items-center justify-center font-ui-compact text-primary font-medium">Gate B (3 slot)</button>
+            <button class="slot-btn available h-12 border border-chalk rounded-md flex items-center justify-center font-ui-compact text-primary font-medium">Gate C (1 slot)</button>
+            <button class="slot-btn available h-12 border border-chalk rounded-md flex items-center justify-center font-ui-compact text-primary font-medium">Gate D (4 slot)</button>
+            <button class="slot-btn available h-12 border border-chalk rounded-md flex items-center justify-center font-ui-compact text-primary font-medium">Gate E (2 slot)</button>
+          </div>
+
+          <div class="pt-6 border-t border-chalk flex justify-between items-center">
+            <span class="text-caption text-slate flex items-center gap-1.5">
+              <span class="material-symbols-outlined text-[18px] text-signal-orange">info</span>
+              Lưu ý: Khung giờ đã chọn được giữ chỗ trong <strong>15 phút</strong> cho đến khi hoàn tất Bước 3.
+            </span>
+            <div class="flex gap-4">
+              <button class="px-6 py-2.5 rounded-full border border-carbon text-carbon font-ui-standard hover:bg-mist transition-colors">Quay lại</button>
+              <button class="px-6 py-2.5 rounded-full bg-carbon text-white font-ui-standard hover:opacity-90 transition-opacity flex items-center gap-2">
+                Xác nhận lựa chọn & Tiếp tục <span class="material-symbols-outlined text-[16px]">arrow_forward</span>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Container Status (Timeline) -->
+        <section class="bg-paper border border-chalk rounded-lg p-8 shadow-sm">
+          <div class="flex justify-between items-center mb-8">
+            <div>
+              <h3 class="font-section-head text-section-head text-primary">Lộ trình container đang hoạt động: <span class="text-signal-orange font-bold">CNT-992A</span></h3>
+              <p class="text-caption text-slate mt-0.5">Tàu MSC Horizon • Khách hàng: Logistics Toàn Cầu</p>
+            </div>
+            <span class="px-3 py-1 bg-orange-100 text-signal-orange rounded-full text-xs font-semibold flex items-center gap-1.5">
+              <span class="w-2 h-2 rounded-full bg-signal-orange animate-pulse"></span>Đang chuyển bãi
+            </span>
+          </div>
+
+          <div class="relative flex justify-between items-center px-8 py-4">
+            <!-- Connecting Line Background -->
+            <div class="absolute top-1/2 left-12 right-12 h-1 bg-chalk -translate-y-1/2 z-0"></div>
+            <!-- Animated Fill Line -->
+            <div class="absolute top-1/2 left-12 w-[62%] h-1 bg-chalk -translate-y-1/2 z-0 overflow-hidden">
+              <div class="w-full h-full animate-timeline-fill"></div>
+            </div>
+
+            <!-- Step 1 Done -->
+            <div class="relative z-10 flex flex-col items-center gap-2.5">
+              <div class="w-[28px] h-[28px] rounded-full bg-signal-orange text-white flex items-center justify-center border-4 border-paper shadow-md">
+                <span class="material-symbols-outlined text-[14px]">check</span>
+              </div>
+              <div class="text-center">
+                <span class="font-label-xs text-primary uppercase block">ĐÃ DỠ HÀNG</span>
+                <span class="text-[11px] text-slate">08:15 - Bến 2</span>
+              </div>
+            </div>
+
+            <!-- Step 2 Done -->
+            <div class="relative z-10 flex flex-col items-center gap-2.5">
+              <div class="w-[28px] h-[28px] rounded-full bg-signal-orange text-white flex items-center justify-center border-4 border-paper shadow-md">
+                <span class="material-symbols-outlined text-[14px]">check</span>
+              </div>
+              <div class="text-center">
+                <span class="font-label-xs text-primary uppercase block">HẢI QUAN</span>
+                <span class="text-[11px] text-slate">09:30 - Luồng Xanh</span>
+              </div>
+            </div>
+
+            <!-- Step 3 Active -->
+            <div class="relative z-10 flex flex-col items-center gap-2.5">
+              <div class="w-[32px] h-[32px] rounded-full bg-paper border-4 border-signal-orange shadow-lg flex items-center justify-center">
+                <div class="w-2.5 h-2.5 rounded-full bg-signal-orange animate-ping"></div>
+              </div>
+              <div class="text-center">
+                <span class="font-label-xs text-signal-orange font-bold uppercase block">CHUYỂN BÃI</span>
+                <span class="text-[11px] text-primary font-medium">Đang về Khu A-D02</span>
+              </div>
+            </div>
+
+            <!-- Step 4 Pending -->
+            <div class="relative z-10 flex flex-col items-center gap-2.5">
+              <div class="w-[28px] h-[28px] rounded-full bg-chalk border-4 border-paper shadow-sm"></div>
+              <div class="text-center">
+                <span class="font-label-xs text-slate uppercase block">XUẤT CỔNG</span>
+                <span class="text-[11px] text-slate">Dự kiến 11:00</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- My Bookings Preview (Staggered Cards) -->
+        <section>
+          <div class="flex items-center justify-between mb-6">
+            <h3 class="font-section-head text-section-head text-primary">Đặt chỗ & Lịch trình gần đây</h3>
+            <div class="flex gap-2">
+              <button class="px-4 py-1.5 rounded-full bg-carbon text-white text-ui-compact font-medium">Tất cả</button>
+              <button class="px-4 py-1.5 rounded-full border border-chalk text-graphite text-ui-compact hover:border-carbon transition-colors">Chờ xử lý (2)</button>
+              <button class="px-4 py-1.5 rounded-full border border-chalk text-graphite text-ui-compact hover:border-carbon transition-colors">Đã hoàn thành (10)</button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <!-- Card 1 (Active) -->
+            <div class="bg-paper border border-chalk rounded-lg p-6 border-l-4 border-l-signal-orange shadow-sm animate-card-stagger delay-100 flex flex-col hover:shadow-md transition-shadow">
+              <div class="flex justify-between items-start mb-4">
+                <span class="font-label-xs text-signal-orange uppercase tracking-wider bg-orange-50 px-2 py-0.5 rounded">ĐANG VẬN CHUYỂN</span>
+                <span class="font-caption text-slate font-semibold">BK-2093</span>
+              </div>
+              <h4 class="font-ui-standard text-primary text-lg font-bold mb-1">Maersk Sealand • 40ft HC</h4>
+              <p class="text-caption text-graphite mb-4">Cổng B • 09:00 AM Hôm nay • Xe: 51H-246.81</p>
+              <div class="mt-auto pt-4 border-t border-chalk flex justify-between items-center">
+                <span class="text-ui-compact text-graphite flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-[18px] text-signal-orange">directions_boat</span> Bến số 4
+                </span>
+                <button class="text-primary font-ui-compact font-semibold hover:underline flex items-center gap-1">Chi tiết →</button>
+              </div>
+            </div>
+
+            <!-- Card 2 -->
+            <div class="bg-paper border border-chalk rounded-lg p-6 shadow-sm animate-card-stagger delay-150 flex flex-col hover:shadow-md transition-shadow">
+              <div class="flex justify-between items-start mb-4">
+                <span class="font-label-xs text-slate uppercase tracking-wider bg-fog px-2 py-0.5 rounded">ĐÃ LÊN LỊCH</span>
+                <span class="font-caption text-slate font-semibold">BK-2094</span>
+              </div>
+              <h4 class="font-ui-standard text-primary text-lg font-bold mb-1">Evergreen Marine • 20ft RF</h4>
+              <p class="text-caption text-graphite mb-4">Cổng A • 14:00 PM Ngày mai • Xe: 60A-118.90</p>
+              <div class="mt-auto pt-4 border-t border-chalk flex justify-between items-center">
+                <span class="text-ui-compact text-graphite flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-[18px] text-blue-500">train</span> Đường sắt K1
+                </span>
+                <button class="text-primary font-ui-compact font-semibold hover:underline flex items-center gap-1">Chi tiết →</button>
+              </div>
+            </div>
+
+            <!-- Card 3 -->
+            <div class="bg-paper border border-chalk rounded-lg p-6 shadow-sm animate-card-stagger delay-200 flex flex-col hover:shadow-md transition-shadow">
+              <div class="flex justify-between items-start mb-4">
+                <span class="font-label-xs text-green-700 uppercase tracking-wider bg-green-50 px-2 py-0.5 rounded">ĐÃ HOÀN THÀNH</span>
+                <span class="font-caption text-slate font-semibold">BK-2088</span>
+              </div>
+              <h4 class="font-ui-standard text-primary text-lg font-bold mb-1">CMA CGM • 40ft DC</h4>
+              <p class="text-caption text-graphite mb-4">Cổng D • 11:30 AM Hôm qua • Xe: 51C-992.11</p>
+              <div class="mt-auto pt-4 border-t border-chalk flex justify-between items-center">
+                <span class="text-ui-compact text-graphite flex items-center gap-1.5">
+                  <span class="material-symbols-outlined text-[18px] text-graphite">local_shipping</span> Xe đầu kéo
+                </span>
+                <button class="text-primary font-ui-compact font-semibold hover:underline flex items-center gap-1">Biên lai →</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+  // Slot selection interactive behavior
+  document.querySelectorAll('.slot-btn.available').forEach(btn => {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.slot-btn.selected').forEach(sel => {
+        sel.classList.remove('selected', 'bg-carbon', 'text-white', 'font-semibold', 'ring-2', 'ring-carbon', 'ring-offset-2');
+        sel.classList.add('available', 'border', 'border-chalk', 'text-primary', 'font-medium');
+        sel.textContent = sel.textContent.replace(' (Đã chọn)', '');
+      });
+      this.classList.remove('available', 'border', 'border-chalk', 'text-primary', 'font-medium');
+      this.classList.add('selected', 'bg-carbon', 'text-white', 'font-semibold', 'ring-2', 'ring-carbon', 'ring-offset-2');
+      if (!this.textContent.includes('(Đã chọn)')) {
+        this.textContent = this.textContent.split(' (')[0] + ' (Đã chọn)';
+      }
+    });
+  });
+
+  // Tab switching simple behavior
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.remove('border-b-2', 'border-signal-orange', 'font-semibold', 'text-primary');
+        b.classList.add('text-graphite');
+      });
+      this.classList.add('border-b-2', 'border-signal-orange', 'font-semibold', 'text-primary');
+      this.classList.remove('text-graphite');
+    });
+  });
+</script>
+</body>
+</html>

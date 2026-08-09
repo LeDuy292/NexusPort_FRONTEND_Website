@@ -1,0 +1,368 @@
+.page {
+  min-height: 100vh;
+  background: var(--dark-bg);
+  display: flex;
+  flex-direction: column;
+  color: var(--dark-text);
+}
+
+/* Navbar */
+.navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 28px;
+  height: 60px;
+  background: var(--dark-bg);
+  border-bottom: 1px solid #222;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.brand {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #fff;
+}
+
+.navRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.navBtn {
+  background: transparent;
+  color: #888;
+  padding: 6px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  transition: color 0.2s;
+}
+.navBtn:hover { color: #fff; }
+
+.avatar {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background: #444;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; color: #fff;
+}
+
+.backBtn {
+  background: #222;
+  color: #aaa;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  transition: all 0.2s;
+}
+.backBtn:hover { background: #333; color: #fff; }
+
+/* Main */
+.main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 28px 20px;
+  gap: 16px;
+  max-width: 680px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Vessel Card */
+.vesselCard {
+  background: var(--dark-card);
+  border: 1px solid var(--dark-border);
+  border-radius: var(--radius-md);
+  padding: 22px 24px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.vesselName {
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.5px;
+}
+
+.vesselMeta {
+  font-size: 13px;
+  color: var(--dark-muted);
+  margin-top: 6px;
+}
+
+.statusBadge {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 16px;
+  border: 1.5px solid;
+  border-radius: 100px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.statusDot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+/* Complete Button */
+.completeBtn {
+  width: 100%;
+  background: var(--dark-card);
+  border: 1px solid var(--dark-border);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.2s;
+}
+.completeBtn:hover { background: #2e2e2e; border-color: #444; }
+
+/* Progress Card */
+.progressCard {
+  background: var(--dark-card);
+  border: 1px solid var(--dark-border);
+  border-radius: var(--radius-md);
+  padding: 28px 24px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 36px;
+}
+
+.circleArea { flex-shrink: 0; }
+.ring { overflow: visible; }
+
+.hatchArea {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.hatchRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hatchLabel {
+  font-size: 13px;
+  color: var(--dark-muted);
+  min-width: 56px;
+}
+
+.barTrack {
+  flex: 1;
+  height: 6px;
+  background: #333;
+  border-radius: 100px;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 100px;
+  transition: width 0.6s ease;
+}
+
+.hatchPct {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  min-width: 36px;
+  text-align: right;
+}
+
+.updateBtn {
+  background: #333;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  margin-top: 4px;
+  transition: background 0.2s;
+  width: 100%;
+}
+.updateBtn:hover { background: #444; }
+
+/* Incident Button */
+.incidentBtn {
+  width: 100%;
+  background: var(--dark-card);
+  border: 1px solid var(--dark-border);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  padding: 16px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  transition: all 0.2s;
+}
+.incidentBtn:hover { border-color: #ef4444; color: #ef4444; }
+
+/* Footer Vessel Tabs */
+.footer {
+  display: flex;
+  gap: 10px;
+  padding: 14px 20px;
+  background: var(--dark-bg);
+  border-top: 1px solid #222;
+  overflow-x: auto;
+}
+
+.vesselTab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 20px;
+  border-radius: 100px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #1e1e1e;
+  color: #888;
+  border: 1px solid #2a2a2a;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+.vesselTab:hover { border-color: #444; color: #ccc; }
+
+.vesselTabActive {
+  background: #272727;
+  color: #fff;
+  border-color: var(--orange);
+}
+
+.tabDot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--orange);
+  animation: pulse 1.5s infinite;
+}
+
+/* Modal */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  background: #1e1e1e;
+  border: 1px solid #333;
+  border-radius: var(--radius-lg);
+  padding: 28px;
+  width: 100%;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.modalTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.modalRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.modalLabel {
+  font-size: 13px;
+  color: #888;
+  min-width: 56px;
+}
+
+.slider {
+  flex: 1;
+  accent-color: var(--orange);
+  cursor: pointer;
+}
+
+.modalPct {
+  font-size: 13px;
+  font-weight: 600;
+  color: #fff;
+  min-width: 36px;
+  text-align: right;
+}
+
+.modalActions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.modalCancel {
+  flex: 1;
+  background: #2a2a2a;
+  color: #aaa;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  transition: background 0.2s;
+}
+.modalCancel:hover { background: #333; }
+
+.modalSave {
+  flex: 1;
+  background: var(--orange);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  transition: background 0.2s;
+}
+.modalSave:hover { background: var(--orange-light); }
+
+.incidentInput {
+  background: #111;
+  border: 1px solid #333;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  padding: 14px;
+  resize: none;
+  width: 100%;
+}
+.incidentInput:focus { outline: 1px solid var(--orange); }
+.incidentInput::placeholder { color: #555; }

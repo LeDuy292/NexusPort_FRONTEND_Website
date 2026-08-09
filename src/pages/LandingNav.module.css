@@ -1,0 +1,115 @@
+.page {
+  min-height: 100vh;
+  background: #0d0d0d;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 40px;
+}
+
+.header {
+  text-align: center;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.logoIcon {
+  font-size: 40px;
+}
+
+.logoText {
+  font-size: 38px;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -1px;
+}
+
+.subtitle {
+  color: #888;
+  font-size: 15px;
+  font-weight: 400;
+}
+
+.grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 520px;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 22px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  text-align: left;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.cardDark {
+  background: #1e1e1e;
+  border-color: #333;
+  color: #f0f0f0;
+}
+
+.cardDark:hover {
+  background: #272727;
+  border-color: #ff5c1a;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(255, 92, 26, 0.15);
+}
+
+.cardLight {
+  background: #1e1e1e;
+  border-color: #2a2a2a;
+  color: #f0f0f0;
+}
+
+.cardLight:hover {
+  background: #272727;
+  border-color: #ff5c1a;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(255, 92, 26, 0.12);
+}
+
+.cardIcon {
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.cardLabel {
+  font-size: 15px;
+  font-weight: 600;
+  color: #f0f0f0;
+}
+
+.cardDesc {
+  font-size: 13px;
+  color: #888;
+  margin-top: 2px;
+}
+
+.arrow {
+  margin-left: auto;
+  font-size: 20px;
+  color: #ff5c1a;
+  flex-shrink: 0;
+}
+
+.badge {
+  font-size: 12px;
+  color: #555;
+  margin-top: 8px;
+}

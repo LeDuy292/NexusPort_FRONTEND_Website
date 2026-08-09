@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Khai báo hàng hóa đặc biệt - NexusPort Carrier</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;600;700&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        "colors": {
+                "mist": "#efefef",
+                "inverse-surface": "#313030",
+                "primary-fixed": "#e5e2e1",
+                "surface-bright": "#fdf8f8",
+                "outline-variant": "#c4c7c7",
+                "on-secondary-fixed": "#251a00",
+                "tertiary-container": "#21201f",
+                "secondary-fixed": "#ffdf9b",
+                "tertiary": "#090808",
+                "secondary": "#745b1e",
+                "primary-fixed-dim": "#c8c6c5",
+                "background": "#fdf8f8",
+                "surface-container": "#f1edec",
+                "slate": "#828282",
+                "inverse-primary": "#c8c6c5",
+                "on-primary-fixed-variant": "#474746",
+                "paper": "#ffffff",
+                "on-secondary-fixed-variant": "#5a4306",
+                "on-tertiary-container": "#8a8785",
+                "surface-container-low": "#f7f3f2",
+                "fog": "#f5f5f5",
+                "surface-container-lowest": "#ffffff",
+                "chalk": "#e8e8e8",
+                "surface-dim": "#ddd9d8",
+                "on-error-container": "#93000a",
+                "surface-tint": "#5f5e5e",
+                "secondary-container": "#fedc91",
+                "tertiary-fixed": "#e6e2e0",
+                "graphite": "#4d4d4d",
+                "on-secondary": "#ffffff",
+                "secondary-fixed-dim": "#e4c37b",
+                "surface-variant": "#e5e2e1",
+                "surface": "#fdf8f8",
+                "on-primary": "#ffffff",
+                "on-tertiary-fixed": "#1c1b1a",
+                "on-surface-variant": "#444748",
+                "surface-container-highest": "#e5e2e1",
+                "surface-container-high": "#ebe7e7",
+                "inverse-on-surface": "#f4f0ef",
+                "on-secondary-container": "#785f22",
+                "on-error": "#ffffff",
+                "on-surface": "#1c1b1b",
+                "on-primary-fixed": "#1b1c1c",
+                "on-background": "#1c1b1b",
+                "outline": "#747878",
+                "signal-orange": "#ff682c",
+                "primary": "#080808",
+                "error-container": "#ffdad6",
+                "on-tertiary-fixed-variant": "#484645",
+                "primary-container": "#202020",
+                "on-tertiary": "#ffffff",
+                "error": "#ba1a1a",
+                "on-primary-container": "#898787",
+                "tertiary-fixed-dim": "#c9c6c4"
+        },
+        "borderRadius": {
+                "DEFAULT": "0.25rem",
+                "lg": "0.5rem",
+                "xl": "0.75rem",
+                "full": "9999px"
+        },
+        "spacing": {
+                "card-padding-lg": "40px",
+                "sidebar-width": "200px",
+                "margin-desktop": "32px",
+                "card-padding-sm": "32px",
+                "margin-mobile": "16px",
+                "gutter": "24px"
+        },
+        "fontFamily": {
+                "headline-lg": ["spaceGrotesk"],
+                "ui-compact": ["inter"],
+                "headline-md": ["spaceGrotesk"],
+                "label-xs": ["inter"],
+                "caption": ["inter"],
+                "section-head": ["spaceGrotesk"],
+                "display-hero": ["spaceGrotesk"],
+                "body-md": ["inter"],
+                "ui-standard": ["inter"]
+        }
+      }
+    }
+  }
+</script>
+<style>
+    body { font-family: 'Inter', sans-serif; }
+    h1, h2, h3, h4, h5, h6, .font-headline-lg, .font-headline-md, .font-section-head, .font-display-hero {
+        font-family: 'Space Grotesk', sans-serif;
+    }
+    .custom-input {
+        border-radius: 0.5rem;
+        border: 1px solid #828282;
+        background-color: transparent;
+        padding: 0.5rem 1rem;
+        font-family: 'Inter', sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        transition: all 0.2s ease-in-out;
+    }
+    .custom-input:focus {
+        outline: none;
+        border-color: #828282;
+        box-shadow: 0 0 0 3px #ff682c;
+    }
+    
+    .type-card {
+        transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), background-color 0.2s, border-color 0.2s;
+    }
+    .type-card:active {
+        transform: scale(0.97);
+    }
+    .type-card.selected {
+        animation: spring-pop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    @keyframes spring-pop {
+        0% { transform: scale(1); }
+        50% { transform: scale(1.02); }
+        100% { transform: scale(1); }
+    }
+
+    .form-section-container {
+        display: grid;
+        grid-template-rows: 0fr;
+        transition: grid-template-rows 0.4s ease-out, opacity 0.3s ease-out;
+        opacity: 0;
+        overflow: hidden;
+    }
+    .form-section-container.active {
+        grid-template-rows: 1fr;
+        opacity: 1;
+    }
+    .form-section-inner {
+        min-height: 0;
+    }
+
+    input[type=range] {
+        -webkit-appearance: none;
+        width: 100%;
+        background: transparent;
+    }
+    input[type=range]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        height: 24px;
+        width: 24px;
+        border-radius: 50%;
+        background: #ff682c;
+        cursor: pointer;
+        margin-top: -10px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        transition: transform 0.1s;
+    }
+    input[type=range]::-webkit-slider-thumb:active {
+        transform: scale(1.1);
+    }
+    input[type=range]::-webkit-slider-runnable-track {
+        width: 100%;
+        height: 4px;
+        cursor: pointer;
+        background: #e8e8e8;
+        border-radius: 2px;
+    }
+    input[type=range]:focus {
+        outline: none;
+    }
+    
+    .upload-zone {
+        transition: background-color 0.2s, border-color 0.2s;
+    }
+    .upload-zone.dragover {
+        background-color: #f5f5f5;
+        border-color: #202020;
+    }
+</style>
+</head>
+<body class="bg-mist text-primary-container flex min-h-screen">
+<nav class="w-[200px] h-screen fixed left-0 top-0 border-r border-chalk bg-paper flex flex-col z-20">
+<div class="p-6">
+<h1 class="font-headline-md text-headline-md font-bold text-primary">NexusPort</h1>
+<p class="font-ui-standard text-ui-standard text-graphite">Terminal Logistics</p>
+</div>
+<ul class="flex flex-col mt-4 font-ui-standard text-ui-standard w-full">
+<li>
+<a class="flex items-center gap-3 px-6 py-3 text-graphite hover:bg-mist transition-colors" href="operator-dashboard.html">
+<span class="material-symbols-outlined">dashboard</span>
+                    Tổng quan
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-6 py-3 bg-fog border-l-4 border-signal-orange text-primary font-semibold duration-200" href="cargo-declaration.html">
+<span class="material-symbols-outlined">segment</span>
+                    Khai báo hàng
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-6 py-3 text-graphite hover:bg-mist transition-colors" href="damage-report.html">
+<span class="material-symbols-outlined">warning</span>
+                    Báo cáo hư hỏng
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-6 py-3 text-graphite hover:bg-mist transition-colors" href="yard-map.html">
+<span class="material-symbols-outlined">grid_view</span>
+                    Quản lý Bãi
+                </a>
+</li>
+<li>
+<a class="flex items-center gap-3 px-6 py-3 text-graphite hover:bg-mist transition-colors" href="system-settings.html">
+<span class="material-symbols-outlined">settings</span>
+                    Cài đặt
+                </a>
+</li>
+</ul>
+<div class="mt-auto p-6 w-full">
+<button class="w-full bg-primary-container text-white h-[44px] rounded-full font-ui-standard text-ui-standard hover:bg-tertiary transition-colors">
+                Khai báo mới
+            </button>
+</div>
+</nav>
+<div class="flex-1 ml-[200px] flex flex-col min-w-0">
+<header class="docked full-width top-0 h-16 bg-mist flex justify-between items-center px-8 transition-all duration-200 ease-in-out z-10 sticky">
+<div class="flex items-center gap-8 font-ui-compact text-ui-compact">
+<a class="text-graphite hover:text-signal-orange transition-colors" href="#">Chỉ thị</a>
+<a class="text-graphite hover:text-signal-orange transition-colors" href="#">Lịch trình tàu</a>
+<a class="text-graphite hover:text-signal-orange transition-colors" href="#">Giao thức an toàn</a>
+</div>
+<div class="flex items-center gap-6">
+<div class="relative">
+<span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate text-sm">search</span>
+<input class="custom-input pl-9 h-8 w-64 bg-paper rounded-full border-none shadow-sm focus:shadow-[0_0_0_3px_#ff682c]" placeholder="Tìm kiếm..." type="text"/>
+</div>
+<span class="font-ui-compact text-ui-compact text-primary">System Status: Optimal</span>
+<div class="flex gap-4 text-graphite">
+<button class="hover:text-signal-orange transition-colors"><span class="material-symbols-outlined">notifications</span></button>
+<button class="hover:text-signal-orange transition-colors"><span class="material-symbols-outlined">help_outline</span></button>
+</div>
+</div>
+</header>
+<main class="flex-1 p-gutter md:p-margin-desktop w-full max-w-[1280px] mx-auto flex flex-col gap-10 pb-20">
+<div class="flex flex-col gap-2">
+<h1 class="font-headline-lg text-headline-lg text-primary-container">Khai báo hàng hóa đặc biệt</h1>
+<p class="font-body-md text-body-md text-graphite">Khai báo các yêu cầu xử lý đặc biệt cho container của bạn.</p>
+</div>
+<section class="flex flex-col gap-6">
+<h2 class="font-section-head text-section-head text-primary-container">Chọn loại hàng</h2>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+<div class="type-card bg-paper p-card-padding-sm rounded-lg border border-transparent cursor-pointer relative group selected bg-fog !border-primary-container" data-target="reefer">
+<div class="absolute top-6 right-6 w-6 h-6 rounded-full bg-signal-orange flex items-center justify-center opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-white text-[16px] font-bold">check</span>
+</div>
+<span class="material-symbols-outlined text-[40px] text-slate mb-4 group-hover:text-primary-container transition-colors">ac_unit</span>
+<h3 class="font-section-head text-section-head text-primary-container mb-2">Hàng lạnh</h3>
+<p class="font-ui-compact text-ui-compact text-graphite">Hàng hóa kiểm soát nhiệt độ yêu cầu nguồn điện liên tục.</p>
+</div>
+<div class="type-card bg-paper p-card-padding-sm rounded-lg border border-transparent shadow-[0_2px_12px_rgba(0,0,0,0.02)] cursor-pointer relative group" data-target="dg">
+<div class="absolute top-6 right-6 w-6 h-6 rounded-full bg-signal-orange flex items-center justify-center opacity-0 transition-opacity">
+<span class="material-symbols-outlined text-white text-[16px] font-bold">check</span>
+</div>
+<span class="material-symbols-outlined text-[40px] text-slate mb-4 group-hover:text-primary-container transition-colors">warning</span>
+<h3 class="font-section-head text-section-head text-primary-container mb-2">Hàng nguy hiểm</h3>
+<p class="font-ui-compact text-ui-compact text-graphite">Vật liệu nguy hiểm tuân thủ mã IMDG.</p>
+</div>
+<div class="type-card bg-paper p-card-padding-sm rounded-lg border border-transparent shadow-[0_2px_12px_rgba(0,0,0,0.02)] cursor-pointer relative group">
+<div class="absolute top-6 right-6 w-6 h-6 rounded-full bg-signal-orange flex items-center justify-center opacity-0 transition-opacity">
+<span class="material-symbols-outlined text-white text-[16px] font-bold">check</span>
+</div>
+<span class="material-symbols-outlined text-[40px] text-slate mb-4 group-hover:text-primary-container transition-colors">eco</span>
+<h3 class="font-section-head text-section-head text-primary-container mb-2">Hàng mau hỏng</h3>
+<p class="font-ui-compact text-ui-compact text-graphite">Hàng hóa nhạy cảm với thời gian và môi trường.</p>
+</div>
+<div class="type-card bg-paper p-card-padding-sm rounded-lg border border-transparent shadow-[0_2px_12px_rgba(0,0,0,0.02)] cursor-pointer relative group">
+<div class="absolute top-6 right-6 w-6 h-6 rounded-full bg-signal-orange flex items-center justify-center opacity-0 transition-opacity">
+<span class="material-symbols-outlined text-white text-[16px] font-bold">check</span>
+</div>
+<span class="material-symbols-outlined text-[40px] text-slate mb-4 group-hover:text-primary-container transition-colors">fitness_center</span>
+<h3 class="font-section-head text-section-head text-primary-container mb-2">Hàng quá khổ / Quá tải</h3>
+<p class="font-ui-compact text-ui-compact text-graphite">Kích thước quá khổ yêu cầu thiết bị nâng hạ chuyên dụng.</p>
+</div>
+</div>
+</section>
+<div class="bg-paper p-card-padding-lg rounded-lg border border-chalk shadow-[0_2px_12px_rgba(0,0,0,0.02)]">
+<div class="form-section-container active" id="section-reefer">
+<div class="form-section-inner flex flex-col gap-8 pb-2">
+<div class="flex items-center gap-3 border-l-4 border-signal-orange pl-4">
+<h3 class="font-section-head text-section-head text-primary-container">Cấu hình container lạnh</h3>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+<div class="flex flex-col gap-6">
+<label class="font-ui-standard text-ui-standard text-primary-container font-semibold">Đặt nhiệt độ</label>
+<div class="flex items-center justify-between bg-fog p-6 rounded-lg border border-chalk">
+<div class="flex flex-col">
+<span class="font-ui-compact text-ui-compact text-graphite uppercase tracking-wider">Mục tiêu</span>
+<div class="flex items-baseline gap-1">
+<span class="font-headline-md text-[32px] text-primary-container" id="temp-value">-18</span>
+<span class="font-headline-md text-[20px] text-slate">°C</span>
+</div>
+</div>
+<span class="material-symbols-outlined text-[32px] text-signal-orange opacity-80">severe_cold</span>
+</div>
+<div class="relative pt-4 pb-2">
+<input id="temp-slider" max="20" min="-30" type="range" value="-18"/>
+<div class="flex justify-between mt-2 font-caption text-caption text-slate">
+<span>-30°C</span>
+<span>0°C</span>
+<span>+20°C</span>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-6">
+<label class="font-ui-standard text-ui-standard text-primary-container font-semibold">Yêu cầu nguồn điện</label>
+<div class="flex gap-4">
+<button class="flex-1 h-[44px] rounded-full border border-primary-container bg-primary-container text-white font-ui-standard text-ui-standard transition-all">
+                                        380V (3-Phase)
+                                    </button>
+<button class="flex-1 h-[44px] rounded-full border border-chalk text-graphite hover:border-primary-container font-ui-standard text-ui-standard transition-all">
+                                        220V (Single)
+                                    </button>
+</div>
+<div class="flex flex-col gap-2 mt-4">
+<label class="font-ui-standard text-ui-standard text-primary-container font-semibold">Hướng dẫn thông gió</label>
+<textarea class="custom-input min-h-[100px] resize-none" placeholder="Ví dụ: 25 cbm/giờ..."></textarea>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="form-section-container" id="section-dg">
+<div class="form-section-inner flex flex-col gap-8 pb-2">
+<div class="flex items-center gap-3 border-l-4 border-signal-orange pl-4">
+<h3 class="font-section-head text-section-head text-primary-container">Chi tiết hàng nguy hiểm</h3>
+</div>
+<div class="bg-mist p-4 rounded-lg flex gap-4 items-start border-l-4 border-signal-orange">
+<span class="material-symbols-outlined text-signal-orange mt-0.5">info</span>
+<p class="font-ui-compact text-ui-compact text-graphite">Đảm bảo tất cả các số UN khớp với nhãn vật lý của bạn. Bản tóm tắt được tải lên phải được đóng dấu bởi nhân viên được chứng nhận.</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+<div class="flex flex-col gap-6">
+<div class="flex flex-col gap-2">
+<label class="font-ui-standard text-ui-standard text-primary-container font-semibold">Số UN</label>
+<input class="custom-input" placeholder="ví dụ 1993" type="text"/>
+</div>
+<div class="flex flex-col gap-2">
+<label class="font-ui-standard text-ui-standard text-primary-container font-semibold">Tên vận chuyển thích hợp</label>
+<input class="custom-input" placeholder="ví dụ CHẤT LỎNG DỄ CHÁY, N.O.S." type="text"/>
+</div>
+<div class="flex flex-col gap-3 mt-2">
+<label class="font-ui-standard text-ui-standard text-primary-container font-semibold">Nhóm IMDG chính</label>
+<div class="grid grid-cols-3 gap-3">
+<div class="h-12 border border-chalk rounded-lg flex items-center justify-center font-ui-standard text-graphite hover:border-primary-container cursor-pointer transition-colors bg-fog border-primary-container">Class 3</div>
+<div class="h-12 border border-chalk rounded-lg flex items-center justify-center font-ui-standard text-graphite hover:border-primary-container cursor-pointer transition-colors">Class 4</div>
+<div class="h-12 border border-chalk rounded-lg flex items-center justify-center font-ui-standard text-graphite hover:border-primary-container cursor-pointer transition-colors">Class 5</div>
+<div class="h-12 border border-chalk rounded-lg flex items-center justify-center font-ui-standard text-graphite hover:border-primary-container cursor-pointer transition-colors">Class 6</div>
+<div class="h-12 border border-chalk rounded-lg flex items-center justify-center font-ui-standard text-graphite hover:border-primary-container cursor-pointer transition-colors">Class 8</div>
+<div class="h-12 border border-chalk rounded-lg flex items-center justify-center font-ui-standard text-graphite hover:border-primary-container cursor-pointer transition-colors">Class 9</div>
+</div>
+</div>
+</div>
+<div class="flex flex-col gap-2">
+<label class="font-ui-standard text-ui-standard text-primary-container font-semibold">Tải lên Bản tóm tắt</label>
+<div class="upload-zone flex-1 border-2 border-dashed border-chalk rounded-lg flex flex-col items-center justify-center p-8 cursor-pointer hover:bg-fog hover:border-primary-container" id="dropzone">
+<span class="material-symbols-outlined text-[48px] text-slate mb-4">cloud_upload</span>
+<p class="font-ui-standard text-ui-standard text-primary-container font-semibold">Kéo &amp; thả tệp vào đây</p>
+<p class="font-ui-compact text-ui-compact text-graphite mt-1">hoặc nhấp để duyệt từ máy tính của bạn</p>
+<p class="font-caption text-caption text-slate mt-4">Định dạng được hỗ trợ: PDF, JPG, PNG (Tối đa 10MB)</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<section class="flex flex-col gap-6 mt-4">
+<h2 class="font-section-head text-section-head text-primary-container">Xem lại &amp; Gửi</h2>
+<div class="bg-paper rounded-lg border border-chalk overflow-hidden">
+<table class="w-full text-left border-collapse">
+<thead>
+<tr class="bg-fog font-ui-compact text-ui-compact text-graphite border-b border-chalk">
+<th class="py-4 px-6 font-medium">Mã container</th>
+<th class="py-4 px-6 font-medium">Loại hàng</th>
+<th class="py-4 px-6 font-medium">Chi tiết</th>
+<th class="py-4 px-6 font-medium text-right">Phụ phí</th>
+</tr>
+</thead>
+<tbody class="font-ui-standard text-ui-standard text-primary-container">
+<tr class="border-b border-chalk">
+<td class="py-4 px-6 font-mono">MSKU 908123-4</td>
+<td class="py-4 px-6">Hàng lạnh</td>
+<td class="py-4 px-6 text-graphite">-18°C, 380V</td>
+<td class="py-4 px-6 text-right">$150.00</td>
+</tr>
+<tr class="border-b border-chalk">
+<td class="py-4 px-6 font-mono">TLLU 459011-2</td>
+<td class="py-4 px-6">Tiêu chuẩn</td>
+<td class="py-4 px-6 text-graphite">-</td>
+<td class="py-4 px-6 text-right">$0.00</td>
+</tr>
+<tr class="border-t-2 border-signal-orange bg-surface-container-low font-semibold">
+<td class="py-4 px-6 text-right" colspan="3">Tổng phí xử lý ước tính</td>
+<td class="py-4 px-6 text-right">$150.00</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div class="flex justify-end mt-4">
+<button class="bg-primary-container text-white h-[44px] rounded-full px-12 font-ui-standard text-ui-standard hover:bg-tertiary transition-colors shadow-sm">
+                        Gửi khai báo
+                    </button>
+</div>
+</section>
+</main>
+</div>
+<script>
+        const cards = document.querySelectorAll('.type-card');
+        const reeferSection = document.getElementById('section-reefer');
+        const dgSection = document.getElementById('section-dg');
+
+        cards.forEach(card => {
+            card.addEventListener('click', () => {
+                cards.forEach(c => {
+                    c.classList.remove('selected', 'bg-fog', '!border-primary-container');
+                    c.classList.add('shadow-[0_2px_12px_rgba(0,0,0,0.02)]');
+                    const check = c.querySelector('.opacity-100');
+                    if(check) {
+                        check.classList.remove('opacity-100');
+                        check.classList.add('opacity-0');
+                    }
+                });
+
+                card.classList.add('selected', 'bg-fog', '!border-primary-container');
+                card.classList.remove('shadow-[0_2px_12px_rgba(0,0,0,0.02)]');
+                const check = card.querySelector('.opacity-0');
+                if(check) {
+                    check.classList.remove('opacity-0');
+                    check.classList.add('opacity-100');
+                }
+
+                const target = card.getAttribute('data-target');
+                if (target === 'reefer') {
+                    reeferSection.classList.add('active');
+                    dgSection.classList.remove('active');
+                } else if (target === 'dg') {
+                    dgSection.classList.add('active');
+                    reeferSection.classList.remove('active');
+                } else {
+                    reeferSection.classList.remove('active');
+                    dgSection.classList.remove('active');
+                }
+            });
+        });
+
+        const slider = document.getElementById('temp-slider');
+        const display = document.getElementById('temp-value');
+        if(slider && display) {
+            slider.addEventListener('input', (e) => {
+                const val = e.target.value;
+                display.textContent = val > 0 ? `+${val}` : val;
+            });
+        }
+</script>
+</body>
+</html>

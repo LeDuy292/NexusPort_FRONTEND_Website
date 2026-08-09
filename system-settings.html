@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html class="light" lang="vi">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NexusPort — Cài đặt hệ thống & Cấu hình AI (System Configuration)</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=block" rel="stylesheet"/>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "signal-orange": "#ff682c", "primary-container": "#202020", "slate": "#828282",
+          "primary": "#080808", "graphite": "#4d4d4d", "mist": "#efefef", "fog": "#f5f5f5",
+          "paper": "#ffffff", "carbon": "#202020", "chalk": "#e8e8e8", "error": "#ba1a1a"
+        },
+        spacing: { "sidebar-width": "200px", "margin-desktop": "32px", "gutter": "24px" },
+        fontFamily: {
+          "headline-lg": ["Space Grotesk", "sans-serif"], "ui-standard": ["Inter", "sans-serif"],
+          "section-head": ["Space Grotesk", "sans-serif"], "caption": ["Inter", "sans-serif"],
+          "ui-compact": ["Inter", "sans-serif"], "body-md": ["Inter", "sans-serif"],
+          "headline-md": ["Space Grotesk", "sans-serif"], "label-xs": ["Inter", "sans-serif"]
+        }
+      }
+    }
+  }
+</script>
+<style>
+  .nav-link { display:flex; align-items:center; padding:8px 12px; font-size:13px; font-weight:500; line-height:1.5; border-left:4px solid transparent; color:#4d4d4d; transition:all .15s; }
+  .nav-link:hover { color:#080808; background:#efefef; }
+  .nav-link.active { background:#f5f5f5; border-left-color:#ff682c; color:#080808; font-weight:600; }
+  @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+  @keyframes slideOut { from { transform: translateX(0); opacity: 1; } to { transform: translateX(100%); opacity: 0; } }
+  .toast-enter { animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+  .toast-exit { animation: slideOut 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+  .toggle-knob { transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+  input:checked + .toggle-bg { background-color: #ff682c; }
+  input:checked + .toggle-bg .toggle-knob { transform: translateX(16px); }
+  .fade-enter { opacity: 0; transform: translateY(10px); animation: fadeIn 0.4s ease-out forwards; }
+  @keyframes fadeIn { to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body class="bg-mist text-carbon min-h-screen flex flex-col font-ui-standard antialiased">
+
+<div class="flex flex-1 h-screen overflow-hidden">
+  <!-- SIDEBAR -->
+  <aside class="w-[200px] h-full fixed left-0 top-0 bg-paper border-r border-chalk flex flex-col z-50">
+    <div class="p-6 pb-4">
+      <h1 class="font-headline-md text-headline-md text-primary flex items-center gap-1 font-bold leading-none">
+        NexusPort<span class="text-signal-orange text-4xl leading-none">.</span>
+      </h1>
+      <p class="text-caption text-slate mt-1">Quản trị hệ thống</p>
+    </div>
+    <div class="flex-1 px-4 py-2 space-y-0.5 overflow-y-auto">
+      <a class="nav-link" href="operator-dashboard.html"><span class="material-symbols-outlined mr-3 text-[20px]">dashboard</span>Tổng quan</a>
+      <a class="nav-link" href="yard-map.html"><span class="material-symbols-outlined mr-3 text-[20px]">grid_view</span>Bản đồ bãi</a>
+      <a class="nav-link" href="booking-management.html"><span class="material-symbols-outlined mr-3 text-[20px]">event_seat</span>Quản lý Đặt chỗ</a>
+      <a class="nav-link" href="billing-payment.html"><span class="material-symbols-outlined mr-3 text-[20px]">receipt_long</span>Thanh toán</a>
+      <a class="nav-link" href="user-role-management.html"><span class="material-symbols-outlined mr-3 text-[20px]">manage_accounts</span>Phân quyền</a>
+      <a class="nav-link" href="gate-checkin.html"><span class="material-symbols-outlined mr-3 text-[20px]">login</span>Cổng kiểm soát AI</a>
+      <a class="nav-link" href="carrier-portal.html"><span class="material-symbols-outlined mr-3 text-[20px]">directions_boat</span>Cổng Hãng tàu</a>
+      <a class="nav-link active" href="system-settings.html"><span class="material-symbols-outlined mr-3 text-[20px]" style="font-variation-settings: 'FILL' 1;">settings</span>Cài đặt hệ thống</a>
+    </div>
+    <div class="p-4 border-t border-chalk">
+      <button class="w-full bg-error text-white h-10 rounded-full text-ui-compact font-bold flex justify-center items-center gap-2 hover:opacity-90 transition-opacity">
+        <span class="material-symbols-outlined text-[18px]">warning</span>Cảnh báo hệ thống
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN CONTENT -->
+  <main class="ml-[200px] flex-1 flex flex-col min-h-screen overflow-y-auto">
+    <header class="h-16 px-8 flex justify-between items-center border-b border-chalk bg-paper sticky top-0 z-40">
+      <div class="text-graphite text-ui-compact">
+        NexusPort Terminal Management <span class="mx-2 text-slate">/</span> Cấu hình & Tham số Hệ thống (Admin Only)
+      </div>
+      <div class="flex items-center gap-4">
+        <button id="btn-save-top" class="h-9 px-5 bg-carbon hover:bg-black text-white rounded-full text-ui-compact font-bold transition-all shadow-sm flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-[18px] text-signal-orange">save</span>Lưu thay đổi
+        </button>
+        <div class="flex items-center gap-2 pl-3 border-l border-chalk">
+          <div class="w-8 h-8 rounded-full bg-carbon text-white flex items-center justify-center font-bold text-xs">OP</div>
+          <span class="text-ui-compact font-bold text-primary">Lê Thiện Quang</span>
+        </div>
+      </div>
+    </header>
+
+    <div class="p-8 max-w-[1280px] mx-auto w-full flex-1 flex flex-col">
+      <h2 class="font-headline-lg text-headline-lg text-primary mb-6 font-bold">Cài đặt Cấu hình Hệ thống</h2>
+
+      <!-- Tabs -->
+      <div class="flex gap-8 border-b border-chalk mb-8">
+        <button class="pb-3 px-1 font-ui-standard font-bold text-primary border-b-2 border-signal-orange tab-btn" data-target="tab-ai">Cấu hình Cổng AI & OCR ANPR</button>
+        <button class="pb-3 px-1 font-ui-standard text-graphite hover:text-primary transition-colors tab-btn" data-target="tab-yard">Tham số Bãi & Cẩu giàn</button>
+        <button class="pb-3 px-1 font-ui-standard text-graphite hover:text-primary transition-colors tab-btn" data-target="tab-api">Tích hợp API Hãng tàu & Ngân hàng</button>
+        <button class="pb-3 px-1 font-ui-standard text-graphite hover:text-primary transition-colors tab-btn" data-target="tab-security">Bảo mật & Nhật ký (Audit Log)</button>
+      </div>
+
+      <!-- Tab Content 1: AI & OCR (Visible by default) -->
+      <div id="tab-ai" class="space-y-6 fade-enter tab-panel">
+        <div class="bg-paper border border-chalk rounded-lg p-8 shadow-sm">
+          <h3 class="font-section-head text-xl font-bold text-primary mb-2">Tự động hóa Kiểm soát Cổng (AI ANPR Engine)</h3>
+          <p class="text-caption text-slate mb-6">Điều chỉnh tham số camera hồng ngoại và ngưỡng nhận diện biển số tự động của hệ thống Edge AI.</p>
+
+          <div class="space-y-6 border-t border-chalk pt-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="font-bold text-primary text-base">Bật tự động nhận diện biển số & mã container (OCR)</p>
+                <p class="text-caption text-slate">Phát hiện biển số xe đầu kéo trước và số hiệu container phía sau theo thời gian thực.</p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" checked class="sr-only"/>
+                <div class="toggle-bg w-10 h-6 bg-slate rounded-full transition-colors flex items-center p-1">
+                  <div class="toggle-knob w-4 h-4 bg-white rounded-full shadow-md"></div>
+                </div>
+              </label>
+            </div>
+
+            <div class="flex items-center justify-between border-t border-chalk pt-6">
+              <div>
+                <p class="font-bold text-primary text-base">Tự động mở Barie cổng khi độ tin cậy AI đạt chuẩn</p>
+                <p class="text-caption text-slate">Barie tự động mở nếu thông tin xe khớp > 95% với lịch hẹn Booking trong khung giờ.</p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" checked class="sr-only"/>
+                <div class="toggle-bg w-10 h-6 bg-slate rounded-full transition-colors flex items-center p-1">
+                  <div class="toggle-knob w-4 h-4 bg-white rounded-full shadow-md"></div>
+                </div>
+              </label>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 border-t border-chalk pt-6">
+              <div>
+                <label class="block text-caption font-bold text-slate mb-2 uppercase">Ngưỡng độ tin cậy tối thiểu (AI Confidence Threshold)</label>
+                <div class="flex items-center gap-4">
+                  <input type="range" min="80" max="99" value="95" class="w-full accent-signal-orange" id="ai-range"/>
+                  <span class="font-headline-md text-xl font-bold text-primary w-16" id="ai-val">95%</span>
+                </div>
+              </div>
+              <div>
+                <label class="block text-caption font-bold text-slate mb-2 uppercase">Thời gian Timeout giữ chỗ tại cổng (phút)</label>
+                <input type="number" value="15" class="w-full h-10 px-4 border border-chalk rounded-md text-primary font-bold focus:border-signal-orange focus:outline-none bg-fog"/>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- System Alerts Configuration -->
+        <div class="bg-paper border border-chalk rounded-lg p-8 shadow-sm">
+          <h3 class="font-section-head text-xl font-bold text-primary mb-2">Cảnh báo Vận hành & IoT Container Lạnh</h3>
+          <p class="text-caption text-slate mb-6">Thiết lập tự động báo động qua SMS / Zalo / Email cho Ban Giám đốc khi phát hiện sự cố bãi.</p>
+
+          <div class="space-y-6 border-t border-chalk pt-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="font-bold text-primary text-base">Cảnh báo nhiệt độ Container lạnh (Reefer) vượt ngưỡng</p>
+                <p class="text-caption text-slate">Tự động gửi cảnh báo khẩn cấp nếu nhiệt độ cont lạnh chênh lệch > 2°C trong 10 phút.</p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" checked class="sr-only"/>
+                <div class="toggle-bg w-10 h-6 bg-slate rounded-full transition-colors flex items-center p-1">
+                  <div class="toggle-knob w-4 h-4 bg-white rounded-full shadow-md"></div>
+                </div>
+              </label>
+            </div>
+
+            <div class="flex items-center justify-between border-t border-chalk pt-6">
+              <div>
+                <p class="font-bold text-primary text-base">Báo động ùn tắc tại Cổng kiểm soát (Gate Traffic Alert)</p>
+                <p class="text-caption text-slate">Báo động khi có trên 10 xe đầu kéo đang chờ xếp hàng ngoài cổng A hoặc B.</p>
+              </div>
+              <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" checked class="sr-only"/>
+                <div class="toggle-bg w-10 h-6 bg-slate rounded-full transition-colors flex items-center p-1">
+                  <div class="toggle-knob w-4 h-4 bg-white rounded-full shadow-md"></div>
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-4 pt-4">
+          <button class="px-6 py-3 rounded-full border border-chalk font-bold text-graphite hover:bg-fog transition-colors">Khôi phục mặc định</button>
+          <button id="btn-save-bottom" class="px-8 py-3 rounded-full bg-carbon text-white font-bold hover:bg-black transition-all shadow-md">Lưu tất cả cấu hình</button>
+        </div>
+      </div>
+
+      <!-- Tab Content 2: Yard & Crane (Hidden by default) -->
+      <div id="tab-yard" class="space-y-6 hidden tab-panel">
+        <div class="bg-paper border border-chalk rounded-lg p-8 shadow-sm">
+          <h3 class="font-section-head text-xl font-bold text-primary mb-4">Quy hoạch & Sức chứa Bãi (Yard Capacity)</h3>
+          <p class="text-graphite mb-4">Quản lý tổng số 6 dãy (D1-D6) và 8 vịnh (V01-V08) của Khu A-E.</p>
+          <div class="p-6 bg-fog rounded-lg text-sm text-slate">Các tham số quy hoạch bãi đang ở chế độ tối ưu hóa tự động theo AI Suggestion Engine.</div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- TOAST NOTIFICATION -->
+<div id="toast" class="fixed bottom-8 right-8 bg-carbon text-white px-6 py-4 rounded-lg shadow-2xl border-l-4 border-signal-orange flex items-center gap-3 hidden z-50">
+  <span class="material-symbols-outlined text-signal-orange text-[24px]">check_circle</span>
+  <div>
+    <p class="font-bold text-sm">Đã lưu cấu hình thành công!</p>
+    <p class="text-[11px] text-slate">Các thay đổi tham số AI đã có hiệu lực trên toàn cảng.</p>
+  </div>
+</div>
+
+<script>
+  // Range slider binding
+  document.getElementById('ai-range').addEventListener('input', function() {
+    document.getElementById('ai-val').textContent = this.value + '%';
+  });
+
+  // Toast behavior
+  function showToast() {
+    const t = document.getElementById('toast');
+    t.classList.remove('hidden', 'toast-exit');
+    t.classList.add('toast-enter');
+    setTimeout(() => {
+      t.classList.remove('toast-enter');
+      t.classList.add('toast-exit');
+      setTimeout(() => t.classList.add('hidden'), 300);
+    }, 3500);
+  }
+  document.getElementById('btn-save-top').addEventListener('click', showToast);
+  document.getElementById('btn-save-bottom').addEventListener('click', showToast);
+
+  // Tab switching
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('border-b-2', 'border-signal-orange', 'font-bold', 'text-primary'));
+      this.classList.add('border-b-2', 'border-signal-orange', 'font-bold', 'text-primary');
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      document.getElementById(this.dataset.target).classList.remove('hidden');
+      document.getElementById(this.dataset.target).classList.add('fade-enter');
+    });
+  });
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Serif+Display&display=swap');
+
+:root {
+  /* === Dark Desktop (PORT OPS) === */
+  --dark-bg: #111111;
+  --dark-surface: #1e1e1e;
+  --dark-card: #272727;
+  --dark-border: #333333;
+  --dark-text: #f0f0f0;
+  --dark-muted: #888888;
+
+  /* === Light Mobile (Driver App) === */
+  --light-bg: #f0f0f0;
+  --light-surface: #ffffff;
+  --light-card: #ffffff;
+  --light-border: #e0e0e0;
+  --light-text: #111111;
+  --light-muted: #888888;
+
+  /* === Brand === */
+  --orange: #ff5c1a;
+  --orange-light: #ff7a3d;
+  --orange-dim: rgba(255,92,26,0.15);
+  --green: #22c55e;
+  --red: #ef4444;
+  --yellow: #f59e0b;
+
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-xl: 28px;
+
+  --shadow-card: 0 2px 16px rgba(0,0,0,0.12);
+  --shadow-dark: 0 4px 24px rgba(0,0,0,0.5);
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; }
+body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+
+button { cursor: pointer; border: none; outline: none; font-family: inherit; }
+a { text-decoration: none; color: inherit; }
