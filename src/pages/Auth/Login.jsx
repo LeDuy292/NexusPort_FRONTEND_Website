@@ -1,10 +1,10 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import useAuth from '../../hooks/useAuth'
 
 export default function Login() {
   const navigate = useNavigate()
-  const { login } = useAuth()
+  const { login, loginWithToken } = useAuth()
 
   // State
   const [step, setStep] = useState(1)
@@ -16,50 +16,89 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState(null)
 
+  // State Quên mật khẩu Modal
+  const [showForgotModal, setShowForgotModal] = useState(false)
+  const [forgotStep, setForgotStep] = useState(1) // 1: nhập email/username -> nhận OTP, 2: nhập OTP + mật khẩu mới
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [forgotOtp, setForgotOtp] = useState('')
+  const [generatedOtp, setGeneratedOtp] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [forgotLoading, setForgotLoading] = useState(false)
+
+  // Điền sẵn username nếu đã tích "Ghi nhớ đăng nhập" từ trước
+  useEffect(() => {
+    const savedUsername = localStorage.getItem('rememberedUsername')
+    if (savedUsername) {
+      setUsername(savedUsername)
+      setRememberMe(true)
+    }
+  }, [])
+
   const roles = [
     {
-      id: 'operator',
-      title: 'Port Operator',
-      desc: 'Điều phối viên vận hành cảng',
-      roleName: 'Dispatcher',
-      icon: 'settings_suggest',
-      iconBg: 'rgba(255,104,44,0.15)',
-      iconColor: '#ff682c',
-      redirect: '/dashboard/operator'
-    },
-    {
       id: 'carrier',
-      title: 'Carrier',
-      desc: 'Đại diện hãng tàu / vận tải biển',
+      title: 'Transport Company',
+      desc: 'Hãng tàu / doanh nghiệp vận tải biển',
       roleName: 'Transport Company',
       icon: 'directions_boat',
       iconBg: 'rgba(99,179,237,0.12)',
       iconColor: '#63b3ed',
-      redirect: '/carrier'
+      redirect: '/carrier-portal'
+    },
+    {
+      id: 'driver',
+      title: 'Driver',
+      desc: 'Tài xế container / vận chuyển hàng hóa',
+      roleName: 'Driver',
+      icon: 'local_shipping',
+      iconBg: 'rgba(104,211,145,0.12)',
+      iconColor: '#68d391',
+      redirect: '/driver-portal'
     },
     {
       id: 'gate',
-      title: 'Gate Inspector',
+      title: 'Gate Officer',
       desc: 'Kiểm soát viên cổng vào ra',
       roleName: 'Gate Officer',
       icon: 'shield_with_heart',
       iconBg: 'rgba(72,187,120,0.12)',
       iconColor: '#48bb78',
-      redirect: '/gate/control'
+      redirect: '/gate'
     },
     {
-      id: 'finance',
-      title: 'Finance Officer',
-      desc: 'Nhân viên quản lý tài chính',
-      roleName: 'Administrator',
-      icon: 'payments',
+      id: 'operator',
+      title: 'Dispatcher',
+      desc: 'Điều phối viên vận hành cảng',
+      roleName: 'Dispatcher',
+      icon: 'settings_suggest',
+      iconBg: 'rgba(255,104,44,0.15)',
+      iconColor: '#ff682c',
+      redirect: '/dashboard'
+    },
+    {
+      id: 'yard',
+      title: 'Yard Operator',
+      desc: 'Nhân viên vận hành bãi container',
+      roleName: 'Yard Operator',
+      icon: 'forklift',
       iconBg: 'rgba(246,173,85,0.12)',
       iconColor: '#f6ad55',
-      redirect: '/billing'
+      redirect: '/yard-staff/dashboard'
+    },
+    {
+      id: 'berth',
+      title: 'Berth Staff',
+      desc: 'Nhân viên vận hành cầu tàu / bến cảng',
+      roleName: 'Berth Staff',
+      icon: 'anchor',
+      iconBg: 'rgba(118,169,250,0.12)',
+      iconColor: '#76a9fa',
+      redirect: '/berth-staff/dashboard'
     },
     {
       id: 'admin',
-      title: 'System Admin',
+      title: 'Administrator',
       desc: 'Quản trị viên hệ thống',
       roleName: 'Administrator',
       icon: 'admin_panel_settings',
@@ -81,7 +120,7 @@ export default function Login() {
     }, 200)
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     if (e) e.preventDefault()
     if (!username.trim() || !password.trim()) {
       showToastMessage('Vui lòng nhập đầy đủ thông tin!', 'warning', 'error')
@@ -90,22 +129,133 @@ export default function Login() {
 
     setLoading(true)
 
-    setTimeout(() => {
-      setLoading(false)
-      showToastMessage('Chào mừng! Đang chuyển hướng...', 'check_circle', 'success')
-      
-      const roleValue = selectedRole ? selectedRole.roleName : 'Administrator'
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          username: username.trim(),
+          password: password.trim(),
+          rememberMe
+        })
+      })
 
-      if (login) {
-        login(username, roleValue)
-      } else {
-        localStorage.setItem('user', JSON.stringify({ username, role: roleValue }))
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        showToastMessage(result.message || 'Đăng nhập thất bại!', 'error', 'error')
+        setLoading(false)
+        return
       }
 
+      const { token, user } = result.data
+      showToastMessage(`Chào mừng ${user.fullName || user.username}! Đang chuyển hướng...`, 'check_circle', 'success')
+      
+      if (loginWithToken) {
+        loginWithToken(user, token, rememberMe)
+      } else {
+        localStorage.setItem('user', JSON.stringify({ ...user, token }))
+      }
+
+      // Tìm redirect path phù hợp với role trả về từ BE nếu role người dùng chọn trùng hoặc không chọn
+      const matchedRoleObj = roles.find(r => r.roleName === user.role)
+      const redirectPath = matchedRoleObj ? matchedRoleObj.redirect : (selectedRole ? selectedRole.redirect : '/')
+
       setTimeout(() => {
-        navigate(selectedRole ? selectedRole.redirect : '/')
+        setLoading(false)
+        navigate(redirectPath)
       }, 1000)
-    }, 1200)
+
+    } catch (err) {
+      console.error('Login error:', err)
+      showToastMessage('Không thể kết nối đến máy chủ backend!', 'error', 'error')
+      setLoading(false)
+    }
+  }
+
+  // Xử lý gửi yêu cầu OTP quên mật khẩu
+  const handleRequestOtp = async (e) => {
+    if (e) e.preventDefault()
+    if (!forgotEmail.trim()) {
+      showToastMessage('Vui lòng nhập Email hoặc Tên đăng nhập!', 'warning', 'error')
+      return
+    }
+
+    setForgotLoading(true)
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: forgotEmail.trim() })
+      })
+
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        showToastMessage(data.message || 'Yêu cầu thất bại!', 'error', 'error')
+        setForgotLoading(false)
+        return
+      }
+
+      setGeneratedOtp(data.data.otp)
+      showToastMessage(`Mã OTP đã khởi tạo: ${data.data.otp}`, 'check_circle', 'success')
+      setForgotStep(2)
+      setForgotLoading(false)
+    } catch (err) {
+      console.error(err)
+      showToastMessage('Không thể kết nối máy chủ!', 'error', 'error')
+      setForgotLoading(false)
+    }
+  }
+
+  // Xử lý xác nhận OTP và đặt lại mật khẩu mới
+  const handleResetPassword = async (e) => {
+    if (e) e.preventDefault()
+    if (!forgotOtp.trim() || !newPassword.trim() || !confirmPassword.trim()) {
+      showToastMessage('Vui lòng điền đầy đủ các trường!', 'warning', 'error')
+      return
+    }
+
+    if (newPassword !== confirmPassword) {
+      showToastMessage('Mật khẩu xác nhận không khớp!', 'warning', 'error')
+      return
+    }
+
+    if (newPassword.length < 6) {
+      showToastMessage('Mật khẩu mới phải có ít nhất 6 ký tự!', 'warning', 'error')
+      return
+    }
+
+    setForgotLoading(true)
+    try {
+      const res = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: forgotEmail.trim(),
+          otp: forgotOtp.trim(),
+          newPassword: newPassword.trim()
+        })
+      })
+
+      const data = await res.json()
+      if (!res.ok || !data.success) {
+        showToastMessage(data.message || 'Đặt lại mật khẩu thất bại!', 'error', 'error')
+        setForgotLoading(false)
+        return
+      }
+
+      showToastMessage('Đặt lại mật khẩu thành công! Bạn có thể đăng nhập.', 'check_circle', 'success')
+      setUsername(forgotEmail)
+      setPassword(newPassword)
+      setShowForgotModal(false)
+      setForgotLoading(false)
+    } catch (err) {
+      console.error(err)
+      showToastMessage('Không thể kết nối máy chủ!', 'error', 'error')
+      setForgotLoading(false)
+    }
   }
 
   return (
@@ -240,7 +390,7 @@ export default function Login() {
                     <p className="text-white/40 text-[13px] mt-1.5 font-medium">Chọn vai trò của bạn để tiếp tục đăng nhập</p>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
                     {roles.map((r) => {
                       const isSelected = selectedRole?.id === r.id
                       return (
@@ -358,7 +508,17 @@ export default function Login() {
                         </div>
                         <span className="text-white/40 text-[13px] font-medium">Ghi nhớ đăng nhập</span>
                       </label>
-                      <a href="#" className="text-[#ff682c] text-[13px] font-semibold hover:underline">Quên mật khẩu?</a>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setForgotEmail(username)
+                          setForgotStep(1)
+                          setShowForgotModal(true)
+                        }}
+                        className="text-[#ff682c] text-[13px] font-semibold hover:underline"
+                      >
+                        Quên mật khẩu?
+                      </button>
                     </div>
 
                     <div className="pt-2">
@@ -416,6 +576,141 @@ export default function Login() {
         </div>
 
       </div>
+
+      {/* MODAL QUÊN MẬT KHẨU */}
+      {showForgotModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-[440px] bg-[#121212] border border-white/15 rounded-2xl p-6 shadow-2xl relative">
+            <button
+              onClick={() => setShowForgotModal(false)}
+              className="absolute right-4 top-4 w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors"
+            >
+              <span className="material-symbols-outlined text-[18px]">close</span>
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-[#ff682c]/15 border border-[#ff682c]/30 flex items-center justify-center">
+                <span className="material-symbols-outlined text-[#ff682c] text-[22px]">lock_reset</span>
+              </div>
+              <div>
+                <h3 className="text-white font-bold text-[18px]">Khôi phục mật khẩu</h3>
+                <p className="text-white/40 text-[12px]">
+                  {forgotStep === 1 ? 'Bước 1: Nhập Email hoặc Tên đăng nhập' : 'Bước 2: Xác thực mã OTP & Đổi mật khẩu'}
+                </p>
+              </div>
+            </div>
+
+            {forgotStep === 1 ? (
+              <form onSubmit={handleRequestOtp} className="space-y-4 mt-4">
+                <div>
+                  <label className="block text-[11px] font-semibold text-white/45 uppercase tracking-wider mb-2">
+                    Email / Tên đăng nhập
+                  </label>
+                  <div className="relative">
+                    <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30 text-[18px]">mail</span>
+                    <input
+                      type="text"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      placeholder="admin hoặc admin@nexusport.vn"
+                      className="w-full bg-white/5 border border-white/12 rounded-lg py-2.5 pl-10 pr-4 text-white text-[13px] outline-none focus:border-[#ff682c] transition-all"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotModal(false)}
+                    className="flex-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg py-2.5 text-white/60 text-[13px] font-semibold transition-all"
+                  >
+                    Hủy
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="flex-1 bg-[#ff682c] hover:bg-[#e05520] text-white rounded-lg py-2.5 text-[13px] font-semibold transition-all flex items-center justify-center gap-2"
+                  >
+                    {forgotLoading ? 'Đang xử lý...' : 'Gửi mã OTP'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleResetPassword} className="space-y-3.5 mt-4">
+                {generatedOtp && (
+                  <div className="bg-[#ff682c]/10 border border-[#ff682c]/30 rounded-lg p-3 text-[12px] text-[#ff682c] font-medium flex items-center justify-between">
+                    <span>Mã OTP thử nghiệm: <strong>{generatedOtp}</strong></span>
+                    <button
+                      type="button"
+                      onClick={() => setForgotOtp(generatedOtp)}
+                      className="text-[11px] underline font-semibold hover:text-white"
+                    >
+                      Tự điền
+                    </button>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-white/45 uppercase tracking-wider mb-1.5">
+                    Mã OTP (6 chữ số)
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={forgotOtp}
+                    onChange={(e) => setForgotOtp(e.target.value)}
+                    placeholder="123456"
+                    className="w-full bg-white/5 border border-white/12 rounded-lg py-2 pl-3 text-white text-[14px] font-mono tracking-widest outline-none focus:border-[#ff682c]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-white/45 uppercase tracking-wider mb-1.5">
+                    Mật khẩu mới
+                  </label>
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu mới"
+                    className="w-full bg-white/5 border border-white/12 rounded-lg py-2 pl-3 text-white text-[13px] outline-none focus:border-[#ff682c]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-white/45 uppercase tracking-wider mb-1.5">
+                    Xác nhận mật khẩu mới
+                  </label>
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Nhập lại mật khẩu mới"
+                    className="w-full bg-white/5 border border-white/12 rounded-lg py-2 pl-3 text-white text-[13px] outline-none focus:border-[#ff682c]"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setForgotStep(1)}
+                    className="bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg px-4 py-2.5 text-white/60 text-[13px] font-semibold transition-all"
+                  >
+                    Quay lại
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={forgotLoading}
+                    className="flex-1 bg-[#ff682c] hover:bg-[#e05520] text-white rounded-lg py-2.5 text-[13px] font-semibold transition-all flex items-center justify-center gap-2"
+                  >
+                    {forgotLoading ? 'Đang đổi...' : 'Xác nhận đổi mật khẩu'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Toast Notification */}
       {toast && (
