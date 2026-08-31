@@ -74,20 +74,23 @@ function HomeRedirect() {
   if (user.role === ROLES.TRANSPORT_COMPANY) {
     return <Navigate to="/carrier-portal" replace />
   }
-  if (user.role === ROLES.GATE_OFFICER) {
-    return <Navigate to="/gate" replace />
-  }
   if (user.role === ROLES.DRIVER) {
     return <Navigate to="/driver-portal" replace />
   }
-  
-  // Các vai trò có quyền vào Dashboard (Dispatcher, Yard Operator, Administrator)
-  if ([ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR].includes(user.role)) {
+  if (user.role === ROLES.GATE_OFFICER) {
+    return <Navigate to="/gate" replace />
+  }
+  if (user.role === ROLES.DISPATCHER) {
     return <Navigate to="/dashboard" replace />
   }
-
+  if (user.role === ROLES.YARD_OPERATOR) {
+    return <Navigate to="/yard-staff/dashboard" replace />
+  }
   if (user.role === ROLES.BERTH_STAFF) {
-    return <Navigate to="/berth" replace />
+    return <Navigate to="/berth-staff/dashboard" replace />
+  }
+  if (user.role === ROLES.ADMINISTRATOR) {
+    return <Navigate to="/dashboard" replace />
   }
 
   return <Navigate to="/unauthorized" replace />
