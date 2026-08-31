@@ -40,3 +40,9 @@ body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
 
 button { cursor: pointer; border: none; outline: none; font-family: inherit; }
 a { text-decoration: none; color: inherit; }
+
+/* Thin custom scrollbar for dark UI */
+.scrollbar-thin::-webkit-scrollbar { width: 4px; }
+.scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+.scrollbar-thin::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+.scrollbar-thin::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
