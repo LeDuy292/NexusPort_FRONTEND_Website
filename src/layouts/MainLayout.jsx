@@ -305,7 +305,8 @@ export default function MainLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [clock, setClock] = useState('--:--:--')
-  const user = JSON.parse(localStorage.getItem('user')) || { username: 'Khách', role: 'None' }
+  const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
+  const user = stored ? JSON.parse(stored) : { username: 'Khách', role: 'None' }
 
   useEffect(() => {
     const updateTime = () => {
@@ -319,6 +320,7 @@ export default function MainLayout() {
 
   const handleLogout = () => {
     localStorage.removeItem('user')
+    sessionStorage.removeItem('user')
     navigate('/login')
   }
 

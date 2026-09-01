@@ -104,7 +104,7 @@ export default function Login() {
       icon: 'admin_panel_settings',
       iconBg: 'rgba(159,122,234,0.12)',
       iconColor: '#9f7aea',
-      redirect: '/users'
+      redirect: '/admin/carriers'
     }
   ]
 
