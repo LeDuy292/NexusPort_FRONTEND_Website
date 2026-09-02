@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { routeConfig, ROLES } from '../routes/routeConfig'
+import NotificationCenter from '../components/NotificationCenter'
 
 // Danh sách các mục trong Sidebar tương ứng với các route
 const sidebarItems = [
@@ -305,7 +306,8 @@ export default function MainLayout() {
   const navigate = useNavigate()
   const location = useLocation()
   const [clock, setClock] = useState('--:--:--')
-  const user = JSON.parse(localStorage.getItem('user')) || { username: 'Khách', role: 'None' }
+  const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
+  const user = stored ? JSON.parse(stored) : { username: 'Khách', role: 'None' }
 
   useEffect(() => {
     const updateTime = () => {
@@ -319,6 +321,7 @@ export default function MainLayout() {
 
   const handleLogout = () => {
     localStorage.removeItem('user')
+    sessionStorage.removeItem('user')
     navigate('/login')
   }
 
@@ -416,7 +419,7 @@ export default function MainLayout() {
               LIVE <span className="ml-1 text-slate font-normal">{clock}</span>
             </div>
             <div className="flex items-center gap-4 text-graphite border-l border-chalk pl-6">
-              <span className="material-symbols-outlined cursor-pointer hover:text-primary transition-colors text-[24px]">notifications</span>
+              <NotificationCenter />
               <span className="material-symbols-outlined cursor-pointer hover:text-primary transition-colors text-[24px]">account_circle</span>
             </div>
           </div>

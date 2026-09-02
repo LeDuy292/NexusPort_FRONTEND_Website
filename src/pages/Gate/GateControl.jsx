@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { gateBookingsData } from '../../data/gateOfficerData'
+import { bookingService } from '../../services/bookingService'
 
 const BOOKING_ACTIVE = gateBookingsData.find(b => b.status === 'Approved') || gateBookingsData[3]
 
@@ -19,6 +20,45 @@ export default function GateControl() {
   const [processingStatus, setProcessingStatus] = useState('idle')
 
   const [activeBooking, setActiveBooking] = useState(BOOKING_ACTIVE)
+  const [qrSearchInput, setQrSearchInput] = useState('')
+  const [searchLoading, setSearchLoading] = useState(false)
+
+  const handleQrLookup = async (codeToSearch) => {
+    const code = codeToSearch || qrSearchInput
+    if (!code) return
+    setSearchLoading(true)
+    try {
+      const res = await bookingService.getBookings({ search: code.trim() })
+      if (res && res.items && res.items.length > 0) {
+        const found = res.items[0]
+        setActiveBooking({
+          id: found.bookingCode || found.id,
+          company: 'Transport Company',
+          vehicleId: found.truckId ? found.truckId.slice(0, 8) : '51C-992.81',
+          licensePlate: '51C-992.81',
+          driverName: 'Nguyễn Văn Hùng',
+          licenseNumber: 'FC-99201',
+          licenseStatus: 'Valid',
+          containerId: found.containerIds ? found.containerIds.join(', ') : 'MSKU8891024',
+          containerType: '40ft Dry Container',
+          cargoType: 'General Cargo',
+          operation: found.bookingType || 'Pickup',
+          gate: 'Gate A',
+          etaDisplay: new Date(found.appointmentStart).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
+          sealNumber: 'SEAL-99881',
+          status: found.status
+        })
+        setDetectedPlate('51C-992.81')
+        showToast(`🔍 Đã tra cứu dữ liệu Booking ${found.bookingCode} từ Database!`)
+      } else {
+        showToast(`⚠️ Không tìm thấy Booking '${code}' trong Database.`)
+      }
+    } catch (e) {
+      showToast('⚠️ Lỗi tra cứu Booking từ API.')
+    } finally {
+      setSearchLoading(false)
+    }
+  }
 
   useEffect(() => {
     const tick = () => setCurrentTime(new Date().toLocaleTimeString('vi-VN'))
@@ -246,6 +286,28 @@ export default function GateControl() {
 
           {/* Thông tin booking */}
           <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-4">
+            
+            {/* QR Search / Scanner Bar */}
+            <div className="flex gap-2 pb-3 border-b border-chalk">
+              <input
+                type="text"
+                placeholder="Quét mã QR / Nhập mã BK-2026..."
+                value={qrSearchInput}
+                onChange={(e) => setQrSearchInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleQrLookup()}
+                className="flex-1 px-3 py-2 border border-chalk rounded-xl text-xs font-mono font-bold uppercase focus:ring-2 focus:ring-signal-orange"
+              />
+              <button
+                type="button"
+                onClick={() => handleQrLookup()}
+                disabled={searchLoading}
+                className="px-4 py-2 bg-signal-orange text-white rounded-xl font-bold text-xs hover:bg-orange-600 flex items-center gap-1 cursor-pointer"
+              >
+                {searchLoading ? <span className="material-symbols-outlined text-sm animate-spin">sync</span> : <span className="material-symbols-outlined text-sm">qr_code_scanner</span>}
+                Tra cứu QR
+              </button>
+            </div>
+
             <div className="flex justify-between items-start border-b border-chalk pb-3">
               <div>
                 <span className="text-[10px] font-extrabold text-signal-orange uppercase tracking-wider block">XÁC MINH GATE BOOKING</span>
