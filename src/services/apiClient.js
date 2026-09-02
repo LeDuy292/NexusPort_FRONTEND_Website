@@ -19,13 +19,19 @@ const apiClient = {
 
     const headers = { 'Content-Type': 'application/json' }
     try {
-      const user = JSON.parse(localStorage.getItem('user'))
+      const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
+      const user = stored ? JSON.parse(stored) : null
       if (user && user.token) {
         headers['Authorization'] = `Bearer ${user.token}`
       }
     } catch (e) {}
 
     const res = await fetch(fullUrl, { method: 'GET', headers })
+    if (res.status === 401) {
+      localStorage.removeItem('user')
+      window.location.href = '/login'
+      throw new Error('Unauthorized')
+    }
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}))
       const err = new Error(errorData.message || `HTTP error ${res.status}`)
@@ -39,13 +45,23 @@ const apiClient = {
     const fullUrl = `${API_URL}${url}`
     const headers = { 'Content-Type': 'application/json' }
     try {
-      const user = JSON.parse(localStorage.getItem('user'))
+      const stored = localStorage.getItem('user') || sessionStorage.getItem('user');
+      const user = stored ? JSON.parse(stored) : null
       if (user && user.token) {
         headers['Authorization'] = `Bearer ${user.token}`
       }
     } catch (e) {}
 
-    const res = await fetch(fullUrl, { method: 'POST', headers, body: JSON.stringify(data) })
+    const res = await fetch(fullUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data)
+    })
+    if (res.status === 401) {
+      localStorage.removeItem('user')
+      window.location.href = '/login'
+      throw new Error('Unauthorized')
+    }
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}))
       const err = new Error(errorData.message || `HTTP error ${res.status}`)
@@ -59,13 +75,19 @@ const apiClient = {
     const fullUrl = `${API_URL}${url}`
     const headers = { 'Content-Type': 'application/json' }
     try {
-      const user = JSON.parse(localStorage.getItem('user'))
+      const stored = localStorage.getItem('user') || sessionStorage.getItem('user');
+      const user = stored ? JSON.parse(stored) : null
       if (user && user.token) {
         headers['Authorization'] = `Bearer ${user.token}`
       }
     } catch (e) {}
 
     const res = await fetch(fullUrl, { method: 'PUT', headers, body: JSON.stringify(data) })
+    if (res.status === 401) {
+      localStorage.removeItem('user')
+      window.location.href = '/login'
+      throw new Error('Unauthorized')
+    }
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}))
       const err = new Error(errorData.message || `HTTP error ${res.status}`)
@@ -73,6 +95,34 @@ const apiClient = {
       throw err
     }
     return { data: await res.json() }
+  },
+
+  patch: async (url, data = {}) => {
+    const fullUrl = `${API_URL}${url}`
+    const headers = { 'Content-Type': 'application/json' }
+    try {
+      const stored = localStorage.getItem('user') || sessionStorage.getItem('user');
+      const user = stored ? JSON.parse(stored) : null
+      if (user && user.token) {
+        headers['Authorization'] = `Bearer ${user.token}`
+      }
+    } catch (e) {}
+
+    const res = await fetch(fullUrl, { method: 'PATCH', headers, body: JSON.stringify(data) })
+    if (res.status === 401) {
+      localStorage.removeItem('user')
+      window.location.href = '/login'
+      throw new Error('Unauthorized')
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}))
+      const err = new Error(errorData.message || `HTTP error ${res.status}`)
+      err.response = { status: res.status, data: errorData }
+      throw err
+    }
+    // Handle 204 No Content which might not return JSON
+    if (res.status === 204) return { data: null }
+    return { data: await res.json().catch(() => ({})) }
   }
 }
 

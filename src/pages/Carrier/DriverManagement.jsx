@@ -1,31 +1,120 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import driverService from '../../services/driverService'
 
-const initialDrivers = [
-  { id: 'D01', name: 'Nguyễn Văn A', license: 'DL-8472848', class: 'CDL-A', status: 'Hoạt động', health: 'Tốt', healthColor: 'text-green-600', phone: '+84 905 123 456', trips: ['05/10/2026 - Cảng B đến Kho 12', '02/10/2026 - Kho 7 đến Cảng A'] },
-  { id: 'D02', name: 'Nguyễn Văn B', license: 'DL-8472849', class: 'CDL-A', status: 'Đang làm nhiệm vụ', health: 'Khá', healthColor: 'text-amber-600', phone: '+84 905 234 567', trips: ['06/10/2026 - Gate A đến Block C'] },
-  { id: 'D03', name: 'Trần Văn C', license: 'DL-8472950', class: 'CDL-A', status: 'Hoạt động', health: 'Tốt', healthColor: 'text-green-600', phone: '+84 905 345 678', trips: ['04/10/2026 - Bến D01 đến Yard B'] },
-  { id: 'D04', name: 'Lê Văn D', license: 'DL-8472951', class: 'CDL-A', status: 'Hoạt động', health: 'Tốt', healthColor: 'text-green-600', phone: '+84 905 456 789', trips: ['03/10/2026 - Cầu cảng 3 đến Kho 5'] },
-  { id: 'D05', name: 'Phạm Văn E', license: 'DL-1937465', class: 'HazMat', status: 'Nghỉ phép', health: 'Khá', healthColor: 'text-amber-600', phone: '+84 905 567 890', trips: ['01/10/2026 - Cảng A đến Tổng kho'] },
-  { id: 'D06', name: 'Hoàng Văn F', license: 'DL-8472953', class: 'CDL-A', status: 'Hoạt động', health: 'Tốt', healthColor: 'text-green-600', phone: '+84 905 678 901', trips: ['05/10/2026 - Trạm Gate B đến Yard D'] },
-]
+const STATUS_CONFIG = {
+  active: { label: 'Sẵn sàng hoạt động', color: 'bg-green-600 text-white' },
+  inactive: { label: 'Tạm nghỉ / Bận', color: 'bg-amber-100 text-amber-800 border border-amber-200' },
+  banned: { label: 'Đã bị đình chỉ', color: 'bg-red-100 text-red-800 border border-red-200' },
+}
 
 export default function DriverManagement() {
-  const [drivers] = useState(initialDrivers)
+  const [drivers, setDrivers] = useState([])
+  const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('drivers')
-  const [selectedDriver, setSelectedDriver] = useState(initialDrivers[0])
+  const [selectedDriver, setSelectedDriver] = useState(null)
+
   const [toastMessage, setToastMessage] = useState('')
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [editMode, setEditMode] = useState(false)
+
+  const emptyForm = { fullName: '', phone: '', idCardNumber: '', licenseNumber: '' }
+  const [form, setForm] = useState({ ...emptyForm })
+  const [editForm, setEditForm] = useState(null)
+
+  const showToast = (msg) => {
+    setToastMessage(msg)
+    setTimeout(() => setToastMessage(''), 3000)
+  }
+
+  const loadDrivers = async () => {
+    setLoading(true)
+    try {
+      // Backend automatically filters by carrierId if logged in as Carrier Admin
+      const data = await driverService.getAllDrivers({})
+      setDrivers(data)
+      if (data.length > 0 && !selectedDriver) {
+        setSelectedDriver(data[0])
+      } else if (selectedDriver) {
+        // Refresh selected driver data
+        const updated = data.find(d => d.id === selectedDriver.id)
+        if (updated) setSelectedDriver(updated)
+      }
+    } catch (err) {
+      showToast('❌ Lỗi tải danh sách tài xế: ' + err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadDrivers()
+    // eslint-disable-next-line
+  }, [])
 
   const handleContact = (driverName) => {
-    setToastMessage(`📞 Đã kết nối tổng đài gọi tài xế: ${driverName}!`)
-    setTimeout(() => setToastMessage(''), 3000)
+    showToast(`📞 Đã kết nối tổng đài gọi tài xế: ${driverName}!`)
+  }
+
+  const handleAddDriver = async (e) => {
+    e.preventDefault()
+    if (!form.fullName.trim() || !form.phone.trim() || !form.licenseNumber.trim() || !form.idCardNumber.trim()) {
+      showToast('⚠️ Vui lòng nhập đầy đủ các thông tin bắt buộc!')
+      return
+    }
+
+    const phoneRegex = /^(03|05|07|08|09)\d{8}$/
+    if (!phoneRegex.test(form.phone.trim())) {
+      showToast('⚠️ Số điện thoại không hợp lệ (Bắt đầu bằng 03/05/07/08/09 và đủ 10 số)!')
+      return
+    }
+
+    const idCardRegex = /^\d{12}$/
+    if (!idCardRegex.test(form.idCardNumber.trim())) {
+      showToast('⚠️ Số CCCD phải bao gồm đúng 12 chữ số!')
+      return
+    }
+
+    try {
+      await driverService.createDriver(form)
+      setShowAddModal(false)
+      showToast(`✅ Đã tạo thành công hồ sơ tài xế ${form.fullName}!`)
+      loadDrivers()
+    } catch (err) {
+      showToast('❌ Lỗi tạo tài xế: ' + (err.response?.data?.message || err.message))
+    }
+  }
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault()
+    try {
+      await driverService.updateDriver(editForm.id, {
+        fullName: editForm.fullName,
+        phone: editForm.phone,
+        idCardNumber: editForm.idCardNumber
+      })
+      if (selectedDriver.status !== editForm.status) {
+        await driverService.toggleStatus(editForm.id, editForm.status)
+      }
+      setEditMode(false)
+      showToast(`✅ Đã cập nhật hồ sơ tài xế ${editForm.fullName}!`)
+      loadDrivers()
+    } catch (err) {
+      showToast('❌ Lỗi cập nhật: ' + (err.response?.data?.message || err.message))
+    }
+  }
+
+  const openDriverDetails = (drv) => {
+    setSelectedDriver(drv)
+    setEditMode(false)
+    setEditForm({ ...drv })
   }
 
   return (
     <div className="p-8 w-full font-sans flex flex-col lg:flex-row gap-8 relative items-start">
-      
+
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-24 right-8 bg-[#202020] text-white px-6 py-3 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-3 z-50 animate-bounce border border-signal-orange">
+        <div className="fixed top-24 right-8 bg-[#202020] text-white px-6 py-3 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-3 z-[100] animate-bounce border border-signal-orange">
           <span className="text-signal-orange">●</span>
           {toastMessage}
         </div>
@@ -33,7 +122,7 @@ export default function DriverManagement() {
 
       {/* LEFT MAIN AREA */}
       <div className="flex-1 space-y-6 w-full">
-        
+
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-chalk pb-6">
           <div>
@@ -41,72 +130,81 @@ export default function DriverManagement() {
               Fleet & Workforce
             </span>
             <h2 className="font-heading text-4xl text-carbon font-bold mt-1">Quản lý Đội ngũ Tài xế</h2>
-            <p className="text-sm text-slate mt-1">Giám sát trạng thái bằng lái, hồ sơ sức khỏe và lịch trình làm việc tài xế.</p>
+            <p className="text-sm text-slate mt-1">Giám sát và phân công công việc cho đội ngũ tài xế của công ty.</p>
           </div>
 
-          {/* View Tabs */}
-          <div className="flex bg-white rounded-lg p-1 border border-chalk shadow-sm text-xs font-bold">
-            {['drivers', 'vehicles', 'schedules'].map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-4 py-2 rounded-md transition-colors ${
-                  activeTab === tab ? 'bg-fog text-carbon border border-chalk' : 'text-slate hover:text-carbon'
-                }`}
-              >
-                {tab === 'drivers' ? 'Tài xế' : tab === 'vehicles' ? 'Phương tiện' : 'Lịch trình'}
-              </button>
-            ))}
+          <div className="flex flex-col items-end gap-3">
+            <button onClick={() => { setForm({ ...emptyForm }); setShowAddModal(true) }}
+              className="h-9 px-4 bg-carbon text-white rounded-lg font-bold text-xs hover:bg-black transition-colors flex items-center gap-2 shadow-sm">
+              <span className="material-symbols-outlined text-sm">person_add</span> Thêm Tài Xế Mới
+            </button>
+            {/* View Tabs */}
+            <div className="flex bg-white rounded-lg p-1 border border-chalk shadow-sm text-xs font-bold">
+              {['drivers', 'vehicles', 'schedules'].map(tab => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`px-4 py-2 rounded-md transition-colors ${activeTab === tab ? 'bg-fog text-carbon border border-chalk' : 'text-slate hover:text-carbon'
+                    }`}
+                >
+                  {tab === 'drivers' ? 'Tài xế' : tab === 'vehicles' ? 'Phương tiện' : 'Lịch trình'}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* TAB CONTENT: DRIVERS GRID */}
         {activeTab === 'drivers' && (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-in fade-in duration-200">
-            {drivers.map((d) => {
+            {loading ? (
+              <div className="col-span-full py-12 text-center text-slate font-bold">Đang tải danh sách tài xế...</div>
+            ) : drivers.length === 0 ? (
+              <div className="col-span-full py-12 text-center text-slate border-2 border-dashed border-chalk rounded-xl">
+                Bạn chưa có tài xế nào trong danh sách. Hãy thêm mới!
+              </div>
+            ) : drivers.map((d) => {
               const isSelected = selectedDriver?.id === d.id
+              const nameParts = d.fullName ? d.fullName.trim().split(' ') : ['?']
+              const initials = nameParts.length > 1
+                ? nameParts[nameParts.length - 1].charAt(0) + nameParts[0].charAt(0)
+                : nameParts[0].substring(0, 2).toUpperCase()
+
+              const statusCfg = STATUS_CONFIG[d.status] || STATUS_CONFIG.inactive
+
               return (
                 <div
                   key={d.id}
-                  onClick={() => setSelectedDriver(d)}
-                  className={`bg-white rounded-xl p-6 shadow-sm border transition-all cursor-pointer flex flex-col justify-between space-y-4 hover:shadow-md ${
-                    isSelected ? 'border-2 border-carbon ring-1 ring-carbon/10' : 'border-chalk hover:border-slate'
-                  }`}
+                  onClick={() => openDriverDetails(d)}
+                  className={`bg-white rounded-xl p-6 shadow-sm border transition-all cursor-pointer flex flex-col justify-between space-y-4 hover:shadow-md ${isSelected ? 'border-2 border-carbon ring-1 ring-carbon/10' : 'border-chalk hover:border-slate'
+                    }`}
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex items-center space-x-3">
-                      <div className="w-12 h-12 rounded-full bg-fog border border-chalk flex items-center justify-center font-bold text-carbon text-sm">
-                        {d.name.split(' ').map(n => n[0]).join('')}
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-white text-sm uppercase ${d.status === 'banned' ? 'bg-red-400' : d.status === 'inactive' ? 'bg-amber-400' : 'bg-carbon'}`}>
+                        {initials}
                       </div>
                       <div>
-                        <h3 className="font-bold text-carbon text-base">{d.name}</h3>
-                        <p className="text-xs text-slate mt-0.5">{d.license} • {d.class}</p>
+                        <h3 className="font-bold text-carbon text-base">{d.fullName}</h3>
+                        <p className="text-[10px] font-mono text-slate mt-0.5">{d.licenseNumber}</p>
                       </div>
                     </div>
-                    <span className="material-symbols-outlined text-slate text-sm">more_vert</span>
                   </div>
 
                   <div>
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold ${
-                      d.status === 'Hoạt động'
-                        ? 'bg-carbon text-white'
-                        : d.status === 'Đang làm nhiệm vụ'
-                        ? 'bg-orange-100 text-orange-700 border border-orange-200'
-                        : 'bg-chalk text-slate'
-                    }`}>
-                      {d.status === 'Đang làm nhiệm vụ' && <span className="w-1.5 h-1.5 rounded-full bg-signal-orange mr-1.5 animate-ping"></span>}
-                      {d.status}
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold ${statusCfg.color}`}>
+                      {statusCfg.label}
                     </span>
                   </div>
 
                   <div className="pt-4 border-t border-chalk flex justify-between items-center text-xs">
                     <div>
-                      <span className="text-slate block text-[10px] uppercase font-bold">Hạng bằng</span>
-                      <strong className="text-carbon">{d.class}</strong>
+                      <span className="text-slate block text-[10px] uppercase font-bold">Điện Thoại</span>
+                      <strong className="text-carbon">{d.phone}</strong>
                     </div>
                     <div className="text-right">
-                      <span className="text-slate block text-[10px] uppercase font-bold">Sức khỏe</span>
-                      <strong className={d.healthColor}>{d.health}</strong>
+                      <span className="text-slate block text-[10px] uppercase font-bold">CCCD</span>
+                      <strong className="text-carbon">{d.idCardNumber}</strong>
                     </div>
                   </div>
                 </div>
@@ -126,68 +224,151 @@ export default function DriverManagement() {
 
       </div>
 
-      {/* RIGHT SIDEBAR (320px): SELECTED DRIVER PROFILE */}
-      {selectedDriver && (
-        <div className="w-full lg:w-[320px] bg-white rounded-xl border border-chalk shadow-sm shrink-0 p-6 space-y-6 animate-in slide-in-from-right duration-300">
-          
-          {/* Profile Header */}
-          <div className="flex items-center space-x-4 border-b border-chalk pb-5">
-            <div className="w-14 h-14 rounded-full bg-fog border border-chalk flex items-center justify-center text-carbon font-bold text-lg">
-              {selectedDriver.name.split(' ').map(n => n[0]).join('')}
-            </div>
-            <div>
-              <h3 className="text-lg font-bold text-carbon">{selectedDriver.name}</h3>
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-carbon text-white uppercase tracking-wider mt-1">
-                {selectedDriver.status}
-              </span>
+      {/* ═══ SELECTED DRIVER MODAL ═══ */}
+      {selectedDriver && activeTab === 'drivers' && (
+        <>
+          <div className="fixed inset-0 bg-carbon/40 z-[60] backdrop-blur-sm" onClick={() => setSelectedDriver(null)} />
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl border border-chalk w-full max-w-md animate-in zoom-in-95 duration-200 p-6 space-y-6" onClick={e => e.stopPropagation()}>
+
+              {/* Profile Header */}
+              <div className="flex justify-between items-start border-b border-chalk pb-5">
+                <div className="flex items-center space-x-4">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-base uppercase ${selectedDriver.status === 'banned' ? 'bg-red-400' : selectedDriver.status === 'inactive' ? 'bg-amber-400' : 'bg-carbon'}`}>
+                    {selectedDriver.fullName.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-carbon">{selectedDriver.fullName}</h3>
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold mt-1 ${STATUS_CONFIG[selectedDriver.status]?.color || ''}`}>
+                      {STATUS_CONFIG[selectedDriver.status]?.label || selectedDriver.status}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  {!editMode && (
+                    <button onClick={() => { setEditForm({ ...selectedDriver }); setEditMode(true); }} className="text-slate hover:text-signal-orange">
+                      <span className="material-symbols-outlined text-[20px]">edit</span>
+                    </button>
+                  )}
+                  <button onClick={() => setSelectedDriver(null)} className="text-slate hover:text-carbon">
+                    <span className="material-symbols-outlined text-[20px]">close</span>
+                  </button>
+                </div>
+              </div>
+
+              {editMode ? (
+                <form onSubmit={handleSaveEdit} className="space-y-4">
+                  {[['Họ và Tên', 'fullName'], ['Số điện thoại', 'phone'], ['Số CCCD', 'idCardNumber'], ['Số GPLX (Không sửa)', 'licenseNumber']].map(([label, field]) => (
+                    <div key={field}>
+                      <label className="block text-[10px] font-bold text-slate uppercase mb-1">{label}</label>
+                      <input type="text" value={editForm[field] || ''} onChange={e => field !== 'licenseNumber' && setEditForm(f => ({ ...f, [field]: e.target.value }))}
+                        readOnly={field === 'licenseNumber'}
+                        className={`w-full px-3 h-10 border border-chalk rounded-md text-xs text-carbon focus:outline-none focus:border-carbon ${field === 'licenseNumber' ? 'bg-fog cursor-not-allowed opacity-70' : 'bg-white'}`} />
+                    </div>
+                  ))}
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate uppercase mb-1">Trạng Thái</label>
+                    <select value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
+                      className="w-full px-3 h-10 border border-chalk rounded-md text-xs text-carbon focus:outline-none focus:border-carbon bg-white">
+                      {Object.entries(STATUS_CONFIG).map(([val, cfg]) => <option key={val} value={val}>{cfg.label}</option>)}
+                    </select>
+                  </div>
+                  <div className="flex gap-2 pt-4 border-t border-chalk">
+                    <button type="button" onClick={() => setEditMode(false)}
+                      className="flex-1 h-11 border border-chalk rounded-xl text-xs font-bold text-graphite hover:bg-fog">Hủy</button>
+                    <button type="submit"
+                      className="flex-1 h-11 bg-carbon text-white rounded-xl text-xs font-bold hover:bg-black shadow">Lưu Thay Đổi</button>
+                  </div>
+                </form>
+              ) : (
+                <>
+                  {/* Contact & ID Info */}
+                  <div className="space-y-4 text-xs border-b border-chalk pb-5">
+                    <h4 className="text-[10px] font-bold text-slate uppercase tracking-wider">THÔNG TIN HỒ SƠ</h4>
+                    <div className="flex justify-between">
+                      <span className="text-slate">Số điện thoại</span>
+                      <strong className="text-carbon font-mono">{selectedDriver.phone}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate">Số CCCD</span>
+                      <strong className="text-carbon font-mono">{selectedDriver.idCardNumber}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate">Giấy phép lái xe</span>
+                      <strong className="text-carbon font-mono">{selectedDriver.licenseNumber}</strong>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate">Ngày thêm vào hệ thống</span>
+                      <strong className="text-carbon">{new Date(selectedDriver.createdAt).toLocaleDateString()}</strong>
+                    </div>
+                  </div>
+
+                  {/* Actions Footer */}
+                  <div className="pt-2">
+                    <button
+                      onClick={() => handleContact(selectedDriver.fullName)}
+                      className="w-full py-3 px-4 rounded-xl bg-signal-orange text-white font-bold text-xs hover:bg-orange-600 transition-colors shadow flex items-center justify-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">call</span>
+                      Liên hệ khẩn cấp
+                    </button>
+                  </div>
+                </>
+              )}
+
             </div>
           </div>
+        </>
+      )}
 
-          {/* Contact & ID Info */}
-          <div className="space-y-3 text-xs border-b border-chalk pb-5">
-            <h4 className="text-[10px] font-bold text-slate uppercase tracking-wider">LIÊN HỆ & BẰNG LÁI</h4>
-            <div className="flex justify-between">
-              <span className="text-slate">Số điện thoại</span>
-              <strong className="text-carbon font-mono">{selectedDriver.phone}</strong>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate">Giấy phép DL</span>
-              <strong className="text-carbon font-mono">{selectedDriver.license}</strong>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate">Hạng bằng</span>
-              <strong className="text-carbon">{selectedDriver.class}</strong>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate">Trạng thái sức khỏe</span>
-              <strong className={selectedDriver.healthColor}>{selectedDriver.health}</strong>
+      {/* ═══ ADD DRIVER MODAL ═══ */}
+      {showAddModal && (
+        <>
+          <div className="fixed inset-0 bg-carbon/40 z-[60] backdrop-blur-sm" onClick={() => setShowAddModal(false)} />
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+            <div className="bg-white rounded-2xl shadow-2xl border border-chalk w-full max-w-md animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-6 py-4 border-b border-chalk">
+                <div>
+                  <h3 className="font-heading text-lg font-bold text-carbon">Thêm Tài Xế Mới</h3>
+                </div>
+                <button onClick={() => setShowAddModal(false)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-fog text-slate hover:text-carbon">
+                  <span className="material-symbols-outlined text-[20px]">close</span>
+                </button>
+              </div>
+              <form onSubmit={handleAddDriver} className="px-6 py-5 space-y-4">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate uppercase mb-1">Họ và Tên <span className="text-red-500">*</span></label>
+                  <input type="text" value={form.fullName} onChange={e => setForm(f => ({ ...f, fullName: e.target.value }))} required placeholder="VD: Nguyễn Văn A"
+                    className="w-full px-3 h-10 border border-chalk rounded-lg text-xs focus:outline-none focus:border-carbon bg-white text-carbon" />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate uppercase mb-1">Điện Thoại <span className="text-red-500">*</span></label>
+                    <input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} required placeholder="090..."
+                      className="w-full px-3 h-10 border border-chalk rounded-lg text-xs focus:outline-none focus:border-carbon bg-white text-carbon" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate uppercase mb-1">Số CCCD <span className="text-red-500">*</span></label>
+                    <input type="text" value={form.idCardNumber} onChange={e => setForm(f => ({ ...f, idCardNumber: e.target.value }))} required placeholder="048..."
+                      className="w-full px-3 h-10 border border-chalk rounded-lg text-xs focus:outline-none focus:border-carbon bg-white text-carbon" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate uppercase mb-1">Số GPLX <span className="text-red-500">*</span></label>
+                  <input type="text" value={form.licenseNumber} onChange={e => setForm(f => ({ ...f, licenseNumber: e.target.value }))} required placeholder="FC-xxxxx"
+                    className="w-full px-3 h-10 border border-chalk rounded-lg text-xs focus:outline-none focus:border-carbon bg-white text-carbon" />
+                </div>
+
+                <div className="flex gap-2 pt-4 border-t border-chalk">
+                  <button type="button" onClick={() => setShowAddModal(false)}
+                    className="flex-1 h-11 border border-chalk rounded-xl text-xs font-bold text-graphite hover:bg-fog">Hủy</button>
+                  <button type="submit"
+                    className="flex-1 h-11 bg-carbon text-white rounded-xl text-xs font-bold hover:bg-black shadow-md transition-colors">Lưu Tài Xế</button>
+                </div>
+              </form>
             </div>
           </div>
-
-          {/* Recent Trips History */}
-          <div className="space-y-3 text-xs border-b border-chalk pb-5">
-            <h4 className="text-[10px] font-bold text-slate uppercase tracking-wider">LỊCH SỬ CHUYẾN ĐI GẦN ĐÂY</h4>
-            <ul className="space-y-2 text-graphite">
-              {selectedDriver.trips.map((t, idx) => (
-                <li key={idx} className="flex justify-between items-center text-[11px] p-2 bg-fog rounded border border-chalk">
-                  <span>{t}</span>
-                  <span className="text-green-600 font-bold shrink-0 ml-2">✓ Hoàn thành</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Actions Footer */}
-          <div className="space-y-3 pt-2">
-            <button
-              onClick={() => handleContact(selectedDriver.name)}
-              className="w-full py-2.5 px-4 rounded-full bg-carbon text-white font-bold text-xs hover:bg-black transition-colors shadow"
-            >
-              Liên hệ ngay
-            </button>
-          </div>
-
-        </div>
+        </>
       )}
 
     </div>

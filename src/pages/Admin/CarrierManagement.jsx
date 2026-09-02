@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import { companyService } from '../../services/companyService'
+import driverService from '../../services/driverService'
 
 export default function CarrierManagement() {
   const [carriers, setCarriers] = useState([])
@@ -10,6 +11,8 @@ export default function CarrierManagement() {
   const [toastMessage, setToastMessage] = useState('')
   const [isEditingDetail, setIsEditingDetail] = useState(false)
   const [editFormData, setEditFormData] = useState({})
+  const [companyDrivers, setCompanyDrivers] = useState([])
+  const [loadingDrivers, setLoadingDrivers] = useState(false)
 
   // Form State for new carrier
   const [newCarrier, setNewCarrier] = useState({
@@ -36,9 +39,9 @@ export default function CarrierManagement() {
   // Filtered Carriers
   const filteredCarriers = useMemo(() => {
     return carriers.filter(c => {
-      const matchSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          c.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          c.contact.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.contact.toLowerCase().includes(searchTerm.toLowerCase())
       const matchStatus = statusFilter === 'Tất cả' || c.status === statusFilter
       return matchSearch && matchStatus
     })
@@ -83,7 +86,7 @@ export default function CarrierManagement() {
       showToast(successMsg);
       fetchCarriers();
       if (selectedCarrier && selectedCarrier.id === id) {
-        setSelectedCarrier(prev => ({...prev, status: targetStatus === 'active' ? 'Hoạt động' : (targetStatus === 'suspended' ? 'Tạm khóa' : 'Chờ duyệt')}));
+        setSelectedCarrier(prev => ({ ...prev, status: targetStatus === 'active' ? 'Hoạt động' : (targetStatus === 'suspended' ? 'Tạm khóa' : 'Chờ duyệt') }));
       }
     } catch (err) {
       showToast('❌ Lỗi cập nhật trạng thái!');
@@ -137,7 +140,7 @@ export default function CarrierManagement() {
     setTimeout(() => setToastMessage(''), 3000)
   }
 
-  const openDetailModal = (carrier) => {
+  const openDetailModal = async (carrier) => {
     setSelectedCarrier(carrier)
     setIsEditingDetail(false)
     setEditFormData({
@@ -149,6 +152,17 @@ export default function CarrierManagement() {
       address: carrier.address,
       website: carrier.website
     })
+
+    setCompanyDrivers([])
+    setLoadingDrivers(true)
+    try {
+      const data = await driverService.getAllDrivers({ carrierId: carrier.id })
+      setCompanyDrivers(data || [])
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setLoadingDrivers(false)
+    }
   }
 
   const handleUpdateCarrier = async () => {
@@ -174,7 +188,7 @@ export default function CarrierManagement() {
 
   return (
     <div className="p-6 space-y-6">
-      
+
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-4 right-4 bg-carbon text-white px-5 py-3 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-2 z-[9999] border border-signal-orange animate-bounce">
@@ -208,7 +222,7 @@ export default function CarrierManagement() {
 
       {/* KPI STATS CARD GRID */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        
+
         {/* KPI: Total */}
         <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-2 relative overflow-hidden">
           <span className="text-[10px] font-bold text-slate uppercase tracking-wider block">TỔNG ĐỐI TÁC</span>
@@ -256,10 +270,10 @@ export default function CarrierManagement() {
 
       {/* FILTER & TABLE SECTION */}
       <div className="bg-white border border-chalk rounded-2xl shadow-sm overflow-hidden">
-        
+
         {/* Filters Top Bar */}
         <div className="p-5 border-b border-chalk flex flex-col md:flex-row md:items-center justify-between gap-4">
-          
+
           {/* Search Box */}
           <div className="relative flex-1 max-w-sm">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate text-sm">search</span>
@@ -324,13 +338,12 @@ export default function CarrierManagement() {
                     <div className="text-[10px] mt-0.5">{carrier.phone}</div>
                   </td>
                   <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                      carrier.status === 'Hoạt động'
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${carrier.status === 'Hoạt động'
                         ? 'bg-green-50 text-green-700 border-green-200'
                         : carrier.status === 'Chờ duyệt'
-                        ? 'bg-orange-50 text-orange-700 border-orange-200 animate-pulse'
-                        : 'bg-red-50 text-red-700 border-red-200'
-                    }`}>
+                          ? 'bg-orange-50 text-orange-700 border-orange-200 animate-pulse'
+                          : 'bg-red-50 text-red-700 border-red-200'
+                      }`}>
                       {carrier.status}
                     </span>
                   </td>
@@ -389,7 +402,7 @@ export default function CarrierManagement() {
             className="w-full max-w-2xl bg-white max-h-[90vh] rounded-3xl flex flex-col shadow-2xl relative animate-in zoom-in-95 duration-200 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            
+
             {/* Drawer Header */}
             <div className="p-6 border-b border-chalk flex justify-between items-center bg-fog">
               <div>
@@ -417,7 +430,7 @@ export default function CarrierManagement() {
 
             {/* Drawer Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              
+
               {/* Profile Card Summary */}
               <div className="flex items-center gap-4 bg-fog p-4 rounded-xl border border-chalk">
                 <div className="w-12 h-12 rounded-xl bg-carbon text-white flex items-center justify-center text-xl font-bold font-mono">
@@ -428,19 +441,18 @@ export default function CarrierManagement() {
                   {isEditingDetail ? (
                     <div className="mt-1 flex items-center gap-2">
                       <span className="text-xs font-bold">Tên Cty:</span>
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full font-bold focus:outline-none focus:border-signal-orange"
                         value={editFormData.companyName}
-                        onChange={(e) => setEditFormData({...editFormData, companyName: e.target.value})}
+                        onChange={(e) => setEditFormData({ ...editFormData, companyName: e.target.value })}
                       />
                     </div>
                   ) : (
                     <div className="text-sm font-bold text-carbon">Website: {selectedCarrier.website}</div>
                   )}
-                  <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold border mt-1 ${
-                    selectedCarrier.status === 'Hoạt động' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
-                  }`}>
+                  <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold border mt-1 ${selectedCarrier.status === 'Hoạt động' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
+                    }`}>
                     {selectedCarrier.status}
                   </span>
                 </div>
@@ -459,11 +471,11 @@ export default function CarrierManagement() {
                   <div>
                     <span className="text-slate block">Website:</span>
                     {isEditingDetail ? (
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full focus:outline-none focus:border-signal-orange"
                         value={editFormData.website}
-                        onChange={(e) => setEditFormData({...editFormData, website: e.target.value})}
+                        onChange={(e) => setEditFormData({ ...editFormData, website: e.target.value })}
                       />
                     ) : (
                       <span className="font-semibold text-carbon">{selectedCarrier.website}</span>
@@ -472,11 +484,11 @@ export default function CarrierManagement() {
                   <div className="col-span-2">
                     <span className="text-slate block">Địa chỉ:</span>
                     {isEditingDetail ? (
-                      <textarea 
+                      <textarea
                         className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full focus:outline-none focus:border-signal-orange"
                         rows="2"
                         value={editFormData.address}
-                        onChange={(e) => setEditFormData({...editFormData, address: e.target.value})}
+                        onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
                       />
                     ) : (
                       <span className="font-semibold text-carbon">{selectedCarrier.address}</span>
@@ -494,11 +506,11 @@ export default function CarrierManagement() {
                   <div>
                     <span className="text-slate block">Họ & Tên đại diện:</span>
                     {isEditingDetail ? (
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full focus:outline-none focus:border-signal-orange"
                         value={editFormData.contactPerson}
-                        onChange={(e) => setEditFormData({...editFormData, contactPerson: e.target.value})}
+                        onChange={(e) => setEditFormData({ ...editFormData, contactPerson: e.target.value })}
                       />
                     ) : (
                       <span className="font-semibold text-carbon">{selectedCarrier.contact}</span>
@@ -507,11 +519,11 @@ export default function CarrierManagement() {
                   <div>
                     <span className="text-slate block">Số điện thoại:</span>
                     {isEditingDetail ? (
-                      <input 
-                        type="text" 
+                      <input
+                        type="text"
                         className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full font-mono focus:outline-none focus:border-signal-orange"
                         value={editFormData.phone}
-                        onChange={(e) => setEditFormData({...editFormData, phone: e.target.value})}
+                        onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
                       />
                     ) : (
                       <span className="font-mono font-semibold text-carbon">{selectedCarrier.phone}</span>
@@ -520,11 +532,11 @@ export default function CarrierManagement() {
                   <div className="col-span-2">
                     <span className="text-slate block">Email làm việc chính:</span>
                     {isEditingDetail ? (
-                      <input 
-                        type="email" 
+                      <input
+                        type="email"
                         className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full font-mono focus:outline-none focus:border-signal-orange"
                         value={editFormData.email}
-                        onChange={(e) => setEditFormData({...editFormData, email: e.target.value})}
+                        onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
                       />
                     ) : (
                       <span className="font-mono font-semibold text-carbon">{selectedCarrier.email}</span>
@@ -533,7 +545,40 @@ export default function CarrierManagement() {
                 </div>
               </div>
 
-
+              {/* Registered Drivers List */}
+              <div className="space-y-3">
+                <h4 className="font-bold text-xs uppercase tracking-wider text-carbon border-b border-chalk pb-1">
+                  Danh sách tài xế vận tải
+                </h4>
+                <div className="space-y-1.5">
+                  {loadingDrivers ? (
+                    <div className="text-xs text-slate italic text-center py-4 bg-fog rounded border border-chalk">
+                      Đang tải danh sách tài xế...
+                    </div>
+                  ) : companyDrivers.length > 0 ? (
+                    <div className="max-h-60 overflow-y-auto pr-2 space-y-2">
+                      {companyDrivers.map((driver) => (
+                        <div key={driver.id} className="p-3 bg-fog rounded-lg border border-chalk text-xs font-bold text-carbon flex justify-between items-center">
+                          <div className="flex flex-col">
+                            <span className="text-sm">👤 {driver.fullName}</span>
+                            <span className="text-[10px] text-slate font-mono font-normal mt-0.5">GPLX: {driver.licenseNumber} • CCCD: {driver.idCardNumber}</span>
+                          </div>
+                          <div className="flex flex-col items-end">
+                            <span className={`text-[10px] px-2 py-0.5 rounded border font-mono ${driver.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : driver.status === 'inactive' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                              {driver.status === 'active' ? 'Sẵn sàng' : driver.status === 'inactive' ? 'Tạm nghỉ' : 'Đình chỉ'}
+                            </span>
+                            <span className="text-[10px] text-slate font-normal mt-0.5">LH: {driver.phone}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-xs text-slate italic text-center py-4 bg-fog rounded border border-chalk">
+                      Công ty này chưa đăng ký tài xế nào.
+                    </div>
+                  )}
+                </div>
+              </div>
 
             </div>
 
