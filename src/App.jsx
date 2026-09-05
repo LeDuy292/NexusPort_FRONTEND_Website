@@ -8,6 +8,7 @@ import MainLayout from './layouts/MainLayout'
 import BerthOps from './pages/Ships/BerthOps'
 import CargoDeclaration from './pages/Containers/CargoDeclaration'
 import DamageReport from './pages/Containers/DamageReport'
+import ContainerManagement from './pages/Containers/ContainerManagement'
 import CarrierProfile from './pages/Ships/CarrierProfile'
 import EquipmentDispatch from './pages/Dispatch/EquipmentDispatch'
 import VesselSchedule from './pages/Ships/VesselSchedule'
@@ -186,6 +187,7 @@ function App() {
 
           {/* Báo cáo hư hỏng (Cần cho cả Yard Operator, Gate Officer, Dispatcher, Admin) */}
           <Route element={<RoleRoute allowedRoles={[ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
+            <Route path="/containers" element={<ContainerManagement />} />
             <Route path="/damage-report" element={<DamageReport />} />
           </Route>
 
