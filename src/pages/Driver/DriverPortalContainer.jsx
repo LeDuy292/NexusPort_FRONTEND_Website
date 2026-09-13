@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import DriverHome from './DriverHome'
 import DriverAppointments from './DriverAppointments'
 import DriverQR from './DriverQR'
@@ -6,6 +6,7 @@ import DriverCheckin from './DriverCheckin'
 import DriverNavigation from './DriverNavigation'
 import DriverContainerLocation from './DriverContainerLocation'
 import DriverTransactionStatus from './DriverTransactionStatus'
+import { connectDriverRealtime } from '../../services/driverRealtimeService'
 
 export default function DriverPortalContainer() {
   const [activeTab, setActiveTab] = useState('home')
@@ -14,6 +15,19 @@ export default function DriverPortalContainer() {
   const [toastMessage, setToastMessage] = useState('')
   const [driverMode, setDriverMode] = useState('pickup') // 'pickup' | 'delivery'
   const [tripStep, setTripStep] = useState(1) // 1: Nhận xe, 2: Di chuyển, 3: Xếp dỡ, 4: Rời cảng, 5: Hoàn thành
+  const [yardNotifications, setYardNotifications] = useState([])
+  const [showNotifications, setShowNotifications] = useState(false)
+
+  useEffect(() => {
+    return connectDriverRealtime((event) => {
+      setYardNotifications(current => [{ ...event, receivedAt: new Date().toISOString() }, ...current].slice(0, 20))
+      setToastMessage(`✅ Container ${event.containerId} · ${event.operationStatus}`)
+      setTripStep(current => Math.max(current, 4))
+      setTimeout(() => setToastMessage(''), 5000)
+    }, () => {
+      // The app remains usable offline; Socket.IO will retry in the background.
+    })
+  }, [])
 
   const handleSelectQR = (app) => {
     setSelectedApp(app)
@@ -69,12 +83,30 @@ export default function DriverPortalContainer() {
             </button>
           )}
 
-          <button className="relative p-2 text-slate hover:text-carbon transition-colors">
+          <button onClick={() => setShowNotifications(current => !current)} className="relative p-2 text-slate hover:text-carbon transition-colors">
             <span className="material-symbols-outlined text-2xl">notifications</span>
-            <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-signal-orange rounded-full ring-2 ring-white"></span>
+            {yardNotifications.length > 0 && <span className="absolute top-1 right-1 min-w-4 h-4 px-1 bg-signal-orange text-white rounded-full ring-2 ring-white text-[9px] font-bold leading-4">{yardNotifications.length}</span>}
           </button>
         </div>
       </header>
+
+      {showNotifications && (
+        <section className="absolute top-16 right-3 left-3 max-w-[450px] mx-auto bg-white border border-chalk rounded-xl shadow-xl z-50 overflow-hidden">
+          <div className="px-4 py-3 border-b border-chalk flex justify-between items-center">
+            <strong className="text-xs">Thông báo tác nghiệp bãi</strong>
+            <button onClick={() => setYardNotifications([])} className="text-[10px] text-slate">Xóa tất cả</button>
+          </div>
+          <div className="max-h-56 overflow-auto">
+            {yardNotifications.length === 0 ? <p className="p-4 text-xs text-slate">Chưa có thông báo realtime.</p> : yardNotifications.map(item => (
+              <div key={item.eventId} className="p-3 border-b border-chalk text-xs">
+                <p className="font-bold text-carbon">Container ID: {item.containerId}</p>
+                <p className="text-green-600 font-bold">Operation status: {item.operationStatus}</p>
+                <p className="text-[10px] text-slate mt-1">{new Date(item.completedAt).toLocaleString('vi-VN')}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* DRIVER TRIP TYPE SWITCHER (PICKUP VS DELIVERY) */}
       <div className="bg-white border-b border-chalk px-5 py-2.5 flex items-center justify-between gap-2 z-30">
