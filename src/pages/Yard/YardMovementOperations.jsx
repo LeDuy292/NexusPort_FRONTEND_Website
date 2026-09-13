@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import yardOperationService from '../../services/yardOperationService'
 
 // Helpers to parse position string "A-03-12-2" → { block, bay, row, tier }
 const parsePosition = (pos) => {
@@ -157,9 +158,34 @@ export default function YardMovementOperations() {
   // Handle "Xác nhận hoàn thành" — final step
   const handleConfirmComplete = (task) => {
     const finalPos = confirmedPosInput || task.to
-    setTasks(prev => prev.map(t => t.id === task.id ? { ...t, flowStep: 3, status: 'COMPLETED', confirmedPos: finalPos } : t))
-    setActiveTask(null)
-    showToast(`🟢 ĐÃ HOÀN THÀNH TASK ${task.id}: Container ${task.containerId} đặt tại vị trí thực tế [${finalPos}]! Hệ thống đã cập nhật vị trí mới.`)
+    const backendIds = task.operationId && task.containerUuid && task.driverUuid
+    if (!backendIds) {
+      setTasks(prev => prev.map(t => t.id === task.id ? { ...t, flowStep: 3, status: 'COMPLETED', confirmedPos: finalPos, syncStatus: 'LOCAL_ONLY' } : t))
+      setActiveTask(null)
+      showToast(`🟡 Task ${task.id} hoàn tất trên giao diện, nhưng chưa đồng bộ backend vì thiếu UUID operation/container/driver.`)
+      return
+    }
+
+    yardOperationService.complete(task.operationId, {
+      containerId: task.containerUuid,
+      driverId: task.driverUuid,
+      operationStatus: 'Completed',
+    }).then(result => {
+      setTasks(prev => prev.map(t => t.id === task.id ? {
+        ...t,
+        flowStep: 3,
+        status: 'COMPLETED',
+        confirmedPos: finalPos,
+        syncStatus: result?.deliveryStatus || 'PENDING',
+        completionEventId: result?.eventId,
+      } : t))
+      setActiveTask(null)
+      showToast(result?.deliveryStatus === 'Published'
+        ? `🟢 ${task.id} hoàn tất. Driver đã nhận event cho container ${task.containerId}.`
+        : `🟡 ${task.id} đã lưu event nhưng realtime đang chờ xử lý.`)
+    }).catch(error => {
+      showToast(`🔴 Không thể hoàn tất ${task.id}: ${error.message}`)
+    })
   }
 
   // Handle "Báo sự cố"

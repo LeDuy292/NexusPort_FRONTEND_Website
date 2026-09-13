@@ -6,6 +6,13 @@ import NotificationCenter from '../components/NotificationCenter'
 // Danh sách các mục trong Sidebar tương ứng với các route
 const sidebarItems = [
 
+  {
+    path: '/containers',
+    label: 'Quản Lý Container',
+    icon: 'inventory_2',
+    roles: [ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.ADMINISTRATOR],
+  },
+
   // ── DISPATCHER ────────────────────────────────────────────────
   // 1. Tổng quan trước
   {
