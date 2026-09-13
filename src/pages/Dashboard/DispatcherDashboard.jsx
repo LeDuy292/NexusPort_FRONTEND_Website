@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { connectDispatcherRealtime } from '../../services/dispatcherRealtimeService'
 
 export default function DispatcherDashboard() {
   const navigate = useNavigate()
@@ -26,6 +27,43 @@ export default function DispatcherDashboard() {
   const [dispatchingTask, setDispatchingTask] = useState(null)
   const [vehicleFilter, setVehicleFilter] = useState('Tất cả')
   const [toastMessage, setToastMessage] = useState('')
+  const [realtimeEvents, setRealtimeEvents] = useState([])
+  const [liveStatuses, setLiveStatuses] = useState({})
+
+  useEffect(() => {
+    return connectDispatcherRealtime((event) => {
+      setRealtimeEvents(current => [event, ...current].slice(0, 20))
+      setLiveStatuses(current => ({
+        ...current,
+        [event.domain]: {
+          ...(current[event.domain] || {}),
+          [event.entityId]: event
+        }
+      }))
+      setLastUpdated(new Date(event.occurredAt || Date.now()).toLocaleTimeString('vi-VN'))
+      setToastMessage(`⚡ ${event.domain.toUpperCase()} · ${event.status}`)
+      setTimeout(() => setToastMessage(''), 3000)
+    }, () => {
+      // Dashboard keeps its last known snapshot while Socket.IO reconnects.
+    })
+  }, [])
+
+  const realtimeDomainLabels = {
+    booking: 'Booking',
+    gate: 'Gate-In',
+    vehicle: 'Vehicle',
+    container: 'Container',
+    yard: 'Yard Operation',
+    equipment: 'Equipment',
+    driver: 'Driver',
+    'gate-out': 'Gate-Out'
+  }
+
+  const realtimeDomainCards = Object.keys(realtimeDomainLabels).map(domain => {
+    const domainEvents = Object.values(liveStatuses[domain] || {})
+    const latest = domainEvents.sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt))[0]
+    return { domain, label: realtimeDomainLabels[domain], latest, count: domainEvents.length }
+  })
 
   // 1. KPI DATA
   const kpis = {
@@ -146,6 +184,39 @@ export default function DispatcherDashboard() {
           </div>
         </div>
       </div>
+
+      {/* NXP-063: unified dispatcher realtime status channel */}
+      <section className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-4">
+        <div className="flex justify-between items-center border-b border-chalk pb-3">
+          <div>
+            <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider">NXP-063 REALTIME CHANNEL</span>
+            <h3 className="font-heading text-lg font-extrabold text-carbon">Trạng thái vận hành trực tiếp</h3>
+          </div>
+          <span className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full px-3 py-1">
+            {realtimeEvents.length > 0 ? `${realtimeEvents.length} event gần nhất` : 'Đang chờ event'}
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2">
+          {realtimeDomainCards.map(card => (
+            <div key={card.domain} className={`rounded-xl border p-3 min-h-[82px] ${card.latest ? 'border-green-300 bg-green-50/50' : 'border-chalk bg-fog'}`}>
+              <span className="text-[10px] text-slate font-bold uppercase block">{card.label}</span>
+              <strong className="text-xs text-carbon block mt-2 truncate">{card.latest?.status || 'Chưa có event'}</strong>
+              <span className="text-[10px] text-slate">{card.count ? `${card.count} entity` : '—'}</span>
+            </div>
+          ))}
+        </div>
+        {realtimeEvents.length > 0 && (
+          <div className="border-t border-chalk pt-3 space-y-2">
+            <span className="text-[10px] font-bold text-slate uppercase tracking-wider">EVENT MỚI NHẤT</span>
+            {realtimeEvents.slice(0, 5).map(event => (
+              <div key={`${event.eventId}-${event.domain}`} className="flex justify-between items-center gap-3 text-xs bg-fog rounded-lg px-3 py-2 border border-chalk">
+                <span className="font-bold text-carbon">{realtimeDomainLabels[event.domain] || event.domain} · {event.label || event.entityId}</span>
+                <span className="text-green-700 font-bold whitespace-nowrap">{event.status}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {/* KPI SECTION (6 CARDS) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
