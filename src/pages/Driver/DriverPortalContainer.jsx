@@ -7,6 +7,7 @@ import DriverNavigation from './DriverNavigation'
 import DriverContainerLocation from './DriverContainerLocation'
 import DriverTransactionStatus from './DriverTransactionStatus'
 import { connectDriverRealtime } from '../../services/driverRealtimeService'
+import { driverContainerConfirmationService } from '../../services/driverContainerConfirmationService'
 
 export default function DriverPortalContainer() {
   const [activeTab, setActiveTab] = useState('home')
@@ -17,17 +18,55 @@ export default function DriverPortalContainer() {
   const [tripStep, setTripStep] = useState(1) // 1: Nhận xe, 2: Di chuyển, 3: Xếp dỡ, 4: Rời cảng, 5: Hoàn thành
   const [yardNotifications, setYardNotifications] = useState([])
   const [showNotifications, setShowNotifications] = useState(false)
+  const [pendingConfirmation, setPendingConfirmation] = useState(null)
+  const [isConfirming, setIsConfirming] = useState(false)
 
   useEffect(() => {
+    const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
+    if (storedUser) {
+      driverContainerConfirmationService.getAssignedOperations()
+        .then(operations => {
+          const items = Array.isArray(operations) ? operations : []
+          if (items[0]) setPendingConfirmation(items[0])
+        })
+        .catch(() => {
+          // The driver app remains usable when the API is unavailable.
+        })
+    }
+
     return connectDriverRealtime((event) => {
       setYardNotifications(current => [{ ...event, receivedAt: new Date().toISOString() }, ...current].slice(0, 20))
       setToastMessage(`✅ Container ${event.containerId} · ${event.operationStatus}`)
+      setPendingConfirmation({
+        containerId: event.containerId,
+        containerNumber: event.containerNumber || event.containerId,
+        operationStatus: event.operationStatus,
+        bookingId: event.bookingId,
+        source: 'realtime'
+      })
       setTripStep(current => Math.max(current, 4))
       setTimeout(() => setToastMessage(''), 5000)
     }, () => {
       // The app remains usable offline; Socket.IO will retry in the background.
     })
   }, [])
+
+  const handleConfirmContainer = async () => {
+    if (!pendingConfirmation?.containerId || isConfirming) return
+    setIsConfirming(true)
+    try {
+      const result = await driverContainerConfirmationService.confirmContainer(pendingConfirmation.containerId, 'OK')
+      setPendingConfirmation(current => ({ ...current, ...result, operationStatus: result.containerStatus }))
+      setTripStep(current => Math.max(current, 4))
+      setToastMessage(`✅ Container ${result.containerNumber} đã sẵn sàng Gate-Out`)
+      setTimeout(() => setToastMessage(''), 4000)
+    } catch (error) {
+      setToastMessage(`❌ Không thể xác nhận container: ${error.message}`)
+      setTimeout(() => setToastMessage(''), 5000)
+    } finally {
+      setIsConfirming(false)
+    }
+  }
 
   const handleSelectQR = (app) => {
     setSelectedApp(app)
@@ -138,6 +177,35 @@ export default function DriverPortalContainer() {
           </button>
         </div>
       </div>
+
+      {/* NXP-062: driver reviews the assigned operation and confirms the container. */}
+      {pendingConfirmation && (
+        <section className="mx-5 mt-4 bg-white border-2 border-signal-orange rounded-2xl p-4 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider">XÁC NHẬN CONTAINER</span>
+              <h2 className="text-sm font-extrabold text-carbon mt-1">Operation đã hoàn tất</h2>
+            </div>
+            <span className="material-symbols-outlined text-signal-orange">fact_check</span>
+          </div>
+          <div className="bg-fog rounded-xl border border-chalk p-3 text-xs space-y-1.5 font-mono">
+            <div className="flex justify-between gap-3"><span className="text-slate">Container</span><strong>{pendingConfirmation.containerNumber || pendingConfirmation.containerId}</strong></div>
+            <div className="flex justify-between gap-3"><span className="text-slate">Operation</span><strong className="text-green-700">{pendingConfirmation.operationStatus || 'Completed'}</strong></div>
+            {pendingConfirmation.bookingCode && <div className="flex justify-between gap-3"><span className="text-slate">Booking</span><strong>{pendingConfirmation.bookingCode}</strong></div>}
+          </div>
+          {pendingConfirmation.containerStatus === 'ReadyForGateOut' || pendingConfirmation.operationStatus === 'ReadyForGateOut' ? (
+            <div className="text-center text-xs font-bold text-green-700 bg-green-50 border border-green-200 rounded-lg py-2">Đã xác nhận · Ready for Gate-Out</div>
+          ) : (
+            <button
+              onClick={handleConfirmContainer}
+              disabled={isConfirming}
+              className="w-full bg-carbon text-white rounded-xl py-3 text-xs font-extrabold disabled:opacity-50"
+            >
+              {isConfirming ? 'ĐANG LƯU XÁC NHẬN...' : 'CONFIRM CONTAINER'}
+            </button>
+          )}
+        </section>
+      )}
 
       {/* MAIN CONTAINER CONTENT AREA */}
       <main className="flex-1 p-5 overflow-y-auto pb-24">
