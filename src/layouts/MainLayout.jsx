@@ -322,8 +322,8 @@ export default function MainLayout() {
     navigate('/login')
   }
 
-  // Lọc các sidebar items được phép hiển thị với vai trò người dùng hiện tại
-  const allowedItems = sidebarItems.filter(item => item.roles.includes(user.role))
+  // Lọc các sidebar items được phép hiển thị với vai trò người dùng hiện tại (Administrator thấy tất cả để kiểm thử)
+  const allowedItems = sidebarItems.filter(item => user.role === ROLES.ADMINISTRATOR || item.roles.includes(user.role))
 
   // Lấy tiêu đề trang hiện tại
   const currentTitle = sidebarItems.find(item => item.path === location.pathname)?.label || 'Cổng Quản trị'
@@ -338,7 +338,7 @@ export default function MainLayout() {
 
   return (
     <div className="flex h-screen w-full bg-mist text-primary font-sans antialiased overflow-hidden">
-      
+
       {/* ═══════════════════════════ SIDEBAR ═══════════════════════════ */}
       <aside className="w-[240px] h-screen bg-white border-r border-chalk flex flex-col z-20 flex-shrink-0">
         <div className="p-6 border-b border-chalk">
@@ -358,11 +358,10 @@ export default function MainLayout() {
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                  isActive
+                className={`flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${isActive
                     ? 'bg-fog border-l-4 border-signal-orange text-[#ff682c] font-bold'
                     : 'text-graphite hover:bg-mist hover:text-carbon'
-                }`}
+                  }`}
               >
                 {/* Material Icon (loaded from index.html) */}
                 <span className="material-symbols-outlined mr-3 text-lg">
@@ -402,7 +401,7 @@ export default function MainLayout() {
 
       {/* ═══════════════════════════ MAIN CONTENT AREA ═══════════════════════════ */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        
+
         {/* TOP BAR */}
         <header className="h-20 px-8 flex justify-between items-center border-b border-chalk bg-white flex-shrink-0">
           <div className="text-graphite text-sm font-medium flex items-center gap-2">

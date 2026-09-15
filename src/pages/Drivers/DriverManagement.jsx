@@ -86,11 +86,11 @@ const MOCK_DRIVERS = [
 
 // ─── STATUS CONFIG ─────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
-  AVAILABLE:  { label: 'Sẵn sàng',      dot: 'bg-green-500',  badge: 'bg-green-50 text-green-800 border-green-300',    icon: '🟢' },
-  ASSIGNED:   { label: 'Đã giao lệnh',  dot: 'bg-blue-500',   badge: 'bg-blue-50 text-blue-800 border-blue-300',      icon: '🔵' },
-  ON_TRIP:    { label: 'Đang chạy',     dot: 'bg-purple-500', badge: 'bg-purple-50 text-purple-800 border-purple-300', icon: '🟣' },
-  OFF_DUTY:   { label: 'Nghỉ ca',       dot: 'bg-amber-400',  badge: 'bg-amber-50 text-amber-800 border-amber-300',    icon: '🟡' },
-  SUSPENDED:  { label: 'Tạm đình chỉ', dot: 'bg-red-500',    badge: 'bg-red-50 text-red-800 border-red-300',          icon: '🔴' },
+  AVAILABLE: { label: 'Sẵn sàng', dot: 'bg-green-500', badge: 'bg-green-50 text-green-800 border-green-300', icon: '🟢' },
+  ASSIGNED: { label: 'Đã giao lệnh', dot: 'bg-blue-500', badge: 'bg-blue-50 text-blue-800 border-blue-300', icon: '🔵' },
+  ON_TRIP: { label: 'Đang chạy', dot: 'bg-purple-500', badge: 'bg-purple-50 text-purple-800 border-purple-300', icon: '🟣' },
+  OFF_DUTY: { label: 'Nghỉ ca', dot: 'bg-amber-400', badge: 'bg-amber-50 text-amber-800 border-amber-300', icon: '🟡' },
+  SUSPENDED: { label: 'Tạm đình chỉ', dot: 'bg-red-500', badge: 'bg-red-50 text-red-800 border-red-300', icon: '🔴' },
 }
 
 const TASK_STATUS_LABEL = { IN_TRANSIT: 'Đang di chuyển', ASSIGNED: 'Chờ thực hiện', COMPLETED: 'Hoàn thành' }
@@ -116,16 +116,16 @@ function AvatarCircle({ driver }) {
 
 // ─── MAIN COMPONENT ────────────────────────────────────────────────────────────
 export default function DispatcherDriverManagement() {
-  const [search, setSearch]               = useState('')
-  const [statusFilter, setStatusFilter]   = useState('ALL')
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('ALL')
   const [vehicleFilter, setVehicleFilter] = useState('ALL')
-  const [currentPage, setCurrentPage]     = useState(1)
-  const [drawerDriver, setDrawerDriver]   = useState(null)
-  const [showAddModal, setShowAddModal]   = useState(false)
-  const [editMode, setEditMode]           = useState(false)
-  const [toast, setToast]                 = useState('')
-  const [drivers, setDrivers]             = useState(MOCK_DRIVERS)
-  const [editForm, setEditForm]           = useState(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [drawerDriver, setDrawerDriver] = useState(null)
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [editMode, setEditMode] = useState(false)
+  const [toast, setToast] = useState('')
+  const [drivers, setDrivers] = useState(MOCK_DRIVERS)
+  const [editForm, setEditForm] = useState(null)
   const PAGE_SIZE = 5
 
   const nextId = `DRV-00${(drivers.length + 1).toString().padStart(1, '0')}`
@@ -136,11 +136,11 @@ export default function DispatcherDriverManagement() {
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3200) }
 
   const kpi = useMemo(() => ({
-    total:     drivers.length,
+    total: drivers.length,
     available: drivers.filter(d => d.status === 'AVAILABLE').length,
-    assigned:  drivers.filter(d => d.status === 'ASSIGNED').length,
-    onTrip:    drivers.filter(d => d.status === 'ON_TRIP').length,
-    offDuty:   drivers.filter(d => d.status === 'OFF_DUTY').length,
+    assigned: drivers.filter(d => d.status === 'ASSIGNED').length,
+    onTrip: drivers.filter(d => d.status === 'ON_TRIP').length,
+    offDuty: drivers.filter(d => d.status === 'OFF_DUTY').length,
     suspended: drivers.filter(d => d.status === 'SUSPENDED').length,
   }), [drivers])
 
@@ -152,13 +152,13 @@ export default function DispatcherDriverManagement() {
       d.licenseNumber.toLowerCase().includes(q) || d.phone.includes(q)
     )
     if (statusFilter !== 'ALL') list = list.filter(d => d.status === statusFilter)
-    if (vehicleFilter === 'ASSIGNED')   list = list.filter(d => d.currentVehicle)
+    if (vehicleFilter === 'ASSIGNED') list = list.filter(d => d.currentVehicle)
     if (vehicleFilter === 'NO_VEHICLE') list = list.filter(d => !d.currentVehicle)
     return list
   }, [drivers, search, statusFilter, vehicleFilter])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const paginated  = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   const openAddModal = () => {
     const newId = `DRV-${String(drivers.length + 1).padStart(3, '0')}`
@@ -216,12 +216,12 @@ export default function DispatcherDriverManagement() {
   const openDrawer = (drv) => { setDrawerDriver(drv); setEditMode(false); setEditForm({ ...drv }) }
 
   const KPI_CARDS = [
-    { label: 'Tổng Tài Xế',   value: kpi.total,     border: 'border-slate-300',  icon: 'group',          text: 'text-carbon' },
-    { label: 'Sẵn Sàng',      value: kpi.available,  border: 'border-green-400',  icon: 'check_circle',   text: 'text-green-700' },
-    { label: 'Đã Giao Lệnh',  value: kpi.assigned,   border: 'border-blue-400',   icon: 'assignment_ind', text: 'text-blue-700' },
-    { label: 'Đang Chạy',     value: kpi.onTrip,     border: 'border-purple-400', icon: 'directions_car', text: 'text-purple-700' },
-    { label: 'Nghỉ Ca',       value: kpi.offDuty,    border: 'border-amber-400',  icon: 'bedtime',        text: 'text-amber-700' },
-    { label: 'Tạm Đình Chỉ', value: kpi.suspended,  border: 'border-red-400',    icon: 'block',          text: 'text-red-700' },
+    { label: 'Tổng Tài Xế', value: kpi.total, border: 'border-slate-300', icon: 'group', text: 'text-carbon' },
+    { label: 'Sẵn Sàng', value: kpi.available, border: 'border-green-400', icon: 'check_circle', text: 'text-green-700' },
+    { label: 'Đã Giao Lệnh', value: kpi.assigned, border: 'border-blue-400', icon: 'assignment_ind', text: 'text-blue-700' },
+    { label: 'Đang Chạy', value: kpi.onTrip, border: 'border-purple-400', icon: 'directions_car', text: 'text-purple-700' },
+    { label: 'Nghỉ Ca', value: kpi.offDuty, border: 'border-amber-400', icon: 'bedtime', text: 'text-amber-700' },
+    { label: 'Tạm Đình Chỉ', value: kpi.suspended, border: 'border-red-400', icon: 'block', text: 'text-red-700' },
   ]
 
   return (
@@ -274,7 +274,7 @@ export default function DispatcherDriverManagement() {
           />
         </div>
         <div className="flex items-center gap-1 flex-wrap">
-          {[['ALL','Tất cả'],['AVAILABLE','🟢 Sẵn sàng'],['ASSIGNED','🔵 Đã giao'],['ON_TRIP','🟣 Đang chạy'],['OFF_DUTY','🟡 Nghỉ ca'],['SUSPENDED','🔴 Đình chỉ']].map(([val, lbl]) => (
+          {[['ALL', 'Tất cả'], ['AVAILABLE', '🟢 Sẵn sàng'], ['ASSIGNED', '🔵 Đã giao'], ['ON_TRIP', '🟣 Đang chạy'], ['OFF_DUTY', '🟡 Nghỉ ca'], ['SUSPENDED', '🔴 Đình chỉ']].map(([val, lbl]) => (
             <button key={val} onClick={() => { setStatusFilter(val); setCurrentPage(1) }}
               className={`px-3 h-8 rounded-lg text-[11px] font-semibold border transition-all ${statusFilter === val ? 'bg-signal-orange text-white border-signal-orange' : 'bg-fog text-graphite border-chalk hover:border-slate'}`}>
               {lbl}
@@ -359,13 +359,13 @@ export default function DispatcherDriverManagement() {
           <div className="px-5 py-3 border-t border-chalk flex items-center justify-between bg-fog text-xs">
             <span className="text-slate">Trang {currentPage}/{totalPages} ({filtered.length} tài xế)</span>
             <div className="flex gap-1">
-              <button onClick={() => setCurrentPage(p => Math.max(1, p-1))} disabled={currentPage===1}
+              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
                 className="px-3 py-1.5 bg-white border border-chalk rounded-lg font-semibold disabled:opacity-40">‹ Trước</button>
-              {Array.from({ length: totalPages }, (_, i) => i+1).map(pg => (
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(pg => (
                 <button key={pg} onClick={() => setCurrentPage(pg)}
-                  className={`w-8 h-8 rounded-lg font-bold border transition-all ${pg===currentPage ? 'bg-signal-orange text-white border-signal-orange' : 'bg-white border-chalk hover:border-slate'}`}>{pg}</button>
+                  className={`w-8 h-8 rounded-lg font-bold border transition-all ${pg === currentPage ? 'bg-signal-orange text-white border-signal-orange' : 'bg-white border-chalk hover:border-slate'}`}>{pg}</button>
               ))}
-              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p+1))} disabled={currentPage===totalPages}
+              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
                 className="px-3 py-1.5 bg-white border border-chalk rounded-lg font-semibold disabled:opacity-40">Sau ›</button>
             </div>
           </div>
@@ -398,7 +398,7 @@ export default function DispatcherDriverManagement() {
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
               {editMode ? (
                 <form onSubmit={handleSaveEdit} className="space-y-4">
-                  {[['Họ và Tên','name'],['Số điện thoại','phone'],['Số GPLX','licenseNumber']].map(([label, field]) => (
+                  {[['Họ và Tên', 'name'], ['Số điện thoại', 'phone'], ['Số GPLX', 'licenseNumber']].map(([label, field]) => (
                     <div key={field}>
                       <label className="block text-[10px] font-bold text-slate uppercase mb-1">{label}</label>
                       <input type="text" value={editForm[field]} onChange={e => setEditForm(f => ({ ...f, [field]: e.target.value }))}
@@ -514,7 +514,7 @@ export default function DispatcherDriverManagement() {
                         <div key={task.id} className="bg-fog border border-chalk rounded-xl p-3 text-xs space-y-1 mb-2">
                           <div className="flex justify-between items-center">
                             <span className="font-mono font-extrabold text-signal-orange">{task.id}</span>
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${task.status==='COMPLETED' ? 'bg-green-100 text-green-800' : task.status==='IN_TRANSIT' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${task.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : task.status === 'IN_TRANSIT' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
                               {TASK_STATUS_LABEL[task.status] || task.status}
                             </span>
                           </div>

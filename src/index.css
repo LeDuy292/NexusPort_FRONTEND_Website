@@ -20,7 +20,7 @@
   /* === Brand === */
   --orange: #ff5c1a;
   --orange-light: #ff7a3d;
-  --orange-dim: rgba(255,92,26,0.15);
+  --orange-dim: rgba(255, 92, 26, 0.15);
   --green: #22c55e;
   --red: #ef4444;
   --yellow: #f59e0b;
@@ -30,13 +30,49 @@
   --radius-lg: 20px;
   --radius-xl: 28px;
 
-  --shadow-card: 0 2px 16px rgba(0,0,0,0.12);
-  --shadow-dark: 0 4px 24px rgba(0,0,0,0.5);
+  --shadow-card: 0 2px 16px rgba(0, 0, 0, 0.12);
+  --shadow-dark: 0 4px 24px rgba(0, 0, 0, 0.5);
 }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html { font-size: 16px; }
-body { font-family: 'Inter', sans-serif; -webkit-font-smoothing: antialiased; }
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
-button { cursor: pointer; border: none; outline: none; font-family: inherit; }
-a { text-decoration: none; color: inherit; }
+html {
+  font-size: 16px;
+}
+
+body {
+  font-family: 'Inter', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  outline: none;
+  font-family: inherit;
+}
+
+a {
+  text-decoration: none;
+  color: inherit;
+}
+
+@keyframes scannerSweep {
+  0% {
+    top: 5%;
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    top: 92%;
+    opacity: 0.3;
+  }
+}

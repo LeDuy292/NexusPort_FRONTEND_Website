@@ -289,8 +289,8 @@ export default function VehicleDispatch() {
       newTaskForm.taskType === 'PORT_DELIVERY'
         ? 'Giao Container Về Cảng (Port Delivery)'
         : newTaskForm.taskType === 'PORT_PICKUP'
-        ? 'Lấy Container Tại Cảng (Port Pickup)'
-        : 'Chuyển Nội Bãi (Yard Move)'
+          ? 'Lấy Container Tại Cảng (Port Pickup)'
+          : 'Chuyển Nội Bãi (Yard Move)'
 
     const createdTask = {
       id: `TSK-${Date.now().toString().slice(-4)}`,
@@ -319,7 +319,7 @@ export default function VehicleDispatch() {
 
   return (
     <div className="p-8 w-full font-sans flex flex-col gap-6 relative">
-      
+
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-20 right-8 bg-carbon text-white px-6 py-3.5 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-3 z-50 animate-bounce border border-signal-orange">
@@ -355,7 +355,7 @@ export default function VehicleDispatch() {
 
       {/* KPI BAR (6 CARDS) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        
+
         <div className="bg-white border border-chalk rounded-xl p-4 shadow-sm space-y-1">
           <span className="text-slate text-[10px] uppercase font-bold tracking-wider">Đang Chờ Gán Xe</span>
           <div className="text-3xl font-extrabold text-amber-500 font-mono">{kpiStats.pending}</div>
@@ -396,10 +396,10 @@ export default function VehicleDispatch() {
 
       {/* 3-COLUMN DISPATCH CONTROL CENTER LAYOUT */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
+
         {/* 1. LEFT PANEL: DISPATCH REQUESTS (3 cols ~25%) */}
         <div className="lg:col-span-3 bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-4">
-          
+
           <div className="border-b border-chalk pb-3">
             <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider block">HÀNG ĐỢI NHIỆM VỤ</span>
             <h3 className="font-heading text-lg font-extrabold text-carbon">Yêu Cầu Điều Phối</h3>
@@ -411,9 +411,8 @@ export default function VehicleDispatch() {
               <button
                 key={f}
                 onClick={() => setActiveFilter(f)}
-                className={`px-2.5 py-1 rounded-full transition-colors ${
-                  activeFilter === f ? 'bg-carbon text-white shadow-sm' : 'bg-fog text-slate hover:text-carbon border border-chalk'
-                }`}
+                className={`px-2.5 py-1 rounded-full transition-colors ${activeFilter === f ? 'bg-carbon text-white shadow-sm' : 'bg-fog text-slate hover:text-carbon border border-chalk'
+                  }`}
               >
                 {f === 'PORT_PICKUP' ? 'Lấy từ Cảng' : f === 'PORT_DELIVERY' ? 'Giao Về Cảng' : f === 'YARD_MOVE' ? 'Chuyển Nội Bãi' : f === 'High' ? 'Ưu tiên' : 'Tất cả'}
               </button>
@@ -429,11 +428,10 @@ export default function VehicleDispatch() {
                   setSelectedTask(task)
                   setSelectedVehicleForTask(null)
                 }}
-                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
-                  selectedTask.id === task.id
+                className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${selectedTask.id === task.id
                     ? 'border-signal-orange bg-orange-50/70 shadow-md'
                     : 'border-chalk bg-white hover:border-slate'
-                }`}
+                  }`}
               >
                 <div className="flex justify-between items-start mb-1.5">
                   <span className={`px-2 py-0.5 rounded text-[9px] ${task.priorityClass}`}>
@@ -462,7 +460,7 @@ export default function VehicleDispatch() {
 
         {/* 2. CENTER PANEL: LIVE PORT BLUEPRINT MAP (6 cols ~50%) */}
         <div className="lg:col-span-6 bg-slate-50 border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4 relative min-h-[560px] overflow-hidden flex flex-col justify-between">
-          
+
           {/* Blueprint Canvas Graphic Overlay */}
           <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-25" xmlns="http://www.w3.org/2000/svg">
             <defs>
@@ -512,9 +510,8 @@ export default function VehicleDispatch() {
                 <div
                   key={v.id}
                   onClick={() => setSelectedMapVehiclePopover(v)}
-                  className={`p-2.5 rounded-lg border cursor-pointer flex justify-between items-center transition-colors ${
-                    v.status === 'AVAILABLE' ? 'bg-green-50 border-green-300 hover:border-green-500' : 'bg-slate-50 border-slate-300'
-                  }`}
+                  className={`p-2.5 rounded-lg border cursor-pointer flex justify-between items-center transition-colors ${v.status === 'AVAILABLE' ? 'bg-green-50 border-green-300 hover:border-green-500' : 'bg-slate-50 border-slate-300'
+                    }`}
                 >
                   <div>
                     <strong className="text-carbon block">{v.id} ({v.plate})</strong>
@@ -536,7 +533,7 @@ export default function VehicleDispatch() {
 
         {/* 3. RIGHT PANEL: TASK DETAIL & VEHICLE SELECTION (3 cols ~25%) */}
         <div className="lg:col-span-3 bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-4">
-          
+
           <div className="border-b border-chalk pb-3">
             <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider block">CHI TIẾT & CHỌN XE</span>
             <h3 className="font-heading text-lg font-extrabold text-carbon">Chi Tiết Lệnh Điều Động</h3>
@@ -555,7 +552,7 @@ export default function VehicleDispatch() {
           {/* MATCHED AVAILABLE VEHICLES SELECTION SECTION */}
           <div className="space-y-2">
             <span className="text-[10px] font-bold text-slate uppercase block font-sans">DANH SÁCH XE SẴN SÀNG PHÙ HỢP ({matchedAvailableVehicles.length})</span>
-            
+
             {matchedAvailableVehicles.length === 0 ? (
               <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-red-900 text-xs font-sans space-y-1">
                 <strong>⚠ Không có xe {selectedTask.requiredVehicleType} nào sẵn sàng!</strong>
@@ -567,11 +564,10 @@ export default function VehicleDispatch() {
                   <div
                     key={veh.id}
                     onClick={() => setSelectedVehicleForTask({ ...veh, selectedDriver: veh.driver })}
-                    className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex justify-between items-center ${
-                      selectedVehicleForTask?.id === veh.id
+                    className={`p-3 rounded-xl border-2 cursor-pointer transition-all flex justify-between items-center ${selectedVehicleForTask?.id === veh.id
                         ? 'border-signal-orange bg-orange-50/80 shadow-md'
                         : 'border-chalk bg-fog/50 hover:border-slate'
-                    }`}
+                      }`}
                   >
                     <div>
                       <strong className="text-carbon block">{veh.id} ({veh.plate})</strong>
@@ -612,9 +608,8 @@ export default function VehicleDispatch() {
           <button
             disabled={!selectedVehicleForTask}
             onClick={() => setShowConfirmModal(true)}
-            className={`w-full h-12 rounded-full font-extrabold text-xs transition-opacity shadow-lg flex items-center justify-center gap-2 ${
-              selectedVehicleForTask ? 'bg-signal-orange text-white hover:opacity-95' : 'bg-chalk text-slate cursor-not-allowed'
-            }`}
+            className={`w-full h-12 rounded-full font-extrabold text-xs transition-opacity shadow-lg flex items-center justify-center gap-2 ${selectedVehicleForTask ? 'bg-signal-orange text-white hover:opacity-95' : 'bg-chalk text-slate cursor-not-allowed'
+              }`}
           >
             <span className="material-symbols-outlined text-base">alt_route</span>
             XÁC NHẬN ĐIỀU PHỐI (CONFIRM DISPATCH)
@@ -626,7 +621,7 @@ export default function VehicleDispatch() {
 
       {/* BOTTOM PANEL: ACTIVE RUNNING DISPATCHES & PROGRESS TIMELINE & REASSIGN */}
       <div className="bg-white border border-chalk rounded-2xl p-6 shadow-sm space-y-4">
-        
+
         <div className="flex justify-between items-center border-b border-chalk pb-3">
           <div>
             <h3 className="font-heading text-xl font-extrabold text-carbon">Nhiệm Vụ Đang Thực Hiện (Active Dispatches)</h3>
@@ -640,11 +635,10 @@ export default function VehicleDispatch() {
             <div
               key={dsp.dspId}
               onClick={() => setSelectedActiveDispatchTimeline(dsp)}
-              className={`p-4 rounded-2xl border-2 cursor-pointer transition-all space-y-3 font-mono text-xs ${
-                dsp.status === 'DELAYED'
+              className={`p-4 rounded-2xl border-2 cursor-pointer transition-all space-y-3 font-mono text-xs ${dsp.status === 'DELAYED'
                   ? 'border-red-400 bg-red-50/80 shadow-md animate-pulse'
                   : 'border-chalk bg-fog/40 hover:border-slate'
-              }`}
+                }`}
             >
               <div className="flex justify-between items-start">
                 <div>
@@ -688,7 +682,7 @@ export default function VehicleDispatch() {
       {showConfirmModal && selectedVehicleForTask && (
         <div className="fixed inset-0 bg-carbon/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
           <div className="bg-white rounded-3xl p-8 max-w-md w-full space-y-6 shadow-2xl animate-in zoom-in-95 duration-200">
-            
+
             <div className="flex justify-between items-center border-b border-chalk pb-4">
               <div>
                 <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider block">DISPATCH CONFIRMATION</span>
@@ -733,7 +727,7 @@ export default function VehicleDispatch() {
       {showReassignModal && (
         <div className="fixed inset-0 bg-carbon/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
           <div className="bg-white rounded-3xl p-8 max-w-md w-full space-y-6 shadow-2xl animate-in zoom-in-95 duration-200">
-            
+
             <div className="flex justify-between items-center border-b border-chalk pb-4">
               <div>
                 <span className="text-[10px] font-bold text-red-600 uppercase tracking-wider block">REASSIGN VEHICLE</span>
@@ -782,7 +776,7 @@ export default function VehicleDispatch() {
       {selectedActiveDispatchTimeline && (
         <div className="fixed inset-0 bg-carbon/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
           <div className="bg-white rounded-3xl p-8 max-w-md w-full space-y-6 shadow-2xl animate-in zoom-in-95 duration-200">
-            
+
             <div className="flex justify-between items-center border-b border-chalk pb-4">
               <div>
                 <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider block">DISPATCH TIMELINE</span>
