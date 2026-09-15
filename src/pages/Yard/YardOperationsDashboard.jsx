@@ -1,556 +1,1013 @@
 import React, { useState, useEffect } from 'react'
+import yardTaskService from '../../services/yardTaskService'
+import AssignEquipmentModal from '../../components/Yard/AssignEquipmentModal'
+import YardReceivingModal from '../../components/Yard/YardReceivingModal'
+import CompleteLiftModal from '../../components/Yard/CompleteLiftModal'
 
 export default function YardOperationsDashboard() {
   const [toastMessage, setToastMessage] = useState('')
-  const [timeString, setTimeString] = useState('')
+  const [todayDate] = useState(
+    new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  )
   const [activeShift] = useState('Ca 1 (06:00 – 14:00)')
+  const [selectedBlockFilter, setSelectedBlockFilter] = useState('ALL')
+  const [taskStatusTab, setTaskStatusTab] = useState('ALL') // 'ALL' | 'Assigned' | 'Ready' | 'In_Progress' | 'Completed'
+  const [searchQuery, setSearchQuery] = useState('')
+  
+  // Modals state
+  const [selectedTaskToAssign, setSelectedTaskToAssign] = useState(null)
+  const [receivingModalOpen, setReceivingModalOpen] = useState(false)
+  const [selectedTaskToReceive, setSelectedTaskToReceive] = useState(null)
+  const [completeLiftModalOpen, setCompleteLiftModalOpen] = useState(false)
+  const [selectedTaskToCompleteLift, setSelectedTaskToCompleteLift] = useState(null)
+  
+  const [loadingTasks, setLoadingTasks] = useState(false)
+  const [operatingTaskId, setOperatingTaskId] = useState(null)
 
-  // Top KPI Stats
-  const [kpiStats] = useState({
-    inYard: '4,820 TEU',
-    waitingPosition: '14 TEU',
-    pendingMovements: '8 Lệnh',
-    readyGateOut: '32 TEU',
-    openIncidents: '2 Sự Cố 🔴',
-  })
-
-  // Incoming Containers List
-  const [incomingContainers, setIncomingContainers] = useState([
-    {
-      id: 'MSCU1234567',
-      vessel: 'EVER GIVEN',
-      berth: 'B-01',
-      type: '40FT HC',
-      weight: '28,500 KG',
-      seal: 'SEAL-88921',
-      status: 'UNLOADED',
-      statusBadge: 'ĐÃ DỠ TÀU 🟢',
-      suggestedPosition: 'A-03-12-2',
-    },
-    {
-      id: 'CMAU9918234',
-      vessel: 'EVER GIVEN',
-      berth: 'B-01',
-      type: '20FT ST',
-      weight: '14,200 KG',
-      seal: 'SEAL-99102',
-      status: 'UNLOADED',
-      statusBadge: 'ĐÃ DỠ TÀU 🟢',
-      suggestedPosition: 'B-01-08-1',
-    },
+  const DEFAULT_INCOMING = [
     {
       id: 'TEMU4451920',
       vessel: 'MSC GULSUN',
       berth: 'B-02',
-      type: '40FT RF',
-      weight: '31,000 KG',
-      seal: 'SEAL-44819',
+      type: '40FT HC',
+      weight: '28,400 KG',
+      seal: 'SEAL-VN-889922',
       status: 'IN TRANSIT',
-      statusBadge: 'ĐANG VẬN CHUYỂN 🟡',
-      suggestedPosition: 'REEFER-02-04',
+      statusBadge: 'Đang tới bãi',
+      suggestedPosition: 'A01-04-02-1',
+      blockCode: 'A01',
+      taskCode: 'TSK-0801'
     },
-  ])
+    {
+      id: 'CMAU3381920',
+      vessel: 'EVER GIVEN',
+      berth: 'B-01',
+      type: '20FT ST',
+      weight: '14,200 KG',
+      seal: 'SEAL-VN-998811',
+      status: 'UNLOADED',
+      statusBadge: 'Đã dỡ cầu cảng',
+      suggestedPosition: 'B02-02-05-2',
+      blockCode: 'B02',
+      taskCode: 'TSK-0802'
+    },
+    {
+      id: 'ONEU8821903',
+      vessel: 'ONE APUS',
+      berth: 'B-01',
+      type: '40FT RF',
+      weight: '31,500 KG',
+      seal: 'SEAL-TH-445566',
+      status: 'IN TRANSIT',
+      statusBadge: 'Cont lạnh khẩn',
+      suggestedPosition: 'C01-02-04-2',
+      blockCode: 'C01',
+      taskCode: 'TSK-0806'
+    },
+    {
+      id: 'HLCU7719204',
+      vessel: 'HAPAG LLOYD',
+      berth: 'CỔNG IN-GATE',
+      type: '20FT TK',
+      weight: '19,800 KG',
+      seal: 'SEAL-DE-112288',
+      status: 'IN TRANSIT',
+      statusBadge: 'Hàng bồn hóa chất',
+      suggestedPosition: 'B02-04-01-1',
+      blockCode: 'B02',
+      taskCode: 'TSK-0807'
+    },
+    {
+      id: 'MAEU5519205',
+      vessel: 'MAERSK MC-KINNEY',
+      berth: 'B-03',
+      type: '40FT HC',
+      weight: '25,200 KG',
+      seal: 'SEAL-DK-990033',
+      status: 'UNLOADED',
+      statusBadge: 'Đã qua cổng',
+      suggestedPosition: 'A01-05-02-3',
+      blockCode: 'A01',
+      taskCode: 'TSK-0808'
+    }
+  ]
 
-  // Positioning Tasks
+  // Incoming Containers List (Được đồng bộ tự động theo Database)
+  const [incomingContainers, setIncomingContainers] = useState(DEFAULT_INCOMING)
+
+  // AI Positioning Recommendations
   const [positioningTasks, setPositioningTasks] = useState([
     {
       id: 'COSU8819201',
       type: '40FT HC',
       weight: '26,800 KG',
       cargoType: 'Xuất Khẩu Khô',
-      departure: '22:00 - 12/08/2026',
-      aiSuggestedPos: 'Bãi A - Dãy 03 - Tầng 2 (A-03-12-2)',
-      reasoning: 'Tối ưu khoảng cách tới Cẩu bờ QC-01 & phân tải tầng 2 bãi A',
+      departure: '22:00 Hôm nay',
+      aiSuggestedPos: 'A01-03-12-2',
+      blockCode: 'A01',
+      reasoning: 'Gần cẩu bờ QC-01 & cân bằng trọng tải tầng 2.',
     },
     {
       id: 'EVER1129983',
       type: '20FT ST',
       weight: '12,500 KG',
-      cargoType: 'Hàng Nguy Hiểm (Hóa Chất Loại 3)',
-      departure: '04:00 - 13/08/2026',
-      aiSuggestedPos: 'Bãi Nguy Hiểm - Dãy 01 - Tầng 1 (DG-01-02-1)',
-      reasoning: 'Bãi cách ly an toàn hóa chất nguy hiểm, trang bị cảm biến nhiệt',
+      cargoType: 'Hàng Nguy Hiểm (Class 3)',
+      departure: '04:00 Ngày mai',
+      aiSuggestedPos: 'B02-DG-01-1',
+      blockCode: 'B02',
+      reasoning: 'Bãi cách ly an toàn hóa chất có cảm biến nhiệt.',
     },
   ])
 
-  // Pending Yard Tasks List
-  const [yardTasks, setYardTasks] = useState([
-    {
-      id: 'TASK-Y-101',
-      taskType: 'Đảo chuyển container trong bãi',
-      priority: 'HIGH',
-      priorityBadge: '🟠 CAO',
-      containerId: 'HLBU7781920',
-      from: 'A-02-04-1',
-      to: 'A-05-10-3',
-      status: 'IN PROGRESS',
-      dueTime: '11:30 (Trong 25 phút)',
-    },
-    {
-      id: 'TASK-Y-102',
-      taskType: 'Chuẩn bị xuất cổng container',
-      priority: 'CRITICAL',
-      priorityBadge: '🔴 RẤT NGHIÊM TRỌNG',
-      containerId: 'MSCU9901123',
-      from: 'B-04-02-1',
-      to: 'KHU-VỰC-XUẤT-CỔNG-01',
-      status: 'PENDING',
-      dueTime: '11:15 (Khẩn cấp)',
-    },
-    {
-      id: 'TASK-Y-103',
-      taskType: 'Gỡ xung đột xếp tầng container',
-      priority: 'MEDIUM',
-      priorityBadge: '🟡 TRUNG BÌNH',
-      containerId: 'CMAU3381920',
-      from: 'A-01-01-3',
-      to: 'A-01-05-1',
-      status: 'PENDING',
-      dueTime: '12:00',
-    },
-    {
-      id: 'TASK-Y-104',
-      taskType: 'Kiểm kê tồn bãi Khu B',
-      priority: 'LOW',
-      priorityBadge: '🟢 THẤP',
-      containerId: 'K-LINE-ZONE-B',
-      from: 'Khu B Dãy 1-4',
-      to: 'Nhật Ký Hệ Thống',
-      status: 'PENDING',
-      dueTime: '14:00 (Cuối ca)',
-    },
-  ])
+  // Yard Tasks List
+  const [yardTasks, setYardTasks] = useState([])
 
-  // Modals
-  const [selectedReceiveContainer, setSelectedReceiveContainer] = useState(null)
-  const [inspectionForm, setInspectionForm] = useState({
-    condition: 'Tốt (Không Hư Hỏng)',
-    notes: '',
-    photoFiles: ['Anh_Chup_Niem_Phong_Chì.jpg', 'Anh_Chup_Khung_Vo.jpg'],
-  })
+  // Load live tasks from API & Sync with Database
+  const loadLiveTasks = async () => {
+    try {
+      setLoadingTasks(true)
+      const data = await yardTaskService.getTasks()
+      if (Array.isArray(data)) {
+        setYardTasks(data)
 
-  const [selectedAiTask, setSelectedAiTask] = useState(null)
+        // Lọc bỏ bất kỳ Container nào đã được tiếp nhận trong Database (receivedAt != null)
+        const receivedContSet = new Set(
+          data.filter(t => !!t.receivedAt).map(t => t.containerNo?.toUpperCase())
+        )
 
-  // Real-time clock ticker
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date()
-      setTimeString(now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' - ' + now.toLocaleDateString('vi-VN'))
+        // Lấy danh sách nhiệm vụ đang chờ tiếp nhận thực tế từ DB
+        const pendingFromDb = data
+          .filter(t => !t.receivedAt && t.status?.toLowerCase() === 'assigned')
+          .map(t => ({
+            id: t.containerNo,
+            vessel: t.fromLocation || 'Cầu Tàu B-01',
+            berth: 'B-01',
+            type: t.containerType || '40FT HC',
+            weight: '24,000 KG',
+            seal: t.expectedSealNo || 'SEAL-889922',
+            status: 'IN TRANSIT',
+            statusBadge: 'Chờ tiếp nhận',
+            suggestedPosition: t.toLocation || 'A01-05-02-3',
+            blockCode: t.blockCode || 'A01',
+            taskCode: t.taskCode
+          }))
+
+        // Kết hợp và loại trừ những container đã hoàn tất tiếp nhận trong DB
+        const combined = [
+          ...pendingFromDb,
+          ...DEFAULT_INCOMING.filter(c => !receivedContSet.has(c.id?.toUpperCase()) && !pendingFromDb.some(p => p.id?.toUpperCase() === c.id?.toUpperCase()))
+        ]
+
+        setIncomingContainers(combined)
+      }
+    } catch (err) {
+      console.warn('Error loading live tasks:', err)
+    } finally {
+      setLoadingTasks(false)
     }
-    updateTime()
-    const timer = setInterval(updateTime, 1000)
-    return () => clearInterval(timer)
+  }
+
+  // Initial load
+  useEffect(() => {
+    loadLiveTasks()
   }, [])
 
   const showToast = (msg) => {
     setToastMessage(msg)
-    setTimeout(() => setToastMessage(''), 3500)
+    setTimeout(() => setToastMessage(''), 4000)
   }
 
-  // Handle Receive Container
-  const handleOpenReceiveModal = (container) => {
-    setSelectedReceiveContainer(container)
-    setInspectionForm({
-      condition: 'Tốt (Không Hư Hỏng)',
-      notes: '',
-      photoFiles: ['Anh_Chup_Niem_Phong_Chì.jpg', 'Anh_Chup_Khung_Vo.jpg'],
-    })
+  // Dynamic KPI counts
+  const totalInYard = 4820
+  const maxCapacity = 6500
+  const capacityPercent = Math.round((totalInYard / maxCapacity) * 100)
+  const uninspectedCount = yardTasks.filter(t => !t.receivedAt).length
+  const assignedCount = yardTasks.filter(t => t.status?.toLowerCase() === 'assigned').length
+  const readyCount = yardTasks.filter(t => t.status?.toLowerCase() === 'ready').length
+  const inProgressCount = yardTasks.filter(t => t.status?.toLowerCase() === 'in_progress').length
+  const completedCount = yardTasks.filter(t => t.status?.toLowerCase() === 'completed').length
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize, setPageSize] = useState(10)
+
+  // Filtered tasks logic
+  const filteredTasks = yardTasks.filter(task => {
+    if (selectedBlockFilter !== 'ALL' && task.blockCode?.toUpperCase() !== selectedBlockFilter) {
+      return false
+    }
+    if (taskStatusTab !== 'ALL' && task.status?.toLowerCase() !== taskStatusTab.toLowerCase()) {
+      return false
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim()
+      const matchCode = task.taskCode?.toLowerCase().includes(q)
+      const matchCont = task.containerNo?.toLowerCase().includes(q)
+      const matchPlate = task.vehiclePlate?.toLowerCase().includes(q)
+      const matchDriver = task.driverName?.toLowerCase().includes(q)
+      if (!matchCode && !matchCont && !matchPlate && !matchDriver) return false
+    }
+    return true
+  })
+
+  const totalPages = Math.max(1, Math.ceil(filteredTasks.length / pageSize))
+  const paginatedTasks = filteredTasks.slice((currentPage - 1) * pageSize, currentPage * pageSize)
+
+  // Reset to page 1 on filter changes
+  const handleBlockFilterChange = (val) => {
+    setSelectedBlockFilter(val)
+    setCurrentPage(1)
   }
 
-  const handleConfirmReceivingSubmit = (e) => {
-    e.preventDefault()
-    if (!selectedReceiveContainer) return
-
-    setIncomingContainers(prev => prev.filter(c => c.id !== selectedReceiveContainer.id))
-    showToast(`✅ ĐÃ TIẾP NHẬN CONTAINER ${selectedReceiveContainer.id} VÀO BÃI! Đã định vị tại ô ${selectedReceiveContainer.suggestedPosition}.`)
-    setSelectedReceiveContainer(null)
+  const handleStatusTabChange = (val) => {
+    setTaskStatusTab(val)
+    setCurrentPage(1)
   }
 
-  const handleQuickAction = (actionName) => {
-    showToast(`⚡ KÍCH HOẠT THAO TÁC NHANH: "${actionName}" — Hệ thống đang mở giao diện thực địa!`)
+  const handleSearchChange = (val) => {
+    setSearchQuery(val)
+    setCurrentPage(1)
+  }
+
+  // Handle NXP-055: Open Receiving & Inspection Modal
+  const handleOpenReceiveModal = (containerOrTask) => {
+    if (containerOrTask.taskCode) {
+      setSelectedTaskToReceive(containerOrTask)
+    } else {
+      const matched = yardTasks.find(t => t.containerNo?.toLowerCase() === containerOrTask.id?.toLowerCase())
+      setSelectedTaskToReceive(matched || {
+        containerNo: containerOrTask.id,
+        blockCode: containerOrTask.blockCode || 'A01',
+        toLocation: containerOrTask.suggestedPosition || 'A01-05-02-3',
+        expectedSealNo: containerOrTask.seal || 'SEAL-889922'
+      })
+    }
+    setReceivingModalOpen(true)
+  }
+
+  // Handle NXP-060 STEP 1: Start Lift
+  const handleStartLift = async (task) => {
+    setOperatingTaskId(task.id)
+    try {
+      const payload = {
+        notes: `Cần thủ ${task.operatorName || 'hiện trường'} bắt đầu cẩu container ${task.containerNo}`
+      }
+      const res = await yardTaskService.startLift(task.id, payload)
+      showToast(`Đã bắt đầu cẩu container ${task.containerNo} (Task ${task.taskCode}).`)
+      
+      setYardTasks(prev => prev.map(t => t.id === task.id ? {
+        ...t,
+        status: 'In_Progress',
+        startTime: res.data?.startTime || new Date().toISOString(),
+        notes: res.data?.notes || t.notes
+      } : t))
+    } catch (err) {
+      console.error('Start lift error:', err)
+      const msg = err.response?.data?.message || err.message || 'Lỗi khi bắt đầu cẩu!'
+      showToast(`Lỗi: ${msg}`)
+    } finally {
+      setOperatingTaskId(null)
+    }
+  }
+
+  // Handle NXP-060 STEP 3: Open Complete Lift Modal
+  const handleOpenCompleteLift = (task) => {
+    setSelectedTaskToCompleteLift(task)
+    setCompleteLiftModalOpen(true)
   }
 
   return (
-    <div className="p-6 md:p-8 w-full font-sans flex flex-col gap-6 bg-slate-50 min-h-screen text-slate-900 relative">
+    <div className="p-4 md:p-6 lg:p-8 w-full font-sans flex flex-col gap-5 bg-slate-50/60 min-h-screen text-slate-800">
 
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-20 right-8 bg-amber-100 text-amber-950 border-2 border-amber-400 px-6 py-3.5 rounded-2xl shadow-2xl text-xs font-black flex items-center gap-3 z-[100] animate-bounce">
-          <span className="text-amber-600">●</span>{toastMessage}
+        <div className="fixed top-5 right-5 bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl text-xs font-semibold flex items-center gap-3 z-[100] border border-slate-700 animate-in fade-in slide-in-from-top-2">
+          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 flex-shrink-0 animate-pulse"></span>
+          <span className="text-white font-medium leading-tight">{toastMessage}</span>
         </div>
       )}
 
-      {/* ── 1. HEADER ── */}
-      <div className="bg-white border-2 border-slate-200 rounded-2xl p-6 shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+      {/* ── 1. HEADER (Bố cục chuẩn Enterprise hiện đại) ── */}
+      <header className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative overflow-hidden border-t-4 border-t-indigo-600 bg-gradient-to-r from-white via-white to-indigo-50/20">
         <div>
-          <div className="flex items-center gap-2 mb-1 text-xs font-mono">
-            <span className="font-heading font-black text-orange-600 tracking-wider">NEXUSPORT</span>
+          <div className="flex items-center gap-2 mb-1.5 text-xs text-slate-500 font-medium">
+            <span className="flex items-center gap-1 text-slate-500">
+              <span className="material-symbols-outlined text-sm text-indigo-500">grid_view</span>
+              Quản Lý Bãi Container
+            </span>
             <span className="text-slate-300">/</span>
-            <span className="text-slate-600 font-bold">Khai Thác Bãi</span>
-            <span className="text-slate-300">/</span>
-            <span className="text-slate-900 font-extrabold">Bảng Điều Hành Khai Thác Bãi</span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <h2 className="font-heading text-3xl font-black text-slate-900">Bảng Điều Hành Khai Thác Bãi</h2>
-            <span className="px-3.5 py-1 bg-orange-100 text-orange-950 border-2 border-orange-400 font-mono font-black text-xs rounded-xl">
-              VAI TRÒ: NHÂN VIÊN BÃI
+            <span className="text-indigo-800 font-semibold bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200/60">
+              Điều Hành Tác Nghiệp Hiện Trường
             </span>
           </div>
-          <p className="text-xs text-slate-600 mt-0.5">Màn hình tiếp nhận container từ tàu, định vị trí bãi bằng AI và quản lý công việc tại hiện trường.</p>
+          <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
+            <span>Bảng Điều Hành Khai Thác Bãi</span>
+          </h1>
+          <p className="text-xs text-slate-500 mt-1">
+            Quy trình khép kín: Nhận lệnh Dispatcher → Gán cẩu RTG → Đối soát Seal → Nâng hạ container bãi.
+          </p>
         </div>
 
-        {/* Right Widgets */}
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="px-3.5 py-2 bg-blue-100 text-blue-950 border border-blue-300 rounded-xl text-xs font-mono font-bold">
-            CA LÀM VIỆC: <strong className="font-black text-blue-900">{activeShift}</strong>
+        {/* Right Side: Metadata & Refresh Action */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Shift info */}
+          <div className="px-3 py-1.5 bg-teal-50/80 border border-teal-200/80 rounded-xl text-xs font-semibold text-teal-900 flex items-center gap-1.5 shadow-2xs">
+            <span className="material-symbols-outlined text-sm text-teal-600">schedule</span>
+            <span>{activeShift}</span>
           </div>
 
-          <div className="flex items-center gap-2 bg-slate-100 border border-slate-300 px-3.5 py-2 rounded-xl text-xs font-mono font-bold text-slate-700">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-emerald-700 uppercase font-sans font-black">TRỰC TUYẾN (LIVE)</span>
-            <span className="text-slate-300">|</span>
-            <span>{timeString}</span>
+          {/* Date info */}
+          <div className="px-3 py-1.5 bg-blue-50/80 border border-blue-200/80 rounded-xl text-xs font-semibold text-blue-900 flex items-center gap-1.5 shadow-2xs">
+            <span className="material-symbols-outlined text-sm text-blue-600">calendar_today</span>
+            <span className="font-mono">{todayDate}</span>
           </div>
 
-          <div className="flex items-center gap-2">
-            <button onClick={() => showToast('🔔 Thông báo: 4 Container vừa được dỡ từ tàu EVER GIVEN đang chuyển tới Block A.')}
-              className="w-10 h-10 bg-white border border-slate-300 rounded-xl flex items-center justify-center text-slate-700 hover:bg-slate-100 shadow-xs relative cursor-pointer">
-              <span className="material-symbols-outlined text-lg">notifications</span>
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-orange-500"></span>
-            </button>
-            
-            <div className="flex items-center gap-2 bg-slate-100 text-slate-900 px-3.5 py-1.5 rounded-xl border border-slate-300 shadow-xs text-xs font-extrabold">
-              <span className="material-symbols-outlined text-base text-orange-600">person</span>
-              <div>
-                <div className="text-[11px] font-black leading-tight text-slate-900">Nguyễn Văn Nam</div>
-                <div className="text-[9px] text-slate-600 font-mono font-bold">Nhân Viên Bãi · Bãi A</div>
-              </div>
-            </div>
+          {/* Operator Profile */}
+          <div className="px-3 py-1.5 bg-violet-50/80 border border-violet-200/80 rounded-xl text-xs flex items-center gap-1.5 text-violet-900 font-medium shadow-2xs">
+            <span className="material-symbols-outlined text-sm text-violet-600">person</span>
+            <span className="font-bold">Phạm Bãi Hàng</span>
+            <span className="text-[11px] text-violet-600/80 font-normal">(Yard Staff)</span>
           </div>
         </div>
-      </div>
+      </header>
 
-      {/* ── 2. TOP KPI CARDS (5 THẺ STATS) ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+      {/* ── 2. KPI METRICS (5 Thẻ chỉ số sắc nét, màu sắc hài hòa) ── */}
+      <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
         
-        <div className="bg-white p-4 rounded-2xl border-2 border-slate-200 shadow-sm space-y-1">
-          <span className="text-[10px] text-slate-500 uppercase font-sans font-extrabold block">Container Trong Bãi</span>
-          <strong className="text-2xl text-slate-900 font-black font-mono block">{kpiStats.inYard}</strong>
-          <span className="text-[10px] text-emerald-700 font-bold font-sans">Dung lượng bãi: 74%</span>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border-2 border-amber-300 shadow-sm space-y-1">
-          <span className="text-[10px] text-amber-800 uppercase font-sans font-extrabold block">Chờ Gán Vị Trí</span>
-          <strong className="text-2xl text-amber-950 font-black font-mono block">{kpiStats.waitingPosition}</strong>
-          <span className="text-[10px] text-amber-900 font-bold font-sans">Chờ AI gợi ý ô bãi</span>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border-2 border-blue-300 shadow-sm space-y-1">
-          <span className="text-[10px] text-blue-800 uppercase font-sans font-extrabold block">Lệnh Đảo Chuyển Tồn Đọng</span>
-          <strong className="text-2xl text-blue-950 font-black font-mono block">{kpiStats.pendingMovements}</strong>
-          <span className="text-[10px] text-blue-900 font-bold font-sans">Nhiệm vụ chưa hoàn thành</span>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border-2 border-emerald-300 shadow-sm space-y-1">
-          <span className="text-[10px] text-emerald-800 uppercase font-sans font-extrabold block">Sẵn Sàng Xuất Cổng</span>
-          <strong className="text-2xl text-emerald-950 font-black font-mono block">{kpiStats.readyGateOut}</strong>
-          <span className="text-[10px] text-emerald-900 font-bold font-sans">Đã hạ sẵn bãi xuất</span>
-        </div>
-
-        <div className="bg-white p-4 rounded-2xl border-2 border-red-300 shadow-sm space-y-1 col-span-2 sm:col-span-1">
-          <span className="text-[10px] text-red-800 uppercase font-sans font-extrabold block">Sự Cố Cần Xử Lý</span>
-          <strong className="text-2xl text-red-950 font-black font-mono block">{kpiStats.openIncidents}</strong>
-          <span className="text-[10px] text-red-900 font-bold font-sans">Cần xử lý tại hiện trường</span>
-        </div>
-
-      </div>
-
-      {/* ── 3. THAO TÁC NHANH TẠI HIỆN TRƯỜNG ── */}
-      <div className="bg-white rounded-2xl border-2 border-slate-200 p-5 shadow-sm space-y-3">
-        <div className="text-xs font-black text-slate-900 uppercase tracking-wider flex items-center gap-2 font-mono">
-          <span className="material-symbols-outlined text-orange-600">touch_app</span>
-          THAO TÁC NHANH TẠI HIỆN TRƯỜNG (TABLET)
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-          <button onClick={() => handleQuickAction('QUÉT CONTAINER')}
-            className="h-13 bg-orange-100 hover:bg-orange-200 text-orange-950 border-2 border-orange-400 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all">
-            <span className="material-symbols-outlined text-lg">qr_code_scanner</span>
-            [ 🔍 QUÉT CONTAINER ]
-          </button>
-
-          <button onClick={() => handleQuickAction('XEM SƠ ĐỒ BÃI 2D')}
-            className="h-13 bg-blue-100 hover:bg-blue-200 text-blue-950 border-2 border-blue-400 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all">
-            <span className="material-symbols-outlined text-lg">map</span>
-            [ 🗺️ SƠ ĐỒ BÃI 2D ]
-          </button>
-
-          <button onClick={() => handleQuickAction('LỆNH ĐẢO CHUYỂN')}
-            className="h-13 bg-purple-100 hover:bg-purple-200 text-purple-950 border-2 border-purple-400 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all">
-            <span className="material-symbols-outlined text-lg">swap_horiz</span>
-            [ 🔄 LỆNH ĐẢO CHUYỂN ]
-          </button>
-
-          <button onClick={() => handleQuickAction('KIỂM KÊ TỒN BÃI')}
-            className="h-13 bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border-2 border-emerald-400 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all">
-            <span className="material-symbols-outlined text-lg">inventory_2</span>
-            [ 📋 KIỂM KÊ TỒN BÃI ]
-          </button>
-
-          <button onClick={() => handleQuickAction('BÁO CÁO HƯ HỎNG')}
-            className="h-13 bg-red-100 hover:bg-red-200 text-red-950 border-2 border-red-400 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all col-span-2 sm:col-span-1">
-            <span className="material-symbols-outlined text-lg">report_problem</span>
-            [ 🚨 BÁO CÁO HƯ HỎNG ]
-          </button>
-        </div>
-      </div>
-
-      {/* ── 4. SECTION "CONTAINER NHẬP BÃI" ── */}
-      <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-200 pb-3">
-          <h3 className="font-heading text-base font-extrabold text-slate-900 flex items-center gap-2">
-            <span className="material-symbols-outlined text-orange-600">move_to_inbox</span>
-            CONTAINER VỪA DỠ TỪ TÀU ĐANG VÀO BÃI
-          </h3>
-          <span className="text-xs font-mono font-bold text-slate-500">{incomingContainers.length} Container đang nhập bãi</span>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-slate-100 border-b border-slate-200 text-slate-700 font-bold uppercase text-[10px] tracking-wider">
-                {['Mã Container', 'Tàu Cầu Bến', 'Cầu Cảng Gốc', 'Loại Container', 'Trọng Lượng', 'Số Niêm Phong', 'Trạng Thái', 'Vị Trí Gợi Ý AI', 'Thao Tác'].map(h => (
-                  <th key={h} className={`py-3.5 px-4 ${h === 'Thao Tác' ? 'text-right' : ''}`}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 font-mono">
-              {incomingContainers.length === 0 ? (
-                <tr>
-                  <td colSpan="9" className="py-8 text-center text-slate-500 font-bold font-sans">
-                    Tất cả container từ tàu đã được tiếp nhận an toàn vào bãi.
-                  </td>
-                </tr>
-              ) : incomingContainers.map(c => (
-                <tr key={c.id} className="hover:bg-slate-100/60">
-                  <td className="py-3.5 px-4 font-black text-slate-900 text-sm font-heading">{c.id}</td>
-                  <td className="py-3.5 px-4 font-bold text-blue-900 font-sans">{c.vessel}</td>
-                  <td className="py-3.5 px-4 font-bold text-amber-900">{c.berth}</td>
-                  <td className="py-3.5 px-4 font-bold text-slate-800">{c.type}</td>
-                  <td className="py-3.5 px-4 font-bold text-slate-700">{c.weight}</td>
-                  <td className="py-3.5 px-4 font-bold text-purple-900">{c.seal}</td>
-                  <td className="py-3.5 px-4 font-sans">
-                    <span className="px-2.5 py-0.5 rounded-full border text-[10px] font-black bg-emerald-100 text-emerald-950 border-emerald-400">
-                      {c.statusBadge}
-                    </span>
-                  </td>
-                  <td className="py-3.5 px-4 font-extrabold text-orange-700 font-mono text-sm">{c.suggestedPosition}</td>
-                  <td className="py-3.5 px-4 text-right font-sans">
-                    <button onClick={() => handleOpenReceiveModal(c)}
-                      className="px-4 py-1.5 bg-orange-100 hover:bg-orange-200 text-orange-950 border-2 border-orange-400 font-black text-xs rounded-xl shadow-xs cursor-pointer ml-auto transition-all">
-                      [ 📦 TIẾP NHẬN ]
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ── 5 & 6. GÁN VỊ TRÍ AI & NHIỆM VỤ CA LÀM VIỆC ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-        {/* 5. GÁN VỊ TRÍ AI */}
-        <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 shadow-sm space-y-4 flex flex-col justify-between">
-          <div>
-            <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
-              <h3 className="font-heading text-base font-extrabold text-slate-900 flex items-center gap-2">
-                <span className="material-symbols-outlined text-purple-600">auto_awesome</span>
-                CONTAINER CHỜ GÁN VỊ TRÍ BÃI (AI)
-              </h3>
-              <span className="text-xs font-mono font-bold text-slate-500">{positioningTasks.length} Chờ vị trí</span>
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {positioningTasks.map(pt => (
-                <div key={pt.id} className="p-4 bg-slate-100 rounded-xl border border-slate-200 space-y-2 font-mono text-xs">
-                  <div className="flex justify-between items-center">
-                    <span className="font-black text-slate-900 text-sm font-heading">{pt.id} · {pt.type}</span>
-                    <span className="px-2.5 py-0.5 bg-purple-100 text-purple-950 border border-purple-300 rounded font-black text-[10px]">
-                      {pt.weight}
-                    </span>
-                  </div>
-
-                  <div className="text-[11px] text-slate-700 font-sans">
-                    Loại hàng: <strong className="text-slate-900 font-black">{pt.cargoType}</strong> · Rời cảng: <strong className="text-purple-900 font-bold">{pt.departure}</strong>
-                  </div>
-
-                  <div className="p-2.5 bg-white rounded-lg border border-purple-300 text-purple-950 font-bold space-y-0.5">
-                    <div>🤖 AI Gợi Ý Vị Trí Ô Bãi: <strong className="text-orange-700 font-black text-sm">{pt.aiSuggestedPos}</strong></div>
-                    <div className="text-[10px] text-slate-600 font-normal font-sans">Lý do: {pt.reasoning}</div>
-                  </div>
-
-                  <button onClick={() => setSelectedAiTask(pt)}
-                    className="w-full py-2 bg-purple-100 hover:bg-purple-200 text-purple-950 border border-purple-400 font-black text-xs rounded-xl shadow-xs cursor-pointer transition-all font-sans">
-                    [ XEM GỢI Ý AI ]
-                  </button>
-                </div>
-              ))}
+        {/* Card 1: Total Yard Occupancy */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 border-t-4 border-t-blue-600 shadow-xs flex flex-col justify-between hover:shadow-md hover:border-slate-300 transition-all bg-gradient-to-b from-blue-50/20 to-white">
+          <div className="flex justify-between items-start">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Tồn Bãi Khai Thác</span>
+            <div className="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200/70 flex items-center justify-center text-blue-600">
+              <span className="material-symbols-outlined text-base">grid_view</span>
             </div>
           </div>
-
-          <div className="p-3 bg-slate-100 rounded-xl border border-slate-200 text-[11px] text-slate-600 font-sans">
-            🤖 <strong>Thuật Toán AI Tối Ưu:</strong> Vị trí gợi ý tự động giảm thiểu số lần đảo chuyển container xuống dưới 3%.
-          </div>
-        </div>
-
-        {/* 6. NHIỆM VỤ CA LÀM VIỆC */}
-        <div className="bg-white rounded-2xl border-2 border-slate-200 p-6 shadow-sm space-y-4">
-          <div className="border-b border-slate-200 pb-3 flex justify-between items-center">
-            <h3 className="font-heading text-base font-extrabold text-slate-900 flex items-center gap-2">
-              <span className="material-symbols-outlined text-blue-600">task</span>
-              NHIỆM VỤ CA LÀM VIỆC TỒN ĐỌNG
-            </h3>
-            <span className="text-xs font-mono font-bold text-slate-500">{yardTasks.length} Nhiệm vụ</span>
-          </div>
-
-          <div className="space-y-3">
-            {yardTasks.map(task => (
-              <div key={task.id} className="p-3.5 bg-slate-100 rounded-xl border border-slate-200 space-y-1.5 font-mono text-xs">
-                <div className="flex justify-between items-center">
-                  <span className="font-black text-slate-900 font-sans">{task.id} — {task.taskType}</span>
-                  <span className={`px-2 py-0.5 rounded font-black text-[10px] border ${
-                    task.priority === 'CRITICAL' ? 'bg-red-200 text-red-950 border-red-500' :
-                    task.priority === 'HIGH' ? 'bg-orange-100 text-orange-950 border-orange-400' :
-                    task.priority === 'MEDIUM' ? 'bg-amber-100 text-amber-950 border-amber-400' :
-                    'bg-emerald-100 text-emerald-950 border-emerald-400'
-                  }`}>
-                    {task.priorityBadge}
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-[11px] font-sans pt-1">
-                  <div>Mã Container: <strong className="text-slate-900 font-mono font-bold">{task.containerId}</strong></div>
-                  <div>Hạn chót: <strong className="text-red-700 font-bold">{task.dueTime}</strong></div>
-                </div>
-
-                <div className="p-2 bg-white rounded border border-slate-200 text-[11px] flex justify-between items-center">
-                  <span>Vị trí gốc: <strong className="text-blue-900">{task.from}</strong></span>
-                  <span className="text-slate-400 font-bold">➔</span>
-                  <span>Vị trí đích: <strong className="text-emerald-900">{task.to}</strong></span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-      </div>
-
-      {/* ── MODAL 1: INSPECTION & CONFIRM RECEIVING PANEL ── */}
-      {selectedReceiveContainer && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white max-w-lg w-full rounded-3xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 font-sans border-2 border-orange-400">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-orange-600 text-xl">fact_check</span>
-                <h3 className="font-heading text-lg font-extrabold text-slate-900">Kiểm Tra & Tiếp Nhận Container Vào Bãi</h3>
-              </div>
-              <button onClick={() => setSelectedReceiveContainer(null)} className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 hover:text-slate-900">
-                <span className="material-symbols-outlined text-sm">close</span>
-              </button>
+          <div className="mt-2.5">
+            <div className="text-2xl font-bold font-mono text-blue-950 tracking-tight">
+              {totalInYard.toLocaleString()} <span className="text-xs font-normal text-slate-400 font-sans">TEU</span>
             </div>
+            <div className="mt-2 space-y-1">
+              <div className="flex justify-between text-[11px] text-slate-500">
+                <span>Dung lượng</span>
+                <span className="font-bold text-blue-700">{capacityPercent}%</span>
+              </div>
+              <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-blue-500 to-indigo-600 rounded-full" style={{ width: `${capacityPercent}%` }}></div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-            <form onSubmit={handleConfirmReceivingSubmit} className="space-y-4 text-xs font-bold">
-              <div className="grid grid-cols-2 gap-3 font-mono">
-                <div className="bg-slate-100 p-3 rounded-xl border border-slate-200">
-                  <span className="text-[10px] text-slate-600 uppercase font-sans font-bold block">Mã Container</span>
-                  <strong className="text-slate-900 font-black text-sm">{selectedReceiveContainer.id}</strong>
-                </div>
+        {/* Card 2: Pending Inspection (NXP-055) */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 border-t-4 border-t-amber-500 shadow-xs flex flex-col justify-between hover:shadow-md hover:border-slate-300 transition-all bg-gradient-to-b from-amber-50/20 to-white">
+          <div className="flex justify-between items-start">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Chờ Đối Soát & Nhận</span>
+            <div className="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200/70 flex items-center justify-center text-amber-700">
+              <span className="material-symbols-outlined text-base">qr_code_scanner</span>
+            </div>
+          </div>
+          <div className="mt-2.5">
+            <div className="text-2xl font-bold font-mono text-amber-950 tracking-tight">
+              {uninspectedCount} <span className="text-xs font-normal text-slate-400 font-sans">Cont</span>
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-amber-800 font-medium">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              <span>Chờ quét mã & đối soát seal</span>
+            </div>
+          </div>
+        </div>
 
-                <div className="bg-slate-100 p-3 rounded-xl border border-slate-200">
-                  <span className="text-[10px] text-slate-600 uppercase font-sans font-bold block">Số Niêm Phong</span>
-                  <strong className="text-purple-900 font-black text-sm">{selectedReceiveContainer.seal}</strong>
-                </div>
+        {/* Card 3: Ready for Lift (NXP-056) */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 border-t-4 border-t-sky-500 shadow-xs flex flex-col justify-between hover:shadow-md hover:border-slate-300 transition-all bg-gradient-to-b from-sky-50/20 to-white">
+          <div className="flex justify-between items-start">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Sẵn Sàng Cẩu</span>
+            <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-200/70 flex items-center justify-center text-sky-700">
+              <span className="material-symbols-outlined text-base">forklift</span>
+            </div>
+          </div>
+          <div className="mt-2.5">
+            <div className="text-2xl font-bold font-mono text-sky-950 tracking-tight">
+              {readyCount} <span className="text-xs font-normal text-slate-400 font-sans">Task</span>
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-sky-800 font-medium">
+              <span className="w-2 h-2 rounded-full bg-sky-500"></span>
+              <span>Đã chỉ định cẩu & cần thủ</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 4: In Progress Lift (NXP-060) */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 border-t-4 border-t-orange-500 shadow-xs flex flex-col justify-between hover:shadow-md hover:border-slate-300 transition-all bg-gradient-to-b from-orange-50/20 to-white">
+          <div className="flex justify-between items-start">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Đang Cẩu Nâng Hạ</span>
+            <div className="w-8 h-8 rounded-lg bg-orange-50 border border-orange-200/70 flex items-center justify-center text-orange-700">
+              <span className="material-symbols-outlined text-base">precision_manufacturing</span>
+            </div>
+          </div>
+          <div className="mt-2.5">
+            <div className="text-2xl font-bold font-mono text-orange-950 tracking-tight">
+              {inProgressCount} <span className="text-xs font-normal text-slate-400 font-sans">Task</span>
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-orange-800 font-medium">
+              <span className="w-2 h-2 rounded-full bg-orange-500 animate-ping"></span>
+              <span>Cần thủ đang tác nghiệp</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Card 5: Completed */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/90 border-t-4 border-t-emerald-500 shadow-xs flex flex-col justify-between hover:shadow-md hover:border-slate-300 transition-all col-span-2 sm:col-span-1 bg-gradient-to-b from-emerald-50/20 to-white">
+          <div className="flex justify-between items-start">
+            <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Hoàn Tất Trong Ca</span>
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200/70 flex items-center justify-center text-emerald-700">
+              <span className="material-symbols-outlined text-base">task_alt</span>
+            </div>
+          </div>
+          <div className="mt-2.5">
+            <div className="text-2xl font-bold font-mono text-emerald-950 tracking-tight">
+              {completedCount} <span className="text-xs font-normal text-slate-400 font-sans">Task</span>
+            </div>
+            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-emerald-800 font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>Đã hạ bãi an toàn</span>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      {/* ── 3. MAIN WORKSPACE (Bố cục 8 - 4 cân đối) ── */}
+      <main className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+
+        {/* ── KHU VỰC CHÍNH (8/12): BẢNG QUẢN LÝ NHIỆM VỤ BÃI ── */}
+        <section className="lg:col-span-8 flex flex-col gap-4">
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-5 flex flex-col gap-4">
+            
+            {/* Header Toolbar */}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-3.5">
+              <div className="flex items-center gap-2.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600"></span>
+                <h2 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
+                  Nhiệm Vụ Khai Thác Bãi
+                </h2>
+                <span className="text-xs font-mono font-bold bg-indigo-50 text-indigo-700 px-2.5 py-0.5 rounded-full border border-indigo-200">
+                  {filteredTasks.length}
+                </span>
               </div>
 
-              <div>
-                <label className="block text-slate-600 uppercase text-[10px] mb-1 font-extrabold">Tình Trạng Vỏ Container *</label>
-                <select value={inspectionForm.condition} onChange={e => setInspectionForm(p => ({ ...p, condition: e.target.value }))}
-                  className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-300 rounded-xl text-slate-900 font-extrabold text-sm focus:outline-none focus:border-slate-900">
-                  <option value="Tốt (Không Hư Hỏng)">Tốt (Không Hư Hỏng)</option>
-                  <option value="Trầy Xước Nhẹ">Trầy Xước Nhẹ</option>
-                  <option value="Móp Méo Vỏ">Móp Méo Vỏ</option>
-                  <option value="Hư Hỏng Khóa Niêm Phong">Hư Hỏng Khóa Niêm Phong</option>
+              {/* Block Filter Selector */}
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-slate-500 font-medium">Khu vực (Block):</span>
+                <select
+                  value={selectedBlockFilter}
+                  onChange={e => handleBlockFilterChange(e.target.value)}
+                  className="px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="ALL">Tất cả Block</option>
+                  <option value="A01">Block A01</option>
+                  <option value="B02">Block B02</option>
+                  <option value="C01">Block C01</option>
                 </select>
               </div>
+            </div>
 
-              <div>
-                <label className="block text-slate-600 uppercase text-[10px] mb-1 font-extrabold">Ảnh Chụp Thực Địa</label>
-                <div className="flex gap-2 font-mono">
-                  {inspectionForm.photoFiles.map((file, i) => (
-                    <div key={i} className="flex-1 p-2 bg-slate-100 border border-slate-300 rounded-lg text-center text-[10px] text-slate-700 font-bold truncate">
-                      📷 {file}
-                    </div>
-                  ))}
+            {/* Search & Modern Segmented Status Tabs Bar */}
+            <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+              {/* Search input */}
+              <div className="relative flex-1">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm pointer-events-none">
+                  search
+                </span>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={e => handleSearchChange(e.target.value)}
+                  placeholder="Tìm kiếm mã task, số container, biển số xe..."
+                  className="w-full pl-9 pr-3 py-2 bg-slate-50/70 border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white transition-colors shadow-2xs"
+                />
+              </div>
+
+              {/* Segmented Status Tabs */}
+              <div className="flex flex-wrap gap-1 bg-slate-100/90 p-1 rounded-xl border border-slate-200/80 text-xs">
+                {[
+                  { key: 'ALL', label: 'Tất cả', count: yardTasks.length, activeBg: 'bg-slate-900 text-white', badgeActive: 'bg-slate-700 text-slate-200' },
+                  { key: 'Assigned', label: 'Chờ gán', count: assignedCount, activeBg: 'bg-amber-500 text-white', badgeActive: 'bg-amber-600 text-amber-100' },
+                  { key: 'Ready', label: 'Sẵn sàng', count: readyCount, activeBg: 'bg-sky-600 text-white', badgeActive: 'bg-sky-700 text-sky-100' },
+                  { key: 'In_Progress', label: 'Đang cẩu', count: inProgressCount, activeBg: 'bg-orange-500 text-white', badgeActive: 'bg-orange-600 text-orange-100' },
+                  { key: 'Completed', label: 'Xong', count: completedCount, activeBg: 'bg-emerald-600 text-white', badgeActive: 'bg-emerald-700 text-emerald-100' }
+                ].map(tab => {
+                  const isActive = taskStatusTab === tab.key
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => handleStatusTabChange(tab.key)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                        isActive
+                          ? `${tab.activeBg} shadow-xs`
+                          : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/60'
+                      }`}
+                    >
+                      <span>{tab.label}</span>
+                      <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full font-bold ${
+                        isActive ? tab.badgeActive : 'bg-slate-200/80 text-slate-600'
+                      }`}>
+                        {tab.count}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Task Table / Row List */}
+            <div className="overflow-x-auto rounded-xl border border-slate-200/80 shadow-2xs">
+              {filteredTasks.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 text-xs bg-slate-50/30">
+                  <span className="material-symbols-outlined text-3xl text-slate-300 block mb-1.5">inbox</span>
+                  Không tìm thấy nhiệm vụ nào phù hợp với điều kiện lọc.
+                </div>
+              ) : (
+                <table className="w-full text-left text-xs border-collapse min-w-[1000px]">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50/90 text-slate-500 font-semibold uppercase text-[10px] tracking-wider whitespace-nowrap">
+                      <th className="py-3 px-4 min-w-[180px]">Mã Task & Loại</th>
+                      <th className="py-3 px-4 min-w-[220px]">Container & Xe</th>
+                      <th className="py-3 px-4 min-w-[240px]">Lộ Trình Bãi</th>
+                      <th className="py-3 px-4 min-w-[190px]">Thiết Bị / Cần Thủ</th>
+                      <th className="py-3 px-4 min-w-[130px] text-center">Trạng Thái</th>
+                      <th className="py-3 px-4 min-w-[190px] text-right">Hành Động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 bg-white">
+                    {paginatedTasks.map(task => {
+                      const isAssigned = task.status?.toLowerCase() === 'assigned'
+                      const isReady = task.status?.toLowerCase() === 'ready'
+                      const isInProgress = task.status?.toLowerCase() === 'in_progress'
+                      const isCompleted = task.status?.toLowerCase() === 'completed'
+                      const isInspected = !!task.receivedAt
+
+                      // Determine operation badge style
+                      const opStr = (task.operationType || '').toLowerCase()
+                      let opBadgeStyle = {
+                        bg: 'bg-emerald-50 text-emerald-800 border-emerald-200/90',
+                        icon: 'download'
+                      }
+                      if (opStr.includes('xuất') || opStr.includes('export') || opStr.includes('giao xe')) {
+                        opBadgeStyle = {
+                          bg: 'bg-blue-50 text-blue-800 border-blue-200/90',
+                          icon: 'upload'
+                        }
+                      } else if (opStr.includes('đảo') || opStr.includes('chuyển') || opStr.includes('shift')) {
+                        opBadgeStyle = {
+                          bg: 'bg-purple-50 text-purple-800 border-purple-200/90',
+                          icon: 'sync_alt'
+                        }
+                      }
+
+                      return (
+                        <tr
+                          key={task.id}
+                          className="hover:bg-slate-50/80 transition-colors group"
+                        >
+                          {/* Mã Task & Loại */}
+                          <td className="py-3.5 px-4 align-top whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-bold text-slate-900 text-xs px-2 py-0.5 bg-slate-100/90 rounded border border-slate-200">
+                                {task.taskCode}
+                              </span>
+                              {task.priority?.toLowerCase() === 'critical' && (
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping"></span>
+                                  Khẩn
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-1.5 flex items-center gap-1.5">
+                              <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold border ${opBadgeStyle.bg}`}>
+                                <span className="material-symbols-outlined text-[11px]">{opBadgeStyle.icon}</span>
+                                <span>{task.operationType}</span>
+                              </span>
+                              {task.blockCode && (
+                                <span className="font-mono font-bold text-indigo-800 bg-indigo-50 border border-indigo-200/80 px-1.5 py-0.5 rounded text-[10px]">
+                                  Block {task.blockCode}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Container & Xe */}
+                          <td className="py-3.5 px-4 align-top whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono font-bold text-sky-950 bg-sky-50 border border-sky-200/90 px-2 py-0.5 rounded text-xs shadow-2xs">
+                                {task.containerNo}
+                              </span>
+                              <span className="text-[10px] text-slate-600 bg-slate-100 font-mono font-semibold px-1.5 py-0.5 rounded border border-slate-200/60">
+                                {task.containerType || '40FT HC'}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-700 mt-1.5 flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-xs text-slate-400">local_shipping</span>
+                              <span className="font-mono font-semibold text-slate-800 bg-slate-50 border border-slate-200/80 px-1.5 py-0.5 rounded text-[11px]">
+                                {task.vehiclePlate || 'Chưa gán xe'}
+                              </span>
+                              {task.driverName && (
+                                <span className="text-slate-500 font-medium">({task.driverName})</span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Lộ Trình Bãi */}
+                          <td className="py-3.5 px-4 align-top whitespace-nowrap">
+                            <div className="flex items-center gap-1.5 text-[11px]">
+                              <span className="text-slate-400 font-medium">Từ:</span>
+                              <span className="text-slate-700 font-medium bg-slate-50 px-1.5 py-0.5 rounded border border-slate-200/60 font-mono">
+                                {task.fromLocation || 'Cầu Tàu B-01'}
+                              </span>
+                              <span className="material-symbols-outlined text-xs text-slate-300">arrow_forward</span>
+                              <span className="text-slate-400 font-medium">Đích:</span>
+                              <span className="font-mono font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded text-xs">
+                                {task.completedLocation || task.toLocation || 'A01-05-02-3'}
+                              </span>
+                            </div>
+                            <div className="mt-1.5">
+                              {isInspected ? (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-emerald-800 bg-emerald-50 border border-emerald-200/90 px-2 py-0.5 rounded font-medium">
+                                  <span className="material-symbols-outlined text-xs text-emerald-600">verified</span>
+                                  <span>Seal: {task.actualSealNo || 'Đã khớp seal'}</span>
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[10px] text-amber-800 bg-amber-50 border border-amber-200/90 px-2 py-0.5 rounded font-medium">
+                                  <span className="material-symbols-outlined text-xs text-amber-600">pending</span>
+                                  <span>Chưa đối soát seal</span>
+                                </span>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* Thiết Bị / Cần Thủ */}
+                          <td className="py-3.5 px-4 align-top whitespace-nowrap">
+                            {task.equipmentCode ? (
+                              <div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="material-symbols-outlined text-xs text-teal-600">precision_manufacturing</span>
+                                  <span className="font-mono font-bold text-teal-900 bg-teal-50 border border-teal-200/90 px-2 py-0.5 rounded text-xs">
+                                    {task.equipmentCode}
+                                  </span>
+                                  <span className="text-[10px] text-teal-700 bg-teal-50/60 font-mono px-1.5 py-0.5 rounded border border-teal-100">
+                                    {task.equipmentType || 'RTG'}
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-slate-600 mt-1 flex items-center gap-1">
+                                  <span className="material-symbols-outlined text-xs text-slate-400">person</span>
+                                  <span className="font-medium text-slate-700">{task.operatorName || 'Chưa gán cần thủ'}</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 bg-slate-50 border border-dashed border-slate-200 px-2.5 py-1 rounded-lg italic inline-flex items-center gap-1.5">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                                <span>Chưa chỉ định cẩu</span>
+                              </span>
+                            )}
+                          </td>
+
+                          {/* Trạng Thái */}
+                          <td className="py-3.5 px-4 align-top text-center whitespace-nowrap">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+                              isCompleted
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : isInProgress
+                                ? 'bg-orange-50 text-orange-700 border-orange-200'
+                                : isReady
+                                ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200'
+                            }`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${
+                                isCompleted
+                                  ? 'bg-emerald-500'
+                                  : isInProgress
+                                  ? 'bg-orange-500 animate-pulse'
+                                  : isReady
+                                  ? 'bg-blue-500'
+                                  : 'bg-amber-500'
+                              }`}></span>
+                              <span>{task.status}</span>
+                            </span>
+                          </td>
+
+                          {/* Hành Động Nút Bấm */}
+                          <td className="py-3.5 px-4 align-top text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {isAssigned && (
+                                <>
+                                  {!isInspected && (
+                                    <button
+                                      onClick={() => handleOpenReceiveModal(task)}
+                                      title="Đối soát seal & ngoại quan container"
+                                      className="px-2.5 py-1.5 bg-white hover:bg-amber-50 border border-amber-300 text-amber-800 rounded-lg text-[11px] font-semibold transition-all cursor-pointer shadow-2xs active:scale-[0.98] flex items-center gap-1"
+                                    >
+                                      <span className="material-symbols-outlined text-xs text-amber-600">qr_code_scanner</span>
+                                      <span>Đối Soát</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => setSelectedTaskToAssign(task)}
+                                    title="Gán Cẩu RTG & Cần thủ"
+                                    className="px-3 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-[11px] font-medium transition-all cursor-pointer shadow-xs active:scale-[0.98] flex items-center gap-1"
+                                  >
+                                    <span className="material-symbols-outlined text-xs text-slate-300">forklift</span>
+                                    <span>Gán Cẩu</span>
+                                  </button>
+                                </>
+                              )}
+
+                              {isReady && (
+                                <button
+                                  onClick={() => handleStartLift(task)}
+                                  disabled={operatingTaskId === task.id}
+                                  title="Bắt đầu nâng hạ container"
+                                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 shadow-xs active:scale-[0.98] disabled:opacity-50"
+                                >
+                                  <span className="material-symbols-outlined text-xs">play_arrow</span>
+                                  <span>Bắt Đầu Cẩu</span>
+                                </button>
+                              )}
+
+                              {isInProgress && (
+                                <button
+                                  onClick={() => handleOpenCompleteLift(task)}
+                                  title="Xác nhận hạ bãi & giải phóng cẩu"
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-semibold transition-all cursor-pointer flex items-center gap-1 shadow-xs active:scale-[0.98]"
+                                >
+                                  <span className="material-symbols-outlined text-xs">task_alt</span>
+                                  <span>Hoàn Tất</span>
+                                </button>
+                              )}
+
+                              {isCompleted && (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-lg">
+                                  <span className="material-symbols-outlined text-xs text-emerald-600">check_circle</span>
+                                  <span>Đã hạ bãi</span>
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Pagination Controls */}
+            {filteredTasks.length > 0 && (
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-2 text-xs">
+                <div className="flex items-center gap-2 text-slate-500">
+                  <span>Hiển thị</span>
+                  <select
+                    value={pageSize}
+                    onChange={e => {
+                      setPageSize(Number(e.target.value))
+                      setCurrentPage(1)
+                    }}
+                    className="pl-3 pr-8 py-1.5 bg-white border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs"
+                  >
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={20}>20</option>
+                    <option value={50}>50</option>
+                  </select>
+                  <span>nhiệm vụ / trang (Tổng <strong>{filteredTasks.length}</strong>)</span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-lg text-xs font-medium disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer shadow-2xs"
+                  >
+                    Trang trước
+                  </button>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNo => (
+                      <button
+                        key={pageNo}
+                        onClick={() => setCurrentPage(pageNo)}
+                        className={`w-7 h-7 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                          currentPage === pageNo
+                            ? 'bg-slate-900 text-white font-bold shadow-2xs'
+                            : 'bg-white hover:bg-slate-50 border border-slate-300 text-slate-700'
+                        }`}
+                      >
+                        {pageNo}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-lg text-xs font-medium disabled:opacity-40 disabled:pointer-events-none transition-colors cursor-pointer shadow-2xs"
+                  >
+                    Trang sau
+                  </button>
                 </div>
               </div>
+            )}
 
-              <div>
-                <label className="block text-slate-600 uppercase text-[10px] mb-1 font-extrabold">Ghi Chú Kiểm Tra</label>
-                <textarea rows="2" value={inspectionForm.notes} onChange={e => setInspectionForm(p => ({ ...p, notes: e.target.value }))}
-                  placeholder="Ghi chú thêm về vị trí tiếp nhận..."
-                  className="w-full p-3 bg-slate-100 border border-slate-300 rounded-xl text-xs font-normal text-slate-900 focus:outline-none focus:border-slate-900 resize-none" />
-              </div>
-
-              <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => setSelectedReceiveContainer(null)} className="flex-1 h-12 border border-slate-300 text-slate-700 rounded-xl font-extrabold text-xs hover:bg-slate-100">
-                  Hủy Bỏ
-                </button>
-                <button type="submit" className="flex-1 h-12 bg-orange-100 hover:bg-orange-200 text-orange-950 border-2 border-orange-400 rounded-xl font-black text-xs shadow-xs">
-                  [ XÁC NHẬN TIẾP NHẬN ]
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
+        </section>
+
+        {/* ── KHU VỰC PHỤ (4/12): TIẾP NHẬN CONTAINER & GỢI Ý VỊ TRÍ AI ── */}
+        <aside className="lg:col-span-4 flex flex-col gap-5">
+          
+          {/* Panel 1: Container Đang Tới Làn Bãi */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-5 flex flex-col gap-4 border-t-4 border-t-sky-500">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-sky-50 border border-sky-200/80 flex items-center justify-center text-sky-600">
+                  <span className="material-symbols-outlined text-base">input</span>
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    Hàng Chờ Tiếp Nhận (Làn Bãi)
+                  </h3>
+                  <p className="text-[11px] text-slate-500">Đối soát cont từ cầu cảng & xe kéo</p>
+                </div>
+              </div>
+              <span className="text-xs font-mono font-bold bg-sky-50 text-sky-700 px-2.5 py-0.5 rounded-full border border-sky-200">
+                {incomingContainers.length}
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {incomingContainers.length === 0 ? (
+                <div className="py-8 text-center text-slate-500 text-xs bg-emerald-50/40 rounded-xl border border-dashed border-emerald-200 p-4">
+                  <span className="material-symbols-outlined text-3xl text-emerald-600 block mb-1">task_alt</span>
+                  <p className="font-semibold text-emerald-900">Đã tiếp nhận hết các container</p>
+                  <p className="text-[11px] text-slate-400 mt-0.5">Không còn container nào chờ đối soát tại làn bãi.</p>
+                </div>
+              ) : (
+                incomingContainers.map(c => (
+                <div
+                  key={c.id}
+                  className="p-3.5 bg-slate-50/80 border border-slate-200/90 rounded-xl flex flex-col gap-2.5 hover:border-sky-300 hover:bg-sky-50/20 transition-all shadow-2xs"
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold text-sky-950 bg-sky-50 border border-sky-200 px-2 py-0.5 rounded text-xs shadow-2xs">
+                          {c.id}
+                        </span>
+                        <span className="text-[10px] text-slate-600 font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/60 font-semibold">
+                          {c.type}
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-600 mt-1.5 flex items-center gap-1">
+                        <span className="material-symbols-outlined text-xs text-blue-500">directions_boat</span>
+                        <span className="font-medium text-slate-700">{c.vessel}</span>
+                        <span className="text-[10px] bg-blue-50 text-blue-700 font-semibold px-1.5 py-0.2 rounded border border-blue-200/60">Bến {c.berth}</span>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 text-[10px] font-bold rounded-md">
+                      {c.statusBadge}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-[11px] text-slate-600 pt-2 border-t border-slate-200/70 font-mono">
+                    <span className="flex items-center gap-1">
+                      <span className="text-slate-400 font-sans">Seal:</span>
+                      <strong className="text-slate-800 bg-white px-1.5 py-0.5 rounded border border-slate-200 text-[11px]">{c.seal}</strong>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <span className="text-slate-400 font-sans">Ô hạ:</span>
+                      <strong className="text-indigo-900 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200 text-xs">{c.suggestedPosition}</strong>
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => handleOpenReceiveModal(c)}
+                    className="w-full py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs active:scale-[0.98]"
+                  >
+                    <span className="material-symbols-outlined text-xs">qr_code_scanner</span>
+                    <span>Đối Soát & Nhận Cont</span>
+                  </button>
+                </div>
+              )))}
+            </div>
+          </div>
+
+          {/* Panel 2: Gợi Ý Vị Trí Bãi AI */}
+          <div className="bg-white rounded-2xl border border-slate-200/90 shadow-xs p-5 flex flex-col gap-4 border-t-4 border-t-purple-500">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-purple-50 border border-purple-200/80 flex items-center justify-center text-purple-600">
+                  <span className="material-symbols-outlined text-base">auto_awesome</span>
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">
+                    Gợi Ý Vị Trí Bãi AI
+                  </h3>
+                  <p className="text-[11px] text-slate-500">Tối ưu hóa phân tầng & giảm đảo chuyển</p>
+                </div>
+              </div>
+              <span className="text-[10px] font-bold bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-2.5 py-0.5 rounded-full shadow-2xs">
+                AI Engine
+              </span>
+            </div>
+
+            <div className="flex flex-col gap-3">
+              {positioningTasks.map(pt => (
+                <div
+                  key={pt.id}
+                  className="p-3.5 bg-slate-50/80 border border-slate-200/90 rounded-xl flex flex-col gap-2 hover:border-purple-300 hover:bg-purple-50/20 transition-all shadow-2xs"
+                >
+                  <div className="flex justify-between items-center">
+                    <span className="font-mono font-bold text-slate-900 bg-white border border-slate-200 px-2 py-0.5 rounded text-xs">
+                      {pt.id}
+                    </span>
+                    <span className="font-mono font-bold text-purple-900 text-xs bg-purple-50 px-2 py-0.5 rounded-md border border-purple-200/80 flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[11px] text-purple-600">location_on</span>
+                      {pt.aiSuggestedPos}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-slate-600 flex items-center justify-between">
+                    <span className="font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-[10px]">{pt.cargoType}</span>
+                    <span className="text-slate-500 text-[10px] font-mono">Rời cảng: {pt.departure}</span>
+                  </div>
+                  <p className="text-[11px] text-slate-600 mt-1 leading-relaxed bg-white p-2.5 rounded-lg border border-purple-100/80 text-justify">
+                    {pt.reasoning}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+        </aside>
+
+      </main>
+
+      {/* ── MODALS QUY TRÌNH ── */}
+
+      {/* MODAL 1: Yard Receiving Modal */}
+      {receivingModalOpen && (
+        <YardReceivingModal
+          task={selectedTaskToReceive}
+          allTasks={yardTasks}
+          isOpen={receivingModalOpen}
+          onClose={() => {
+            setReceivingModalOpen(false)
+            setSelectedTaskToReceive(null)
+          }}
+          onSuccess={(updated) => {
+            const contNo = updated?.containerNo || updated?.data?.containerNo || selectedTaskToReceive?.containerNo
+            showToast(`Tiếp nhận thành công container ${contNo || ''}. Đã cập nhật vào bãi.`)
+            if (contNo) {
+              setIncomingContainers(prev => prev.filter(c => c.id?.toLowerCase() !== contNo.toLowerCase()))
+              setYardTasks(prev => prev.map(t => {
+                if (t.containerNo?.toLowerCase() === contNo.toLowerCase()) {
+                  return {
+                    ...t,
+                    receivedAt: new Date().toISOString(),
+                    actualSealNo: updated?.actualSealNo || t.actualSealNo || 'SEAL-889922'
+                  }
+                }
+                return t
+              }))
+            }
+            loadLiveTasks()
+          }}
+        />
       )}
 
-      {/* ── MODAL 2: AI SUGGESTION DETAILS POPUP ── */}
-      {selectedAiTask && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white max-w-md w-full rounded-3xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95 font-sans border-2 border-purple-400">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-purple-600 text-xl">auto_awesome</span>
-                <h3 className="font-heading text-lg font-black text-slate-900">Chi Tiết Gợi Ý Vị Trí AI</h3>
-              </div>
-              <button onClick={() => setSelectedAiTask(null)} className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 hover:text-slate-900">
-                <span className="material-symbols-outlined text-sm">close</span>
-              </button>
-            </div>
+      {/* MODAL 2: NXP-056 Assign Equipment Modal */}
+      {selectedTaskToAssign && (
+        <AssignEquipmentModal
+          task={selectedTaskToAssign}
+          isOpen={!!selectedTaskToAssign}
+          onClose={() => setSelectedTaskToAssign(null)}
+          onSuccess={(updatedTask) => {
+            showToast(`Đã gán Cẩu ${updatedTask.equipmentCode} cho nhiệm vụ ${updatedTask.taskCode}.`)
+            loadLiveTasks()
+          }}
+        />
+      )}
 
-            <div className="space-y-3 text-xs font-mono">
-              <div className="p-3 bg-purple-50 border border-purple-300 rounded-xl space-y-1">
-                <div className="font-black text-purple-950 text-sm">{selectedAiTask.id}</div>
-                <div className="text-[11px] text-slate-700 font-sans font-bold">Loại hàng: {selectedAiTask.cargoType}</div>
-                <div className="text-[11px] text-orange-900 font-extrabold mt-1">Vị trí đề xuất: {selectedAiTask.aiSuggestedPos}</div>
-              </div>
-
-              <div className="p-3 bg-slate-100 border border-slate-200 rounded-xl text-slate-800 font-sans font-medium">
-                <strong>Thuật toán tối ưu:</strong> {selectedAiTask.reasoning}
-              </div>
-            </div>
-
-            <button onClick={() => {
-              showToast(`🎯 Đã áp dụng vị trí AI ${selectedAiTask.aiSuggestedPos} cho container ${selectedAiTask.id}`)
-              setSelectedAiTask(null)
-            }} className="w-full h-12 bg-purple-100 hover:bg-purple-200 text-purple-950 border-2 border-purple-400 rounded-xl font-black text-xs shadow-xs cursor-pointer">
-              [ CHẤP NHẬN VỊ TRÍ GỢI Ý ]
-            </button>
-          </div>
-        </div>
+      {/* MODAL 3: NXP-060 Complete Lift Modal */}
+      {completeLiftModalOpen && selectedTaskToCompleteLift && (
+        <CompleteLiftModal
+          task={selectedTaskToCompleteLift}
+          isOpen={completeLiftModalOpen}
+          onClose={() => {
+            setCompleteLiftModalOpen(false)
+            setSelectedTaskToCompleteLift(null)
+          }}
+          onSuccess={(updatedTask) => {
+            showToast(`Hoàn thành cẩu container ${updatedTask.containerNo}. Đã hạ bãi an toàn.`)
+            loadLiveTasks()
+          }}
+        />
       )}
 
     </div>

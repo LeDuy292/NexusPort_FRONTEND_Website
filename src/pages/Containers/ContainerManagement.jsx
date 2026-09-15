@@ -583,10 +583,16 @@ export default function ContainerManagement() {
     <div className="mx-auto w-full max-w-[1500px] space-y-5 p-1">
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
         <div>
-          <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-signal-orange"></div>
+          <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-signal-orange">
+            <span className="h-2 w-2 rounded-full bg-signal-orange" />
+            Central Registry · Đăng kiểm trung tâm
+          </div>
           <h1 className="font-heading text-3xl font-bold text-carbon">
             Quản lý Container
           </h1>
+          <p className="mt-1 text-sm text-slate">
+            Theo dõi xuyên suốt Booking → Gate-In → Yard → Gate-Out
+          </p>
         </div>
         {canWrite && (
           <button
@@ -596,19 +602,19 @@ export default function ContainerManagement() {
             }}
             className="flex items-center justify-center gap-2 rounded-lg bg-signal-orange px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-orange-600"
           >
-            <span className="material-symbols-outlined text-lg">add</span>Đăng
-            ký Container
+            <span className="material-symbols-outlined text-lg">add</span>
+            Đăng ký Container
           </button>
         )}
       </div>
+
       {notice && (
         <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
-          <span className="material-symbols-outlined text-lg">
-            check_circle
-          </span>
+          <span className="material-symbols-outlined text-lg">check_circle</span>
           {notice}
         </div>
       )}
+
       {error && (
         <div className="flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <span>{error}</span>
@@ -617,6 +623,7 @@ export default function ContainerManagement() {
           </button>
         </div>
       )}
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {[
           ["Tổng kết quả", pagination.total || 0, "inventory_2", "text-carbon"],
@@ -657,6 +664,7 @@ export default function ContainerManagement() {
           </div>
         ))}
       </div>
+
       <div className="rounded-xl border border-chalk bg-white p-4">
         <div className="grid gap-3 lg:grid-cols-[2fr_1fr_1fr_1fr_auto]">
           <div className="relative">
@@ -723,6 +731,7 @@ export default function ContainerManagement() {
           </button>
         </div>
       </div>
+
       <div className="overflow-hidden rounded-xl border border-chalk bg-white">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1050px] text-left">
@@ -883,4 +892,5 @@ export default function ContainerManagement() {
       )}
     </div>
   );
+
 }

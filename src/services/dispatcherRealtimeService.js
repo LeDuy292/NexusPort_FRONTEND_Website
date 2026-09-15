@@ -1,5 +1,3 @@
-import { io } from 'socket.io-client'
-
 const REALTIME_URL = import.meta.env.VITE_REALTIME_URL || 'http://localhost:4000'
 const EVENT_NAME = 'dispatcher.status.updated'
 
@@ -16,19 +14,28 @@ export function connectDispatcherRealtime(onStatusUpdated, onConnectionError) {
   const token = getToken()
   if (!token) return () => {}
 
-  const socket = io(REALTIME_URL, {
-    auth: { token },
-    transports: ['websocket'],
-    reconnection: true,
-  })
-  socket.on(EVENT_NAME, onStatusUpdated)
-  socket.on('connect_error', onConnectionError)
+  try {
+    const io = window?.io;
+    if (typeof io === 'function') {
+      const socket = io(REALTIME_URL, {
+        auth: { token },
+        transports: ['websocket'],
+        reconnection: true,
+      })
+      socket.on(EVENT_NAME, onStatusUpdated)
+      socket.on('connect_error', onConnectionError)
 
-  return () => {
-    socket.off(EVENT_NAME, onStatusUpdated)
-    socket.off('connect_error', onConnectionError)
-    socket.disconnect()
+      return () => {
+        socket.off(EVENT_NAME, onStatusUpdated)
+        socket.off('connect_error', onConnectionError)
+        socket.disconnect()
+      }
+    }
+  } catch (err) {
+    if (onConnectionError) onConnectionError(err)
   }
+
+  return () => {}
 }
 
 export default connectDispatcherRealtime

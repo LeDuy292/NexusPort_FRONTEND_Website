@@ -153,20 +153,43 @@ export default function Login() {
       const { token, user } = result.data
       showToastMessage(`Chào mừng ${user.fullName || user.username}! Đang chuyển hướng...`, 'check_circle', 'success')
       
+      const authUser = { ...user, token }
+      localStorage.setItem('user', JSON.stringify(authUser))
+      sessionStorage.setItem('user', JSON.stringify(authUser))
+      if (token) {
+        localStorage.setItem('token', token)
+        sessionStorage.setItem('token', token)
+      }
+      if (rememberMe) {
+        localStorage.setItem('rememberedUsername', user.username)
+      }
       if (loginWithToken) {
         loginWithToken(user, token, rememberMe)
-      } else {
-        localStorage.setItem('user', JSON.stringify({ ...user, token }))
       }
 
-      // Tìm redirect path phù hợp với role trả về từ BE nếu role người dùng chọn trùng hoặc không chọn
-      const matchedRoleObj = roles.find(r => r.roleName === user.role)
-      const redirectPath = matchedRoleObj ? matchedRoleObj.redirect : (selectedRole ? selectedRole.redirect : '/')
+      // Xác định đường dẫn điều hướng chính xác theo vai trò từ Backend
+      const normalizedRole = (user.role || '').trim().toLowerCase()
+      let redirectPath = '/dashboard'
+      if (normalizedRole === 'yard operator' || normalizedRole === 'yard staff' || normalizedRole === 'yard') {
+        redirectPath = '/yard-staff/dashboard'
+      } else if (normalizedRole === 'dispatcher' || normalizedRole === 'operator') {
+        redirectPath = '/dashboard'
+      } else if (normalizedRole === 'gate officer' || normalizedRole === 'gate') {
+        redirectPath = '/gate'
+      } else if (normalizedRole === 'berth staff' || normalizedRole === 'berth') {
+        redirectPath = '/berth-staff/dashboard'
+      } else if (normalizedRole === 'transport company' || normalizedRole === 'carrier') {
+        redirectPath = '/carrier-portal'
+      } else if (normalizedRole === 'driver') {
+        redirectPath = '/driver-portal'
+      } else if (normalizedRole === 'administrator' || normalizedRole === 'admin') {
+        redirectPath = '/dashboard'
+      }
 
       setTimeout(() => {
         setLoading(false)
-        navigate(redirectPath)
-      }, 1000)
+        navigate(redirectPath, { replace: true })
+      }, 400)
 
     } catch (err) {
       console.error('Login error:', err)

@@ -43,6 +43,7 @@ import ContainerInventoryInspection from './pages/Yard/ContainerInventoryInspect
 import YardMovementOperations from './pages/Yard/YardMovementOperations'
 import ContainerGateOutPreparation from './pages/Yard/ContainerGateOutPreparation'
 import ContainerDetail from './pages/Yard/ContainerDetail'
+import YardReceiving from './pages/Yard/YardReceiving'
 import DriverPortalContainer from './pages/Driver/DriverPortalContainer'
 import BerthOperationsDashboard from './pages/BerthStaff/BerthOperationsDashboard'
 import VesselOperationControl from './pages/BerthStaff/VesselOperationControl'
@@ -69,28 +70,36 @@ import BillingChargesManagement from './pages/Admin/BillingChargesManagement'
 
 // Component chuyển hướng trang chủ dựa trên vai trò (Role-based Home Redirect)
 function HomeRedirect() {
-  const user = JSON.parse(localStorage.getItem('user'))
-  if (!user) return <Navigate to="/login" replace />
+  const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
+  let user = null
+  try {
+    user = storedUser ? JSON.parse(storedUser) : null
+  } catch {
+    user = null
+  }
 
-  if (user.role === ROLES.TRANSPORT_COMPANY) {
+  if (!user || !user.role) return <Navigate to="/login" replace />
+
+  const role = (user.role || '').trim().toLowerCase()
+  if (role === 'transport company' || role === 'carrier') {
     return <Navigate to="/carrier-portal" replace />
   }
-  if (user.role === ROLES.DRIVER) {
+  if (role === 'driver') {
     return <Navigate to="/driver-portal" replace />
   }
-  if (user.role === ROLES.GATE_OFFICER) {
+  if (role === 'gate officer' || role === 'gate') {
     return <Navigate to="/gate" replace />
   }
-  if (user.role === ROLES.DISPATCHER) {
+  if (role === 'dispatcher' || role === 'operator') {
     return <Navigate to="/dashboard" replace />
   }
-  if (user.role === ROLES.YARD_OPERATOR) {
+  if (role === 'yard operator' || role === 'yard staff' || role === 'yard') {
     return <Navigate to="/yard-staff/dashboard" replace />
   }
-  if (user.role === ROLES.BERTH_STAFF) {
+  if (role === 'berth staff' || role === 'berth') {
     return <Navigate to="/berth-staff/dashboard" replace />
   }
-  if (user.role === ROLES.ADMINISTRATOR) {
+  if (role === 'administrator' || role === 'admin') {
     return <Navigate to="/dashboard" replace />
   }
 
@@ -157,6 +166,8 @@ function App() {
             <Route path="/yard-staff/movement-operations" element={<YardMovementOperations />} />
             <Route path="/yard-staff/gate-out-preparation" element={<ContainerGateOutPreparation />} />
             <Route path="/yard-staff/container-detail" element={<ContainerDetail />} />
+            <Route path="/yard-staff/receiving" element={<YardReceiving />} />
+            <Route path="/yard/receiving" element={<YardReceiving />} />
           </Route>
 
           {/* Nhóm Nhân viên Cổng (Gate Officer) */}

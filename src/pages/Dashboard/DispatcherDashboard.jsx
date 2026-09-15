@@ -189,7 +189,7 @@ export default function DispatcherDashboard() {
       <section className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-4">
         <div className="flex justify-between items-center border-b border-chalk pb-3">
           <div>
-            <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider">NXP-063 REALTIME CHANNEL</span>
+            <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider">KÊNH ĐIỀU ĐỘ THỜI GIAN THỰC</span>
             <h3 className="font-heading text-lg font-extrabold text-carbon">Trạng thái vận hành trực tiếp</h3>
           </div>
           <span className="text-[10px] font-bold text-green-700 bg-green-50 border border-green-200 rounded-full px-3 py-1">
