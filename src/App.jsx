@@ -8,6 +8,7 @@ import MainLayout from './layouts/MainLayout'
 import BerthOps from './pages/Ships/BerthOps'
 import CargoDeclaration from './pages/Containers/CargoDeclaration'
 import DamageReport from './pages/Containers/DamageReport'
+import ContainerManagement from './pages/Containers/ContainerManagement'
 import CarrierProfile from './pages/Ships/CarrierProfile'
 import EquipmentDispatch from './pages/Dispatch/EquipmentDispatch'
 import VesselSchedule from './pages/Ships/VesselSchedule'
@@ -42,6 +43,7 @@ import ContainerInventoryInspection from './pages/Yard/ContainerInventoryInspect
 import YardMovementOperations from './pages/Yard/YardMovementOperations'
 import ContainerGateOutPreparation from './pages/Yard/ContainerGateOutPreparation'
 import ContainerDetail from './pages/Yard/ContainerDetail'
+import YardReceiving from './pages/Yard/YardReceiving'
 import DriverPortalContainer from './pages/Driver/DriverPortalContainer'
 import BerthOperationsDashboard from './pages/BerthStaff/BerthOperationsDashboard'
 import VesselOperationControl from './pages/BerthStaff/VesselOperationControl'
@@ -68,26 +70,37 @@ import BillingChargesManagement from './pages/Admin/BillingChargesManagement'
 
 // Component chuyển hướng trang chủ dựa trên vai trò (Role-based Home Redirect)
 function HomeRedirect() {
-  const user = JSON.parse(localStorage.getItem('user'))
-  if (!user) return <Navigate to="/login" replace />
+  const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
+  let user = null
+  try {
+    user = storedUser ? JSON.parse(storedUser) : null
+  } catch {
+    user = null
+  }
 
-  if (user.role === ROLES.TRANSPORT_COMPANY) {
+  if (!user || !user.role) return <Navigate to="/login" replace />
+
+  const role = (user.role || '').trim().toLowerCase()
+  if (role === 'transport company' || role === 'carrier') {
     return <Navigate to="/carrier-portal" replace />
   }
-  if (user.role === ROLES.GATE_OFFICER) {
-    return <Navigate to="/gate" replace />
-  }
-  if (user.role === ROLES.DRIVER) {
+  if (role === 'driver') {
     return <Navigate to="/driver-portal" replace />
   }
-  
-  // Các vai trò có quyền vào Dashboard (Dispatcher, Yard Operator, Administrator)
-  if ([ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR].includes(user.role)) {
+  if (role === 'gate officer' || role === 'gate') {
+    return <Navigate to="/gate" replace />
+  }
+  if (role === 'dispatcher' || role === 'operator') {
     return <Navigate to="/dashboard" replace />
   }
-
-  if (user.role === ROLES.BERTH_STAFF) {
-    return <Navigate to="/berth" replace />
+  if (role === 'yard operator' || role === 'yard staff' || role === 'yard') {
+    return <Navigate to="/yard-staff/dashboard" replace />
+  }
+  if (role === 'berth staff' || role === 'berth') {
+    return <Navigate to="/berth-staff/dashboard" replace />
+  }
+  if (role === 'administrator' || role === 'admin') {
+    return <Navigate to="/dashboard" replace />
   }
 
   return <Navigate to="/unauthorized" replace />
@@ -153,6 +166,8 @@ function App() {
             <Route path="/yard-staff/movement-operations" element={<YardMovementOperations />} />
             <Route path="/yard-staff/gate-out-preparation" element={<ContainerGateOutPreparation />} />
             <Route path="/yard-staff/container-detail" element={<ContainerDetail />} />
+            <Route path="/yard-staff/receiving" element={<YardReceiving />} />
+            <Route path="/yard/receiving" element={<YardReceiving />} />
           </Route>
 
           {/* Nhóm Nhân viên Cổng (Gate Officer) */}
@@ -183,6 +198,7 @@ function App() {
 
           {/* Báo cáo hư hỏng (Cần cho cả Yard Operator, Gate Officer, Dispatcher, Admin) */}
           <Route element={<RoleRoute allowedRoles={[ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
+            <Route path="/containers" element={<ContainerManagement />} />
             <Route path="/damage-report" element={<DamageReport />} />
           </Route>
 

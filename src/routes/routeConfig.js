@@ -28,6 +28,10 @@ export const routeConfig = [
     allowedRoles: [ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
   },
   {
+    path: '/containers',
+    allowedRoles: [ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.ADMINISTRATOR],
+  },
+  {
     path: '/booking',
     allowedRoles: [ROLES.TRANSPORT_COMPANY],
   },
@@ -42,6 +46,14 @@ export const routeConfig = [
   {
     path: '/yard-ops',
     allowedRoles: [ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/yard/receiving',
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/yard-staff/receiving',
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {
     path: '/berth',

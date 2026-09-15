@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import DriverHome from './DriverHome'
 import DriverAppointments from './DriverAppointments'
 import DriverQR from './DriverQR'
@@ -6,6 +6,8 @@ import DriverCheckin from './DriverCheckin'
 import DriverNavigation from './DriverNavigation'
 import DriverContainerLocation from './DriverContainerLocation'
 import DriverTransactionStatus from './DriverTransactionStatus'
+import { connectDriverRealtime } from '../../services/driverRealtimeService'
+import { driverContainerConfirmationService } from '../../services/driverContainerConfirmationService'
 
 export default function DriverPortalContainer() {
   const [activeTab, setActiveTab] = useState('home')
@@ -14,6 +16,57 @@ export default function DriverPortalContainer() {
   const [toastMessage, setToastMessage] = useState('')
   const [driverMode, setDriverMode] = useState('pickup') // 'pickup' | 'delivery'
   const [tripStep, setTripStep] = useState(1) // 1: Nhận xe, 2: Di chuyển, 3: Xếp dỡ, 4: Rời cảng, 5: Hoàn thành
+  const [yardNotifications, setYardNotifications] = useState([])
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [pendingConfirmation, setPendingConfirmation] = useState(null)
+  const [isConfirming, setIsConfirming] = useState(false)
+
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
+    if (storedUser) {
+      driverContainerConfirmationService.getAssignedOperations()
+        .then(operations => {
+          const items = Array.isArray(operations) ? operations : []
+          if (items[0]) setPendingConfirmation(items[0])
+        })
+        .catch(() => {
+          // The driver app remains usable when the API is unavailable.
+        })
+    }
+
+    return connectDriverRealtime((event) => {
+      setYardNotifications(current => [{ ...event, receivedAt: new Date().toISOString() }, ...current].slice(0, 20))
+      setToastMessage(`✅ Container ${event.containerId} · ${event.operationStatus}`)
+      setPendingConfirmation({
+        containerId: event.containerId,
+        containerNumber: event.containerNumber || event.containerId,
+        operationStatus: event.operationStatus,
+        bookingId: event.bookingId,
+        source: 'realtime'
+      })
+      setTripStep(current => Math.max(current, 4))
+      setTimeout(() => setToastMessage(''), 5000)
+    }, () => {
+      // The app remains usable offline; Socket.IO will retry in the background.
+    })
+  }, [])
+
+  const handleConfirmContainer = async () => {
+    if (!pendingConfirmation?.containerId || isConfirming) return
+    setIsConfirming(true)
+    try {
+      const result = await driverContainerConfirmationService.confirmContainer(pendingConfirmation.containerId, 'OK')
+      setPendingConfirmation(current => ({ ...current, ...result, operationStatus: result.containerStatus }))
+      setTripStep(current => Math.max(current, 4))
+      setToastMessage(`✅ Container ${result.containerNumber} đã sẵn sàng Gate-Out`)
+      setTimeout(() => setToastMessage(''), 4000)
+    } catch (error) {
+      setToastMessage(`❌ Không thể xác nhận container: ${error.message}`)
+      setTimeout(() => setToastMessage(''), 5000)
+    } finally {
+      setIsConfirming(false)
+    }
+  }
 
   const handleSelectQR = (app) => {
     setSelectedApp(app)
@@ -69,12 +122,30 @@ export default function DriverPortalContainer() {
             </button>
           )}
 
-          <button className="relative p-2 text-slate hover:text-carbon transition-colors">
+          <button onClick={() => setShowNotifications(current => !current)} className="relative p-2 text-slate hover:text-carbon transition-colors">
             <span className="material-symbols-outlined text-2xl">notifications</span>
-            <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-signal-orange rounded-full ring-2 ring-white"></span>
+            {yardNotifications.length > 0 && <span className="absolute top-1 right-1 min-w-4 h-4 px-1 bg-signal-orange text-white rounded-full ring-2 ring-white text-[9px] font-bold leading-4">{yardNotifications.length}</span>}
           </button>
         </div>
       </header>
+
+      {showNotifications && (
+        <section className="absolute top-16 right-3 left-3 max-w-[450px] mx-auto bg-white border border-chalk rounded-xl shadow-xl z-50 overflow-hidden">
+          <div className="px-4 py-3 border-b border-chalk flex justify-between items-center">
+            <strong className="text-xs">Thông báo tác nghiệp bãi</strong>
+            <button onClick={() => setYardNotifications([])} className="text-[10px] text-slate">Xóa tất cả</button>
+          </div>
+          <div className="max-h-56 overflow-auto">
+            {yardNotifications.length === 0 ? <p className="p-4 text-xs text-slate">Chưa có thông báo realtime.</p> : yardNotifications.map(item => (
+              <div key={item.eventId} className="p-3 border-b border-chalk text-xs">
+                <p className="font-bold text-carbon">Container ID: {item.containerId}</p>
+                <p className="text-green-600 font-bold">Operation status: {item.operationStatus}</p>
+                <p className="text-[10px] text-slate mt-1">{new Date(item.completedAt).toLocaleString('vi-VN')}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* DRIVER TRIP TYPE SWITCHER (PICKUP VS DELIVERY) */}
       <div className="bg-white border-b border-chalk px-5 py-2.5 flex items-center justify-between gap-2 z-30">
@@ -106,6 +177,35 @@ export default function DriverPortalContainer() {
           </button>
         </div>
       </div>
+
+      {/* NXP-062: driver reviews the assigned operation and confirms the container. */}
+      {pendingConfirmation && (
+        <section className="mx-5 mt-4 bg-white border-2 border-signal-orange rounded-2xl p-4 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider">XÁC NHẬN CONTAINER</span>
+              <h2 className="text-sm font-extrabold text-carbon mt-1">Operation đã hoàn tất</h2>
+            </div>
+            <span className="material-symbols-outlined text-signal-orange">fact_check</span>
+          </div>
+          <div className="bg-fog rounded-xl border border-chalk p-3 text-xs space-y-1.5 font-mono">
+            <div className="flex justify-between gap-3"><span className="text-slate">Container</span><strong>{pendingConfirmation.containerNumber || pendingConfirmation.containerId}</strong></div>
+            <div className="flex justify-between gap-3"><span className="text-slate">Operation</span><strong className="text-green-700">{pendingConfirmation.operationStatus || 'Completed'}</strong></div>
+            {pendingConfirmation.bookingCode && <div className="flex justify-between gap-3"><span className="text-slate">Booking</span><strong>{pendingConfirmation.bookingCode}</strong></div>}
+          </div>
+          {pendingConfirmation.containerStatus === 'ReadyForGateOut' || pendingConfirmation.operationStatus === 'ReadyForGateOut' ? (
+            <div className="text-center text-xs font-bold text-green-700 bg-green-50 border border-green-200 rounded-lg py-2">Đã xác nhận · Ready for Gate-Out</div>
+          ) : (
+            <button
+              onClick={handleConfirmContainer}
+              disabled={isConfirming}
+              className="w-full bg-carbon text-white rounded-xl py-3 text-xs font-extrabold disabled:opacity-50"
+            >
+              {isConfirming ? 'ĐANG LƯU XÁC NHẬN...' : 'CONFIRM CONTAINER'}
+            </button>
+          )}
+        </section>
+      )}
 
       {/* MAIN CONTAINER CONTENT AREA */}
       <main className="flex-1 p-5 overflow-y-auto pb-24">

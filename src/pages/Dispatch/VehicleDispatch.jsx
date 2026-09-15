@@ -1,4 +1,5 @@
 import React, { useState } from 'react'
+import yardTaskService from '../../services/yardTaskService'
 
 export default function VehicleDispatch() {
   const [activeFilter, setActiveFilter] = useState('All') // 'All' | 'PORT_PICKUP' | 'YARD_MOVE' | 'DELIVERY' | 'High' | 'Waiting'
@@ -198,6 +199,12 @@ export default function VehicleDispatch() {
     }
   ])
 
+  // Pagination States
+  const [tasksPage, setTasksPage] = useState(1)
+  const tasksPerPage = 3
+  const [activeDspPage, setActiveDspPage] = useState(1)
+  const activeDspPerPage = 3
+
   // Filter Tasks
   const filteredTasks = pendingTasks.filter(t => {
     if (activeFilter === 'PORT_PICKUP') return t.taskType === 'PORT_PICKUP'
@@ -206,6 +213,17 @@ export default function VehicleDispatch() {
     if (activeFilter === 'High') return t.priority === 'HIGH'
     return true
   })
+
+  const totalTasksPages = Math.max(1, Math.ceil(filteredTasks.length / tasksPerPage))
+  const paginatedPendingTasks = filteredTasks.slice((tasksPage - 1) * tasksPerPage, tasksPage * tasksPerPage)
+
+  const totalActiveDspPages = Math.max(1, Math.ceil(activeDispatches.length / activeDspPerPage))
+  const paginatedActiveDispatches = activeDispatches.slice((activeDspPage - 1) * activeDspPerPage, activeDspPage * activeDspPerPage)
+
+  const handleFilterChange = (f) => {
+    setActiveFilter(f)
+    setTasksPage(1)
+  }
 
   // Confirm Dispatch Execution
   const handleExecuteDispatch = () => {
@@ -246,6 +264,27 @@ export default function VehicleDispatch() {
     setShowConfirmModal(false)
     setDispatchSuccessData(newDispatchItem)
     setSelectedVehicleForTask(null)
+
+    // Sync newly created operation order with Backend Yard Task API (NXP-057)
+    try {
+      yardTaskService.createTask({
+        taskCode: newDspId,
+        containerNo: selectedTask.container || 'MSCU1234567',
+        blockCode: 'A01',
+        operationType: selectedTask.taskType === 'PORT_PICKUP' ? 'Load' : selectedTask.taskType === 'PORT_DELIVERY' ? 'Unload' : 'Relocate',
+        fromLocation: selectedTask.origin || 'Cầu Tàu B-01',
+        toLocation: selectedTask.destination || 'A-01-05-1',
+        priority: selectedTask.priority === 'HIGH' ? 'Critical' : 'High',
+        containerType: selectedTask.containerType || '40FT HC',
+        cargoType: 'Hàng Tiêu Dùng',
+        vehiclePlate: selectedVehicleForTask.plate,
+        driverName: selectedVehicleForTask.driver,
+        dueTime: new Date(Date.now() + 45 * 60 * 1000).toISOString(),
+        notes: `Lệnh điều phối từ Dispatcher cho xe ${selectedVehicleForTask.plate} (${selectedVehicleForTask.driver})`
+      }).catch(err => console.warn('Could not sync to yard tasks backend:', err))
+    } catch (e) {
+      console.warn('Dispatch sync error:', e)
+    }
 
     setToastMessage(`⚡ Đã tạo lệnh điều độ ${newDspId} và tự động gửi Gate Booking ${generatedGateBookingId} thành công!`)
     setTimeout(() => setToastMessage(''), 4000)
@@ -440,21 +479,47 @@ export default function VehicleDispatch() {
                   <span className="text-[10px] text-slate font-sans">Chờ: {task.waitingTime}</span>
                 </div>
 
-                <h4 className="font-heading font-extrabold text-sm text-carbon">{task.taskTypeName}</h4>
-                <div className="text-signal-orange font-bold text-xs mt-0.5">{task.container} ({task.containerType})</div>
+                  <h4 className="font-heading font-extrabold text-sm text-carbon">{task.taskTypeName}</h4>
+                  <div className="text-signal-orange font-bold text-xs mt-0.5">{task.container} ({task.containerType})</div>
 
-                <div className="bg-fog p-2.5 rounded-lg border border-chalk my-2 text-[11px] font-sans space-y-1">
-                  <div>Từ: <strong className="text-carbon font-mono">{task.origin}</strong></div>
-                  <div>Đến: <strong className="text-carbon font-mono">{task.destination}</strong></div>
-                </div>
+                  <div className="bg-fog p-2.5 rounded-lg border border-chalk my-2 text-[11px] font-sans space-y-1">
+                    <div>Từ: <strong className="text-carbon font-mono">{task.origin}</strong></div>
+                    <div>Đến: <strong className="text-carbon font-mono">{task.destination}</strong></div>
+                  </div>
 
-                <div className="flex justify-between items-center text-[10px] pt-1">
-                  <span className="text-slate font-sans">Yêu cầu loại xe:</span>
-                  <strong className="text-carbon font-mono">{task.requiredVehicleName}</strong>
+                  <div className="flex justify-between items-center text-[10px] pt-1">
+                    <span className="text-slate font-sans">Yêu cầu loại xe:</span>
+                    <strong className="text-carbon font-mono">{task.requiredVehicleName}</strong>
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
+
+          {/* Pending Tasks Pagination Controls */}
+          {totalTasksPages > 1 && (
+            <div className="flex items-center justify-between pt-2 border-t border-chalk text-xs">
+              <span className="text-[11px] text-slate font-sans">
+                Trang <strong>{tasksPage}</strong> / {totalTasksPages} ({filteredTasks.length} yêu cầu)
+              </span>
+              <div className="flex items-center gap-1 font-sans">
+                <button
+                  onClick={() => setTasksPage(p => Math.max(1, p - 1))}
+                  disabled={tasksPage === 1}
+                  className="px-2.5 py-1 bg-fog hover:bg-slate-200 disabled:opacity-40 disabled:pointer-events-none rounded-lg text-xs font-semibold text-carbon transition-colors cursor-pointer border border-chalk"
+                >
+                  ◀
+                </button>
+                <button
+                  onClick={() => setTasksPage(p => Math.min(totalTasksPages, p + 1))}
+                  disabled={tasksPage === totalTasksPages}
+                  className="px-2.5 py-1 bg-fog hover:bg-slate-200 disabled:opacity-40 disabled:pointer-events-none rounded-lg text-xs font-semibold text-carbon transition-colors cursor-pointer border border-chalk"
+                >
+                  ▶
+                </button>
+              </div>
+            </div>
+          )}
 
         </div>
 
@@ -645,36 +710,73 @@ export default function VehicleDispatch() {
                   <span className="text-[10px] font-bold text-slate block">{dsp.dspId}</span>
                   <strong className="text-base text-carbon">{dsp.vehicle} ({dsp.plate})</strong>
                 </div>
-                <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${dsp.statusClass}`}>
-                  ● {dsp.statusLabel}
-                </span>
-              </div>
 
-              <div className="bg-white p-3 rounded-xl border border-chalk space-y-1 font-sans">
-                <div className="font-bold text-carbon">Container: {dsp.container}</div>
-                <div className="text-slate text-[11px]">Từ: <strong>{dsp.origin}</strong> ➔ Đến: <strong className="text-signal-orange">{dsp.destination}</strong></div>
-                <div className="text-[10px] text-slate font-mono pt-1">Gate Booking: <strong>{dsp.gateBookingId}</strong></div>
-              </div>
+                <div className="bg-white p-3 rounded-xl border border-chalk space-y-1 font-sans">
+                  <div className="font-bold text-carbon">Container: {dsp.container}</div>
+                  <div className="text-slate text-[11px]">Từ: <strong>{dsp.origin}</strong> ➔ Đến: <strong className="text-signal-orange">{dsp.destination}</strong></div>
+                  <div className="text-[10px] text-slate font-mono pt-1">Gate Booking: <strong>{dsp.gateBookingId}</strong></div>
+                </div>
 
-              <div className="flex justify-between items-center pt-1 font-sans">
-                <span className="text-slate text-[11px]">Dự kiến: {dsp.eta}</span>
-                {dsp.status === 'DELAYED' ? (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setShowReassignModal(true)
-                    }}
-                    className="px-3 py-1 bg-red-600 text-white rounded-lg font-bold text-[11px] hover:bg-red-700 transition-colors shadow"
-                  >
-                    🔄 Tái Chỉ Định Xe
-                  </button>
-                ) : (
-                  <span className="text-signal-orange font-bold text-[11px]">Xem Timeline ➔</span>
-                )}
+                <div className="flex justify-between items-center pt-1 font-sans">
+                  <span className="text-slate text-[11px]">Dự kiến: {dsp.eta}</span>
+                  {dsp.status === 'DELAYED' ? (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setShowReassignModal(true)
+                      }}
+                      className="px-3 py-1 bg-red-600 text-white rounded-lg font-bold text-[11px] hover:bg-red-700 transition-colors shadow cursor-pointer"
+                    >
+                      🔄 Tái Chỉ Định Xe
+                    </button>
+                  ) : (
+                    <span className="text-signal-orange font-bold text-[11px]">Xem Timeline ➔</span>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
         </div>
+
+        {/* Active Dispatches Pagination Controls */}
+        {totalActiveDspPages > 1 && (
+          <div className="flex items-center justify-between pt-3 border-t border-chalk text-xs">
+            <span className="text-slate font-sans">
+              Hiển thị trang <strong>{activeDspPage}</strong> trên tổng số <strong>{totalActiveDspPages}</strong> trang ({activeDispatches.length} lệnh)
+            </span>
+            <div className="flex items-center gap-1.5 font-sans">
+              <button
+                onClick={() => setActiveDspPage(p => Math.max(1, p - 1))}
+                disabled={activeDspPage === 1}
+                className="px-3 py-1.5 bg-fog hover:bg-slate-200 disabled:opacity-40 disabled:pointer-events-none rounded-lg text-xs font-bold text-carbon transition-colors cursor-pointer border border-chalk flex items-center gap-1"
+              >
+                ◀ Trang trước
+              </button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalActiveDspPages }, (_, i) => i + 1).map(pageNo => (
+                  <button
+                    key={pageNo}
+                    onClick={() => setActiveDspPage(pageNo)}
+                    className={`w-7 h-7 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                      activeDspPage === pageNo
+                        ? 'bg-carbon text-white shadow-sm'
+                        : 'bg-fog text-slate hover:text-carbon border border-chalk'
+                    }`}
+                  >
+                    {pageNo}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setActiveDspPage(p => Math.min(totalActiveDspPages, p + 1))}
+                disabled={activeDspPage === totalActiveDspPages}
+                className="px-3 py-1.5 bg-fog hover:bg-slate-200 disabled:opacity-40 disabled:pointer-events-none rounded-lg text-xs font-bold text-carbon transition-colors cursor-pointer border border-chalk flex items-center gap-1"
+              >
+                Trang sau ▶
+              </button>
+            </div>
+          </div>
+        )}
 
       </div>
 
