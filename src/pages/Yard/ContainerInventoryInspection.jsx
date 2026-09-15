@@ -296,7 +296,7 @@ export default function ContainerInventoryInspection() {
 
       {/* ── SEARCH & FILTERS BAR ── */}
       <div className="bg-white border-2 border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row gap-4 items-center justify-between">
-        
+
         <div className="relative w-full max-w-md">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-base">qr_code_scanner</span>
           <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
@@ -427,7 +427,7 @@ export default function ContainerInventoryInspection() {
       {inspectingItem && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white max-w-4xl w-full rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 animate-in zoom-in-95 font-sans border-2 border-orange-400 max-h-[92vh] overflow-y-auto">
-            
+
             {/* Modal Header */}
             <div className="flex justify-between items-start border-b border-slate-200 pb-4">
               <div>
@@ -465,7 +465,7 @@ export default function ContainerInventoryInspection() {
                   <div className="relative overflow-hidden rounded-xl border border-slate-700 bg-slate-950 group">
                     <img src={inspectingItem.cargoImage || '/container_cargo_interior.png'} alt="Container Cargo Interior"
                       className="w-full h-64 object-cover group-hover:scale-105 transition-transform duration-500" />
-                    
+
                     <div className="absolute top-3 left-3 bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-lg border border-slate-700 text-[10px] font-mono text-emerald-400 font-bold">
                       ● Đèn Thần Đèn Bãi A · 14:30 Today
                     </div>
@@ -478,23 +478,20 @@ export default function ContainerInventoryInspection() {
                   {/* Thumbnail Tabs */}
                   <div className="grid grid-cols-3 gap-2 text-[10px] font-mono">
                     <button type="button" onClick={() => setSelectedPhotoTab('interior')}
-                      className={`p-2 rounded-lg border font-bold text-center cursor-pointer transition-all ${
-                        selectedPhotoTab === 'interior' ? 'bg-orange-100 text-orange-950 border-orange-400 font-black' : 'bg-slate-800 text-slate-400 border-slate-700'
-                      }`}>
+                      className={`p-2 rounded-lg border font-bold text-center cursor-pointer transition-all ${selectedPhotoTab === 'interior' ? 'bg-orange-100 text-orange-950 border-orange-400 font-black' : 'bg-slate-800 text-slate-400 border-slate-700'
+                        }`}>
                       📸 1. Hàng Trong Cont
                     </button>
 
                     <button type="button" onClick={() => setSelectedPhotoTab('seal')}
-                      className={`p-2 rounded-lg border font-bold text-center cursor-pointer transition-all ${
-                        selectedPhotoTab === 'seal' ? 'bg-orange-100 text-orange-950 border-orange-400 font-black' : 'bg-slate-800 text-slate-400 border-slate-700'
-                      }`}>
+                      className={`p-2 rounded-lg border font-bold text-center cursor-pointer transition-all ${selectedPhotoTab === 'seal' ? 'bg-orange-100 text-orange-950 border-orange-400 font-black' : 'bg-slate-800 text-slate-400 border-slate-700'
+                        }`}>
                       🏷️ 2. Niêm Phong Chì
                     </button>
 
                     <button type="button" onClick={() => setSelectedPhotoTab('barcode')}
-                      className={`p-2 rounded-lg border font-bold text-center cursor-pointer transition-all ${
-                        selectedPhotoTab === 'barcode' ? 'bg-orange-100 text-orange-950 border-orange-400 font-black' : 'bg-slate-800 text-slate-400 border-slate-700'
-                      }`}>
+                      className={`p-2 rounded-lg border font-bold text-center cursor-pointer transition-all ${selectedPhotoTab === 'barcode' ? 'bg-orange-100 text-orange-950 border-orange-400 font-black' : 'bg-slate-800 text-slate-400 border-slate-700'
+                        }`}>
                       📊 3. Mã Vạch Barcode
                     </button>
                   </div>
@@ -516,14 +513,13 @@ export default function ContainerInventoryInspection() {
 
               {/* RIGHT COLUMN: MANIFEST COMPARISON & CHECKLIST CONTROLS */}
               <div className="space-y-4 font-mono text-xs">
-                
+
                 {/* Comparison Card */}
                 <div className="bg-blue-50 border-2 border-blue-300 rounded-2xl p-4 space-y-3 font-sans">
                   <div className="text-xs font-black text-blue-950 uppercase font-mono flex items-center justify-between border-b border-blue-200 pb-2">
                     <span>ĐỐI SOÁT KHAI BÁO VẬN CHUYỂN VS THỰC TẾ:</span>
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
-                      inspectingItem.qtyMatchStatus === 'MATCHED' ? 'bg-emerald-100 text-emerald-950 border border-emerald-400' : 'bg-red-200 text-red-950 border border-red-500'
-                    }`}>
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-black ${inspectingItem.qtyMatchStatus === 'MATCHED' ? 'bg-emerald-100 text-emerald-950 border border-emerald-400' : 'bg-red-200 text-red-950 border border-red-500'
+                      }`}>
                       {inspectingItem.qtyMatchStatus === 'MATCHED' ? '🟢 KHỚP 100%' : '🔴 SAI LỆCH KHAI BÁO'}
                     </span>
                   </div>
@@ -643,9 +639,8 @@ export default function ContainerInventoryInspection() {
                 <div className="flex gap-2 font-mono">
                   {['Low', 'Medium', 'High', 'Critical'].map(sev => (
                     <button type="button" key={sev} onClick={() => setDamageForm(p => ({ ...p, severity: sev }))}
-                      className={`flex-1 py-2 rounded-xl border-2 text-xs font-black transition-all cursor-pointer ${
-                        damageForm.severity === sev ? 'bg-red-200 text-red-950 border-red-500' : 'bg-slate-100 text-slate-700 border-slate-300'
-                      }`}>
+                      className={`flex-1 py-2 rounded-xl border-2 text-xs font-black transition-all cursor-pointer ${damageForm.severity === sev ? 'bg-red-200 text-red-950 border-red-500' : 'bg-slate-100 text-slate-700 border-slate-300'
+                        }`}>
                       {sev === 'Low' ? 'Nhẹ' : sev === 'Medium' ? 'Trung Bình' : sev === 'High' ? 'Nghiêm Trọng' : 'Rất NGH. Trọng'}
                     </button>
                   ))}

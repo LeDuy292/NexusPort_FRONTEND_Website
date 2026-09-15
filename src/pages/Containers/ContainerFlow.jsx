@@ -125,7 +125,7 @@ export default function ContainerFlow() {
 
   return (
     <div className="p-8 w-full font-sans flex flex-col gap-6 relative">
-      
+
       {/* HEADER BAR */}
       <div className="flex justify-between items-center bg-white border border-chalk rounded-2xl p-5 shadow-sm">
         <div>
@@ -153,7 +153,7 @@ export default function ContainerFlow() {
 
       {/* KPI BAR (5 CARDS) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        
+
         <div className="bg-white border border-chalk rounded-xl p-4 shadow-sm space-y-1">
           <span className="text-slate text-[10px] uppercase font-bold tracking-wider">Đang Chờ Xử Lý</span>
           <div className="text-3xl font-extrabold text-amber-500 font-mono">{kpis.waiting}</div>
@@ -188,7 +188,7 @@ export default function ContainerFlow() {
 
       {/* PIPELINE FLOW VISUALIZATION (SƠ ĐỒ LUỒNG PIPELINE) */}
       <div className="bg-white border border-chalk rounded-2xl p-6 shadow-sm space-y-4">
-        
+
         <div className="flex justify-between items-center border-b border-chalk pb-3">
           <div>
             <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider">TIẾN TRÌNH VẬN HÀNH CONTAINER</span>
@@ -198,7 +198,7 @@ export default function ContainerFlow() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs font-mono">
-          
+
           <div className="bg-amber-50/70 border-2 border-amber-400 p-4 rounded-xl space-y-2">
             <div className="flex justify-between items-center font-bold text-amber-900">
               <span>1. ĐANG CHỜ XỬ LÝ</span>
@@ -292,16 +292,15 @@ export default function ContainerFlow() {
 
       {/* FILTER & SEARCH BAR */}
       <div className="bg-white border border-chalk rounded-2xl p-4 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
-        
+
         {/* Filter Pills */}
         <div className="flex flex-wrap gap-1.5 text-xs font-bold">
           {['Tất cả', 'Lấy Cont', 'Hạ Cont', 'Đang chờ', 'Đã chỉ định', 'Đang thực hiện', 'Hoàn thành', 'Trễ hạn'].map(f => (
             <button
               key={f}
               onClick={() => setFilterStatus(f)}
-              className={`px-3 py-1.5 rounded-full transition-colors ${
-                filterStatus === f ? 'bg-carbon text-white shadow-sm' : 'bg-fog text-slate hover:text-carbon border border-chalk'
-              }`}
+              className={`px-3 py-1.5 rounded-full transition-colors ${filterStatus === f ? 'bg-carbon text-white shadow-sm' : 'bg-fog text-slate hover:text-carbon border border-chalk'
+                }`}
             >
               {f}
             </button>
@@ -324,10 +323,10 @@ export default function ContainerFlow() {
 
       {/* MAIN CONTAINER TABLE & TIMELINE SPLIT VIEW */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
+
         {/* LEFT SECTION: CONTAINER TABLE (7 cols ~58%) */}
         <div className="lg:col-span-7 bg-white border border-chalk rounded-2xl p-6 shadow-sm space-y-4">
-          
+
           <div className="flex justify-between items-center border-b border-chalk pb-3">
             <h3 className="font-heading text-lg font-extrabold text-carbon">Bảng Tiến Trình Luồng Container</h3>
             <span className="text-xs text-slate font-mono">Nhấn vào dòng để xem vòng đời</span>
@@ -350,9 +349,8 @@ export default function ContainerFlow() {
                   <tr
                     key={c.id}
                     onClick={() => setSelectedContainer(c)}
-                    className={`cursor-pointer transition-colors ${
-                      selectedContainer.id === c.id ? 'bg-orange-50/80 border-l-4 border-l-signal-orange' : 'hover:bg-fog/60'
-                    }`}
+                    className={`cursor-pointer transition-colors ${selectedContainer.id === c.id ? 'bg-orange-50/80 border-l-4 border-l-signal-orange' : 'hover:bg-fog/60'
+                      }`}
                   >
                     <td className="py-3.5 px-3 font-bold text-carbon">{c.id}</td>
                     <td className="py-3.5 px-3 font-sans text-graphite">{c.type}</td>
@@ -376,11 +374,11 @@ export default function ContainerFlow() {
 
         {/* RIGHT SECTION: CONTAINER TIMELINE STEPPER & AREA BREAKDOWN (5 cols ~42%) */}
         <div className="lg:col-span-5 space-y-6">
-          
+
           {/* CONTAINER LIFECYCLE TIMELINE STEPPER */}
           {selectedContainer && (
             <div className="bg-white border border-chalk rounded-2xl p-6 shadow-sm space-y-4">
-              
+
               <div className="border-b border-chalk pb-3">
                 <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider">CONTAINER TIMELINE</span>
                 <h3 className="font-heading text-xl font-extrabold text-carbon">{selectedContainer.id}</h3>
@@ -398,9 +396,9 @@ export default function ContainerFlow() {
               {/* TIMELINE STEPPER LIST */}
               <div className="space-y-3 pt-2 font-mono text-xs">
                 <span className="text-[10px] font-bold text-slate uppercase font-sans block">CÁC BƯỚC TIẾN TRÌNH VÒNG ĐỜI</span>
-                
+
                 <div className="space-y-2.5 pl-2 border-l-2 border-chalk">
-                  
+
                   <div className="flex items-center gap-3">
                     <span className="w-5 h-5 rounded-full bg-green-600 text-white flex items-center justify-center text-[10px] font-bold">✓</span>
                     <span className="text-carbon font-bold">1. Đã xác nhận Booking</span>
