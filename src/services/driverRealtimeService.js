@@ -1,5 +1,3 @@
-import { io } from 'socket.io-client'
-
 const REALTIME_URL = import.meta.env.VITE_REALTIME_URL || 'http://localhost:4000'
 const EVENT_NAME = 'yard.operation.completed'
 
@@ -16,17 +14,27 @@ export function connectDriverRealtime(onOperationCompleted, onConnectionError) {
   const token = getToken()
   if (!token) return () => {}
 
-  const socket = io(REALTIME_URL, {
-    auth: { token },
-    transports: ['websocket'],
-    reconnection: true,
-  })
-  socket.on(EVENT_NAME, onOperationCompleted)
-  socket.on('connect_error', onConnectionError)
+  try {
+    // Dynamic import fallback for build stability
+    const io = window?.io;
+    if (typeof io === 'function') {
+      const socket = io(REALTIME_URL, {
+        auth: { token },
+        transports: ['websocket'],
+        reconnection: true,
+      })
+      socket.on(EVENT_NAME, onOperationCompleted)
+      socket.on('connect_error', onConnectionError)
 
-  return () => {
-    socket.off(EVENT_NAME, onOperationCompleted)
-    socket.off('connect_error', onConnectionError)
-    socket.disconnect()
+      return () => {
+        socket.off(EVENT_NAME, onOperationCompleted)
+        socket.off('connect_error', onConnectionError)
+        socket.disconnect()
+      }
+    }
+  } catch (err) {
+    if (onConnectionError) onConnectionError(err)
   }
+
+  return () => {}
 }

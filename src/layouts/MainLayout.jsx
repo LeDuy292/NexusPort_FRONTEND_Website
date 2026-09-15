@@ -415,19 +415,20 @@ export default function MainLayout() {
         
         {/* TOP BAR */}
         <header className="h-20 px-8 flex justify-between items-center border-b border-chalk bg-white flex-shrink-0">
-          <div className="text-graphite text-sm font-medium flex items-center gap-2">
+          <div className="text-slate-600 text-sm font-medium flex items-center gap-2">
             <span>Terminal Portal</span>
-            <span className="text-slate">/</span>
-            <span className="text-carbon font-semibold text-base">{currentTitle}</span>
+            <span className="text-slate-400">/</span>
+            <span className="text-slate-900 font-semibold text-base">{currentTitle}</span>
           </div>
-          <div className="flex items-center gap-8">
-            <div className="flex items-center gap-2 text-sm font-bold text-primary">
-              <div className="w-2.5 h-2.5 rounded-full bg-signal-orange animate-ping"></div>
-              LIVE <span className="ml-1 text-slate font-normal">{clock}</span>
+          <div className="flex items-center gap-6">
+            <div className="flex items-center gap-2 text-xs font-bold text-slate-800 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-lg">
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>LIVE</span>
+              <span className="text-slate-700 font-mono font-medium">{clock}</span>
             </div>
-            <div className="flex items-center gap-4 text-graphite border-l border-chalk pl-6">
+            <div className="flex items-center gap-4 text-slate-600 border-l border-slate-200 pl-6">
               <NotificationCenter />
-              <span className="material-symbols-outlined cursor-pointer hover:text-primary transition-colors text-[24px]">account_circle</span>
+              <span className="material-symbols-outlined cursor-pointer hover:text-slate-900 transition-colors text-[24px]">account_circle</span>
             </div>
           </div>
         </header>
