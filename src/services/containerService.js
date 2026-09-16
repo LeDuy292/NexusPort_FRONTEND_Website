@@ -7,4 +7,8 @@ export const containerService = {
   createContainer: (data) => nodeApiClient.post('/containers', data),
   updateContainer: (id, data) => nodeApiClient.put(`/containers/${id}`, data),
   deleteContainer: (id) => nodeApiClient.delete(`/containers/${id}`),
+  getContainerStatus: (id) => nodeApiClient.get(`/containers/${id}/status`),
+  getContainerStatusHistory: (id) => nodeApiClient.get(`/containers/${id}/status/history`),
+  transitionContainerStatus: (id, status) =>
+    nodeApiClient.post(`/containers/${id}/status/transition`, { status }),
 }

@@ -1,10 +1,21 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { gateStatusData, waitingVehiclesData, gateBookingsData, gateIncidentsData } from '../../data/gateOfficerData'
+import { gateStatusData } from '../../data/gateOfficerData'
+import apiClient from '../../services/apiClient'
+import gateService from '../../services/gateService'
 
 export default function GateDashboard() {
   const navigate = useNavigate()
   const [currentTime, setCurrentTime] = useState('')
+  const [stats, setStats] = useState({
+    checkedIn: 0,
+    completed: 0,
+    rejected: 0,
+    waiting: 0,
+    expiredCount: 0,
+    pendingIncidents: 0,
+  })
+  const [todayBookings, setTodayBookings] = useState([])
 
   useEffect(() => {
     const tick = () => setCurrentTime(new Date().toLocaleTimeString('vi-VN'))
@@ -13,13 +24,28 @@ export default function GateDashboard() {
     return () => clearInterval(t)
   }, [])
 
-  // KPI calculations
-  const checkedIn = gateBookingsData.filter(b => b.status === 'Checked-in').length
-  const completed = gateBookingsData.filter(b => b.status === 'Completed').length
-  const rejected = gateBookingsData.filter(b => b.status === 'Rejected').length
-  const waiting = waitingVehiclesData.length
-  const expiredCount = gateBookingsData.filter(b => b.status === 'Expired').length
-  const pendingIncidents = gateIncidentsData.filter(i => i.status === 'Pending' || i.status === 'Under Review').length
+  useEffect(() => {
+    // Tải thống kê thực tế từ API
+    Promise.all([
+      apiClient.get('/v1/booking').catch(() => ({ data: [] })),
+      gateService.getVerificationHistory().catch(() => ({ data: [] })),
+    ]).then(([bookingRes, verifyRes]) => {
+      const bookings = bookingRes.data?.items || bookingRes.data || []
+      const verifications = verifyRes.data || []
+
+      setTodayBookings(bookings)
+      setStats({
+        checkedIn: bookings.filter(b => b.status === 'Checked-in' || b.status === 'CheckedIn').length,
+        completed: bookings.filter(b => b.status === 'Completed').length,
+        rejected: verifications.filter(v => v.status === 'FAIL').length,
+        waiting: bookings.filter(b => b.status === 'Approved').length,
+        expiredCount: bookings.filter(b => b.status === 'Expired').length,
+        pendingIncidents: 0,
+      })
+    })
+  }, [])
+
+  const { checkedIn, completed, rejected, waiting, expiredCount, pendingIncidents } = stats
 
   const statusBadge = (s) => {
     switch (s) {

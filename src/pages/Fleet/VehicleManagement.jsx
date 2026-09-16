@@ -233,7 +233,7 @@ export default function VehicleManagement() {
 
   return (
     <div className="p-8 w-full font-sans flex flex-col gap-6 relative">
-      
+
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-20 right-8 bg-carbon text-white px-6 py-3.5 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-3 z-[999] animate-bounce border border-signal-orange">
@@ -270,7 +270,7 @@ export default function VehicleManagement() {
 
       {/* KPI CARDS (6 STATS CARDS) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        
+
         <div className="bg-white border border-chalk rounded-xl p-4 shadow-sm space-y-1">
           <span className="text-slate text-[10px] uppercase font-bold tracking-wider">Tổng Số Xe</span>
           <div className="text-3xl font-extrabold text-carbon font-mono">{kpis.total}</div>
@@ -311,7 +311,7 @@ export default function VehicleManagement() {
 
       {/* SEARCH & MULTI-FILTER BAR */}
       <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 text-xs">
-        
+
         {/* Search Input */}
         <div className="relative w-full md:w-80">
           <span className="material-symbols-outlined absolute left-3 top-2.5 text-slate text-base">search</span>
@@ -326,30 +326,27 @@ export default function VehicleManagement() {
 
         {/* Filter Pills & Dropdowns */}
         <div className="flex flex-wrap items-center gap-3 w-full md:w-auto font-bold">
-          
+
           {/* Vehicle Type Filter Pills */}
           <div className="flex bg-fog p-1 rounded-xl border border-chalk">
             <button
               onClick={() => setVehicleTypeFilter('All')}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
-                vehicleTypeFilter === 'All' ? 'bg-carbon text-white shadow-sm' : 'text-slate hover:text-carbon'
-              }`}
+              className={`px-3 py-1.5 rounded-lg transition-colors ${vehicleTypeFilter === 'All' ? 'bg-carbon text-white shadow-sm' : 'text-slate hover:text-carbon'
+                }`}
             >
               Tất cả loại xe
             </button>
             <button
               onClick={() => setVehicleTypeFilter('ROAD_TRUCK')}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
-                vehicleTypeFilter === 'ROAD_TRUCK' ? 'bg-carbon text-white shadow-sm' : 'text-slate hover:text-carbon'
-              }`}
+              className={`px-3 py-1.5 rounded-lg transition-colors ${vehicleTypeFilter === 'ROAD_TRUCK' ? 'bg-carbon text-white shadow-sm' : 'text-slate hover:text-carbon'
+                }`}
             >
               🚚 Road Truck (Đường dài)
             </button>
             <button
               onClick={() => setVehicleTypeFilter('YARD_TRACTOR')}
-              className={`px-3 py-1.5 rounded-lg transition-colors ${
-                vehicleTypeFilter === 'YARD_TRACTOR' ? 'bg-carbon text-white shadow-sm' : 'text-slate hover:text-carbon'
-              }`}
+              className={`px-3 py-1.5 rounded-lg transition-colors ${vehicleTypeFilter === 'YARD_TRACTOR' ? 'bg-carbon text-white shadow-sm' : 'text-slate hover:text-carbon'
+                }`}
             >
               🚜 Yard Tractor (Nội bãi)
             </button>
@@ -389,7 +386,7 @@ export default function VehicleManagement() {
 
       {/* VEHICLE TABLE (BẢNG DANH SÁCH ĐỘI XE) */}
       <div className="bg-white border border-chalk rounded-2xl p-6 shadow-sm space-y-4">
-        
+
         <div className="flex justify-between items-center border-b border-chalk pb-3">
           <div>
             <h3 className="font-heading text-xl font-extrabold text-carbon">Danh Sách Đội Xe Vận Chuyển Container</h3>
@@ -436,7 +433,7 @@ export default function VehicleManagement() {
                 {filteredVehicles.map(v => (
                   <tr key={v.id} className="hover:bg-fog/60 transition-colors">
                     <td className="py-3.5 px-3 font-bold text-carbon text-sm">{v.id}</td>
-                    
+
                     <td className="py-3.5 px-3 font-sans">
                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${v.type === 'ROAD_TRUCK' ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}`}>
                         {v.type === 'ROAD_TRUCK' ? '🚚 Road Truck' : '🚜 Yard Tractor'}
@@ -487,7 +484,7 @@ export default function VehicleManagement() {
       {selectedVehicleDrawer && (
         <div className="fixed inset-0 bg-carbon/80 backdrop-blur-sm z-50 flex justify-end animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-white h-full border-l border-chalk shadow-2xl p-8 flex flex-col justify-between space-y-6 overflow-y-auto animate-in slide-in-from-right duration-300">
-            
+
             {/* Drawer Header */}
             <div className="flex justify-between items-start border-b border-chalk pb-4">
               <div>
@@ -507,7 +504,7 @@ export default function VehicleManagement() {
 
             {/* Drawer Main Info Body */}
             <div className="space-y-5 text-xs font-mono">
-              
+
               {/* 1. Vehicle Information */}
               <div className="space-y-2">
                 <span className="text-[10px] font-bold text-slate uppercase font-sans">1. THÔNG TIN PHƯƠNG TIỆN (VEHICLE INFO)</span>
@@ -623,7 +620,7 @@ export default function VehicleManagement() {
       {showAddModal && (
         <div className="fixed inset-0 bg-carbon/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
           <form onSubmit={handleCreateVehicle} className="bg-white rounded-3xl p-8 max-w-md w-full space-y-5 shadow-2xl animate-in zoom-in-95 duration-200">
-            
+
             <div className="flex justify-between items-center border-b border-chalk pb-4">
               <div>
                 <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider block">TẠO HỒ SƠ PHƯƠNG TIỆN</span>
