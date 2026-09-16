@@ -24,6 +24,7 @@ import YardMap from './pages/Yard/YardMap'
 import BillingPayment from './pages/Billing/BillingPayment'
 import UserRoleManagement from './pages/Users/UserRoleManagement'
 import CarrierPortal from './pages/Carrier/CarrierPortal'
+import CarrierStaffManagement from './pages/Carrier/CarrierStaffManagement'
 import DashboardIndex from './pages/Dashboard/DashboardIndex'
 import GateControl from './pages/Gate/GateControl'
 import GateDashboard from './pages/Gate/GateDashboard'
@@ -81,7 +82,7 @@ function HomeRedirect() {
   if (!user || !user.role) return <Navigate to="/login" replace />
 
   const role = (user.role || '').trim().toLowerCase()
-  if (role === 'transport company' || role === 'carrier') {
+  if (role === 'transport company' || role === 'carrier' || role === 'carrier staff') {
     return <Navigate to="/carrier-portal" replace />
   }
   if (role === 'driver') {
@@ -125,7 +126,7 @@ function App() {
         <Route element={<MainLayout />}>
           
           {/* 1. Nhóm Hãng tàu / Doanh nghiệp ngoài cảng */}
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.ADMINISTRATOR]} />}>
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
             <Route path="/cargo" element={<CargoDeclaration />} />
             <Route path="/transport/cargo-declarations" element={<CargoDeclaration />} />
             <Route path="/carrier-profile" element={<CarrierProfile />} />
@@ -133,6 +134,7 @@ function App() {
             <Route path="/booking" element={<BookingManagement />} />
             <Route path="/billing" element={<BillingPayment />} />
             <Route path="/drivers" element={<DriverManagement />} />
+            <Route path="/carrier-staff" element={<CarrierStaffManagement />} />
           </Route>
 
           {/* 2. Nhóm Điều độ (Dispatcher) */}
