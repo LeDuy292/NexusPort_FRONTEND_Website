@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react'
+import AddressAutocomplete from '../../components/AddressAutocomplete'
 import { companyService } from '../../services/companyService'
 import driverService from '../../services/driverService'
 
@@ -722,12 +723,11 @@ export default function CarrierManagement() {
                 </div>
                 <div className="space-y-1 col-span-2">
                   <label className="text-slate font-bold">Địa chỉ văn phòng tại Việt Nam</label>
-                  <textarea
-                    rows="2"
+                  <AddressAutocomplete
                     value={newCarrier.address}
-                    onChange={(e) => setNewCarrier({ ...newCarrier, address: e.target.value })}
-                    placeholder="Nhập địa chỉ đăng ký kinh doanh..."
-                    className="w-full bg-fog border border-chalk rounded-lg p-2.5 focus:outline-none focus:border-signal-orange resize-none"
+                    onChange={(val) => setNewCarrier({ ...newCarrier, address: val })}
+                    placeholder="Tìm kiếm địa chỉ tại Việt Nam..."
+                    inputClassName="w-full bg-fog border border-chalk rounded-lg p-2.5 focus:outline-none focus:border-signal-orange"
                   />
                 </div>
               </div>

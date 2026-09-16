@@ -3,15 +3,14 @@ import driverService from '../../services/driverService'
 
 // ─── STATUS CONFIG ─────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
-  AVAILABLE: { label: 'Sẵn sàng', dot: 'bg-green-500', badge: 'bg-green-50 text-green-800 border-green-300', icon: '🟢' },
-  ASSIGNED: { label: 'Đã giao lệnh', dot: 'bg-blue-500', badge: 'bg-blue-50 text-blue-800 border-blue-300', icon: '🔵' },
-  ON_TRIP: { label: 'Đang chạy', dot: 'bg-purple-500', badge: 'bg-purple-50 text-purple-800 border-purple-300', icon: '🟣' },
-  OFF_DUTY: { label: 'Nghỉ ca', dot: 'bg-amber-400', badge: 'bg-amber-50 text-amber-800 border-amber-300', icon: '🟡' },
-  SUSPENDED: { label: 'Tạm đình chỉ', dot: 'bg-red-500', badge: 'bg-red-50 text-red-800 border-red-300', icon: '🔴' },
+  active: { label: 'Đang hoạt động', dot: 'bg-green-500', badge: 'bg-green-50 text-green-800 border-green-300', icon: '🟢' },
+  inactive: { label: 'Tạm nghỉ', dot: 'bg-amber-400', badge: 'bg-amber-50 text-amber-800 border-amber-300', icon: '🟡' },
+  banned: { label: 'Đình chỉ', dot: 'bg-red-500', badge: 'bg-red-50 text-red-800 border-red-300', icon: '🔴' },
 }
 
 function StatusBadge({ status }) {
-  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.inactive
+  const normalizedStatus = status ? status.toLowerCase() : 'inactive';
+  const cfg = STATUS_CONFIG[normalizedStatus] || STATUS_CONFIG.inactive;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${cfg.badge}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`}></span>
