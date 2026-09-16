@@ -8,7 +8,8 @@ export const ROLES = {
   DISPATCHER: 'Dispatcher',
   YARD_OPERATOR: 'Yard Operator',
   BERTH_STAFF: 'Berth Staff',
-  ADMINISTRATOR: 'Administrator'
+  ADMINISTRATOR: 'Administrator',
+  CARRIER_STAFF: 'Carrier Staff'
 }
 
 export const routeConfig = [
@@ -33,7 +34,7 @@ export const routeConfig = [
   },
   {
     path: '/booking',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/yard',
@@ -65,11 +66,11 @@ export const routeConfig = [
   },
   {
     path: '/cargo',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
   },
   {
     path: '/transport/cargo-declarations',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
   },
   {
     path: '/gate',
@@ -137,15 +138,15 @@ export const routeConfig = [
   },
   {
     path: '/carrier-profile',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/carrier-portal',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/billing',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/users',
@@ -161,7 +162,7 @@ export const routeConfig = [
   },
   {
     path: '/drivers',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
   },
   {
     path: '/dispatch',
