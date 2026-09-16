@@ -45,6 +45,22 @@ const STATUS_STYLES = {
   damaged: "bg-red-50 text-red-700",
   canceled: "bg-gray-100 text-gray-500",
 };
+const LIFECYCLE_LABELS = {
+  registered: "Đã đăng ký",
+  booked: "Đã đặt lịch",
+  gate_in: "Đã vào cổng",
+  in_yard: "Trong bãi",
+  ready_for_gate_out: "Sẵn sàng ra cổng",
+  gate_out: "Đã ra cổng",
+};
+const NEXT_LIFECYCLE_STATUS = {
+  registered: "booked",
+  booked: "gate_in",
+  gate_in: "in_yard",
+  in_yard: "ready_for_gate_out",
+  ready_for_gate_out: "gate_out",
+  gate_out: null,
+};
 const EMPTY_FORM = {
   containerNumber: "",
   containerTypeId: "",
@@ -133,6 +149,7 @@ function ContainerFormModal({ container, types, onClose, onSaved }) {
           }
         : {}),
     };
+    if (editing) delete payload.status;
     try {
       const saved = editing
         ? await containerService.updateContainer(container.id, payload)
@@ -231,19 +248,15 @@ function ContainerFormModal({ container, types, onClose, onSaved }) {
               </select>
             </Field>
             <Field label="Trạng thái">
-              <select
-                className={inputClass}
-                value={form.status}
-                onChange={(e) => update("status", e.target.value)}
-              >
-                {STATUSES.filter((status) => status !== "canceled").map(
-                  (status) => (
-                    <option key={status} value={status}>
-                      {STATUS_LABELS[status]}
-                    </option>
-                  ),
-                )}
-              </select>
+              {editing ? (
+                <div className="w-full rounded-lg border border-chalk bg-gray-100 px-3 py-2.5 text-sm font-semibold text-slate">
+                  {STATUS_LABELS[form.status] || form.status} 
+                </div>
+              ) : (
+                <div className="w-full rounded-lg border border-chalk bg-gray-100 px-3 py-2.5 text-sm font-semibold text-slate">
+                  Dự kiến · Trạng thái khởi tạo
+                </div>
+              )}
             </Field>
             <Field label="Khối lượng toàn bộ (kg)">
               <input
@@ -328,7 +341,9 @@ function ContainerFormModal({ container, types, onClose, onSaved }) {
   );
 }
 
-function ContainerDetailModal({ detail, loading, onClose, onEdit, canWrite }) {
+function ContainerDetailModal({ detail, loading, onClose, onEdit, onTransition, transitioning, canWrite }) {
+  const lifecycleStatus = detail?.lifecycleStatus?.status;
+  const nextStatus = lifecycleStatus ? NEXT_LIFECYCLE_STATUS[lifecycleStatus] : null;
   return (
     <div
       className="fixed inset-0 z-50 flex justify-end bg-black/45"
@@ -338,7 +353,7 @@ function ContainerDetailModal({ detail, loading, onClose, onEdit, canWrite }) {
         <div className="mb-6 flex items-start justify-between">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-signal-orange">
-              Container detail
+              Chi tiết Container
             </p>
             <h2 className="mt-1 font-heading text-2xl font-bold text-carbon">
               {detail?.containerNumber || "Đang tải..."}
@@ -359,7 +374,7 @@ function ContainerDetailModal({ detail, loading, onClose, onEdit, canWrite }) {
           <div className="space-y-6">
             <div className="flex items-center justify-between rounded-xl bg-carbon p-5 text-white">
               <div>
-                <p className="text-xs text-gray-400">Seal Number</p>
+                <p className="text-xs text-gray-400">Số niêm phong</p>
                 <p className="mt-1 font-mono text-lg font-bold">
                   {detail.sealNumber || "—"}
                 </p>
@@ -384,13 +399,13 @@ function ContainerDetailModal({ detail, loading, onClose, onEdit, canWrite }) {
                   ],
                   ["Loại hàng", detail.cargoType?.replaceAll("_", " ")],
                   [
-                    "Gross weight",
+                    "Tổng khối lượng",
                     detail.grossWeightKg
                       ? `${Number(detail.grossWeightKg).toLocaleString("vi-VN")} kg`
                       : "—",
                   ],
-                  ["Carrier", detail.carrierName || "—"],
-                  ["Vessel call", detail.vesselCallCode || "—"],
+                  ["Đơn vị vận chuyển", detail.carrierName || "—"],
+                  ["Chuyến tàu", detail.vesselCallCode || "—"],
                   ["Tạo lúc", formatDate(detail.createdAt)],
                 ].map(([label, value]) => (
                   <div
@@ -402,6 +417,52 @@ function ContainerDetailModal({ detail, loading, onClose, onEdit, canWrite }) {
                   </div>
                 ))}
               </dl>
+            </section>
+            <section>
+              <h3 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-slate">
+                Vòng đời Container
+              </h3>
+              {lifecycleStatus ? (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="text-xs text-blue-700">Trạng thái nghiệp vụ hiện tại</p>
+                      <p className="mt-1 font-bold text-blue-900">{LIFECYCLE_LABELS[lifecycleStatus]}</p>
+                    </div>
+                    {canWrite && nextStatus && (
+                      <button
+                        disabled={transitioning}
+                        onClick={() => onTransition(detail, nextStatus)}
+                        className="rounded-lg bg-blue-700 px-3 py-2 text-xs font-bold text-white hover:bg-blue-800 disabled:opacity-50"
+                      >
+                        {transitioning ? "Đang chuyển..." : `Chuyển sang ${LIFECYCLE_LABELS[nextStatus]}`}
+                      </button>
+                    )}
+                  </div>
+                  {!nextStatus && <p className="mt-2 text-xs text-blue-700">Container đã hoàn tất vòng đời qua cổng.</p>}
+                </div>
+              ) : (
+                <p className="rounded-lg bg-amber-50 p-4 text-sm text-amber-800">
+                  Trạng thái hiện tại nằm ngoài vòng đời cổng tiêu chuẩn.
+                </p>
+              )}
+            </section>
+            <section>
+              <h3 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-slate">
+                Lịch sử trạng thái ({detail.statusHistory?.length || 0})
+              </h3>
+              <div className="space-y-2">
+                {detail.statusHistory?.length ? detail.statusHistory.map((entry) => (
+                  <div key={entry.id} className="flex items-center justify-between rounded-lg border border-chalk p-3 text-sm">
+                    <div className="font-semibold text-carbon">
+                      {LIFECYCLE_LABELS[entry.fromStatus] || entry.fromStatus}
+                      <span className="mx-2 text-slate">→</span>
+                      {LIFECYCLE_LABELS[entry.toStatus] || entry.toStatus}
+                    </div>
+                    <span className="text-xs text-slate">{formatDate(entry.changedAt)}</span>
+                  </div>
+                )) : <p className="rounded-lg bg-fog p-4 text-sm text-slate">Chưa có lịch sử chuyển trạng thái.</p>}
+              </div>
             </section>
             <section>
               <h3 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-slate">
@@ -505,6 +566,7 @@ export default function ContainerManagement() {
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  const [transitioning, setTransitioning] = useState(false);
   const [notice, setNotice] = useState("");
 
   const load = useCallback(async () => {
@@ -536,12 +598,33 @@ export default function ContainerManagement() {
     setDetail(null);
     setDetailLoading(true);
     try {
-      setDetail(await containerService.getContainerById(id));
+      const container = await containerService.getContainerById(id);
+      const isManagedStatus = ["expected", "reserved", "gate_in", "in_yard", "moving", "gate_out"].includes(container.status);
+      const [lifecycleStatus, statusHistory] = await Promise.all([
+        isManagedStatus ? containerService.getContainerStatus(id) : Promise.resolve(null),
+        containerService.getContainerStatusHistory(id),
+      ]);
+      setDetail({ ...container, lifecycleStatus, statusHistory });
     } catch (e) {
       setError(e.message);
       setShowDetail(false);
     } finally {
       setDetailLoading(false);
+    }
+  };
+  const transitionStatus = async (container, targetStatus) => {
+    setTransitioning(true);
+    setError("");
+    try {
+      await containerService.transitionContainerStatus(container.id, targetStatus);
+      setNotice(`Đã chuyển trạng thái sang ${LIFECYCLE_LABELS[targetStatus]}.`);
+      await openDetail(container.id);
+      await load();
+      setTimeout(() => setNotice(""), 3000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setTransitioning(false);
     }
   };
   const saved = () => {
@@ -559,13 +642,13 @@ export default function ContainerManagement() {
   const remove = async (container) => {
     if (
       !window.confirm(
-        `Soft-delete Container ${container.containerNumber}? Dữ liệu lịch sử vẫn được giữ lại.`,
+        `Bạn có chắc muốn xóa mềm Container ${container.containerNumber}? Dữ liệu lịch sử vẫn được giữ lại.`,
       )
     )
       return;
     try {
       await containerService.deleteContainer(container.id);
-      setNotice("Container đã được soft-delete.");
+      setNotice("Container đã được xóa mềm thành công.");
       load();
       setTimeout(() => setNotice(""), 3000);
     } catch (e) {
@@ -833,7 +916,7 @@ export default function ContainerManagement() {
                         )}
                         {canDelete && container.status !== "canceled" && (
                           <button
-                            title="Soft-delete"
+                            title="Xóa mềm"
                             onClick={() => remove(container)}
                             className="flex h-8 w-8 items-center justify-center rounded-md text-slate hover:bg-red-50 hover:text-red-600"
                           >
@@ -887,6 +970,8 @@ export default function ContainerManagement() {
           loading={detailLoading}
           onClose={() => setShowDetail(false)}
           onEdit={edit}
+          onTransition={transitionStatus}
+          transitioning={transitioning}
           canWrite={canWrite}
         />
       )}
