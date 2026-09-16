@@ -25,6 +25,21 @@ const driverService = {
     return res.data
   },
 
+  extractCccd: async (imageFile) => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    // DO NOT set Content-Type manually, let Axios set it with the correct boundary
+    const res = await apiClient.post('/v1/Driver/extract-cccd', formData);
+    return res.data;
+  },
+
+  extractGplx: async (imageFile) => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    const res = await apiClient.post('/v1/Driver/extract-gplx', formData);
+    return res.data;
+  },
+
   toggleStatus: async (id, status) => {
     // Notice that our apiClient.patch takes body as the second argument
     // and Backend expects [FromBody] string status, which requires JSON serialization of string (like "active")
