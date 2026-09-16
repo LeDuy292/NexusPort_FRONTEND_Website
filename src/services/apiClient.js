@@ -43,7 +43,11 @@ const apiClient = {
 
   post: async (url, data = {}) => {
     const fullUrl = `${API_URL}${url}`
-    const headers = { 'Content-Type': 'application/json' }
+    const isFormData = data instanceof FormData;
+    const headers = {};
+    if (!isFormData) {
+      headers['Content-Type'] = 'application/json';
+    }
     try {
       const stored = localStorage.getItem('user') || sessionStorage.getItem('user');
       const user = stored ? JSON.parse(stored) : null
@@ -55,7 +59,7 @@ const apiClient = {
     const res = await fetch(fullUrl, {
       method: 'POST',
       headers,
-      body: JSON.stringify(data)
+      body: isFormData ? data : JSON.stringify(data)
     })
     if (res.status === 401) {
       localStorage.removeItem('user')
@@ -73,7 +77,11 @@ const apiClient = {
 
   put: async (url, data = {}) => {
     const fullUrl = `${API_URL}${url}`
-    const headers = { 'Content-Type': 'application/json' }
+    const isFormData = data instanceof FormData;
+    const headers = {};
+    if (!isFormData) {
+      headers['Content-Type'] = 'application/json';
+    }
     try {
       const stored = localStorage.getItem('user') || sessionStorage.getItem('user');
       const user = stored ? JSON.parse(stored) : null
@@ -82,7 +90,7 @@ const apiClient = {
       }
     } catch (e) {}
 
-    const res = await fetch(fullUrl, { method: 'PUT', headers, body: JSON.stringify(data) })
+    const res = await fetch(fullUrl, { method: 'PUT', headers, body: isFormData ? data : JSON.stringify(data) })
     if (res.status === 401) {
       localStorage.removeItem('user')
       window.location.href = '/login'
@@ -99,7 +107,11 @@ const apiClient = {
 
   patch: async (url, data = {}) => {
     const fullUrl = `${API_URL}${url}`
-    const headers = { 'Content-Type': 'application/json' }
+    const isFormData = data instanceof FormData;
+    const headers = {};
+    if (!isFormData) {
+      headers['Content-Type'] = 'application/json';
+    }
     try {
       const stored = localStorage.getItem('user') || sessionStorage.getItem('user');
       const user = stored ? JSON.parse(stored) : null
@@ -108,7 +120,7 @@ const apiClient = {
       }
     } catch (e) {}
 
-    const res = await fetch(fullUrl, { method: 'PATCH', headers, body: JSON.stringify(data) })
+    const res = await fetch(fullUrl, { method: 'PATCH', headers, body: isFormData ? data : JSON.stringify(data) })
     if (res.status === 401) {
       localStorage.removeItem('user')
       window.location.href = '/login'

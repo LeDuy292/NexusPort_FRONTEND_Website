@@ -1,4 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import vehicleService from '../../services/vehicleService'
+import driverService from '../../services/driverService'
 
 export default function VehicleManagement() {
   const [vehicleTypeFilter, setVehicleTypeFilter] = useState('All') // 'All' | 'ROAD_TRUCK' | 'YARD_TRACTOR'
@@ -10,169 +12,90 @@ export default function VehicleManagement() {
   const [currentPage, setCurrentPage] = useState(1)
   const [toastMessage, setToastMessage] = useState('')
 
+  const [isEditingDriver, setIsEditingDriver] = useState(false)
+  const [editDriverId, setEditDriverId] = useState('')
+
+  const [uploadingVehiclePhoto, setUploadingVehiclePhoto] = useState(false)
+  const [ocrVehicleLoading, setOcrVehicleLoading] = useState(false)
+
   // Form State for Add Vehicle Modal
   const [newVehicle, setNewVehicle] = useState({
     id: '',
     type: 'ROAD_TRUCK',
     plate: '',
-    driver: '',
+    driverId: '',
     location: 'Cổng 01 (Gate 01)',
-    status: 'Available'
+    status: 'Available',
+    photoUrl: null,
+    registrationImageUrl: null
   })
 
-  // Mock Vehicles Fleet Data
-  const [vehicles, setVehicles] = useState([
-    {
-      id: 'TRK-001',
-      type: 'ROAD_TRUCK',
-      typeName: 'Xe Đầu Kéo Đường Dài',
-      plate: '43C-123.45',
-      driver: 'Nguyễn Văn A',
-      driverId: 'DRV-1029',
-      phone: '0905-123-456',
-      driverStatus: 'Đang làm việc',
-      location: 'Cổng 01 (Gate 01)',
-      task: 'Lấy Container',
-      taskId: 'TSK-9901',
-      container: 'MSCU1234567',
-      origin: 'Cổng 01',
-      destination: 'Khối bãi B (B12-04)',
-      status: 'Available',
-      statusLabel: 'Sẵn sàng',
-      statusClass: 'bg-green-100 text-green-800 border-green-300',
-      lastUpdate: '2 phút trước',
-      eta: '3 phút',
-      completedTasks: 8,
-      totalDistance: '45 km',
-      workingTime: '6.5 giờ',
-      delayTime: '0 phút'
-    },
-    {
-      id: 'YTR-003',
-      type: 'YARD_TRACTOR',
-      typeName: 'Xe Đầu Kéo Nội Bãi',
-      plate: 'YT-003',
-      driver: 'Trần Văn B',
-      driverId: 'DRV-2041',
-      phone: '0914-987-654',
-      driverStatus: 'Đang làm việc',
-      location: 'Khối bãi B',
-      task: 'Chuyển vị trí Container',
-      taskId: 'TSK-8812',
-      container: 'MSCU7654321',
-      origin: 'Khối bãi B',
-      destination: 'Khu vực cẩu bãi RTG-02',
-      status: 'Handling',
-      statusLabel: 'Đang cẩu dỡ',
-      statusClass: 'bg-amber-100 text-amber-800 border-amber-300',
-      lastUpdate: '30 giây trước',
-      eta: '1 phút',
-      completedTasks: 14,
-      totalDistance: '18 km',
-      workingTime: '7.2 giờ',
-      delayTime: '5 phút'
-    },
-    {
-      id: 'TRK-008',
-      type: 'ROAD_TRUCK',
-      typeName: 'Xe Đầu Kéo Đường Dài',
-      plate: '15C-882.19',
-      driver: 'Phạm Văn D',
-      driverId: 'DRV-1188',
-      phone: '0983-221-443',
-      driverStatus: 'Đang làm việc',
-      location: 'Cổng vào Phía Bắc',
-      task: 'Hạ Container',
-      taskId: 'TSK-7719',
-      container: 'EVER991203-4',
-      origin: 'Cổng vào',
-      destination: 'Khối bãi C (C05-02)',
-      status: 'Delayed',
-      statusLabel: 'Bị trễ hạn',
-      statusClass: 'bg-red-100 text-red-800 border-red-300 animate-pulse',
-      lastUpdate: '1 phút trước',
-      eta: '12 phút',
-      completedTasks: 5,
-      totalDistance: '62 km',
-      workingTime: '8.0 giờ',
-      delayTime: '25 phút'
-    },
-    {
-      id: 'YTR-005',
-      type: 'YARD_TRACTOR',
-      typeName: 'Xe Đầu Kéo Nội Bãi',
-      plate: 'YT-005',
-      driver: 'Lê Văn C',
-      driverId: 'DRV-3011',
-      phone: '0903-887-112',
-      driverStatus: 'Đang di chuyển',
-      location: 'Tuyến đường Road 02',
-      task: 'Vận chuyển sang Khối D',
-      taskId: 'TSK-6641',
-      container: 'HLBU993210-5',
-      origin: 'Khối bãi A',
-      destination: 'Khối bãi D',
-      status: 'In Transit',
-      statusLabel: 'Đang di chuyển',
-      statusClass: 'bg-purple-100 text-purple-800 border-purple-300',
-      lastUpdate: '5 phút trước',
-      eta: '4 phút',
-      completedTasks: 11,
-      totalDistance: '22 km',
-      workingTime: '5.0 giờ',
-      delayTime: '0 phút'
-    },
-    {
-      id: 'TRK-004',
-      type: 'ROAD_TRUCK',
-      typeName: 'Xe Đầu Kéo Đường Dài',
-      plate: '43C-456.78',
-      driver: 'Hoàng Văn E',
-      driverId: 'DRV-4099',
-      phone: '0935-778-990',
-      driverStatus: 'Chờ nhận ca',
-      location: 'Bãi đỗ xe Trung tâm',
-      task: 'Chờ chỉ định lệnh',
-      taskId: 'Chờ chỉ định',
-      container: 'Chưa có',
-      origin: 'Bãi đỗ xe',
-      destination: 'Chưa xác định',
-      status: 'Assigned',
-      statusLabel: 'Đã chỉ định',
-      statusClass: 'bg-blue-100 text-blue-800 border-blue-300',
-      lastUpdate: '8 phút trước',
-      eta: 'Sẵn sàng',
-      completedTasks: 6,
-      totalDistance: '35 km',
-      workingTime: '4.5 giờ',
-      delayTime: '0 phút'
-    },
-    {
-      id: 'YTR-001',
-      type: 'YARD_TRACTOR',
-      typeName: 'Xe Đầu Kéo Nội Bãi',
-      plate: 'YT-001',
-      driver: 'Đặng Văn F',
-      driverId: 'DRV-5012',
-      phone: '0977-123-998',
-      driverStatus: 'Nghỉ bảo dưỡng',
-      location: 'Xưởng Bảo Trì Cảng',
-      task: 'Bảo dưỡng định kỳ',
-      taskId: 'MAINT-02',
-      container: 'Không có',
-      origin: 'Xưởng kỹ thuật',
-      destination: 'Xưởng kỹ thuật',
-      status: 'Maintenance',
-      statusLabel: 'Bảo trì',
-      statusClass: 'bg-stone-200 text-stone-800 border-stone-400',
-      lastUpdate: '1 giờ trước',
-      eta: 'Ngày mai',
-      completedTasks: 0,
-      totalDistance: '0 km',
-      workingTime: '0 giờ',
-      delayTime: '0 phút'
+  const [vehicles, setVehicles] = useState([])
+  const [availableDrivers, setAvailableDrivers] = useState([])
+
+  const loadVehiclesAndDrivers = async () => {
+    try {
+      const [vehiclesData, driversData] = await Promise.all([
+        vehicleService.getAllVehicles(),
+        driverService.getAllDrivers()
+      ]);
+
+      const tienSaDrivers = (driversData || []).filter(d => 
+        !d.carrierName || d.carrierName.toLowerCase().includes('tiên sa')
+      );
+      setAvailableDrivers(tienSaDrivers);
+
+      const mapped = vehiclesData.map(v => {
+        let statusClass = 'bg-green-100 text-green-800 border-green-300'
+        let statusLabel = 'Sẵn sàng'
+        const lowerStatus = v.status.toLowerCase();
+        
+        if (lowerStatus === 'inactive' || lowerStatus === 'assigned') {
+           statusClass = 'bg-blue-100 text-blue-800 border-blue-300'
+           statusLabel = 'Đã chỉ định'
+        } else if (lowerStatus === 'maintenance') {
+           statusClass = 'bg-stone-200 text-stone-800 border-stone-400'
+           statusLabel = 'Bảo trì'
+        }
+
+        return {
+          id: v.id,
+          type: v.vehicleType,
+          typeName: v.vehicleType === 'ROAD_TRUCK' ? 'Xe Đầu Kéo Đường Dài' : 'Xe Đầu Kéo Nội Bãi',
+          plate: v.plateNumber,
+          driver: v.driverName || 'Chưa phân công',
+          driverId: v.driverId || 'N/A',
+          phone: 'N/A',
+          driverStatus: v.driverId ? 'Đang làm việc' : 'Chưa phân công',
+          location: 'Cảng Tiên Sa',
+          task: 'Chờ lệnh',
+          taskId: 'N/A',
+          container: 'N/A',
+          origin: 'Bãi',
+          destination: 'N/A',
+          status: v.status,
+          statusLabel: statusLabel,
+          statusClass: statusClass,
+          lastUpdate: new Date(v.createdAt).toLocaleDateString(),
+          eta: 'Sẵn sàng',
+          completedTasks: 0,
+          totalDistance: '0 km',
+          workingTime: '0 giờ',
+          delayTime: '0 phút',
+          photoUrl: v.photoUrl,
+          registrationImageUrl: v.registrationImageUrl
+        }
+      });
+      setVehicles(mapped);
+    } catch (err) {
+      console.error(err);
+      setToastMessage('❌ Lỗi tải dữ liệu xe: ' + err.message);
     }
-  ])
+  }
+
+  useEffect(() => {
+    loadVehiclesAndDrivers();
+  }, [])
 
   // KPI Calculations
   const kpis = {
@@ -207,61 +130,113 @@ export default function VehicleManagement() {
     return true
   })
 
+  // Upload Handlers
+  const handleVehiclePhotoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadingVehiclePhoto(true);
+    try {
+      const data = await vehicleService.uploadPhoto(file);
+      setNewVehicle(f => ({
+        ...f,
+        photoUrl: data?.imageUrl || f.photoUrl
+      }));
+      setToastMessage('✅ Tải ảnh xe thành công!');
+    } catch (err) {
+      setToastMessage('❌ Lỗi tải ảnh xe: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setUploadingVehiclePhoto(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleVehicleRegistrationUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setOcrVehicleLoading(true);
+    try {
+      const data = await vehicleService.extractRegistration(file);
+      setNewVehicle(f => ({
+        ...f,
+        plate: data?.plateNumber || f.plate,
+        registrationImageUrl: data?.imageUrl || f.registrationImageUrl
+      }));
+      if (data?.isSuccess === false) {
+        setToastMessage('⚠️ ' + data.message);
+      } else {
+        setToastMessage('✅ Quét Cà Vẹt thành công!');
+      }
+    } catch (err) {
+      setToastMessage('❌ Lỗi quét Cà Vẹt: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setOcrVehicleLoading(false);
+      e.target.value = '';
+    }
+  };
+
   // Add Vehicle Form Submit Handler
-  const handleCreateVehicle = (e) => {
+  const handleCreateVehicle = async (e) => {
     e.preventDefault()
-    if (!newVehicle.id || !newVehicle.plate) {
-      alert('Vui lòng nhập đầy đủ Mã phương tiện và Biển số xe!')
+    if (!newVehicle.plate) {
+      alert('Vui lòng nhập Biển số xe!')
       return
     }
 
-    const typeName = newVehicle.type === 'ROAD_TRUCK' ? 'Xe Đầu Kéo Đường Dài' : 'Xe Đầu Kéo Nội Bãi'
-    let statusClass = 'bg-green-100 text-green-800 border-green-300'
-    let statusLabel = 'Sẵn sàng'
-
-    if (newVehicle.status === 'Assigned') {
-      statusClass = 'bg-blue-100 text-blue-800 border-blue-300'
-      statusLabel = 'Đã chỉ định'
-    } else if (newVehicle.status === 'Maintenance') {
-      statusClass = 'bg-stone-200 text-stone-800 border-stone-400'
-      statusLabel = 'Bảo trì'
+    try {
+      // Actually save to backend API
+      const newVhc = await vehicleService.createVehicle({
+        plateNumber: newVehicle.plate,
+        vehicleType: newVehicle.type,
+        photoUrl: newVehicle.photoUrl,
+        registrationImageUrl: newVehicle.registrationImageUrl,
+        carrierId: '984eb832-8df7-463d-b4b1-a6dd2f3dbf07' // Hardcoded for demo
+      });
+      
+      if (newVehicle.driverId) {
+        await vehicleService.assignDriver(newVhc.id, newVehicle.driverId);
+      }
+      
+      await loadVehiclesAndDrivers();
+      
+      setShowAddModal(false)
+      setNewVehicle({ id: '', type: 'ROAD_TRUCK', plate: '', driver: '', location: 'Cổng 01 (Gate 01)', status: 'Available', photoUrl: null, registrationImageUrl: null })
+      setToastMessage(`✅ Đã thêm phương tiện mới (${newVehicle.plate}) vào đội xe thành công!`)
+      setTimeout(() => setToastMessage(''), 3500)
+    } catch (err) {
+      setToastMessage('❌ ' + (err.response?.data?.message || err.message));
     }
+  };
 
-    const createdItem = {
-      ...newVehicle,
-      typeName,
-      driver: newVehicle.driver || 'Chưa phân công',
-      driverId: 'DRV-NEW',
-      phone: '0905-000-000',
-      driverStatus: 'Chờ phân công',
-      task: 'Chưa có lệnh',
-      taskId: 'N/A',
-      container: 'Chưa chở',
-      origin: newVehicle.location,
-      destination: 'Chưa xác định',
-      statusLabel,
-      statusClass,
-      lastUpdate: 'Vừa tạo',
-      eta: 'Sẵn sàng',
-      completedTasks: 0,
-      totalDistance: '0 km',
-      workingTime: '0 giờ',
-      delayTime: '0 phút'
+  const handleAssignDriverSubmit = async () => {
+    if (!selectedVehicleDrawer) return;
+    try {
+      const payloadDriverId = editDriverId === '' ? null : editDriverId;
+      await vehicleService.assignDriver(selectedVehicleDrawer.id, payloadDriverId);
+      setToastMessage('✅ Cập nhật phân công tài xế thành công!');
+      setTimeout(() => setToastMessage(''), 3500);
+      setIsEditingDriver(false);
+      await loadVehiclesAndDrivers();
+      
+      // Update selected drawer state so it reflects instantly without reopening
+      const updatedVehicle = (await vehicleService.getAllVehicles()).find(v => v.id === selectedVehicleDrawer.id);
+      if (updatedVehicle) {
+        // Just reload the page list, but for now we close the drawer or let the list reload cover it.
+        // Easiest is just closing the drawer to refresh state cleanly.
+        setSelectedVehiclePopover(null);
+      }
+    } catch (err) {
+      setToastMessage('❌ ' + (err.response?.data?.message || err.message));
     }
-
-    setVehicles([createdItem, ...vehicles])
-    setShowAddModal(false)
-    setNewVehicle({ id: '', type: 'ROAD_TRUCK', plate: '', driver: '', location: 'Cổng 01 (Gate 01)', status: 'Available' })
-    setToastMessage(`✅ Đã thêm phương tiện mới ${createdItem.id} (${createdItem.plate}) vào đội xe thành công!`)
-    setTimeout(() => setToastMessage(''), 3500)
-  }
+  };
 
   return (
     <div className="p-8 w-full font-sans flex flex-col gap-6 relative">
 
       {/* Toast Alert */}
       {toastMessage && (
-        <div className="fixed top-20 right-8 bg-carbon text-white px-6 py-3.5 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-3 z-50 animate-bounce border border-signal-orange">
+        <div className="fixed top-20 right-8 bg-carbon text-white px-6 py-3.5 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-3 z-[999] animate-bounce border border-signal-orange">
           <span className="text-signal-orange font-bold text-base">●</span>
           {toastMessage}
         </div>
@@ -543,13 +518,40 @@ export default function VehicleManagement() {
 
               {/* 2. Driver Information */}
               <div className="space-y-2">
-                <span className="text-[10px] font-bold text-slate uppercase font-sans">2. TÀI XẾ PHỤ TRÁCH (DRIVER INFO)</span>
-                <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-2">
-                  <div className="flex justify-between"><span className="text-slate font-sans">Tên tài xế:</span><strong className="text-carbon font-sans font-bold">{selectedVehicleDrawer.driver}</strong></div>
-                  <div className="flex justify-between"><span className="text-slate font-sans">Mã tài xế:</span><strong className="text-carbon">{selectedVehicleDrawer.driverId}</strong></div>
-                  <div className="flex justify-between"><span className="text-slate font-sans">Số điện thoại:</span><strong className="text-carbon">{selectedVehicleDrawer.phone}</strong></div>
-                  <div className="flex justify-between"><span className="text-slate font-sans">Trạng thái tài xế:</span><strong className="text-green-600 font-sans">{selectedVehicleDrawer.driverStatus}</strong></div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold text-slate uppercase font-sans">2. TÀI XẾ PHỤ TRÁCH (DRIVER INFO)</span>
+                  {!isEditingDriver ? (
+                    <button onClick={() => { setIsEditingDriver(true); setEditDriverId(selectedVehicleDrawer.driverId || ''); }} className="text-[10px] font-bold text-signal-orange underline hover:text-orange-700">Chỉnh sửa</button>
+                  ) : (
+                    <div className="flex gap-2">
+                      <button onClick={() => setIsEditingDriver(false)} className="text-[10px] font-bold text-slate underline hover:text-carbon">Hủy</button>
+                      <button onClick={handleAssignDriverSubmit} className="text-[10px] font-bold text-green-600 underline hover:text-green-700">Lưu thay đổi</button>
+                    </div>
+                  )}
                 </div>
+                
+                {!isEditingDriver ? (
+                  <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-2">
+                    <div className="flex justify-between"><span className="text-slate font-sans">Tên tài xế:</span><strong className="text-carbon font-sans font-bold">{selectedVehicleDrawer.driver}</strong></div>
+                    <div className="flex justify-between"><span className="text-slate font-sans">Mã tài xế:</span><strong className="text-carbon">{selectedVehicleDrawer.driverId || 'N/A'}</strong></div>
+                    <div className="flex justify-between"><span className="text-slate font-sans">Số điện thoại:</span><strong className="text-carbon">{selectedVehicleDrawer.phone || 'N/A'}</strong></div>
+                    <div className="flex justify-between"><span className="text-slate font-sans">Trạng thái tài xế:</span><strong className="text-green-600 font-sans">{selectedVehicleDrawer.driverStatus || 'N/A'}</strong></div>
+                  </div>
+                ) : (
+                  <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-3">
+                    <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Chọn Tài Xế Phụ Trách</label>
+                    <select
+                      value={editDriverId}
+                      onChange={e => setEditDriverId(e.target.value)}
+                      className="w-full p-3 bg-white border border-chalk rounded-xl font-bold text-carbon text-xs focus:outline-none focus:border-signal-orange"
+                    >
+                      <option value="">-- Bỏ phân công (Chưa phân công) --</option>
+                      {availableDrivers.map(d => (
+                        <option key={d.id} value={d.id}>{d.fullName} - {d.phone}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* 3. Current Task Information */}
@@ -634,75 +636,106 @@ export default function VehicleManagement() {
             </div>
 
             <div className="space-y-4 text-xs font-mono">
-              <div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold text-slate uppercase font-sans">Ảnh Đại Diện Xe</label>
+                  <div className="relative">
+                    <input type="file" accept="image/*" onChange={handleVehiclePhotoUpload} disabled={uploadingVehiclePhoto}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                    <div className={`h-11 border-2 border-dashed border-chalk rounded-lg flex items-center justify-center text-[10px] font-bold transition-colors font-sans ${uploadingVehiclePhoto ? 'bg-fog text-slate' : 'bg-white text-carbon hover:border-carbon'}`}>
+                      {uploadingVehiclePhoto ? 'Đang tải...' : (newVehicle.photoUrl ? '✅ Đã tải ảnh' : '📸 Tải ảnh xe')}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[11px] font-bold text-slate uppercase font-sans">Ảnh Cà Vẹt (AI)</label>
+                  <div className="relative">
+                    <input type="file" accept="image/*" onChange={handleVehicleRegistrationUpload} disabled={ocrVehicleLoading}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                    <div className={`h-11 border-2 border-dashed border-chalk rounded-lg flex items-center justify-center text-[10px] font-bold transition-colors font-sans ${ocrVehicleLoading ? 'bg-fog text-slate' : 'bg-white text-carbon hover:border-carbon'}`}>
+                      {ocrVehicleLoading ? 'Đang quét...' : (newVehicle.registrationImageUrl ? '✅ Đã quét' : '🔍 Quét Cà Vẹt')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="hidden">
                 <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Mã Phương Tiện (Vehicle ID) *</label>
                 <input
                   type="text"
-                  required
                   value={newVehicle.id}
                   onChange={e => setNewVehicle({ ...newVehicle, id: e.target.value })}
-                  placeholder="Ví dụ: TRK-010 hoặc YTR-006"
+                  placeholder="Tự động tạo..."
                   className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
+                  readOnly
                 />
               </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Loại Xe (Vehicle Type) *</label>
-                <select
-                  value={newVehicle.type}
-                  onChange={e => setNewVehicle({ ...newVehicle, type: e.target.value })}
-                  className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
-                >
-                  <option value="ROAD_TRUCK">🚚 ROAD_TRUCK (Xe đầu kéo đường dài)</option>
-                  <option value="YARD_TRACTOR">🚜 YARD_TRACTOR (Xe đầu kéo nội bãi)</option>
-                </select>
-              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Loại Xe (Vehicle Type) *</label>
+                  <select
+                    value={newVehicle.type}
+                    onChange={e => setNewVehicle({ ...newVehicle, type: e.target.value })}
+                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
+                  >
+                    <option value="ROAD_TRUCK">🚚 Xe Đầu Kéo Đường Dài</option>
+                    <option value="YARD_TRACTOR">🚜 Xe Đầu Kéo Nội Bãi</option>
+                  </select>
+                </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Biển Số Xe (License Plate) *</label>
-                <input
-                  type="text"
-                  required
-                  value={newVehicle.plate}
-                  onChange={e => setNewVehicle({ ...newVehicle, plate: e.target.value })}
-                  placeholder="Ví dụ: 43C-998.12"
-                  className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
-                />
-              </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Biển Số Xe (Plate) *</label>
+                  <input
+                    type="text"
+                    required
+                    value={newVehicle.plate}
+                    onChange={e => setNewVehicle({ ...newVehicle, plate: e.target.value })}
+                    placeholder="VD: 43C-998.12"
+                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Tài Xế Phụ Trách (Driver)</label>
-                <input
-                  type="text"
-                  value={newVehicle.driver}
-                  onChange={e => setNewVehicle({ ...newVehicle, driver: e.target.value })}
-                  placeholder="Tên tài xế điều khiển..."
-                  className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
-                />
-              </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Tài Xế Phụ Trách</label>
+                  <select
+                    value={newVehicle.driverId}
+                    onChange={e => setNewVehicle({ ...newVehicle, driverId: e.target.value })}
+                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
+                  >
+                    <option value="">-- Chưa phân công --</option>
+                    {availableDrivers.map(d => (
+                      <option key={d.id} value={d.id}>
+                        {d.fullName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Vị Trí Ban Đầu (Initial Location)</label>
-                <input
-                  type="text"
-                  value={newVehicle.location}
-                  onChange={e => setNewVehicle({ ...newVehicle, location: e.target.value })}
-                  placeholder="Vị trí đỗ xe ban đầu..."
-                  className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
-                />
-              </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Vị Trí Ban Đầu</label>
+                  <input
+                    type="text"
+                    value={newVehicle.location}
+                    onChange={e => setNewVehicle({ ...newVehicle, location: e.target.value })}
+                    placeholder="VD: Cổng 01..."
+                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
+                  />
+                </div>
 
-              <div>
-                <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Trạng Thái Ban Đầu</label>
-                <select
-                  value={newVehicle.status}
-                  onChange={e => setNewVehicle({ ...newVehicle, status: e.target.value })}
-                  className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
-                >
-                  <option value="Available">🟢 Sẵn sàng (Available)</option>
-                  <option value="Assigned">🔵 Đã chỉ định (Assigned)</option>
-                  <option value="Maintenance">🔧 Bảo trì (Maintenance)</option>
-                </select>
+                <div className="col-span-2">
+                  <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Trạng Thái Ban Đầu</label>
+                  <select
+                    value={newVehicle.status}
+                    onChange={e => setNewVehicle({ ...newVehicle, status: e.target.value })}
+                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
+                  >
+                    <option value="Available">🟢 Sẵn sàng (Available)</option>
+                    <option value="Assigned">🔵 Đã chỉ định (Assigned)</option>
+                    <option value="Maintenance">🔧 Bảo trì (Maintenance)</option>
+                  </select>
+                </div>
               </div>
             </div>
 

@@ -15,6 +15,7 @@ export default function DriverManagement() {
   const [selectedDriver, setSelectedDriver] = useState(null)
 
   const [toastMessage, setToastMessage] = useState('')
+  const [zoomedImage, setZoomedImage] = useState(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editMode, setEditMode] = useState(false)
 
@@ -22,7 +23,9 @@ export default function DriverManagement() {
   const [vehicleSearch, setVehicleSearch] = useState('')
   
   const [showAddVehicleModal, setShowAddVehicleModal] = useState(false)
-  const [vehicleForm, setVehicleForm] = useState({ plate: '', vehicleType: 'ROAD_TRUCK' })
+  const [vehicleForm, setVehicleForm] = useState({ plate: '', vehicleType: 'ROAD_TRUCK', registrationImageUrl: '', photoUrl: '' })
+  const [ocrVehicleLoading, setOcrVehicleLoading] = useState(false)
+  const [uploadingVehiclePhoto, setUploadingVehiclePhoto] = useState(false)
 
   const [vehicles, setVehicles] = useState([])
   const [loadingVehicles, setLoadingVehicles] = useState(false)
@@ -52,7 +55,8 @@ export default function DriverManagement() {
     return matchSearch && matchType && matchStatus;
   })
 
-  const emptyForm = { fullName: '', phone: '', idCardNumber: '', licenseNumber: '' }
+  const [ocrLoading, setOcrLoading] = useState(false)
+  const emptyForm = { fullName: '', phone: '', idCardNumber: '', licenseNumber: '', photoUrl: '', idCardFrontUrl: '', licenseImageUrl: '' }
   const [form, setForm] = useState({ ...emptyForm })
   const [editForm, setEditForm] = useState(null)
 
@@ -60,6 +64,187 @@ export default function DriverManagement() {
     setToastMessage(msg)
     setTimeout(() => setToastMessage(''), 3000)
   }
+
+  const handleOcrUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setOcrLoading(true);
+    try {
+      showToast('⏳ Đang phân tích CCCD bằng AI...');
+      const data = await driverService.extractCccd(file);
+      setForm(f => ({
+        ...f,
+        fullName: data.fullName || f.fullName,
+        idCardNumber: data.idCardNumber || f.idCardNumber,
+        photoUrl: data.faceImageUrl || f.photoUrl,
+        idCardFrontUrl: data.idCardFrontUrl || f.idCardFrontUrl
+      }));
+      showToast('✅ Quét CCCD thành công!');
+    } catch (err) {
+      showToast('❌ Lỗi quét CCCD: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setOcrLoading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleGplxUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setOcrLoading(true);
+    try {
+      const data = await driverService.extractGplx(file);
+      setForm(f => ({
+        ...f,
+        fullName: data?.fullName || f.fullName,
+        licenseNumber: data?.licenseNumber || f.licenseNumber,
+        licenseImageUrl: data?.licenseImageUrl || f.licenseImageUrl,
+        photoUrl: data?.faceImageUrl || f.photoUrl
+      }));
+      showToast('✅ Quét GPLX thành công!');
+    } catch (err) {
+      showToast('❌ Quét GPLX thất bại: ' + (err.response?.data?.message || err.message), 'error');
+    } finally {
+      setOcrLoading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleOcrUploadEdit = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setOcrLoading(true);
+    try {
+      showToast('⏳ Đang phân tích CCCD bằng AI...');
+      const data = await driverService.extractCccd(file);
+      setEditForm(f => ({
+        ...f,
+        fullName: data.fullName || f.fullName,
+        idCardNumber: data.idCardNumber || f.idCardNumber,
+        photoUrl: data.faceImageUrl || f.photoUrl,
+        idCardFrontUrl: data.idCardFrontUrl || f.idCardFrontUrl
+      }));
+      showToast('✅ Quét CCCD thành công!');
+    } catch (err) {
+      showToast('❌ Lỗi quét CCCD: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setOcrLoading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleGplxUploadEdit = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setOcrLoading(true);
+    try {
+      const data = await driverService.extractGplx(file);
+      setEditForm(f => ({
+        ...f,
+        fullName: data?.fullName || f.fullName,
+        licenseNumber: data?.licenseNumber || f.licenseNumber,
+        licenseImageUrl: data?.licenseImageUrl || f.licenseImageUrl,
+        photoUrl: data?.faceImageUrl || f.photoUrl
+      }));
+      showToast('✅ Quét GPLX thành công!');
+    } catch (err) {
+      showToast('❌ Quét GPLX thất bại: ' + (err.response?.data?.message || err.message), 'error');
+    } finally {
+      setOcrLoading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleVehicleRegistrationUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setOcrVehicleLoading(true);
+    try {
+      const data = await vehicleService.extractRegistration(file);
+      setVehicleForm(f => ({
+        ...f,
+        plate: data?.plateNumber || f.plate,
+        registrationImageUrl: data?.imageUrl || f.registrationImageUrl
+      }));
+      if (data?.isSuccess === false) {
+        showToast('⚠️ ' + data.message);
+      } else {
+        showToast('✅ Quét Cà Vẹt thành công!');
+      }
+    } catch (err) {
+      showToast('❌ Lỗi quét Cà Vẹt: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setOcrVehicleLoading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleVehiclePhotoUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadingVehiclePhoto(true);
+    try {
+      const data = await vehicleService.uploadPhoto(file);
+      setVehicleForm(f => ({
+        ...f,
+        photoUrl: data?.imageUrl || f.photoUrl
+      }));
+      showToast('✅ Tải ảnh xe thành công!');
+    } catch (err) {
+      showToast('❌ Lỗi tải ảnh xe: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setUploadingVehiclePhoto(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleVehiclePhotoUploadEdit = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setUploadingVehiclePhoto(true);
+    try {
+      const data = await vehicleService.uploadPhoto(file);
+      setVehicleEditData(f => ({
+        ...f,
+        photoUrl: data?.imageUrl || f.photoUrl
+      }));
+      showToast('✅ Tải ảnh xe thành công!');
+    } catch (err) {
+      showToast('❌ Lỗi tải ảnh xe: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setUploadingVehiclePhoto(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleVehicleRegistrationUploadEdit = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setOcrVehicleLoading(true);
+    try {
+      const data = await vehicleService.extractRegistration(file);
+      setVehicleEditData(f => ({
+        ...f,
+        plateNumber: data?.plateNumber || f.plateNumber,
+        registrationImageUrl: data?.imageUrl || f.registrationImageUrl
+      }));
+      if (data?.isSuccess === false) {
+        showToast('⚠️ ' + data.message);
+      } else {
+        showToast('✅ Quét Cà Vẹt thành công!');
+      }
+    } catch (err) {
+      showToast('❌ Lỗi quét Cà Vẹt: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setOcrVehicleLoading(false);
+      e.target.value = '';
+    }
+  };
 
   const loadDrivers = async () => {
     setLoading(true)
@@ -109,10 +294,13 @@ export default function DriverManagement() {
     try {
       await vehicleService.createVehicle({
         plateNumber: vehicleForm.plate,
-        vehicleType: vehicleForm.vehicleType
+        vehicleType: vehicleForm.vehicleType,
+        registrationImageUrl: vehicleForm.registrationImageUrl,
+        photoUrl: vehicleForm.photoUrl
       })
       setShowAddVehicleModal(false)
       showToast('✅ Đã thêm phương tiện mới (' + vehicleForm.plate + ')!')
+      setVehicleForm({ plate: '', vehicleType: 'ROAD_TRUCK', registrationImageUrl: '', photoUrl: '' })
       loadVehicles()
     } catch (err) {
       showToast('❌ Lỗi thêm phương tiện: ' + (err.response?.data?.message || err.message))
@@ -129,10 +317,17 @@ export default function DriverManagement() {
   const handleSaveVehicleEdit = async (e) => {
     e.preventDefault()
     try {
-      if (vehicleEditData.plateNumber !== selectedVehicle.plateNumber || vehicleEditData.vehicleType !== selectedVehicle.vehicleType) {
+      if (
+        vehicleEditData.plateNumber !== selectedVehicle.plateNumber || 
+        vehicleEditData.vehicleType !== selectedVehicle.vehicleType ||
+        vehicleEditData.photoUrl !== selectedVehicle.photoUrl ||
+        vehicleEditData.registrationImageUrl !== selectedVehicle.registrationImageUrl
+      ) {
         await vehicleService.updateVehicle(selectedVehicle.id, {
           plateNumber: vehicleEditData.plateNumber,
-          vehicleType: vehicleEditData.vehicleType
+          vehicleType: vehicleEditData.vehicleType,
+          photoUrl: vehicleEditData.photoUrl,
+          registrationImageUrl: vehicleEditData.registrationImageUrl
         })
       }
       if (vehicleEditData.status && vehicleEditData.status !== selectedVehicle.status.toLowerCase()) {
@@ -141,7 +336,14 @@ export default function DriverManagement() {
       setEditVehicleMode(false)
       showToast('✅ Đã cập nhật phương tiện ' + vehicleEditData.plateNumber + '!')
       loadVehicles()
-      setSelectedVehicle({ ...selectedVehicle, plateNumber: vehicleEditData.plateNumber, vehicleType: vehicleEditData.vehicleType, status: vehicleEditData.status })
+      setSelectedVehicle({ 
+        ...selectedVehicle, 
+        plateNumber: vehicleEditData.plateNumber, 
+        vehicleType: vehicleEditData.vehicleType, 
+        status: vehicleEditData.status,
+        photoUrl: vehicleEditData.photoUrl,
+        registrationImageUrl: vehicleEditData.registrationImageUrl
+      })
     } catch (err) {
       showToast('❌ Lỗi cập nhật: ' + (err.response?.data?.message || err.message))
     }
@@ -198,10 +400,14 @@ export default function DriverManagement() {
       await driverService.updateDriver(editForm.id, {
         fullName: editForm.fullName,
         phone: editForm.phone,
-        idCardNumber: editForm.idCardNumber
+        idCardNumber: editForm.idCardNumber,
+        photoUrl: editForm.photoUrl,
+        idCardFrontUrl: editForm.idCardFrontUrl,
+        licenseImageUrl: editForm.licenseImageUrl
       })
       if (selectedDriver.status !== editForm.status) {
         await driverService.toggleStatus(editForm.id, editForm.status)
+        await loadVehicles() // Refresh vehicles in case the driver was unassigned from a vehicle
       }
       setEditMode(false)
       showToast(`✅ Đã cập nhật hồ sơ tài xế ${editForm.fullName}!`)
@@ -222,7 +428,7 @@ export default function DriverManagement() {
 
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-24 right-8 bg-[#202020] text-white px-6 py-3 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-3 z-[100] animate-bounce border border-signal-orange">
+        <div className="fixed top-24 right-8 bg-[#202020] text-white px-6 py-3 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-3 z-[999] animate-bounce border border-signal-orange">
           <span className="text-signal-orange">●</span>
           {toastMessage}
         </div>
@@ -452,7 +658,11 @@ export default function DriverManagement() {
                   <div className="flex justify-between items-start">
                     <div className="flex items-center space-x-3">
                       <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-white text-sm uppercase ${d.status === 'banned' ? 'bg-red-400' : d.status === 'inactive' ? 'bg-amber-400' : 'bg-carbon'}`}>
-                        {initials}
+                        {d.photoUrl ? (
+                          <img src={`http://localhost:5000${d.photoUrl}`} alt={d.fullName} className="w-full h-full object-cover rounded-full border border-chalk" />
+                        ) : (
+                          initials
+                        )}
                       </div>
                       <div>
                         <h3 className="font-bold text-carbon text-base">{d.fullName}</h3>
@@ -467,7 +677,11 @@ export default function DriverManagement() {
                     </span>
                   </div>
 
-                  <div className="pt-4 border-t border-chalk flex justify-between items-center text-xs">
+                  <div className="pt-4 border-t border-chalk grid grid-cols-2 gap-2 text-xs">
+                    <div className="col-span-2 mb-1">
+                      <span className="text-slate block text-[10px] uppercase font-bold">Trực thuộc đơn vị</span>
+                      <strong className="text-signal-orange text-[11px]">{d.carrierName || 'NexusPort · Cảng Tiên Sa'}</strong>
+                    </div>
                     <div>
                       <span className="text-slate block text-[10px] uppercase font-bold">Điện Thoại</span>
                       <strong className="text-carbon">{d.phone}</strong>
@@ -502,8 +716,12 @@ export default function DriverManagement() {
                 <div key={v.id} onClick={() => openVehicleDetails(v)} className="bg-white rounded-xl p-6 shadow-sm border border-chalk hover:shadow-md transition-all flex flex-col space-y-4 cursor-pointer hover:border-slate">
                   <div className="flex justify-between items-start">
                     <div className="flex items-center space-x-3">
-                      <div className="w-12 h-12 rounded-xl bg-fog flex items-center justify-center text-carbon">
-                        <span className="material-symbols-outlined">local_shipping</span>
+                      <div className="w-12 h-12 rounded-xl bg-fog flex items-center justify-center text-carbon overflow-hidden shrink-0 border border-chalk">
+                        {v.photoUrl ? (
+                          <img src={`http://localhost:5000${v.photoUrl}`} alt="Xe" className="w-full h-full object-cover" />
+                        ) : (
+                          <span className="material-symbols-outlined">local_shipping</span>
+                        )}
                       </div>
                       <div>
                         <h3 className="font-bold text-carbon text-base">{v.plateNumber}</h3>
@@ -552,6 +770,30 @@ export default function DriverManagement() {
             </div>
             
             <form onSubmit={handleCreateVehicle} className="space-y-4 font-sans">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-slate uppercase">Ảnh Đại Diện Xe</label>
+                  <div className="relative">
+                    <input type="file" accept="image/*" onChange={handleVehiclePhotoUpload} disabled={uploadingVehiclePhoto}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                    <div className={`h-11 border-2 border-dashed border-chalk rounded-lg flex items-center justify-center text-xs font-bold transition-colors ${uploadingVehiclePhoto ? 'bg-fog text-slate' : 'bg-white text-carbon hover:border-carbon'}`}>
+                      {uploadingVehiclePhoto ? 'Đang tải...' : (vehicleForm.photoUrl ? 'Đã tải ảnh lên' : 'Tải ảnh xe lên')}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-slate uppercase">Ảnh Cà Vẹt (AI)</label>
+                  <div className="relative">
+                    <input type="file" accept="image/*" onChange={handleVehicleRegistrationUpload} disabled={ocrVehicleLoading}
+                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                    <div className={`h-11 border-2 border-dashed border-chalk rounded-lg flex items-center justify-center text-xs font-bold transition-colors ${ocrVehicleLoading ? 'bg-fog text-slate' : 'bg-white text-carbon hover:border-carbon'}`}>
+                      {ocrVehicleLoading ? 'Đang quét...' : (vehicleForm.registrationImageUrl ? 'Đã tải ảnh lên' : 'Quét Cà Vẹt tự động')}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate mb-1">Biển Số Xe *</label>
                 <input
@@ -586,8 +828,12 @@ export default function DriverManagement() {
               
               <div className="flex justify-between items-start border-b border-chalk pb-5">
                 <div className="flex items-center space-x-4">
-                  <div className="w-12 h-12 rounded-xl bg-fog flex items-center justify-center text-carbon">
-                    <span className="material-symbols-outlined text-2xl">local_shipping</span>
+                  <div className="w-16 h-16 rounded-xl bg-fog flex items-center justify-center overflow-hidden flex-shrink-0 cursor-pointer group" onClick={() => selectedVehicle.photoUrl && setZoomedImage(`http://localhost:5000${selectedVehicle.photoUrl}`)}>
+                    {selectedVehicle.photoUrl ? (
+                      <img src={`http://localhost:5000${selectedVehicle.photoUrl}`} alt="Vehicle" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                    ) : (
+                      <span className="material-symbols-outlined text-3xl text-carbon">local_shipping</span>
+                    )}
                   </div>
                   <div>
                     <h3 className="text-xl font-bold text-carbon font-mono">{selectedVehicle.plateNumber}</h3>
@@ -608,6 +854,29 @@ export default function DriverManagement() {
 
               {editVehicleMode ? (
                 <form onSubmit={handleSaveVehicleEdit} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-slate uppercase">Ảnh Đại Diện Xe</label>
+                      <div className="relative">
+                        <input type="file" accept="image/*" onChange={handleVehiclePhotoUploadEdit} disabled={uploadingVehiclePhoto}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                        <div className={`h-11 border-2 border-dashed border-chalk rounded-lg flex items-center justify-center text-xs font-bold transition-colors ${uploadingVehiclePhoto ? 'bg-fog text-slate' : 'bg-white text-carbon hover:border-carbon'}`}>
+                          {uploadingVehiclePhoto ? 'Đang tải...' : (vehicleEditData.photoUrl ? 'Đã tải ảnh lên' : 'Tải ảnh xe lên')}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] font-bold text-slate uppercase">Ảnh Cà Vẹt (AI)</label>
+                      <div className="relative">
+                        <input type="file" accept="image/*" onChange={handleVehicleRegistrationUploadEdit} disabled={ocrVehicleLoading}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+                        <div className={`h-11 border-2 border-dashed border-chalk rounded-lg flex items-center justify-center text-xs font-bold transition-colors ${ocrVehicleLoading ? 'bg-fog text-slate' : 'bg-white text-carbon hover:border-carbon'}`}>
+                          {ocrVehicleLoading ? 'Đang quét...' : (vehicleEditData.registrationImageUrl ? 'Đã tải ảnh lên' : 'Quét Cà Vẹt')}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate uppercase mb-1">Biển Số Xe</label>
                     <input type="text" value={vehicleEditData.plateNumber} onChange={e => setVehicleEditData(f => ({ ...f, plateNumber: e.target.value }))}
@@ -634,12 +903,48 @@ export default function DriverManagement() {
                 <div className="space-y-5 text-xs">
                   <div className="space-y-4 border-b border-chalk pb-5">
                     <h4 className="text-[10px] font-bold text-slate uppercase tracking-wider">THÔNG TIN PHƯƠNG TIỆN</h4>
-                    <div className="flex justify-between">
-                      <span className="text-slate">Trạng thái</span>
-                      <strong className={selectedVehicle.status.toLowerCase() === 'available' ? 'text-green-600' : selectedVehicle.status.toLowerCase() === 'maintenance' ? 'text-red-500' : 'text-blue-500'}>
-                        {selectedVehicle.status}
-                      </strong>
+                    <div className="grid grid-cols-2 gap-y-3">
+                      <div className="text-slate">Trạng thái</div>
+                      <div className="text-right">
+                        <strong className={selectedVehicle.status.toLowerCase() === 'available' ? 'text-green-600' : selectedVehicle.status.toLowerCase() === 'maintenance' ? 'text-red-500' : 'text-blue-500'}>
+                          {selectedVehicle.status}
+                        </strong>
+                      </div>
+                      <div className="text-slate">Biển Số</div>
+                      <div className="text-right font-mono font-bold text-carbon">{selectedVehicle.plateNumber}</div>
+                      <div className="text-slate">Loại Xe</div>
+                      <div className="text-right font-bold text-carbon">{selectedVehicle.vehicleType === 'ROAD_TRUCK' ? 'Đầu kéo đường dài' : 'Đầu kéo nội bài'}</div>
+                      <div className="text-slate">Ngày Tạo</div>
+                      <div className="text-right text-carbon">{new Date(selectedVehicle.createdAt).toLocaleDateString('vi-VN')}</div>
                     </div>
+
+                    {(selectedVehicle.registrationImageUrl || selectedVehicle.photoUrl) && (
+                      <div className="mt-4 pt-4 border-t border-chalk">
+                        <div className="text-[10px] font-bold text-slate uppercase mb-3">Tài Liệu Đính Kèm</div>
+                        <div className="grid grid-cols-2 gap-4">
+                          {selectedVehicle.photoUrl && (
+                            <div className="space-y-2">
+                              <div className="text-[9px] font-bold text-slate uppercase text-center">Ảnh Đại Diện Xe</div>
+                              <div className="bg-fog p-1 rounded-xl border border-chalk h-28 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange group" onClick={() => setZoomedImage(`http://localhost:5000${selectedVehicle.photoUrl}`)}>
+                                <img src={`http://localhost:5000${selectedVehicle.photoUrl}`} alt="Avatar Xe" 
+                                  className="max-w-full max-h-full object-cover rounded-lg shadow-sm transition-transform group-hover:scale-110" />
+                              </div>
+                            </div>
+                          )}
+                          
+                          {selectedVehicle.registrationImageUrl && (
+                            <div className="space-y-2">
+                              <div className="text-[9px] font-bold text-slate uppercase text-center">Ảnh Cà Vẹt</div>
+                              <div className="bg-fog p-1 rounded-xl border border-chalk h-28 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange group" onClick={() => setZoomedImage(`http://localhost:5000${selectedVehicle.registrationImageUrl}`)}>
+                                <img src={`http://localhost:5000${selectedVehicle.registrationImageUrl}`} alt="Cà Vẹt" 
+                                  className="max-w-full max-h-full object-contain rounded-lg shadow-sm transition-transform group-hover:scale-105" 
+                                  onLoad={e => { if (e.target.naturalHeight > e.target.naturalWidth) e.target.style.transform = 'rotate(-90deg) scale(1.1)'; }} />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-3">
@@ -684,7 +989,11 @@ export default function DriverManagement() {
               <div className="flex justify-between items-start border-b border-chalk pb-5">
                 <div className="flex items-center space-x-4">
                   <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-base uppercase ${selectedDriver.status === 'banned' ? 'bg-red-400' : selectedDriver.status === 'inactive' ? 'bg-amber-400' : 'bg-carbon'}`}>
-                    {selectedDriver.fullName.split(' ').map(n => n[0]).join('').substring(0, 2)}
+                    {selectedDriver.photoUrl ? (
+                      <img src={`http://localhost:5000${selectedDriver.photoUrl}`} alt={selectedDriver.fullName} className="w-full h-full object-cover rounded-full border border-chalk" />
+                    ) : (
+                      selectedDriver.fullName.split(' ').map(n => n[0]).join('').substring(0, 2)
+                    )}
                   </div>
                   <div>
                     <h3 className="text-base font-bold text-carbon">{selectedDriver.fullName}</h3>
@@ -707,6 +1016,33 @@ export default function DriverManagement() {
 
               {editMode ? (
                 <form onSubmit={handleSaveEdit} className="space-y-4">
+                  {/* OCR Section */}
+                  <div className="mb-4">
+                    <div className="flex items-center gap-4 p-4 border border-dashed border-chalk rounded-xl bg-fog">
+                      {editForm.photoUrl ? (
+                        <img src={`http://localhost:5000${editForm.photoUrl}`} alt="Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-sm" />
+                      ) : (
+                        <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center text-slate-400">
+                          <span className="material-symbols-outlined text-2xl">person</span>
+                        </div>
+                      )}
+                      <div className="flex-1 flex gap-2">
+                        <div className="flex-1">
+                          <label className={`inline-flex items-center justify-center w-full px-2 py-2 bg-white border border-chalk rounded-lg text-[11px] font-bold ${ocrLoading ? 'text-slate opacity-70 cursor-not-allowed' : 'text-carbon hover:bg-mist cursor-pointer'} relative overflow-hidden transition-colors shadow-sm`}>
+                            {ocrLoading ? '⏳ Đang xử lý...' : '📷 Quét CCCD'}
+                            <input type="file" accept="image/*" onChange={handleOcrUploadEdit} className="absolute inset-0 opacity-0 cursor-pointer" disabled={ocrLoading} />
+                          </label>
+                        </div>
+                        <div className="flex-1">
+                          <label className={`inline-flex items-center justify-center w-full px-2 py-2 bg-white border border-chalk rounded-lg text-[11px] font-bold ${ocrLoading ? 'text-slate opacity-70 cursor-not-allowed' : 'text-carbon hover:bg-mist cursor-pointer'} relative overflow-hidden transition-colors shadow-sm`}>
+                            {ocrLoading ? '⏳ Đang xử lý...' : '📷 Quét GPLX'}
+                            <input type="file" accept="image/*" onChange={handleGplxUploadEdit} className="absolute inset-0 opacity-0 cursor-pointer" disabled={ocrLoading} />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   {[['Họ và Tên', 'fullName'], ['Số điện thoại', 'phone'], ['Số CCCD', 'idCardNumber'], ['Số GPLX (Không sửa)', 'licenseNumber']].map(([label, field]) => (
                     <div key={field}>
                       <label className="block text-[10px] font-bold text-slate uppercase mb-1">{label}</label>
@@ -734,6 +1070,10 @@ export default function DriverManagement() {
                   {/* Contact & ID Info */}
                   <div className="space-y-4 text-xs border-b border-chalk pb-5">
                     <h4 className="text-[10px] font-bold text-slate uppercase tracking-wider">THÔNG TIN HỒ SƠ</h4>
+                    <div className="flex justify-between items-center bg-orange-50/50 p-2.5 rounded-lg border border-orange-100">
+                      <span className="text-orange-800 font-bold">Trực thuộc đơn vị</span>
+                      <strong className="text-signal-orange text-right">{selectedDriver.carrierName || 'NexusPort · Cảng Tiên Sa'}</strong>
+                    </div>
                     <div className="flex justify-between">
                       <span className="text-slate">Số điện thoại</span>
                       <strong className="text-carbon font-mono">{selectedDriver.phone}</strong>
@@ -749,6 +1089,29 @@ export default function DriverManagement() {
                     <div className="flex justify-between">
                       <span className="text-slate">Ngày thêm vào hệ thống</span>
                       <strong className="text-carbon">{new Date(selectedDriver.createdAt).toLocaleDateString()}</strong>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-chalk">
+                      {selectedDriver.idCardFrontUrl && (
+                        <div>
+                          <div className="text-[10px] font-bold text-slate uppercase mb-2">Ảnh CCCD</div>
+                          <div className="bg-fog p-1.5 rounded-xl border border-chalk h-32 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange group" onClick={() => setZoomedImage(`http://localhost:5000${selectedDriver.idCardFrontUrl}`)}>
+                            <img src={`http://localhost:5000${selectedDriver.idCardFrontUrl}`} alt="CCCD" 
+                              className="max-w-full max-h-full object-contain rounded-lg shadow-sm transition-transform group-hover:scale-105" 
+                              onLoad={e => { if (e.target.naturalHeight > e.target.naturalWidth) e.target.style.transform = 'rotate(-90deg) scale(1.2)'; }} />
+                          </div>
+                        </div>
+                      )}
+                      {selectedDriver.licenseImageUrl && (
+                        <div>
+                          <div className="text-[10px] font-bold text-slate uppercase mb-2">Ảnh Bằng Lái</div>
+                          <div className="bg-fog p-1.5 rounded-xl border border-chalk h-32 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange group" onClick={() => setZoomedImage(`http://localhost:5000${selectedDriver.licenseImageUrl}`)}>
+                            <img src={`http://localhost:5000${selectedDriver.licenseImageUrl}`} alt="GPLX" 
+                              className="max-w-full max-h-full object-contain rounded-lg shadow-sm transition-transform group-hover:scale-105"
+                              onLoad={e => { if (e.target.naturalHeight > e.target.naturalWidth) e.target.style.transform = 'rotate(-90deg) scale(1.2)'; }} />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -770,6 +1133,17 @@ export default function DriverManagement() {
         </>
       )}
 
+      {/* ═══ ZOOMED IMAGE MODAL ═══ */}
+      {zoomedImage && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-carbon/80 backdrop-blur-sm p-4" onClick={() => setZoomedImage(null)}>
+          <button className="absolute top-6 right-6 text-white hover:text-signal-orange bg-carbon/50 w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md">
+            <span className="material-symbols-outlined text-2xl">close</span>
+          </button>
+          <img src={zoomedImage} alt="Zoomed" className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} 
+               onLoad={e => { if (e.target.naturalHeight > e.target.naturalWidth) e.target.style.transform = 'rotate(-90deg) scale(1.1)'; else e.target.style.transform = 'none'; }} />
+        </div>
+      )}
+
       {/* ═══ ADD DRIVER MODAL ═══ */}
       {showAddModal && (
         <>
@@ -787,6 +1161,34 @@ export default function DriverManagement() {
               </div>
 
               <form onSubmit={handleAddDriver} className="p-6 space-y-4 font-sans">
+                {/* OCR Section */}
+                <div className="mb-4">
+                  <div className="flex items-center gap-4 p-4 border border-dashed border-chalk rounded-xl bg-fog">
+                    {form.photoUrl ? (
+                      <img src={`http://localhost:5000${form.photoUrl}`} alt="Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-sm" />
+                    ) : (
+                      <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center text-slate-400">
+                        <span className="material-symbols-outlined text-2xl">person</span>
+                      </div>
+                    )}
+                    <div className="flex-1 flex gap-2">
+                      <div className="flex-1">
+                        <label className={`inline-flex items-center justify-center w-full px-2 py-2 bg-white border border-chalk rounded-lg text-[11px] font-bold ${ocrLoading ? 'text-slate opacity-70 cursor-not-allowed' : 'text-carbon hover:bg-mist cursor-pointer'} relative overflow-hidden transition-colors shadow-sm`}>
+                          {ocrLoading ? '⏳ Đang xử lý...' : '📷 Quét CCCD'}
+                          <input type="file" accept="image/*" onChange={handleOcrUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={ocrLoading} />
+                        </label>
+                      </div>
+                      <div className="flex-1">
+                        <label className={`inline-flex items-center justify-center w-full px-2 py-2 bg-white border border-chalk rounded-lg text-[11px] font-bold ${ocrLoading ? 'text-slate opacity-70 cursor-not-allowed' : 'text-carbon hover:bg-mist cursor-pointer'} relative overflow-hidden transition-colors shadow-sm`}>
+                          {ocrLoading ? '⏳ Đang xử lý...' : '📷 Quét GPLX'}
+                          <input type="file" accept="image/*" onChange={handleGplxUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={ocrLoading} />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate mt-1.5 leading-tight">Tự động trích xuất thông tin từ thẻ cứng.</p>
+                </div>
+
                 {/* Form fields */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
