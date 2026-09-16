@@ -21,6 +21,7 @@ import Unauthorized from './pages/Auth/Unauthorized'
 import OperatorDashboard from './pages/Dashboard/OperatorDashboard'
 import BookingManagement from './pages/Booking/BookingManagement'
 import YardMap from './pages/Yard/YardMap'
+import SmartYardMap from './pages/Yard/SmartYardMap'
 import BillingPayment from './pages/Billing/BillingPayment'
 import UserRoleManagement from './pages/Users/UserRoleManagement'
 import CarrierPortal from './pages/Carrier/CarrierPortal'
@@ -157,19 +158,19 @@ function App() {
             <Route path="/berth" element={<BerthOps />} />
           </Route>
 
-          {/* 3. Nhóm Nhân viên Bãi (Yard Operator / Staff) */}
-          <Route element={<RoleRoute allowedRoles={[ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR, ROLES.DISPATCHER]} />}>
-            <Route path="/equipment-dispatch" element={<EquipmentDispatch />} />
-            <Route path="/yard" element={<YardMap />} />
-            <Route path="/yard-ops" element={<YardOperations />} />
+          {/* 3. Nhóm Vận hành Bãi (Yard Operator) */}
+          <Route element={<RoleRoute allowedRoles={[ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
+            <Route path="/dashboard" element={<DashboardIndex />} />
             <Route path="/yard-staff/dashboard" element={<YardOperationsDashboard />} />
-            <Route path="/yard-staff/map" element={<YardMapContainerManagement />} />
+            <Route path="/yard" element={<YardOperations />} />
+            <Route path="/yard/map" element={<SmartYardMap />} />
+            <Route path="/yard-ops" element={<YardOperations />} />
+            <Route path="/yard/receiving" element={<YardReceiving />} />
             <Route path="/yard-staff/inventory-inspection" element={<ContainerInventoryInspection />} />
             <Route path="/yard-staff/movement-operations" element={<YardMovementOperations />} />
             <Route path="/yard-staff/gate-out-preparation" element={<ContainerGateOutPreparation />} />
             <Route path="/yard-staff/container-detail" element={<ContainerDetail />} />
             <Route path="/yard-staff/receiving" element={<YardReceiving />} />
-            <Route path="/yard/receiving" element={<YardReceiving />} />
           </Route>
 
           {/* Nhóm Nhân viên Cổng (Gate Officer) */}

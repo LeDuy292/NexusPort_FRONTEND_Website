@@ -41,6 +41,10 @@ export const routeConfig = [
     allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {
+    path: '/yard/map',
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
     path: '/equipment-dispatch',
     allowedRoles: [ROLES.YARD_OPERATOR],
   },
