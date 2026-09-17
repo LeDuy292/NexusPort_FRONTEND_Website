@@ -1,12 +1,36 @@
 import apiClient from './apiClient'
-import axios from 'axios'
 
 const AI_URL = import.meta.env.VITE_AI_URL || 'http://localhost:8000'
 
-const aiClient = axios.create({
-  baseURL: AI_URL,
-  timeout: 30000,
-})
+const aiFetch = async (path, options = {}) => {
+  const url = `${AI_URL}${path}`
+  const headers = { ...(options.headers || {}) }
+  if (!(options.body instanceof FormData) && !headers['Content-Type']) {
+    headers['Content-Type'] = 'application/json'
+  }
+  const res = await fetch(url, {
+    ...options,
+    headers,
+  })
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}))
+    const err = new Error(errorData?.detail || errorData?.message || `HTTP error ${res.status}`)
+    err.response = { data: errorData }
+    throw err
+  }
+  return { data: await res.json().catch(() => ({})) }
+}
+
+const aiClient = {
+  get: (path) => aiFetch(path, { method: 'GET' }),
+  post: (path, body, config = {}) => {
+    return aiFetch(path, {
+      method: 'POST',
+      body: body instanceof FormData ? body : JSON.stringify(body),
+      headers: config?.headers,
+    })
+  },
+}
 
 export const gateService = {
   // ── AI CAMERA & RECOGNITION (Python FastAPI microservice) ───────────────

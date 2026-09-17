@@ -8,6 +8,8 @@ const STATUS_CONFIG = {
   banned: { label: 'Đình chỉ', dot: 'bg-red-500', badge: 'bg-red-50 text-red-800 border-red-300', icon: '🔴' },
 }
 
+import { resolveMediaUrl } from '../../utils/mediaUtils'
+
 function StatusBadge({ status }) {
   const normalizedStatus = status ? status.toLowerCase() : 'inactive';
   const cfg = STATUS_CONFIG[normalizedStatus] || STATUS_CONFIG.inactive;
@@ -20,15 +22,61 @@ function StatusBadge({ status }) {
 }
 
 function AvatarCircle({ driver }) {
-  if (driver.photoUrl) {
-    return <img src={`http://localhost:5000${driver.photoUrl}`} alt={driver.fullName} className="w-full h-full object-cover rounded-[inherit] border border-chalk" />
+  const [imgError, setImgError] = useState(false)
+
+  useEffect(() => {
+    setImgError(false)
+  }, [driver?.photoUrl])
+
+  if (driver?.photoUrl && !imgError) {
+    return <img src={resolveMediaUrl(driver.photoUrl)} alt={driver.fullName} onError={() => setImgError(true)} className="w-full h-full object-cover rounded-[inherit] border border-chalk" />
   }
-  const color = driver.status === 'banned' ? 'bg-red-400' : driver.status === 'inactive' ? 'bg-amber-400' : 'bg-green-500'
-  const nameParts = driver.fullName ? driver.fullName.trim().split(' ') : ['?']
+  const color = driver?.status === 'banned' ? 'bg-red-400' : driver?.status === 'inactive' ? 'bg-amber-400' : 'bg-green-500'
+  const nameParts = driver?.fullName ? driver.fullName.trim().split(' ') : ['?']
   const initials = nameParts.length > 1
     ? nameParts[nameParts.length - 1].charAt(0) + nameParts[0].charAt(0)
     : nameParts[0].substring(0, 2)
   return <div className={`flex items-center justify-center text-white font-extrabold flex-shrink-0 uppercase ${color} rounded-[inherit] w-full h-full`}>{initials}</div>
+}
+
+function DocumentCard({ url, title, alt, onClick }) {
+  const [imgError, setImgError] = useState(false)
+
+  useEffect(() => {
+    setImgError(false)
+  }, [url])
+
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[10px] font-bold text-slate uppercase">{title}</div>
+      {!url || imgError ? (
+        <div className="bg-fog p-3 rounded-xl border border-dashed border-chalk h-32 flex flex-col items-center justify-center text-slate select-none">
+          <span className="material-symbols-outlined text-2xl text-slate/40 mb-1">badge</span>
+          <span className="text-[11px] font-medium text-slate/70">Chưa có {alt}</span>
+        </div>
+      ) : (
+        <div
+          className="bg-fog p-1.5 rounded-xl border border-chalk h-32 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange transition-all group relative shadow-sm"
+          onClick={onClick}
+        >
+          <img
+            src={resolveMediaUrl(url)}
+            alt={alt}
+            onError={() => setImgError(true)}
+            className="max-w-full max-h-full object-contain rounded-lg transition-transform group-hover:scale-105"
+            onLoad={e => {
+              if (e.target.naturalHeight > e.target.naturalWidth) {
+                e.target.style.transform = 'rotate(-90deg) scale(1.2)';
+              }
+            }}
+          />
+          <div className="absolute inset-0 bg-carbon/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl pointer-events-none">
+            <span className="material-symbols-outlined text-white text-lg drop-shadow">zoom_in</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function DispatcherDriverManagement() {
@@ -411,26 +459,18 @@ export default function DispatcherDriverManagement() {
                       ))}
                     </div>
                     <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-chalk">
-                      {drawerDriver.idCardFrontUrl && (
-                        <div>
-                          <div className="text-[10px] font-bold text-slate uppercase mb-2">Ảnh CCCD</div>
-                          <div className="bg-fog p-1.5 rounded-xl border border-chalk h-32 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange group" onClick={() => setZoomedImage(`http://localhost:5000${drawerDriver.idCardFrontUrl}`)}>
-                            <img src={`http://localhost:5000${drawerDriver.idCardFrontUrl}`} alt="CCCD" 
-                              className="max-w-full max-h-full object-contain rounded-lg shadow-sm transition-transform group-hover:scale-105" 
-                              onLoad={e => { if (e.target.naturalHeight > e.target.naturalWidth) e.target.style.transform = 'rotate(-90deg) scale(1.2)'; }} />
-                          </div>
-                        </div>
-                      )}
-                      {drawerDriver.licenseImageUrl && (
-                        <div>
-                          <div className="text-[10px] font-bold text-slate uppercase mb-2">Ảnh Bằng Lái</div>
-                          <div className="bg-fog p-1.5 rounded-xl border border-chalk h-32 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange group" onClick={() => setZoomedImage(`http://localhost:5000${drawerDriver.licenseImageUrl}`)}>
-                            <img src={`http://localhost:5000${drawerDriver.licenseImageUrl}`} alt="GPLX" 
-                              className="max-w-full max-h-full object-contain rounded-lg shadow-sm transition-transform group-hover:scale-105"
-                              onLoad={e => { if (e.target.naturalHeight > e.target.naturalWidth) e.target.style.transform = 'rotate(-90deg) scale(1.2)'; }} />
-                          </div>
-                        </div>
-                      )}
+                      <DocumentCard
+                        url={drawerDriver.idCardFrontUrl}
+                        title="Ảnh CCCD"
+                        alt="CCCD"
+                        onClick={() => drawerDriver.idCardFrontUrl && setZoomedImage(resolveMediaUrl(drawerDriver.idCardFrontUrl))}
+                      />
+                      <DocumentCard
+                        url={drawerDriver.licenseImageUrl}
+                        title="Ảnh Bằng Lái"
+                        alt="Bằng Lái"
+                        onClick={() => drawerDriver.licenseImageUrl && setZoomedImage(resolveMediaUrl(drawerDriver.licenseImageUrl))}
+                      />
                     </div>
                   </section>
 
@@ -543,31 +583,59 @@ export default function DispatcherDriverManagement() {
                 </button>
               </div>
               <form onSubmit={handleAddDriver} className="px-6 py-5 space-y-4">
-                <div className="mb-4">
+                <div className="mb-4 space-y-3">
                   <div className="flex items-center gap-4 p-4 border border-dashed border-chalk rounded-xl bg-fog">
-                    {form.photoUrl ? (
-                      <img src={`http://localhost:5000${form.photoUrl}`} alt="Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-sm" />
-                    ) : (
-                      <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center text-slate-400">
-                        <span className="material-symbols-outlined text-2xl">person</span>
-                      </div>
-                    )}
+                    <AvatarCircle driver={{ photoUrl: form.photoUrl || form.idCardFrontUrl, fullName: form.fullName }} />
                     <div className="flex-1 flex gap-2">
                       <div className="flex-1">
                         <label className={`inline-flex items-center justify-center w-full px-2 py-2 bg-white border border-chalk rounded-lg text-[11px] font-bold ${ocrLoading ? 'text-slate opacity-70 cursor-not-allowed' : 'text-carbon hover:bg-mist cursor-pointer'} relative overflow-hidden transition-colors shadow-sm`}>
-                          {ocrLoading ? '⏳ Đang xử lý...' : '📷 Quét CCCD'}
+                          {ocrLoading ? '⏳ Đang quét...' : '📷 Quét CCCD'}
                           <input type="file" accept="image/*" onChange={handleOcrUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={ocrLoading} />
                         </label>
                       </div>
                       <div className="flex-1">
                         <label className={`inline-flex items-center justify-center w-full px-2 py-2 bg-white border border-chalk rounded-lg text-[11px] font-bold ${ocrLoading ? 'text-slate opacity-70 cursor-not-allowed' : 'text-carbon hover:bg-mist cursor-pointer'} relative overflow-hidden transition-colors shadow-sm`}>
-                          {ocrLoading ? '⏳ Đang xử lý...' : '📷 Quét GPLX'}
+                          {ocrLoading ? '⏳ Đang quét...' : '📷 Quét GPLX'}
                           <input type="file" accept="image/*" onChange={handleGplxUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={ocrLoading} />
                         </label>
                       </div>
                     </div>
-                    <p className="text-[10px] text-slate mt-1.5 leading-tight">Tự động trích xuất thông tin từ CCCD hoặc Bằng Lái Xe (GPLX).</p>
                   </div>
+
+                  {(form.idCardFrontUrl || form.licenseImageUrl) && (
+                    <div className="grid grid-cols-2 gap-3 p-3 bg-white border border-chalk rounded-xl">
+                      {form.idCardFrontUrl && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-slate uppercase flex items-center gap-1">
+                            <span className="material-symbols-outlined text-xs text-green-600">check_circle</span>
+                            Ảnh CCCD đã quét
+                          </span>
+                          <div className="h-20 bg-fog rounded-lg border border-chalk overflow-hidden cursor-pointer hover:border-signal-orange relative group" onClick={() => setZoomedImage(resolveMediaUrl(form.idCardFrontUrl))}>
+                            <img src={resolveMediaUrl(form.idCardFrontUrl)} alt="CCCD Scan" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+                            <div className="absolute inset-0 bg-carbon/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                              <span className="material-symbols-outlined text-sm">zoom_in</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {form.licenseImageUrl && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-slate uppercase flex items-center gap-1">
+                            <span className="material-symbols-outlined text-xs text-green-600">check_circle</span>
+                            Ảnh GPLX đã quét
+                          </span>
+                          <div className="h-20 bg-fog rounded-lg border border-chalk overflow-hidden cursor-pointer hover:border-signal-orange relative group" onClick={() => setZoomedImage(resolveMediaUrl(form.licenseImageUrl))}>
+                            <img src={resolveMediaUrl(form.licenseImageUrl)} alt="GPLX Scan" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+                            <div className="absolute inset-0 bg-carbon/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                              <span className="material-symbols-outlined text-sm">zoom_in</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="text-[10px] text-slate leading-tight">Tự động trích xuất thông tin và lưu ảnh trực tiếp lên AWS S3.</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">

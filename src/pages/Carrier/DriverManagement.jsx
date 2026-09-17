@@ -2,10 +2,86 @@ import React, { useState, useEffect } from 'react'
 import driverService from '../../services/driverService'
 import vehicleService from '../../services/vehicleService'
 
+import { resolveMediaUrl } from '../../utils/mediaUtils'
+
 const STATUS_CONFIG = {
   active: { label: 'Sẵn sàng hoạt động', color: 'bg-green-600 text-white' },
   inactive: { label: 'Tạm nghỉ / Bận', color: 'bg-amber-100 text-amber-800 border border-amber-200' },
   banned: { label: 'Đã bị đình chỉ', color: 'bg-red-100 text-red-800 border border-red-200' },
+}
+
+function DriverAvatar({ photoUrl, fullName, status, className = "w-12 h-12 text-sm" }) {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [photoUrl]);
+
+  const nameParts = fullName ? fullName.trim().split(' ') : ['?'];
+  const initials = nameParts.length > 1
+    ? nameParts[nameParts.length - 1].charAt(0) + nameParts[0].charAt(0)
+    : nameParts[0].substring(0, 2).toUpperCase();
+
+  const statusBg = status === 'banned' ? 'bg-red-400' : status === 'inactive' ? 'bg-amber-400' : 'bg-carbon';
+
+  if (photoUrl && !imgError) {
+    return (
+      <div className={`${className} rounded-full overflow-hidden flex-shrink-0 border border-chalk relative`}>
+        <img
+          src={resolveMediaUrl(photoUrl)}
+          alt={fullName || 'Driver'}
+          onError={() => setImgError(true)}
+          className="w-full h-full object-cover"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${className} rounded-full flex items-center justify-center font-bold text-white uppercase flex-shrink-0 ${statusBg}`}>
+      {initials}
+    </div>
+  );
+}
+
+function DocumentCard({ url, title, alt, onClick }) {
+  const [imgError, setImgError] = useState(false);
+
+  useEffect(() => {
+    setImgError(false);
+  }, [url]);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[10px] font-bold text-slate uppercase">{title}</div>
+      {!url || imgError ? (
+        <div className="bg-fog p-3 rounded-xl border border-dashed border-chalk h-32 flex flex-col items-center justify-center text-slate select-none">
+          <span className="material-symbols-outlined text-2xl text-slate/40 mb-1">badge</span>
+          <span className="text-[11px] font-medium text-slate/70">Chưa có {alt}</span>
+        </div>
+      ) : (
+        <div
+          className="bg-fog p-1.5 rounded-xl border border-chalk h-32 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange transition-all group relative shadow-sm"
+          onClick={onClick}
+        >
+          <img
+            src={resolveMediaUrl(url)}
+            alt={alt}
+            onError={() => setImgError(true)}
+            className="max-w-full max-h-full object-contain rounded-lg transition-transform group-hover:scale-105"
+            onLoad={e => {
+              if (e.target.naturalHeight > e.target.naturalWidth) {
+                e.target.style.transform = 'rotate(-90deg) scale(1.2)';
+              }
+            }}
+          />
+          <div className="absolute inset-0 bg-carbon/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl pointer-events-none">
+            <span className="material-symbols-outlined text-white text-lg drop-shadow">zoom_in</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function DriverManagement() {
@@ -657,13 +733,7 @@ export default function DriverManagement() {
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex items-center space-x-3">
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-white text-sm uppercase ${d.status === 'banned' ? 'bg-red-400' : d.status === 'inactive' ? 'bg-amber-400' : 'bg-carbon'}`}>
-                        {d.photoUrl ? (
-                          <img src={`http://localhost:5000${d.photoUrl}`} alt={d.fullName} className="w-full h-full object-cover rounded-full border border-chalk" />
-                        ) : (
-                          initials
-                        )}
-                      </div>
+                      <DriverAvatar photoUrl={d.photoUrl} fullName={d.fullName} status={d.status} className="w-12 h-12 text-sm" />
                       <div>
                         <h3 className="font-bold text-carbon text-base">{d.fullName}</h3>
                         <p className="text-[10px] font-mono text-slate mt-0.5">{d.licenseNumber}</p>
@@ -718,7 +788,7 @@ export default function DriverManagement() {
                     <div className="flex items-center space-x-3">
                       <div className="w-12 h-12 rounded-xl bg-fog flex items-center justify-center text-carbon overflow-hidden shrink-0 border border-chalk">
                         {v.photoUrl ? (
-                          <img src={`http://localhost:5000${v.photoUrl}`} alt="Xe" className="w-full h-full object-cover" />
+                          <img src={resolveMediaUrl(v.photoUrl)} alt="Xe" onError={(e) => { e.target.style.display = 'none'; }} className="w-full h-full object-cover" />
                         ) : (
                           <span className="material-symbols-outlined">local_shipping</span>
                         )}
@@ -828,9 +898,9 @@ export default function DriverManagement() {
               
               <div className="flex justify-between items-start border-b border-chalk pb-5">
                 <div className="flex items-center space-x-4">
-                  <div className="w-16 h-16 rounded-xl bg-fog flex items-center justify-center overflow-hidden flex-shrink-0 cursor-pointer group" onClick={() => selectedVehicle.photoUrl && setZoomedImage(`http://localhost:5000${selectedVehicle.photoUrl}`)}>
+                  <div className="w-16 h-16 rounded-xl bg-fog flex items-center justify-center overflow-hidden flex-shrink-0 cursor-pointer group" onClick={() => selectedVehicle.photoUrl && setZoomedImage(resolveMediaUrl(selectedVehicle.photoUrl))}>
                     {selectedVehicle.photoUrl ? (
-                      <img src={`http://localhost:5000${selectedVehicle.photoUrl}`} alt="Vehicle" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
+                      <img src={resolveMediaUrl(selectedVehicle.photoUrl)} alt="Vehicle" className="w-full h-full object-cover transition-transform group-hover:scale-110" />
                     ) : (
                       <span className="material-symbols-outlined text-3xl text-carbon">local_shipping</span>
                     )}
@@ -925,8 +995,8 @@ export default function DriverManagement() {
                           {selectedVehicle.photoUrl && (
                             <div className="space-y-2">
                               <div className="text-[9px] font-bold text-slate uppercase text-center">Ảnh Đại Diện Xe</div>
-                              <div className="bg-fog p-1 rounded-xl border border-chalk h-28 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange group" onClick={() => setZoomedImage(`http://localhost:5000${selectedVehicle.photoUrl}`)}>
-                                <img src={`http://localhost:5000${selectedVehicle.photoUrl}`} alt="Avatar Xe" 
+                              <div className="bg-fog p-1 rounded-xl border border-chalk h-28 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange group" onClick={() => setZoomedImage(resolveMediaUrl(selectedVehicle.photoUrl))}>
+                                <img src={resolveMediaUrl(selectedVehicle.photoUrl)} alt="Avatar Xe" 
                                   className="max-w-full max-h-full object-cover rounded-lg shadow-sm transition-transform group-hover:scale-110" />
                               </div>
                             </div>
@@ -935,8 +1005,8 @@ export default function DriverManagement() {
                           {selectedVehicle.registrationImageUrl && (
                             <div className="space-y-2">
                               <div className="text-[9px] font-bold text-slate uppercase text-center">Ảnh Cà Vẹt</div>
-                              <div className="bg-fog p-1 rounded-xl border border-chalk h-28 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange group" onClick={() => setZoomedImage(`http://localhost:5000${selectedVehicle.registrationImageUrl}`)}>
-                                <img src={`http://localhost:5000${selectedVehicle.registrationImageUrl}`} alt="Cà Vẹt" 
+                              <div className="bg-fog p-1 rounded-xl border border-chalk h-28 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange group" onClick={() => setZoomedImage(resolveMediaUrl(selectedVehicle.registrationImageUrl))}>
+                                <img src={resolveMediaUrl(selectedVehicle.registrationImageUrl)} alt="Cà Vẹt" 
                                   className="max-w-full max-h-full object-contain rounded-lg shadow-sm transition-transform group-hover:scale-105" 
                                   onLoad={e => { if (e.target.naturalHeight > e.target.naturalWidth) e.target.style.transform = 'rotate(-90deg) scale(1.1)'; }} />
                               </div>
@@ -988,13 +1058,7 @@ export default function DriverManagement() {
               {/* Profile Header */}
               <div className="flex justify-between items-start border-b border-chalk pb-5">
                 <div className="flex items-center space-x-4">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-base uppercase ${selectedDriver.status === 'banned' ? 'bg-red-400' : selectedDriver.status === 'inactive' ? 'bg-amber-400' : 'bg-carbon'}`}>
-                    {selectedDriver.photoUrl ? (
-                      <img src={`http://localhost:5000${selectedDriver.photoUrl}`} alt={selectedDriver.fullName} className="w-full h-full object-cover rounded-full border border-chalk" />
-                    ) : (
-                      selectedDriver.fullName.split(' ').map(n => n[0]).join('').substring(0, 2)
-                    )}
-                  </div>
+                  <DriverAvatar photoUrl={selectedDriver.photoUrl} fullName={selectedDriver.fullName} status={selectedDriver.status} className="w-12 h-12 text-base" />
                   <div>
                     <h3 className="text-base font-bold text-carbon">{selectedDriver.fullName}</h3>
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold mt-1 ${STATUS_CONFIG[selectedDriver.status]?.color || ''}`}>
@@ -1017,30 +1081,57 @@ export default function DriverManagement() {
               {editMode ? (
                 <form onSubmit={handleSaveEdit} className="space-y-4">
                   {/* OCR Section */}
-                  <div className="mb-4">
+                  <div className="mb-4 space-y-3">
                     <div className="flex items-center gap-4 p-4 border border-dashed border-chalk rounded-xl bg-fog">
-                      {editForm.photoUrl ? (
-                        <img src={`http://localhost:5000${editForm.photoUrl}`} alt="Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-sm" />
-                      ) : (
-                        <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center text-slate-400">
-                          <span className="material-symbols-outlined text-2xl">person</span>
-                        </div>
-                      )}
+                      <DriverAvatar photoUrl={editForm.photoUrl || editForm.idCardFrontUrl} fullName={editForm.fullName} status={editForm.status} className="w-16 h-16 text-lg" />
                       <div className="flex-1 flex gap-2">
                         <div className="flex-1">
                           <label className={`inline-flex items-center justify-center w-full px-2 py-2 bg-white border border-chalk rounded-lg text-[11px] font-bold ${ocrLoading ? 'text-slate opacity-70 cursor-not-allowed' : 'text-carbon hover:bg-mist cursor-pointer'} relative overflow-hidden transition-colors shadow-sm`}>
-                            {ocrLoading ? '⏳ Đang xử lý...' : '📷 Quét CCCD'}
+                            {ocrLoading ? '⏳ Đang quét...' : '📷 Quét CCCD'}
                             <input type="file" accept="image/*" onChange={handleOcrUploadEdit} className="absolute inset-0 opacity-0 cursor-pointer" disabled={ocrLoading} />
                           </label>
                         </div>
                         <div className="flex-1">
                           <label className={`inline-flex items-center justify-center w-full px-2 py-2 bg-white border border-chalk rounded-lg text-[11px] font-bold ${ocrLoading ? 'text-slate opacity-70 cursor-not-allowed' : 'text-carbon hover:bg-mist cursor-pointer'} relative overflow-hidden transition-colors shadow-sm`}>
-                            {ocrLoading ? '⏳ Đang xử lý...' : '📷 Quét GPLX'}
+                            {ocrLoading ? '⏳ Đang quét...' : '📷 Quét GPLX'}
                             <input type="file" accept="image/*" onChange={handleGplxUploadEdit} className="absolute inset-0 opacity-0 cursor-pointer" disabled={ocrLoading} />
                           </label>
                         </div>
                       </div>
                     </div>
+
+                    {(editForm.idCardFrontUrl || editForm.licenseImageUrl) && (
+                      <div className="grid grid-cols-2 gap-3 p-3 bg-white border border-chalk rounded-xl">
+                        {editForm.idCardFrontUrl && (
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-bold text-slate uppercase flex items-center gap-1">
+                              <span className="material-symbols-outlined text-xs text-green-600">check_circle</span>
+                              Ảnh CCCD
+                            </span>
+                            <div className="h-20 bg-fog rounded-lg border border-chalk overflow-hidden cursor-pointer hover:border-signal-orange relative group" onClick={() => setZoomedImage(resolveMediaUrl(editForm.idCardFrontUrl))}>
+                              <img src={resolveMediaUrl(editForm.idCardFrontUrl)} alt="CCCD Scan" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+                              <div className="absolute inset-0 bg-carbon/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                                <span className="material-symbols-outlined text-sm">zoom_in</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {editForm.licenseImageUrl && (
+                          <div className="space-y-1">
+                            <span className="text-[10px] font-bold text-slate uppercase flex items-center gap-1">
+                              <span className="material-symbols-outlined text-xs text-green-600">check_circle</span>
+                              Ảnh GPLX
+                            </span>
+                            <div className="h-20 bg-fog rounded-lg border border-chalk overflow-hidden cursor-pointer hover:border-signal-orange relative group" onClick={() => setZoomedImage(resolveMediaUrl(editForm.licenseImageUrl))}>
+                              <img src={resolveMediaUrl(editForm.licenseImageUrl)} alt="GPLX Scan" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+                              <div className="absolute inset-0 bg-carbon/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                                <span className="material-symbols-outlined text-sm">zoom_in</span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {[['Họ và Tên', 'fullName'], ['Số điện thoại', 'phone'], ['Số CCCD', 'idCardNumber'], ['Số GPLX (Không sửa)', 'licenseNumber']].map(([label, field]) => (
@@ -1092,26 +1183,18 @@ export default function DriverManagement() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-chalk">
-                      {selectedDriver.idCardFrontUrl && (
-                        <div>
-                          <div className="text-[10px] font-bold text-slate uppercase mb-2">Ảnh CCCD</div>
-                          <div className="bg-fog p-1.5 rounded-xl border border-chalk h-32 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange group" onClick={() => setZoomedImage(`http://localhost:5000${selectedDriver.idCardFrontUrl}`)}>
-                            <img src={`http://localhost:5000${selectedDriver.idCardFrontUrl}`} alt="CCCD" 
-                              className="max-w-full max-h-full object-contain rounded-lg shadow-sm transition-transform group-hover:scale-105" 
-                              onLoad={e => { if (e.target.naturalHeight > e.target.naturalWidth) e.target.style.transform = 'rotate(-90deg) scale(1.2)'; }} />
-                          </div>
-                        </div>
-                      )}
-                      {selectedDriver.licenseImageUrl && (
-                        <div>
-                          <div className="text-[10px] font-bold text-slate uppercase mb-2">Ảnh Bằng Lái</div>
-                          <div className="bg-fog p-1.5 rounded-xl border border-chalk h-32 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange group" onClick={() => setZoomedImage(`http://localhost:5000${selectedDriver.licenseImageUrl}`)}>
-                            <img src={`http://localhost:5000${selectedDriver.licenseImageUrl}`} alt="GPLX" 
-                              className="max-w-full max-h-full object-contain rounded-lg shadow-sm transition-transform group-hover:scale-105"
-                              onLoad={e => { if (e.target.naturalHeight > e.target.naturalWidth) e.target.style.transform = 'rotate(-90deg) scale(1.2)'; }} />
-                          </div>
-                        </div>
-                      )}
+                      <DocumentCard
+                        url={selectedDriver.idCardFrontUrl}
+                        title="Ảnh CCCD"
+                        alt="CCCD"
+                        onClick={() => selectedDriver.idCardFrontUrl && setZoomedImage(resolveMediaUrl(selectedDriver.idCardFrontUrl))}
+                      />
+                      <DocumentCard
+                        url={selectedDriver.licenseImageUrl}
+                        title="Ảnh Bằng Lái"
+                        alt="Bằng Lái"
+                        onClick={() => selectedDriver.licenseImageUrl && setZoomedImage(resolveMediaUrl(selectedDriver.licenseImageUrl))}
+                      />
                     </div>
                   </div>
 
@@ -1162,31 +1245,59 @@ export default function DriverManagement() {
 
               <form onSubmit={handleAddDriver} className="p-6 space-y-4 font-sans">
                 {/* OCR Section */}
-                <div className="mb-4">
+                <div className="mb-4 space-y-3">
                   <div className="flex items-center gap-4 p-4 border border-dashed border-chalk rounded-xl bg-fog">
-                    {form.photoUrl ? (
-                      <img src={`http://localhost:5000${form.photoUrl}`} alt="Avatar" className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-sm" />
-                    ) : (
-                      <div className="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center text-slate-400">
-                        <span className="material-symbols-outlined text-2xl">person</span>
-                      </div>
-                    )}
+                    <DriverAvatar photoUrl={form.photoUrl || form.idCardFrontUrl} fullName={form.fullName} className="w-16 h-16 text-lg" />
                     <div className="flex-1 flex gap-2">
                       <div className="flex-1">
                         <label className={`inline-flex items-center justify-center w-full px-2 py-2 bg-white border border-chalk rounded-lg text-[11px] font-bold ${ocrLoading ? 'text-slate opacity-70 cursor-not-allowed' : 'text-carbon hover:bg-mist cursor-pointer'} relative overflow-hidden transition-colors shadow-sm`}>
-                          {ocrLoading ? '⏳ Đang xử lý...' : '📷 Quét CCCD'}
+                          {ocrLoading ? '⏳ Đang quét...' : '📷 Quét CCCD'}
                           <input type="file" accept="image/*" onChange={handleOcrUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={ocrLoading} />
                         </label>
                       </div>
                       <div className="flex-1">
                         <label className={`inline-flex items-center justify-center w-full px-2 py-2 bg-white border border-chalk rounded-lg text-[11px] font-bold ${ocrLoading ? 'text-slate opacity-70 cursor-not-allowed' : 'text-carbon hover:bg-mist cursor-pointer'} relative overflow-hidden transition-colors shadow-sm`}>
-                          {ocrLoading ? '⏳ Đang xử lý...' : '📷 Quét GPLX'}
+                          {ocrLoading ? '⏳ Đang quét...' : '📷 Quét GPLX'}
                           <input type="file" accept="image/*" onChange={handleGplxUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={ocrLoading} />
                         </label>
                       </div>
                     </div>
                   </div>
-                  <p className="text-[10px] text-slate mt-1.5 leading-tight">Tự động trích xuất thông tin từ thẻ cứng.</p>
+
+                  {(form.idCardFrontUrl || form.licenseImageUrl) && (
+                    <div className="grid grid-cols-2 gap-3 p-3 bg-white border border-chalk rounded-xl">
+                      {form.idCardFrontUrl && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-slate uppercase flex items-center gap-1">
+                            <span className="material-symbols-outlined text-xs text-green-600">check_circle</span>
+                            Ảnh CCCD đã quét
+                          </span>
+                          <div className="h-20 bg-fog rounded-lg border border-chalk overflow-hidden cursor-pointer hover:border-signal-orange relative group" onClick={() => setZoomedImage(resolveMediaUrl(form.idCardFrontUrl))}>
+                            <img src={resolveMediaUrl(form.idCardFrontUrl)} alt="CCCD Scan" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+                            <div className="absolute inset-0 bg-carbon/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                              <span className="material-symbols-outlined text-sm">zoom_in</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {form.licenseImageUrl && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-slate uppercase flex items-center gap-1">
+                            <span className="material-symbols-outlined text-xs text-green-600">check_circle</span>
+                            Ảnh GPLX đã quét
+                          </span>
+                          <div className="h-20 bg-fog rounded-lg border border-chalk overflow-hidden cursor-pointer hover:border-signal-orange relative group" onClick={() => setZoomedImage(resolveMediaUrl(form.licenseImageUrl))}>
+                            <img src={resolveMediaUrl(form.licenseImageUrl)} alt="GPLX Scan" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+                            <div className="absolute inset-0 bg-carbon/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                              <span className="material-symbols-outlined text-sm">zoom_in</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="text-[10px] text-slate leading-tight">Tự động trích xuất thông tin và lưu ảnh trực tiếp lên AWS S3.</p>
                 </div>
 
                 {/* Form fields */}
