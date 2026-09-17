@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+import nodeApiClient from '../../services/nodeApiClient';
 
 export default function CarrierStaffManagement() {
   const [staffs, setStaffs] = useState([]);
@@ -21,14 +21,11 @@ export default function CarrierStaffManagement() {
   const fetchStaffs = async () => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).token : null;
-      const response = await axios.get('/api/users/carrier-staff', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (response.data && response.data.data && response.data.data.staffs) {
-        setStaffs(response.data.data.staffs);
-      } else if (response.data && response.data.staffs) {
-        setStaffs(response.data.staffs);
+      const data = await nodeApiClient.get('/users/carrier-staff');
+      if (data && data.staffs) {
+        setStaffs(data.staffs);
+      } else if (Array.isArray(data)) {
+        setStaffs(data);
       }
     } catch (error) {
       console.error('Lỗi khi tải danh sách nhân viên:', error);
@@ -47,16 +44,13 @@ export default function CarrierStaffManagement() {
     setFormLoading(true);
 
     try {
-      const token = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).token : null;
-      await axios.post('/api/users/carrier-staff', formData, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      await nodeApiClient.post('/users/carrier-staff', formData);
       setShowModal(false);
       setFormData({ username: '', email: '', fullName: '', password: '' });
       fetchStaffs();
     } catch (error) {
       console.error('Lỗi khi tạo nhân viên:', error);
-      const msg = error.response?.data?.message || error.message || 'Có lỗi xảy ra khi tạo tài khoản.';
+      const msg = error?.details || error?.message || 'Có lỗi xảy ra khi tạo tài khoản.';
       setFormError(msg);
     } finally {
       setFormLoading(false);
@@ -66,20 +60,15 @@ export default function CarrierStaffManagement() {
   const handleToggleStatus = async (id, currentStatus) => {
     try {
       setLoading(true);
-      const token = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')).token : null;
       if (currentStatus) {
-        await axios.patch(`/api/users/${id}/deactivate`, {}, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        await nodeApiClient.patch(`/users/${id}/deactivate`, {});
       } else {
-        await axios.patch(`/api/users/${id}/activate`, {}, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        await nodeApiClient.patch(`/users/${id}/activate`, {});
       }
       fetchStaffs();
     } catch (error) {
       console.error('Lỗi khi thay đổi trạng thái:', error);
-      alert(error.response?.data?.message || 'Có lỗi xảy ra khi thay đổi trạng thái.');
+      alert(error?.details || error?.message || 'Có lỗi xảy ra khi thay đổi trạng thái.');
       setLoading(false);
     }
   };

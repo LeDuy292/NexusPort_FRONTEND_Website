@@ -21,7 +21,6 @@ import Unauthorized from './pages/Auth/Unauthorized'
 import OperatorDashboard from './pages/Dashboard/OperatorDashboard'
 import BookingManagement from './pages/Booking/BookingManagement'
 import YardMap from './pages/Yard/YardMap'
-import SmartYardMap from './pages/Yard/SmartYardMap'
 import BillingPayment from './pages/Billing/BillingPayment'
 import UserRoleManagement from './pages/Users/UserRoleManagement'
 import CarrierPortal from './pages/Carrier/CarrierPortal'
@@ -163,7 +162,7 @@ function App() {
             <Route path="/dashboard" element={<DashboardIndex />} />
             <Route path="/yard-staff/dashboard" element={<YardOperationsDashboard />} />
             <Route path="/yard" element={<YardOperations />} />
-            <Route path="/yard/map" element={<SmartYardMap />} />
+            <Route path="/yard/map" element={<YardMap />} />
             <Route path="/yard-ops" element={<YardOperations />} />
             <Route path="/yard/receiving" element={<YardReceiving />} />
             <Route path="/yard-staff/inventory-inspection" element={<ContainerInventoryInspection />} />

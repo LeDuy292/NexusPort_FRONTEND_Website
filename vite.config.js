@@ -7,11 +7,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Node Core sở hữu module Container (NXP-038).
+      // Node Express Backend (:3001)
       '/node-api': {
-        target: 'http://localhost:4000',
+        target: 'http://localhost:3001',
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/node-api/, '/api/v1'),
+        rewrite: (path) => path.replace(/^\/node-api/, '/api'),
       },
       // Chuyển tiếp mọi request /api/* sang backend Express :3001
       '/api': {
