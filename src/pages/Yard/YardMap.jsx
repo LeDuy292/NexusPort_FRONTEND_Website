@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import CreateYardMoveModal from '../../components/Yard/CreateYardMoveModal'
+import apiClient from '../../services/apiClient'
 import {
   INITIAL_CONTAINERS,
   INITIAL_YARD_TRACTORS,
@@ -8,12 +9,25 @@ import {
 } from '../../data/yardMoveData'
 
 export default function YardMap() {
+  const [blocksData, setBlocksData] = useState([])
   const [filterType, setFilterType] = useState('Tất cả')
   const [timeSnapshot, setTimeSnapshot] = useState('Hiện tại')
   const [selectedBlockDrawer, setSelectedBlockDrawer] = useState(null)
   const [selectedVehiclePopover, setSelectedVehiclePopover] = useState(null)
   const [hoveredBay, setHoveredBay] = useState(null)
   const [toastMessage, setToastMessage] = useState('')
+  const [selectedBayDrawer, setSelectedBayDrawer] = useState(null)
+  const [searchContainerQuery, setSearchContainerQuery] = useState('')
+  const [highlightedBay, setHighlightedBay] = useState(null)
+
+  // Maintenance Batch Mode States
+  const [isMaintenanceMode, setIsMaintenanceMode] = useState(false)
+  const [selectedSlotsForMaintenance, setSelectedSlotsForMaintenance] = useState([])
+  
+  // Custom Confirm Dialog State (Removed)
+
+  // Container Info Modal State
+  const [selectedContainerInfo, setSelectedContainerInfo] = useState(null)
 
   // User Role Check (Dispatcher vs Yard Operator / Admin)
   const user = useMemo(() => {
@@ -152,153 +166,202 @@ export default function YardMap() {
     setTimeout(() => setToastMessage(''), 4000)
   }
 
-  // 1. Blocks Data with Status (Operational, Nearly Full, Full, Blocked) & Occupancy / Free Slots
-  const blocksData = [
-    {
-      id: 'Khối bãi A',
-      code: 'Khối A',
-      type: 'CONTAINER HÀNG KHÔ XUẤT KHẨU',
-      status: 'Operational',
-      statusLabel: '🟢 Operational (Thông thoáng)',
-      occupancy: 72,
-      containers: 145,
-      maxCapacity: 200,
-      freeSlots: 55,
-      vehicles: 5,
-      crane: 'Cẩu RTG-01 (Tải 72%)',
-      colorClass: 'border-emerald-400 bg-white text-carbon shadow-sm hover:border-emerald-600',
-      badgeClass: 'bg-emerald-100 text-emerald-900 border border-emerald-300 font-extrabold',
-      barGradient: 'from-emerald-500 to-teal-400',
-      bays: [
-        { code: 'A-01', stack: 4, type: 'dry' },
-        { code: 'A-02', stack: 3, type: 'dry' },
-        { code: 'A-03', stack: 4, type: 'dry' },
-        { code: 'A-04', stack: 2, type: 'blocked', note: 'Bảo trì đường ray' },
-        { code: 'A-05', stack: 3, type: 'dry' },
-        { code: 'A-06', stack: 1, type: 'empty' },
-      ]
-    },
-    {
-      id: 'Khối bãi B',
-      code: 'Khối B',
-      type: 'CONTAINER HÀNG NHẬP (QUÁ TẢI)',
-      status: 'Full',
-      statusLabel: '🔴 Full (Đã lấp đầy 94%)',
-      occupancy: 94,
-      containers: 188,
-      maxCapacity: 200,
-      freeSlots: 12,
-      vehicles: 8,
-      crane: 'Cẩu RTG-02 (Tải 94% ⚠ Quá tải)',
-      colorClass: 'border-red-500 bg-red-50/50 text-carbon shadow-sm hover:border-red-600 ring-1 ring-red-200',
-      badgeClass: 'bg-red-600 text-white font-extrabold',
-      barGradient: 'from-amber-500 to-red-600',
-      bays: [
-        { code: 'B-01', stack: 4, type: 'overload' },
-        { code: 'B-02', stack: 4, type: 'overload' },
-        { code: 'B-03', stack: 4, type: 'overload' },
-        { code: 'B-04', stack: 4, type: 'overload' },
-        { code: 'B-05', stack: 3, type: 'overload' },
-        { code: 'B-06', stack: 4, type: 'overload' },
-      ]
-    },
-    {
-      id: 'Khối bãi C',
-      code: 'Khối C',
-      type: 'CONTAINER LẠNH',
-      status: 'Nearly Full',
-      statusLabel: '🟡 Nearly Full',
-      occupancy: 78,
-      containers: 156,
-      maxCapacity: 200,
-      freeSlots: 44,
-      vehicles: 3,
-      crane: 'Cẩu RTG-03',
-      colorClass: 'border-cyan-500 bg-cyan-50/30 text-carbon shadow-sm hover:border-cyan-600',
-      badgeClass: 'bg-cyan-100 text-cyan-900 border border-cyan-300 font-extrabold',
-      barGradient: 'from-blue-500 to-cyan-400',
-      bays: [
-        { code: 'C-01', stack: 3, type: 'reefer' },
-        { code: 'C-02', stack: 3, type: 'reefer' },
-        { code: 'C-03', stack: 4, type: 'reefer' },
-        { code: 'C-04', stack: 2, type: 'blocked', note: 'Kiểm tra ổ cắm' },
-        { code: 'C-05', stack: 3, type: 'reefer' },
-        { code: 'C-06', stack: 1, type: 'empty' },
-      ]
-    },
-    {
-      id: 'Khối bãi D',
-      code: 'Khối D',
-      type: 'BÃI CONTAINER RỖNG',
-      status: 'Operational',
-      statusLabel: '🟢 Operational',
-      occupancy: 38,
-      containers: 76,
-      maxCapacity: 200,
-      freeSlots: 124,
-      vehicles: 2,
-      crane: 'Xe nâng Reach Stacker RS-01',
-      colorClass: 'border-teal-500 bg-white text-carbon shadow-sm hover:border-teal-600',
-      badgeClass: 'bg-teal-100 text-teal-900 border border-teal-300 font-extrabold',
-      barGradient: 'from-emerald-500 to-teal-400',
-      bays: [
-        { code: 'D-01', stack: 2, type: 'dry' },
-        { code: 'D-02', stack: 1, type: 'dry' },
-        { code: 'D-03', stack: 2, type: 'dry' },
-        { code: 'D-04', stack: 1, type: 'empty' },
-        { code: 'D-05', stack: 1, type: 'empty' },
-        { code: 'D-06', stack: 1, type: 'empty' },
-      ]
-    },
-    {
-      id: 'Khối bãi E',
-      code: 'Khối E',
-      type: 'CONTAINER CHỜ CHUYỂN TẢI',
-      status: 'Operational',
-      statusLabel: '🟢 Operational',
-      occupancy: 65,
-      containers: 130,
-      maxCapacity: 200,
-      freeSlots: 70,
-      vehicles: 4,
-      crane: 'Cẩu RTG-04',
-      colorClass: 'border-blue-500 bg-white text-carbon shadow-sm hover:border-blue-600',
-      badgeClass: 'bg-blue-100 text-blue-900 border border-blue-300 font-extrabold',
-      barGradient: 'from-blue-600 to-indigo-400',
-      bays: [
-        { code: 'E-01', stack: 3, type: 'dry' },
-        { code: 'E-02', stack: 3, type: 'dry' },
-        { code: 'E-03', stack: 2, type: 'dry' },
-        { code: 'E-04', stack: 3, type: 'dry' },
-        { code: 'E-05', stack: 2, type: 'dry' },
-        { code: 'E-06', stack: 1, type: 'empty' },
-      ]
-    },
-    {
-      id: 'Khối bãi F',
-      code: 'Khối F',
-      type: 'HÀNG NGUY HIỂM',
-      status: 'Blocked',
-      statusLabel: '⚫ Blocked',
-      occupancy: 82,
-      containers: 164,
-      maxCapacity: 200,
-      freeSlots: 36,
-      vehicles: 6,
-      crane: 'Cẩu RTG-05',
-      colorClass: 'border-amber-500 bg-amber-50/40 text-carbon shadow-sm hover:border-amber-600',
-      badgeClass: 'bg-amber-100 text-amber-950 border border-amber-300 font-extrabold',
-      barGradient: 'from-amber-500 to-yellow-500',
-      bays: [
-        { code: 'F-01', stack: 4, type: 'dg' },
-        { code: 'F-02', stack: 3, type: 'dg' },
-        { code: 'F-03', stack: 4, type: 'dg' },
-        { code: 'F-04', stack: 3, type: 'dg' },
-        { code: 'F-05', stack: 2, type: 'dg' },
-        { code: 'F-06', stack: 2, type: 'empty' },
-      ]
+  // 1. Fetch Blocks Data from Backend
+  const fetchYardMap = async () => {
+    try {
+      const response = await apiClient.get('/v1/Yard/Map')
+      const blockList = response.data || []
+      const formattedBlocks = blockList.map(block => {
+        const totalCapacity = (block.maxBays || 10) * (block.maxRows || 4) * (block.maxTiers || 5)
+        const slots = block.slots || []
+        const occupiedCount = slots.filter(s => s.containerId).length
+        const occupancyRate = totalCapacity > 0 ? Math.round((occupiedCount / totalCapacity) * 100) : 0
+        const freeSlots = totalCapacity - occupiedCount
+
+        // Group slots by Bay for UI
+        const baysMap = {}
+        for (let i = 1; i <= (block.maxBays || 10); i++) {
+          baysMap[i] = { bayNumber: i, code: `${block.blockCode}-${i.toString().padStart(2, '0')}`, stack: 0, maintenanceCount: 0, type: 'empty', capacity: 0 }
+        }
+        slots.forEach(s => {
+          if (baysMap[s.bay]) {
+            baysMap[s.bay].capacity += 1;
+            if (s.containerId) {
+              baysMap[s.bay].stack += 1
+              baysMap[s.bay].type = 'dry'
+            }
+            if (s.status === 'maintenance') {
+              baysMap[s.bay].maintenanceCount += 1
+            }
+          }
+        })
+
+        return {
+          id: block.id,
+          code: block.blockCode,
+          type: block.description || 'BLOCK CONTAINER',
+          status: occupancyRate >= 90 ? 'Full' : occupancyRate >= 75 ? 'Nearly Full' : 'Operational',
+          statusLabel: occupancyRate >= 90 ? '🔴 Full' : occupancyRate >= 75 ? '🟡 Nearly Full' : '🟢 Operational',
+          occupancy: occupancyRate,
+          containers: occupiedCount,
+          maxCapacity: totalCapacity,
+          freeSlots: freeSlots,
+          vehicles: 0,
+          crane: 'Cẩu RTG',
+          colorClass: occupancyRate >= 90 ? 'border-red-500 bg-red-50/50 text-carbon ring-1 ring-red-200' : 
+                      occupancyRate >= 75 ? 'border-amber-500 bg-amber-50/40 text-carbon' : 
+                      'border-emerald-400 bg-white text-carbon',
+          badgeClass: occupancyRate >= 90 ? 'bg-red-600 text-white font-extrabold' : 
+                      occupancyRate >= 75 ? 'bg-amber-100 text-amber-950 border border-amber-300 font-extrabold' : 
+                      'bg-emerald-100 text-emerald-900 border border-emerald-300 font-extrabold',
+          barGradient: occupancyRate >= 90 ? 'from-amber-500 to-red-600' : 
+                       occupancyRate >= 75 ? 'from-amber-500 to-yellow-500' : 
+                       'from-emerald-500 to-teal-400',
+          bays: Object.values(baysMap),
+          rawSlots: slots // Include raw slots for detailed view
+        }
+      })
+      setBlocksData(formattedBlocks)
+    } catch (error) {
+      console.error('Failed to fetch yard map', error)
+      setToastMessage('❌ Lỗi khi tải dữ liệu bãi 2D')
     }
-  ]
+  }
+
+  useEffect(() => {
+    fetchYardMap()
+  }, [])
+
+  const handleSearchContainer = (e) => {
+    e.preventDefault()
+    if (!searchContainerQuery) return
+
+    let found = false
+    for (const block of blocksData) {
+      const slot = block.rawSlots?.find(s => s.containerNumber && s.containerNumber.toUpperCase().includes(searchContainerQuery.toUpperCase()))
+      if (slot) {
+        found = true
+        // Highlight Bay
+        const targetBay = block.bays.find(b => b.bayNumber === slot.bay)
+        if (targetBay) {
+          setHighlightedBay({ blockId: block.id, bayNumber: slot.bay })
+          setSelectedBayDrawer({ block, ...targetBay })
+          setToastMessage(`🔍 Tìm thấy Container ${slot.containerNumber} tại Block ${block.code}, Bay ${slot.bay}`)
+          setTimeout(() => setHighlightedBay(null), 3000)
+          setTimeout(() => setToastMessage(''), 4000)
+          break
+        }
+      }
+    }
+    if (!found) {
+      setToastMessage(`❌ Không tìm thấy Container ${searchContainerQuery} trên bãi!`)
+      setTimeout(() => setToastMessage(''), 4000)
+    }
+  }
+
+  const handleSlotClick = async (slot) => {
+    if (!slot) return;
+
+    // BATCH MAINTENANCE MODE
+    if (isMaintenanceMode) {
+      if (slot.containerId) {
+        setToastMessage('❌ Slot này đang có Container! Bạn không thể khóa/mở bảo trì.');
+        setTimeout(() => setToastMessage(''), 3000);
+        return;
+      }
+      
+      // In batch mode, just toggle selection (both for locking empty and unlocking maintenance slots)
+      setSelectedSlotsForMaintenance(prev => 
+        prev.includes(slot.id) ? prev.filter(id => id !== slot.id) : [...prev, slot.id]
+      );
+      return;
+    }
+    
+    // NORMAL MODE
+    if (slot.containerId) {
+      // Show container info
+      setSelectedContainerInfo({ slot, isLoading: true, data: null });
+      try {
+        const res = await apiClient.get(`/v1/Container/${slot.containerId}`);
+        setSelectedContainerInfo({ slot, isLoading: false, data: res.data });
+      } catch (error) {
+        setSelectedContainerInfo(prev => ({ ...prev, isLoading: false, error: true }));
+        setToastMessage('❌ Lỗi khi tải thông tin Container!');
+        setTimeout(() => setToastMessage(''), 3000);
+      }
+    } else {
+      setToastMessage('💡 Bật "Chế độ Khóa hàng loạt" để thao tác với Slot.');
+      setTimeout(() => setToastMessage(''), 3000);
+    }
+  }
+
+  const handleSelectTier = (tierIndex) => {
+    if (!selectedBayDrawer) return;
+    const lockableSlots = selectedBayDrawer.block.rawSlots
+      .filter(s => s.bay === selectedBayDrawer.bayNumber && s.tier === tierIndex && !s.containerId)
+      .map(s => s.id);
+    setSelectedSlotsForMaintenance(prev => Array.from(new Set([...prev, ...lockableSlots])));
+  }
+
+  const handleSelectBay = () => {
+    if (!selectedBayDrawer) return;
+    const lockableSlots = selectedBayDrawer.block.rawSlots
+      .filter(s => s.bay === selectedBayDrawer.bayNumber && !s.containerId)
+      .map(s => s.id);
+    setSelectedSlotsForMaintenance(prev => Array.from(new Set([...prev, ...lockableSlots])));
+  }
+
+  const handleSelectBlock = () => {
+    if (!selectedBayDrawer) return;
+    const lockableSlots = selectedBayDrawer.block.rawSlots
+      .filter(s => !s.containerId)
+      .map(s => s.id);
+    setSelectedSlotsForMaintenance(prev => Array.from(new Set([...prev, ...lockableSlots])));
+  }
+
+  const handleConfirmBatchMaintenance = async () => {
+    if (selectedSlotsForMaintenance.length === 0) {
+      setIsMaintenanceMode(false);
+      return;
+    }
+
+    try {
+      // Gửi request toggle cho tất cả các slot đã chọn
+      await Promise.all(selectedSlotsForMaintenance.map(slotId => 
+        apiClient.post(`/v1/Yard/Slots/${slotId}/toggle-maintenance`)
+      ));
+
+      setToastMessage(`✅ Đã cập nhật trạng thái ${selectedSlotsForMaintenance.length} Slot!`);
+      setTimeout(() => setToastMessage(''), 3000);
+      
+      // Reset mode và refetch
+      setIsMaintenanceMode(false);
+      setSelectedSlotsForMaintenance([]);
+      fetchYardMap();
+
+      // Cập nhật local Drawer
+      setSelectedBayDrawer(prev => {
+        if (!prev) return prev;
+        const newRawSlots = prev.block.rawSlots.map(s => {
+          if (selectedSlotsForMaintenance.includes(s.id)) {
+            return { ...s, status: s.status === 'maintenance' ? 'empty' : 'maintenance' };
+          }
+          return s;
+        });
+        return {
+          ...prev,
+          block: {
+            ...prev.block,
+            rawSlots: newRawSlots
+          }
+        };
+      });
+
+    } catch (error) {
+      setToastMessage('❌ Lỗi khi cập nhật hàng loạt!');
+      setTimeout(() => setToastMessage(''), 3000);
+    }
+  }
 
   // 2. Trip-related Containers List & Tracking Status
   const tripContainers = [
@@ -450,7 +513,7 @@ export default function YardMap() {
 
       {/* ── FILTER BAR & LEGEND ── */}
       <div className="bg-white border border-chalk rounded-2xl p-4 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4 text-xs font-bold">
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
           {['Tất cả', 'Khối bãi', 'Ún tắc', 'Còn chỗ trống'].map(f => (
             <button
               key={f}
@@ -462,6 +525,19 @@ export default function YardMap() {
               {f}
             </button>
           ))}
+          
+          <form onSubmit={handleSearchContainer} className="relative ml-2">
+            <input
+              type="text"
+              placeholder="Tìm Container..."
+              value={searchContainerQuery}
+              onChange={(e) => setSearchContainerQuery(e.target.value)}
+              className="px-4 py-2 pr-10 border border-chalk rounded-full text-xs font-mono uppercase bg-fog focus:bg-white focus:outline-none focus:border-signal-orange transition-colors w-48"
+            />
+            <button type="submit" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate hover:text-signal-orange">
+              <span className="material-symbols-outlined text-[18px]">search</span>
+            </button>
+          </form>
         </div>
 
         {/* Stack Type Legend */}
@@ -558,12 +634,20 @@ export default function YardMap() {
                 <div className="my-3 space-y-1">
                   <span className="text-[9px] font-bold text-slate-500 uppercase block font-mono">DÃY BAY CONTAINER (BAY 01-06)</span>
                   <div className="grid grid-cols-6 gap-2">
-                    {block.bays.map((bay, idx) => (
+                    {block.bays.map((bay, idx) => {
+                      const isHighlighted = highlightedBay?.blockId === block.id && highlightedBay?.bayNumber === bay.bayNumber;
+                      return (
                       <div
                         key={idx}
                         onMouseEnter={() => setHoveredBay({ block: block.id, ...bay })}
                         onMouseLeave={() => setHoveredBay(null)}
-                        className="bg-white p-1 rounded-lg border border-slate-300 shadow-2xs flex flex-col items-center justify-between font-mono h-14 hover:border-signal-orange transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setSelectedBayDrawer({ block, ...bay })
+                        }}
+                        className={`bg-white p-1 rounded-lg border shadow-2xs flex flex-col items-center justify-between font-mono h-14 hover:border-signal-orange transition-colors cursor-pointer ${
+                          isHighlighted ? 'border-signal-orange ring-2 ring-signal-orange animate-pulse bg-orange-50' : 'border-slate-300'
+                        }`}
                       >
                         <span className="font-extrabold text-carbon text-[10px]">{bay.code}</span>
                         
@@ -589,7 +673,8 @@ export default function YardMap() {
 
                         <span className="text-[9px] text-carbon font-extrabold">T{bay.stack}</span>
                       </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 </div>
 
@@ -699,10 +784,155 @@ export default function YardMap() {
 
       </div>
 
+      {/* 🌟 BAY DETAIL DRAWER MODAL 🌟 */}
+      {selectedBayDrawer && (
+        <div className="fixed inset-0 bg-carbon/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-6" onClick={() => {
+          setSelectedBayDrawer(null);
+          setIsMaintenanceMode(false);
+          setSelectedSlotsForMaintenance([]);
+        }}>
+          <div className="bg-white rounded-3xl p-6 max-w-2xl w-full space-y-5 shadow-2xl animate-in zoom-in-95 duration-200 font-sans max-h-[95vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            
+            <div className="flex justify-between items-start border-b border-chalk pb-3.5">
+              <div>
+                <div className="flex items-center gap-3">
+                  <span className="text-[10px] font-extrabold text-signal-orange uppercase tracking-wider block">
+                    CHI TIẾT MẶT CẮT BAY (CROSS SECTION)
+                  </span>
+                  {!isMaintenanceMode ? (
+                    <button 
+                      onClick={() => setIsMaintenanceMode(true)}
+                      className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-bold transition-colors flex items-center gap-1 border border-chalk"
+                    >
+                      <span className="material-symbols-outlined text-[12px]">build</span> Chế độ Khóa hàng loạt
+                    </button>
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2 mt-1 sm:mt-0">
+                      <button 
+                        onClick={handleSelectBay}
+                        className="text-[10px] bg-blue-100 text-blue-700 hover:bg-blue-200 px-2 py-0.5 rounded font-bold border border-blue-200 transition-colors"
+                      >
+                        + Chọn cả Bay
+                      </button>
+                      <button 
+                        onClick={handleSelectBlock}
+                        className="text-[10px] bg-indigo-100 text-indigo-700 hover:bg-indigo-200 px-2 py-0.5 rounded font-bold border border-indigo-200 transition-colors"
+                      >
+                        + Chọn toàn Block
+                      </button>
+                      <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded font-bold border border-red-200 ml-2">
+                        Đang chọn: {selectedSlotsForMaintenance.length} ô
+                      </span>
+                      <button 
+                        onClick={handleConfirmBatchMaintenance}
+                        className="text-[10px] bg-carbon text-white hover:bg-black px-3 py-0.5 rounded font-bold transition-colors ml-1 shadow-sm"
+                      >
+                        Xác nhận Khóa/Mở
+                      </button>
+                      <button 
+                        onClick={() => { setIsMaintenanceMode(false); setSelectedSlotsForMaintenance([]); }}
+                        className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-bold transition-colors"
+                      >
+                        Hủy
+                      </button>
+                    </div>
+                  )}
+                </div>
+                <h3 className="font-heading text-2xl font-extrabold text-carbon mt-0.5">
+                  Block {selectedBayDrawer.block.code} - Bay {selectedBayDrawer.bayNumber.toString().padStart(2, '0')}
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedBayDrawer(null);
+                  setIsMaintenanceMode(false);
+                  setSelectedSlotsForMaintenance([]);
+                }}
+                className="w-8 h-8 rounded-full bg-fog border border-chalk flex items-center justify-center text-slate hover:text-carbon transition-colors"
+              >
+                <span className="material-symbols-outlined text-sm">close</span>
+              </button>
+            </div>
+
+            <div className="bg-fog p-4 rounded-xl border border-chalk overflow-x-auto">
+              <div className="flex flex-col gap-2 min-w-max">
+                {/* Render Grid: Tiers (Rows) x Rows (Cols) */}
+                {(() => {
+                  const slotsInBay = selectedBayDrawer.block.rawSlots.filter(s => s.bay === selectedBayDrawer.bayNumber);
+                  const actualMaxTiers = slotsInBay.length > 0 ? Math.max(...slotsInBay.map(s => s.tier)) : 1;
+                  const actualMaxRows = slotsInBay.length > 0 ? Math.max(...slotsInBay.map(s => s.row)) : 1;
+                  
+                  return Array.from({ length: actualMaxTiers }).reverse().map((_, tierIdxReverse) => {
+                    const currentTier = actualMaxTiers - tierIdxReverse;
+                    return (
+                      <div key={`tier-${currentTier}`} className="flex gap-2 items-center">
+                        {isMaintenanceMode ? (
+                          <button 
+                            onClick={() => handleSelectTier(currentTier)}
+                            className="text-[9px] font-bold text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded px-1 w-10 h-6 flex items-center justify-center transition-colors shadow-sm"
+                            title="Chọn cả hàng T này"
+                          >
+                            T{currentTier} +
+                          </button>
+                        ) : (
+                          <span className="text-[10px] font-extrabold text-slate-500 w-10 text-right pr-2 font-mono">
+                            T{currentTier}
+                          </span>
+                        )}
+                        {Array.from({ length: actualMaxRows }).map((_, rowIdx) => {
+                          const currentRow = rowIdx + 1;
+                          const slot = slotsInBay.find(s => s.row === currentRow && s.tier === currentTier);
+                        const isOccupied = slot && slot.containerId;
+                        const isMaintenance = slot && slot.status === 'maintenance';
+                        const isSearched = searchContainerQuery && slot?.containerNumber?.toUpperCase().includes(searchContainerQuery.toUpperCase());
+                        const isSelectedForBatch = selectedSlotsForMaintenance.includes(slot?.id);
+
+                        return (
+                          <div 
+                            key={`row-${currentRow}-tier-${currentTier}`} 
+                            onClick={() => handleSlotClick(slot)}
+                            className={`w-28 h-12 rounded-lg border-2 flex flex-col justify-center items-center cursor-pointer transition-colors relative ${
+                              isSelectedForBatch
+                                ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-300'
+                                : isOccupied 
+                                  ? (isSearched ? 'bg-signal-orange text-white border-orange-600 animate-pulse' : 'bg-emerald-600 border-emerald-700 text-white shadow-md') 
+                                  : isMaintenance
+                                    ? 'bg-slate-700 border-slate-800 text-white shadow-inner bg-[url("data:image/svg+xml,%3Csvg width=\'10\' height=\'10\' viewBox=\'0 0 10 10\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M0,10 L10,0\' stroke=\'%23ffffff33\' stroke-width=\'2\'/%3E%3C/svg%3E")]'
+                                    : 'bg-white border-dashed border-slate-300 text-slate-400 hover:bg-slate-50'
+                            }`}
+                            title={isOccupied ? `Container: ${slot.containerNumber}` : isMaintenance ? 'Đang bảo trì / Có vấn đề' : 'Trống (Click để chọn/khóa)'}
+                          >
+                            {isSelectedForBatch && (
+                              <div className="absolute -top-2 -right-2 bg-blue-600 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] shadow-sm z-10">
+                                ✓
+                              </div>
+                            )}
+                            <span className={`text-[9px] font-bold font-mono block opacity-80 ${isSelectedForBatch ? 'text-blue-800' : ''}`}>R{currentRow.toString().padStart(2, '0')}</span>
+                            {isOccupied ? (
+                              <span className="text-xs font-extrabold font-mono tracking-wider">{slot.containerNumber}</span>
+                            ) : isMaintenance ? (
+                              <span className={`text-[10px] font-bold ${isSelectedForBatch ? 'text-blue-800' : 'text-red-300'} flex items-center gap-1`}><span className="material-symbols-outlined text-[12px]">lock</span> Khóa</span>
+                            ) : (
+                              <span className={`text-[10px] ${isSelectedForBatch ? 'text-blue-800 font-bold' : ''}`}>Trống</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                });
+              })()}
+              </div>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {/* ── BLOCK OPERATIONAL DETAIL DRAWER MODAL (MATCHING USER WIREFRAME) ── */}
       {selectedBlockDrawer && (
-        <div className="fixed inset-0 bg-carbon/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-6">
-          <div className="bg-white rounded-3xl p-6 max-w-lg w-full space-y-5 shadow-2xl animate-in zoom-in-95 duration-200 font-sans">
+        <div className="fixed inset-0 bg-carbon/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-6" onClick={() => setSelectedBlockDrawer(null)}>
+          <div className="bg-white rounded-3xl p-6 max-w-lg w-full space-y-5 shadow-2xl animate-in zoom-in-95 duration-200 font-sans max-h-[95vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             
             {/* Header */}
             <div className="flex justify-between items-start border-b border-chalk pb-3.5">
@@ -711,7 +941,7 @@ export default function YardMap() {
                   BẢNG ĐIỀU HÀNH KHỐI BÃI
                 </span>
                 <h3 className="font-heading text-2xl font-extrabold text-carbon mt-0.5">
-                  {selectedBlockDrawer.id} ({selectedBlockDrawer.code})
+                  Khối bãi {selectedBlockDrawer.code}
                 </h3>
                 <div className="flex items-center gap-2 mt-1">
                   <span className={`inline-block text-xs font-extrabold px-3 py-0.5 rounded-full ${selectedBlockDrawer.badgeClass}`}>
@@ -767,16 +997,25 @@ export default function YardMap() {
               </div>
               <div className="grid grid-cols-3 gap-2.5">
                 {selectedBlockDrawer.bays.map((bay, idx) => {
-                  const statusIcon = bay.stack === 4 ? '🔴' : bay.stack === 3 ? '🟡' : '🟢'
-                  const statusColor = bay.stack === 4 ? 'border-red-300 bg-red-50/50' : bay.stack === 3 ? 'border-amber-300 bg-amber-50/50' : 'border-green-300 bg-green-50/50'
+                  const isMaintenance = bay.maintenanceCount > 0
+                  const isFull = bay.capacity > 0 && bay.stack >= bay.capacity
+                  const isNearlyFull = bay.capacity > 0 && bay.stack >= bay.capacity * 0.75 && !isFull
+                  
+                  const statusIcon = isMaintenance ? '🔒' : isFull ? '🔴' : isNearlyFull ? '🟡' : '🟢'
+                  const statusColor = isMaintenance ? 'border-red-400 bg-red-50/80' : isFull ? 'border-red-300 bg-red-50/50' : isNearlyFull ? 'border-amber-300 bg-amber-50/50' : 'border-green-300 bg-green-50/50'
+                  
                   return (
-                    <div key={idx} className={`p-2.5 rounded-xl border flex flex-col justify-between text-xs ${statusColor}`}>
+                    <div key={idx} className={`p-2.5 rounded-xl border flex flex-col justify-between text-xs transition-colors ${statusColor}`}>
                       <div className="flex justify-between items-center font-mono font-extrabold text-carbon">
                         <span>{bay.code}</span>
-                        <span className="text-xs">{statusIcon}</span>
+                        <span className="text-xs" title={isMaintenance ? 'Có ô đang khóa' : ''}>{statusIcon}</span>
                       </div>
                       <div className="text-[10px] text-slate font-bold font-mono mt-1">
-                        Tier {bay.stack}/4
+                        {isMaintenance ? (
+                          <span className="text-red-600">Đã khóa {bay.maintenanceCount} Slots</span>
+                        ) : (
+                          <span>Đang có {bay.stack} Cont</span>
+                        )}
                       </div>
                     </div>
                   )
@@ -864,6 +1103,71 @@ export default function YardMap() {
         tractorsList={tractors}
         driversList={drivers}
       />
+
+      {/* 🌟 CONTAINER INFO MODAL 🌟 */}
+      {selectedContainerInfo && (
+        <div className="fixed inset-0 bg-carbon/50 backdrop-blur-sm z-[70] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setSelectedContainerInfo(null)}>
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-start border-b border-chalk pb-3 mb-4">
+              <div>
+                <span className="text-[10px] font-extrabold text-signal-orange uppercase tracking-wider block">THÔNG TIN CONTAINER</span>
+                <h3 className="font-heading text-xl font-bold text-carbon">
+                  {selectedContainerInfo.slot.containerNumber}
+                </h3>
+              </div>
+              <button onClick={() => setSelectedContainerInfo(null)} className="text-slate hover:text-carbon transition-colors">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            {selectedContainerInfo.isLoading ? (
+              <div className="flex justify-center items-center py-6">
+                <span className="material-symbols-outlined animate-spin text-slate-400 text-3xl">autorenew</span>
+              </div>
+            ) : selectedContainerInfo.error ? (
+              <div className="text-center py-4 text-sm text-red-500 font-bold">
+                Không thể tải thông tin.
+              </div>
+            ) : (
+              <div className="space-y-3 text-sm">
+                <div className="flex justify-between border-b border-fog pb-2">
+                  <span className="text-slate-500 font-semibold">Mã Container</span>
+                  <span className="font-bold text-carbon">{selectedContainerInfo.data?.containerNo || selectedContainerInfo.slot.containerNumber}</span>
+                </div>
+                <div className="flex justify-between border-b border-fog pb-2">
+                  <span className="text-slate-500 font-semibold">Vị trí hiện tại</span>
+                  <span className="font-bold text-emerald-600">
+                    Block {selectedBayDrawer?.block?.code} - Bay {selectedBayDrawer?.bayNumber.toString().padStart(2, '0')} - R{selectedContainerInfo.slot.row.toString().padStart(2, '0')} - T{selectedContainerInfo.slot.tier}
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-fog pb-2">
+                  <span className="text-slate-500 font-semibold">Trọng lượng tối đa</span>
+                  <span className="font-bold text-carbon">{selectedContainerInfo.data?.maxWeightKg ? `${selectedContainerInfo.data.maxWeightKg} kg` : 'N/A'}</span>
+                </div>
+                <div className="flex justify-between border-b border-fog pb-2">
+                  <span className="text-slate-500 font-semibold">Chì Niêm Phong (Seal)</span>
+                  <span className="font-bold text-carbon">{selectedContainerInfo.data?.sealNo || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between border-b border-fog pb-2">
+                  <span className="text-slate-500 font-semibold">Loại</span>
+                  <span className="font-bold text-carbon">
+                    {selectedContainerInfo.data?.size}ft {selectedContainerInfo.data?.type} {selectedContainerInfo.data?.isReefer ? '(Reefer)' : ''}
+                  </span>
+                </div>
+              </div>
+            )}
+            
+            <div className="mt-6 flex justify-end">
+              <button 
+                onClick={() => setSelectedContainerInfo(null)}
+                className="px-5 py-2 text-sm font-semibold text-white bg-carbon hover:bg-black rounded-lg transition-colors"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   )

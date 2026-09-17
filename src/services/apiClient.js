@@ -38,7 +38,8 @@ const apiClient = {
       err.response = { status: res.status, data: errorData }
       throw err
     }
-    return { data: await res.json() }
+    if (res.status === 204) return { data: null };
+    return { data: await res.json().catch(() => null) }
   },
 
   post: async (url, data = {}) => {
@@ -72,7 +73,8 @@ const apiClient = {
       err.response = { status: res.status, data: errorData }
       throw err
     }
-    return { data: await res.json() }
+    if (res.status === 204) return { data: null };
+    return { data: await res.json().catch(() => null) }
   },
 
   put: async (url, data = {}) => {
@@ -102,7 +104,8 @@ const apiClient = {
       err.response = { status: res.status, data: errorData }
       throw err
     }
-    return { data: await res.json() }
+    if (res.status === 204) return { data: null }
+    return { data: await res.json().catch(() => null) }
   },
 
   patch: async (url, data = {}) => {
