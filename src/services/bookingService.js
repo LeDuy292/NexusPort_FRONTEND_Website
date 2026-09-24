@@ -127,6 +127,38 @@ export const bookingService = {
     }
   },
 
+  // Phê duyệt booking (Approve)
+  approveBooking: async (id) => {
+    try {
+      const response = await apiClient.post(`/v1/Booking/${id}/approve`)
+      return response.data
+    } catch (error) {
+      console.warn(`API error approving booking ${id}:`, error?.message)
+      const item = mockBookings.find(b => b.id === id)
+      if (item) {
+        item.status = 'Approved'
+        item.approvedAt = new Date().toISOString()
+      }
+      return item
+    }
+  },
+
+  // Từ chối booking (Reject)
+  rejectBooking: async (id, reason = '') => {
+    try {
+      const response = await apiClient.post(`/v1/Booking/${id}/reject`, { reason })
+      return response.data
+    } catch (error) {
+      console.warn(`API error rejecting booking ${id}:`, error?.message)
+      const item = mockBookings.find(b => b.id === id)
+      if (item) {
+        item.status = 'Rejected'
+        item.rejectionReason = reason
+      }
+      return item
+    }
+  },
+
   // NXP-048: Lấy danh sách tài nguyên kho bãi & đội xe sẵn sàng cho AI Auto-Match
   getAvailableResources: async () => {
     const fallbackContainers = [
@@ -165,16 +197,16 @@ export const bookingService = {
       const response = await apiClient.get('/v1/Booking/available-resources')
       const data = response.data || {}
       return {
-        containers: data.containers && data.containers.length > 0 ? data.containers : fallbackContainers,
-        trucks: data.trucks && data.trucks.length > 0 ? data.trucks : fallbackTrucks,
-        drivers: data.drivers && data.drivers.length > 0 ? data.drivers : fallbackDrivers
+        containers: data.containers || [],
+        trucks: data.trucks || [],
+        drivers: data.drivers || []
       }
     } catch (error) {
       console.warn('API error fetching available resources, using defaults:', error?.message)
       return {
-        containers: fallbackContainers,
-        trucks: fallbackTrucks,
-        drivers: fallbackDrivers
+        containers: [],
+        trucks: [],
+        drivers: []
       }
     }
   },

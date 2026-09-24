@@ -200,6 +200,9 @@ export default function YardMap() {
           id: block.id,
           code: block.blockCode,
           type: block.description || 'BLOCK CONTAINER',
+          maxBays: block.maxBays || 10,
+          maxRows: block.maxRows || 4,
+          maxTiers: block.maxTiers || 5,
           status: occupancyRate >= 90 ? 'Full' : occupancyRate >= 75 ? 'Nearly Full' : 'Operational',
           statusLabel: occupancyRate >= 90 ? '🔴 Full' : occupancyRate >= 75 ? '🟡 Nearly Full' : '🟢 Operational',
           occupancy: occupancyRate,
@@ -859,8 +862,8 @@ export default function YardMap() {
                 {/* Render Grid: Tiers (Rows) x Rows (Cols) */}
                 {(() => {
                   const slotsInBay = selectedBayDrawer.block.rawSlots.filter(s => s.bay === selectedBayDrawer.bayNumber);
-                  const actualMaxTiers = slotsInBay.length > 0 ? Math.max(...slotsInBay.map(s => s.tier)) : 1;
-                  const actualMaxRows = slotsInBay.length > 0 ? Math.max(...slotsInBay.map(s => s.row)) : 1;
+                  const actualMaxTiers = selectedBayDrawer.block.maxTiers || 5;
+                  const actualMaxRows = selectedBayDrawer.block.maxRows || 4;
                   
                   return Array.from({ length: actualMaxTiers }).reverse().map((_, tierIdxReverse) => {
                     const currentTier = actualMaxTiers - tierIdxReverse;

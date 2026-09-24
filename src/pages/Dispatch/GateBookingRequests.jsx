@@ -1,10 +1,12 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { initialGateBookings } from '../../data/gateBookings'
+import { bookingService } from '../../services/bookingService'
+import { companyService } from '../../services/companyService'
 
 export default function GateBookingRequests() {
   const navigate = useNavigate()
-  const [bookings, setBookings] = useState(initialGateBookings)
+  const [bookings, setBookings] = useState([])
+  const [loading, setLoading] = useState(false)
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState('')
@@ -33,8 +35,85 @@ export default function GateBookingRequests() {
 
   // Refresh handler
   const handleRefresh = () => {
+    fetchBookings()
     showToast('🔄 Đã cập nhật danh sách Yêu Cầu Booking Cổng mới nhất từ các Hãng xe!')
   }
+
+  const fetchBookings = async () => {
+    setLoading(true)
+    try {
+      const [res, companiesData] = await Promise.all([
+        bookingService.getBookings({ pageNumber: 1, pageSize: 100 }),
+        companyService.getAll().catch(() => [])
+      ])
+      
+      const companyMap = {}
+      if (companiesData && Array.isArray(companiesData)) {
+        companiesData.forEach(c => {
+          companyMap[c.id] = c
+        })
+      }
+
+      if (res && res.items) {
+        const mapped = res.items.map(b => {
+          const comp = companyMap[b.carrierId] || {}
+          return {
+            id: b.bookingCode,
+            realId: b.id,
+            company: b.carrierName || comp.companyName || 'Công ty Vận tải',
+            companyId: b.carrierId,
+            contactName: comp.contactPerson || '-',
+            phone: comp.phone || '-',
+            email: comp.email || '-',
+          containerId: b.containerNumbers && b.containerNumbers.length > 0 ? b.containerNumbers[0] : 'N/A',
+          containerType: '40HC',
+          cargoType: 'General',
+          cargoDeclarationId: 'N/A',
+          cargoDeclarationStatus: 'Approved',
+          vehicleId: b.vehicleId,
+          licensePlate: b.vehiclePlate || 'Chưa điều phối',
+          vehicleType: 'Xe Đầu Kéo',
+          vehicleStatus: b.vehiclePlate ? 'Available' : 'Pending',
+          driverId: b.driverId,
+          driverName: b.driverName || 'Chưa điều phối',
+          licenseNumber: 'FC-123456',
+          licenseClass: 'FC',
+          licenseStatus: 'Valid',
+          driverStatus: b.driverName ? 'Available' : 'Pending',
+          operation: b.bookingType,
+          eta: b.appointmentStart,
+          expectedDuration: '45 phút',
+          requestedGate: 'Gate 2',
+          gateFee: 300000,
+          handlingFee: 200000,
+          totalFee: 500000,
+          paymentStatus: 'Paid',
+          gateCapacity: { gate: 'Gate 2', current: 10, max: 20, status: 'Available' },
+          status: b.status,
+          createdAt: new Date(b.createdAt).toLocaleString('vi-VN'),
+          reviewStartedAt: null,
+          reviewedBy: b.approvedBy ? 'Dispatcher' : null,
+          approvedAt: b.approvedAt ? new Date(b.approvedAt).toLocaleString('vi-VN') : null,
+          approvedBy: b.approvedBy ? 'Dispatcher' : null,
+          rejectionReason: '',
+          rejectionNote: '',
+          dispatchOrderId: null,
+            timelineStep: b.status === 'Approved' ? 4 : (b.status === 'Pending' ? 2 : 3)
+          }
+        })
+        setBookings(mapped)
+      }
+    } catch (err) {
+      console.error(err)
+      showToast('❌ Lỗi tải dữ liệu booking: ' + err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchBookings()
+  }, [])
 
   // 1. KPI Stats Calculation
   const kpiStats = useMemo(() => {
@@ -107,43 +186,44 @@ export default function GateBookingRequests() {
   }
 
   // Confirm Approval Handler
-  const handleConfirmApproval = () => {
+  const handleConfirmApproval = async () => {
     if (!selectedBooking) return
-    const updated = {
-      ...selectedBooking,
-      status: 'Approved',
-      approvedAt: new Date().toLocaleString('vi-VN'),
-      approvedBy: 'Dispatcher - Nguyễn Văn Q',
-      dispatchOrderId: `DSP-${Date.now().toString().slice(-6)}`,
-      timelineStep: 4
+    setLoading(true)
+    try {
+      const realId = selectedBooking.realId || selectedBooking.id
+      await bookingService.approveBooking(realId)
+      showToast(`🟢 Đã duyệt thành công Gate Booking ${selectedBooking.id}! Đã chuyển dữ liệu sang Cổng & Lệnh điều phối.`)
+      setShowApproveModal(false)
+      fetchBookings()
+    } catch (error) {
+      showToast('⚠️ Có lỗi xảy ra khi duyệt Booking.', 'error')
+    } finally {
+      setLoading(false)
     }
-    setBookings(prev => prev.map(b => b.id === selectedBooking.id ? updated : b))
-    setSelectedBooking(updated)
-    setShowApproveModal(false)
-    showToast(`🟢 Đã duyệt thành công Gate Booking ${selectedBooking.id}! Đã chuyển dữ liệu sang Cổng & Lệnh điều phối.`)
   }
 
   // Confirm Rejection Handler
-  const handleConfirmRejection = () => {
+  const handleConfirmRejection = async () => {
     if (!rejectionReason) {
       showToast('⚠️ Vui lòng chọn lý do từ chối trước khi xác nhận!')
       return
     }
     if (!selectedBooking) return
 
-    const updated = {
-      ...selectedBooking,
-      status: 'Rejected',
-      rejectionReason,
-      rejectionNote,
-      timelineStep: 3
+    setLoading(true)
+    try {
+      const realId = selectedBooking.realId || selectedBooking.id
+      await bookingService.rejectBooking(realId, rejectionReason)
+      showToast(`🔴 Đã từ chối Gate Booking ${selectedBooking.id}. Lý do: ${rejectionReason}`)
+      setShowRejectModal(false)
+      setRejectionReason('')
+      setRejectionNote('')
+      fetchBookings()
+    } catch (error) {
+      showToast('⚠️ Có lỗi xảy ra khi từ chối Booking.', 'error')
+    } finally {
+      setLoading(false)
     }
-    setBookings(prev => prev.map(b => b.id === selectedBooking.id ? updated : b))
-    setSelectedBooking(updated)
-    setShowRejectModal(false)
-    setRejectionReason('')
-    setRejectionNote('')
-    showToast(`🔴 Đã từ chối Gate Booking ${selectedBooking.id}. Lý do: ${rejectionReason}`)
   }
 
   // Render Status Badge
