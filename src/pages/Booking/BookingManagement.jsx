@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import { bookingService } from '../../services/bookingService'
+import driverService from '../../services/driverService'
+import vehicleService from '../../services/vehicleService'
 
 export default function BookingManagement() {
   const [activeTab, setActiveTab] = useState('my_bookings')
@@ -99,7 +101,7 @@ export default function BookingManagement() {
   const [wizardStep, setWizardStep] = useState(1)
   const [form, setForm] = useState({
     bookingType: 'Pickup', // Pickup or Dropoff
-    carrierId: 'c1010101-0000-0000-0000-000000000001',
+    carrierId: '',
     selectedContainerId: '',
     containerNo: '',
     sealNumber: '',
@@ -267,7 +269,12 @@ export default function BookingManagement() {
 
   // Khi người dùng chỉnh chọn xe đầu kéo khác -> gọi backend đánh giá lại tải trọng
   const handleTruckChange = async (truckId) => {
-    setForm(prev => ({ ...prev, truckId }))
+    let newDriverId = undefined;
+    if (truckId) {
+      const assignedTruck = (availableResources.trucks || []).find(t => String(t.id) === String(truckId));
+      if (assignedTruck && assignedTruck.driverId) newDriverId = assignedTruck.driverId;
+    }
+    setForm(prev => ({ ...prev, truckId, ...(newDriverId ? { driverId: newDriverId } : {}) }))
     try {
       const evalRes = await bookingService.evaluatePayload({
         containerId: form.selectedContainerId,
@@ -356,7 +363,7 @@ export default function BookingManagement() {
       const selectedContObj = (availableResources.containers || []).find(c => c.id === form.selectedContainerId)
 
       const payload = {
-        carrierId: form.carrierId,
+        carrierId: form.carrierId || undefined,
         driverId: form.driverId || undefined,
         driverName: selectedDriverObj?.fullName,
         truckId: form.truckId || undefined,
@@ -380,12 +387,28 @@ export default function BookingManagement() {
       })
 
       const created = await bookingService.createBooking(payload)
-      const isReady = created?.status === 'Ready' || (payload.driverId && payload.truckId && payload.containerIds.length > 0)
+      const currentStatus = created?.status || 'Pending'
+
+      // Gán tự động Xe & Tài xế
+      if (form.truckId && form.driverId) {
+        try {
+          await vehicleService.assignDriver(form.truckId, form.driverId)
+          if (form.driverId) {
+            // Get fresh driver data to avoid stale state from another tab
+            const freshDriver = await driverService.getDriverById(form.driverId).catch(() => selectedDriverObj);
+            const statusToCheck = freshDriver?.status || selectedDriverObj?.status;
+            
+            if (['active', 'inactive'].includes(statusToCheck)) {
+              await driverService.toggleStatus(form.driverId, 'waiting_confirmation')
+            } else if (['vehicle_received', 'transporting', 'receiving_vehicle', 'waiting_confirmation'].includes(statusToCheck)) {
+              await driverService.toggleStatus(form.driverId, 'booking_confirmed')
+            }
+          }
+        } catch (e) { console.error('Lỗi khi tự động gán xe & tài xế:', e) }
+      }
       
       showNotification(
-        isReady 
-          ? `🎉 Khởi tạo Đặt chỗ ${form.bookingCode} thành công! Hệ thống đã kích hoạt trạng thái [READY] sẵn sàng Gate-In.`
-          : `Khởi tạo Đặt chỗ ${form.bookingCode} thành công! Trạng thái: [Pending] chờ điều phối xe.`,
+        `🎉 Khởi tạo Đặt chỗ ${form.bookingCode} thành công! Trạng thái: [Pending] chờ Dispatcher phê duyệt.`,
         'success'
       )
       
@@ -402,7 +425,7 @@ export default function BookingManagement() {
           carrierId: form.carrierId,
           bookingCode: created.bookingCode || form.bookingCode,
           bookingType: created.bookingType || form.bookingType,
-          status: created.status || (isReady ? 'Ready' : 'Pending'),
+          status: currentStatus,
           appointmentStart: startIso,
           appointmentEnd: endIso,
           containerIds: payload.containerIds,
@@ -541,7 +564,12 @@ export default function BookingManagement() {
   }
 
   const handleAssignTruckChange = async (truckId) => {
-    setAssignForm(prev => ({ ...prev, truckId }))
+    let newDriverId = undefined;
+    if (truckId) {
+      const assignedTruck = (availableResources.trucks || []).find(t => String(t.id) === String(truckId));
+      if (assignedTruck && assignedTruck.driverId) newDriverId = assignedTruck.driverId;
+    }
+    setAssignForm(prev => ({ ...prev, truckId, ...(newDriverId ? { driverId: newDriverId } : {}) }))
     try {
       const evalRes = await bookingService.evaluatePayload({
         containerId: assignForm.containerId,
@@ -585,6 +613,24 @@ export default function BookingManagement() {
       }
 
       await bookingService.assignBookingResources(assignForm.bookingId, payload)
+      
+      if (assignForm.truckId && assignForm.driverId) {
+        try {
+          await vehicleService.assignDriver(assignForm.truckId, assignForm.driverId)
+          if (assignForm.driverId) {
+            // Get fresh driver data to avoid stale state
+            const freshDriver = await driverService.getDriverById(assignForm.driverId).catch(() => selectedDriverObj);
+            const statusToCheck = freshDriver?.status || selectedDriverObj?.status;
+            
+            if (['active', 'inactive'].includes(statusToCheck)) {
+              await driverService.toggleStatus(assignForm.driverId, 'waiting_confirmation')
+            } else if (['vehicle_received', 'transporting', 'receiving_vehicle', 'waiting_confirmation'].includes(statusToCheck)) {
+              await driverService.toggleStatus(assignForm.driverId, 'booking_confirmed')
+            }
+          }
+        } catch (e) { console.error('Lỗi khi tự động gán xe & tài xế:', e) }
+      }
+
       showNotification(`✨ Đã điều phối Xe & Tài xế cho Booking ${assignForm.bookingCode}! Trạng thái chuyển sang [READY] thành công.`, 'success')
       setShowAssignModal(false)
       fetchBookings()
@@ -716,6 +762,13 @@ export default function BookingManagement() {
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-300">
             <span className="w-2 h-2 rounded-full bg-rose-500"></span>
             Đã hủy
+          </span>
+        )
+      case 'Rejected':
+        return (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-900 border border-red-300 shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-red-600"></span>
+            Từ chối (Rejected)
           </span>
         )
       default:
@@ -1572,7 +1625,15 @@ export default function BookingManagement() {
                       </label>
                       <select
                         value={form.driverId}
-                        onChange={(e) => setForm({ ...form, driverId: e.target.value })}
+                        onChange={(e) => {
+                          const driverId = e.target.value;
+                          let truckId = form.truckId;
+                          if (driverId) {
+                            const assignedTruck = (availableResources.trucks || []).find(t => String(t.driverId) === String(driverId));
+                            if (assignedTruck) truckId = assignedTruck.id;
+                          }
+                          setForm({ ...form, driverId, truckId });
+                        }}
                         className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange cursor-pointer"
                       >
                         <option value="">
@@ -2045,7 +2106,15 @@ export default function BookingManagement() {
                 <label className="block font-bold uppercase text-slate-500">3. Chọn Tài Xế Phụ Trách (Driver)</label>
                 <select
                   value={assignForm.driverId}
-                  onChange={(e) => setAssignForm({ ...assignForm, driverId: e.target.value })}
+                  onChange={(e) => {
+                    const driverId = e.target.value;
+                    let truckId = assignForm.truckId;
+                    if (driverId) {
+                      const assignedTruck = (availableResources.trucks || []).find(t => String(t.driverId) === String(driverId));
+                      if (assignedTruck) truckId = assignedTruck.id;
+                    }
+                    setAssignForm({ ...assignForm, driverId, truckId });
+                  }}
                   className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon cursor-pointer"
                 >
                   {(availableResources.drivers || []).map((d) => (

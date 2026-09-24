@@ -17,7 +17,12 @@ const apiClient = {
       }
     }
 
-    const headers = { 'Content-Type': 'application/json' }
+    const headers = { 
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
     try {
       const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
       const user = stored ? JSON.parse(stored) : null

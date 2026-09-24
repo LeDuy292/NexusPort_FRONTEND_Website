@@ -18,6 +18,10 @@ export default function VehicleManagement() {
   const [uploadingVehiclePhoto, setUploadingVehiclePhoto] = useState(false)
   const [ocrVehicleLoading, setOcrVehicleLoading] = useState(false)
 
+  // State for location autocomplete
+  const [locationSuggestions, setLocationSuggestions] = useState([])
+  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false)
+
   // Form State for Add Vehicle Modal
   const [newVehicle, setNewVehicle] = useState({
     id: '',
@@ -32,6 +36,56 @@ export default function VehicleManagement() {
 
   const [vehicles, setVehicles] = useState([])
   const [availableDrivers, setAvailableDrivers] = useState([])
+  const [debounceTimer, setDebounceTimer] = useState(null)
+
+  const handleLocationSearch = (query) => {
+    setNewVehicle({ ...newVehicle, location: query })
+    if (!query || query.length < 3) {
+      setLocationSuggestions([])
+      setShowLocationSuggestions(false)
+      return
+    }
+
+    if (debounceTimer) clearTimeout(debounceTimer)
+    
+    const timer = setTimeout(async () => {
+      if (!query.trim()) return;
+      try {
+        const res = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(query.trim())}&limit=5&bbox=102.14,8.56,109.46,23.39`);
+        if (!res.ok) throw new Error("API error");
+        const data = await res.json();
+        
+        const suggestions = data.features.map(f => {
+          const p = f.properties;
+          const parts = [p.name, p.street, p.city, p.state, p.country].filter(Boolean);
+          const uniqueParts = [...new Set(parts)];
+          let displayName = uniqueParts.map(part => {
+            let s = part.trim();
+            s = s.replace(/Vietnam/gi, 'Việt Nam');
+            s = s.replace(/(.+?)\s+province/gi, 'Tỉnh $1');
+            s = s.replace(/(.+?)\s+District/gi, 'Huyện $1');
+            s = s.replace(/(.+?)\s+City/gi, 'Thành phố $1');
+            s = s.replace(/(.+?)\s+Ward/gi, 'Phường $1');
+            s = s.replace(/(.+?)\s+Commune/gi, 'Xã $1');
+            return s;
+          }).join(', ');
+          return { display_name: displayName };
+        }).filter(s => s.display_name.length > 0);
+        
+        if (suggestions.length === 0) {
+          setLocationSuggestions([{ display_name: query.trim() }]);
+        } else {
+          setLocationSuggestions(suggestions);
+        }
+      } catch (err) {
+        console.error("Location search failed", err);
+        setLocationSuggestions([{ display_name: `${query.trim()}, Việt Nam` }]);
+      }
+      setShowLocationSuggestions(true);
+    }, 500);
+    
+    setDebounceTimer(timer)
+  }
 
   const loadVehiclesAndDrivers = async () => {
     try {
@@ -58,16 +112,19 @@ export default function VehicleManagement() {
            statusLabel = 'Bảo trì'
         }
 
+        const driverIdToMatch = v.driverId ? String(v.driverId).toLowerCase() : null;
+        const assignedDriver = driverIdToMatch ? (driversData || []).find(d => String(d.id).toLowerCase() === driverIdToMatch) : null;
+        
         return {
           id: v.id,
           type: v.vehicleType,
           typeName: v.vehicleType === 'ROAD_TRUCK' ? 'Xe Đầu Kéo Đường Dài' : 'Xe Đầu Kéo Nội Bãi',
           plate: v.plateNumber,
-          driver: v.driverName || 'Chưa phân công',
+          driver: assignedDriver ? assignedDriver.fullName : 'Chưa phân công',
           driverId: v.driverId || 'N/A',
-          phone: 'N/A',
+          phone: assignedDriver ? assignedDriver.phone : 'N/A',
           driverStatus: v.driverId ? 'Đang làm việc' : 'Chưa phân công',
-          location: 'Cảng Tiên Sa',
+          location: v.currentLocation || 'Cảng Tiên Sa',
           task: 'Chờ lệnh',
           taskId: 'N/A',
           container: 'N/A',
@@ -191,6 +248,7 @@ export default function VehicleManagement() {
         vehicleType: newVehicle.type,
         photoUrl: newVehicle.photoUrl,
         registrationImageUrl: newVehicle.registrationImageUrl,
+        currentLocation: newVehicle.location,
         carrierId: '984eb832-8df7-463d-b4b1-a6dd2f3dbf07' // Hardcoded for demo
       });
       
@@ -713,15 +771,33 @@ export default function VehicleManagement() {
                   </select>
                 </div>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Vị Trí Ban Đầu</label>
+                <div className="relative">
+                  <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Vị Trí Ban Đầu (Gợi ý tự động)</label>
                   <input
                     type="text"
                     value={newVehicle.location}
-                    onChange={e => setNewVehicle({ ...newVehicle, location: e.target.value })}
-                    placeholder="VD: Cổng 01..."
+                    onChange={e => handleLocationSearch(e.target.value)}
+                    onFocus={() => { if (locationSuggestions.length > 0) setShowLocationSuggestions(true) }}
+                    onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 200)}
+                    placeholder="Nhập số nhà, tên đường..."
                     className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
                   />
+                  {showLocationSuggestions && locationSuggestions.length > 0 && (
+                    <ul className="absolute z-50 w-full mt-1 bg-white border border-chalk rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                      {locationSuggestions.map((loc, idx) => (
+                        <li 
+                          key={idx}
+                          onClick={() => {
+                            setNewVehicle({ ...newVehicle, location: loc.display_name })
+                            setShowLocationSuggestions(false)
+                          }}
+                          className="px-4 py-2 hover:bg-fog cursor-pointer text-xs font-medium text-carbon border-b border-chalk last:border-b-0 line-clamp-2"
+                        >
+                          {loc.display_name}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
 
                 <div className="col-span-2">

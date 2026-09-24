@@ -162,7 +162,7 @@ function App() {
             <Route path="/dashboard" element={<DashboardIndex />} />
             <Route path="/yard-staff/dashboard" element={<YardOperationsDashboard />} />
             <Route path="/yard" element={<YardOperations />} />
-            <Route path="/yard/map" element={<YardMap />} />
+            <Route path="/yard-staff/map" element={<YardMap />} />
             <Route path="/yard-ops" element={<YardOperations />} />
             <Route path="/yard/receiving" element={<YardReceiving />} />
             <Route path="/yard-staff/inventory-inspection" element={<ContainerInventoryInspection />} />

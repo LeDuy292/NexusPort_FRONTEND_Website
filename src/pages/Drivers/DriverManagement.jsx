@@ -29,7 +29,7 @@ function AvatarCircle({ driver }) {
   }, [driver?.photoUrl])
 
   if (driver?.photoUrl && !imgError) {
-    return <img src={resolveMediaUrl(driver.photoUrl)} alt={driver.fullName} onError={() => setImgError(true)} className="w-full h-full object-cover rounded-[inherit] border border-chalk" />
+    return <img src={resolveMediaUrl(driver.photoUrl) || undefined} alt={driver.fullName} onError={() => setImgError(true)} className="w-full h-full object-cover rounded-[inherit] border border-chalk" />
   }
   const color = driver?.status === 'banned' ? 'bg-red-400' : driver?.status === 'inactive' ? 'bg-amber-400' : 'bg-green-500'
   const nameParts = driver?.fullName ? driver.fullName.trim().split(' ') : ['?']
@@ -60,7 +60,7 @@ function DocumentCard({ url, title, alt, onClick }) {
           onClick={onClick}
         >
           <img
-            src={resolveMediaUrl(url)}
+            src={resolveMediaUrl(url) || undefined}
             alt={alt}
             onError={() => setImgError(true)}
             className="max-w-full max-h-full object-contain rounded-lg transition-transform group-hover:scale-105"
@@ -611,7 +611,7 @@ export default function DispatcherDriverManagement() {
                             Ảnh CCCD đã quét
                           </span>
                           <div className="h-20 bg-fog rounded-lg border border-chalk overflow-hidden cursor-pointer hover:border-signal-orange relative group" onClick={() => setZoomedImage(resolveMediaUrl(form.idCardFrontUrl))}>
-                            <img src={resolveMediaUrl(form.idCardFrontUrl)} alt="CCCD Scan" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+                            <img src={resolveMediaUrl(form.idCardFrontUrl) || undefined} alt="CCCD Scan" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
                             <div className="absolute inset-0 bg-carbon/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
                               <span className="material-symbols-outlined text-sm">zoom_in</span>
                             </div>
@@ -625,7 +625,7 @@ export default function DispatcherDriverManagement() {
                             Ảnh GPLX đã quét
                           </span>
                           <div className="h-20 bg-fog rounded-lg border border-chalk overflow-hidden cursor-pointer hover:border-signal-orange relative group" onClick={() => setZoomedImage(resolveMediaUrl(form.licenseImageUrl))}>
-                            <img src={resolveMediaUrl(form.licenseImageUrl)} alt="GPLX Scan" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+                            <img src={resolveMediaUrl(form.licenseImageUrl) || undefined} alt="GPLX Scan" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
                             <div className="absolute inset-0 bg-carbon/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
                               <span className="material-symbols-outlined text-sm">zoom_in</span>
                             </div>
