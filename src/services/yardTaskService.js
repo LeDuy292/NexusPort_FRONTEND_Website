@@ -128,6 +128,62 @@ export const yardTaskService = {
       console.error('Error creating yard task:', error)
       throw error
     }
+  },
+
+  /**
+   * NXP-119: Lấy danh sách lệnh di chuyển container giữa các Block
+   * @param {Object} params - { status }
+   */
+  getRelocationTasks: async (params = {}) => {
+    try {
+      const res = await apiClient.get('/v1/YardTask/relocate-tasks', { params })
+      return res.data || []
+    } catch (error) {
+      console.error('Error fetching relocation tasks:', error)
+      throw error
+    }
+  },
+
+  /**
+   * NXP-119: Tạo lệnh chuyển container giữa các Block
+   * @param {Object} payload - { containerNo, containerType, sourceBlockCode, fromLocation, targetBlockCode, toLocation, shiftingReason, priority, equipmentId, operatorId, operatorName, isBillable, internalFee, notes }
+   */
+  createRelocationTask: async (payload) => {
+    try {
+      const res = await apiClient.post('/v1/YardTask/relocate', payload)
+      return res.data
+    } catch (error) {
+      console.error('Error creating relocation task:', error)
+      throw error
+    }
+  },
+
+  /**
+   * NXP-119: Kiểm tra Slot đích (Trọng lực, Sức chứa, Trạng thái)
+   * @param {Object} payload - { targetLocation, containerNo, containerType }
+   */
+  validateTargetSlot: async (payload) => {
+    try {
+      const res = await apiClient.post('/v1/YardTask/validate-slot', payload)
+      return res.data
+    } catch (error) {
+      console.error('Error validating target slot:', error)
+      throw error
+    }
+  },
+
+  /**
+   * NXP-119: Tính chi phí di chuyển nội bộ nếu có
+   * @param {Object} payload - { containerNo, containerType, shiftingReason, isBillable }
+   */
+  calculateShiftingFee: async (payload) => {
+    try {
+      const res = await apiClient.post('/v1/YardTask/calculate-fee', payload)
+      return res.data
+    } catch (error) {
+      console.error('Error calculating shifting fee:', error)
+      throw error
+    }
   }
 }
 

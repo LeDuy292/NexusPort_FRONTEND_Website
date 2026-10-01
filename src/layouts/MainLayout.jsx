@@ -121,7 +121,7 @@ const sidebarItems = [
     path: '/yard-staff/movement-operations',
     label: 'Lệnh Di Chuyển Container',
     icon: 'swap_horiz',
-    roles: [ROLES.YARD_OPERATOR],
+    roles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER],
   },
   {
     path: '/yard-staff/gate-out-preparation',

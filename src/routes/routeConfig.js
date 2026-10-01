@@ -118,7 +118,7 @@ export const routeConfig = [
   },
   {
     path: '/yard-staff/movement-operations',
-    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {
     path: '/yard-staff/gate-out-preparation',
