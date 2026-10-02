@@ -4,7 +4,7 @@ import { containerService } from '../../services/containerService'
 const initialForm = {
   containerNumber: '', containerTypeCode: '', sourceReference: '', sealNumber: '',
   loadStatus: 'unknown', cargoType: 'general', grossWeightKg: '',
-  expectedArrivalAt: '', requestedPickupDate: '',
+  expectedArrivalAt: '', requestedServiceDate: '',
   blBookingNumber: '', customerName: '', transportCompanyName: '', movementType: 'pickup_request',
 }
 
@@ -124,12 +124,12 @@ export default function ContainerIntake({ embedded = false, onBack }) {
               <label className="space-y-1.5 text-sm font-semibold text-graphite"><span>Tình trạng hàng</span><select className={inputClass} value={form.loadStatus} onChange={(e) => update('loadStatus', e.target.value)}><option value="unknown">Chưa xác định</option><option value="full">Đầy hàng</option><option value="empty">Rỗng</option></select></label>
               <label className="space-y-1.5 text-sm font-semibold text-graphite"><span>Loại hàng</span><select className={inputClass} value={form.cargoType} onChange={(e) => update('cargoType', e.target.value)}>{['general','reefer','dangerous','perishable','oversized','overweight'].map((value) => <option key={value} value={value}>{value}</option>)}</select></label>
               {field('Khối lượng (kg)', 'grossWeightKg', { type: 'number', min: 0 })}
-              {field('Số B/L hoặc Booking ngoài', 'blBookingNumber')}
+              {field('Số B/L / Booking hãng tàu (nếu có)', 'blBookingNumber')}
               {field('Tên khách hàng/chủ hàng', 'customerName')}
               {isTransport ? <>
                 {field('Tên công ty vận chuyển', 'transportCompanyName', { required: true })}
                 <label className="space-y-1.5 text-sm font-semibold text-graphite"><span>Nhu cầu <b className="text-red-600">*</b></span><select className={inputClass} value={form.movementType} onChange={(e) => update('movementType', e.target.value)}><option value="pickup_request">Đến nhận Container</option><option value="truck_dropoff">Đưa Container vào cảng</option></select></label>
-                {form.movementType === 'pickup_request' && field('Ngày mong muốn nhận', 'requestedPickupDate', { type: 'date', required: true })}
+                {field(form.movementType === 'pickup_request' ? 'Ngày mong muốn nhận' : 'Ngày mong muốn đưa vào cảng', 'requestedServiceDate', { type: 'date', required: true })}
               </> : <>
                 {field('Thời gian dự kiến cập cảng', 'expectedArrivalAt', { type: 'datetime-local', required: true })}
                 <div className="space-y-1.5 text-sm font-semibold text-graphite">
