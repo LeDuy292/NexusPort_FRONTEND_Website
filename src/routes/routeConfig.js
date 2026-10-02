@@ -33,6 +33,10 @@ export const routeConfig = [
     allowedRoles: [ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.ADMINISTRATOR],
   },
   {
+    path: '/container-intake',
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
     path: '/booking',
     allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },

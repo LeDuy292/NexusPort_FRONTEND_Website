@@ -12,6 +12,12 @@ const sidebarItems = [
     icon: 'inventory_2',
     roles: [ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.ADMINISTRATOR],
   },
+  {
+    path: '/container-intake',
+    label: 'Tiếp Nhận Container',
+    icon: 'upload_file',
+    roles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
 
   // ── DISPATCHER ────────────────────────────────────────────────
   // 1. Tổng quan trước
@@ -258,6 +264,12 @@ const sidebarItems = [
   },
 
   // ── TRANSPORT COMPANY ──────────────────────────────────────────
+  {
+    path: '/container-intake',
+    label: 'Khai Báo Container',
+    icon: 'inventory_2',
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+  },
   {
     path: '/carrier-portal',
     label: 'Cổng Hãng Tàu',

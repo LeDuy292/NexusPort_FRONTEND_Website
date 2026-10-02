@@ -20,10 +20,10 @@ const request = async (method, path, { params, body } = {}) => {
     response = await fetch(url, {
       method,
       headers: {
-        'Content-Type': 'application/json',
+        ...(!(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
-      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      ...(body !== undefined ? { body: body instanceof FormData ? body : JSON.stringify(body) } : {}),
     })
   } catch {
     throw new Error('Không thể kết nối đến dịch vụ quản lý Container. Vui lòng thử lại sau.')
@@ -44,6 +44,7 @@ const request = async (method, path, { params, body } = {}) => {
 export default {
   get: (path, params) => request('GET', path, { params }),
   post: (path, body) => request('POST', path, { body }),
+  postForm: (path, formData) => request('POST', path, { body: formData }),
   put: (path, body) => request('PUT', path, { body }),
   delete: (path) => request('DELETE', path),
 }
