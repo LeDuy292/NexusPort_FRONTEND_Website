@@ -3,8 +3,8 @@ import { containerService } from '../../services/containerService'
 
 const initialForm = {
   containerNumber: '', containerTypeCode: '', sourceReference: '', sealNumber: '',
-  loadStatus: 'unknown', cargoType: 'general', grossWeightKg: '', vesselCallCode: '',
-  expectedArrivalAt: '', expectedAvailableAt: '', requestedPickupDate: '',
+  loadStatus: 'unknown', cargoType: 'general', grossWeightKg: '',
+  expectedArrivalAt: '', requestedPickupDate: '',
   blBookingNumber: '', customerName: '', transportCompanyName: '', movementType: 'pickup_request',
 }
 
@@ -49,7 +49,6 @@ export default function ContainerIntake({ embedded = false, onBack }) {
       containerNumber: form.containerNumber.toUpperCase().replace(/[\s-]+/g, ''),
       grossWeightKg: form.grossWeightKg === '' ? null : Number(form.grossWeightKg),
       expectedArrivalAt: localDateTimeToIso(form.expectedArrivalAt),
-      expectedAvailableAt: localDateTimeToIso(form.expectedAvailableAt),
       movementType: isTransport ? form.movementType : 'vessel_discharge',
     }
     try {
@@ -79,6 +78,9 @@ export default function ContainerIntake({ embedded = false, onBack }) {
   }
 
   const inputClass = 'w-full rounded-lg border border-chalk bg-white px-3 py-2.5 text-sm outline-none focus:border-signal-orange'
+  const estimatedAvailableAt = form.expectedArrivalAt
+    ? new Date(new Date(form.expectedArrivalAt).getTime() + 12 * 60 * 60 * 1000).toLocaleString('vi-VN')
+    : 'Tự động tính sau khi nhập ETA'
   const field = (label, key, props = {}) => (
     <label className="space-y-1.5 text-sm font-semibold text-graphite">
       <span>{label}{props.required && <b className="text-red-600"> *</b>}</span>
@@ -124,10 +126,12 @@ export default function ContainerIntake({ embedded = false, onBack }) {
                 <label className="space-y-1.5 text-sm font-semibold text-graphite"><span>Nhu cầu <b className="text-red-600">*</b></span><select className={inputClass} value={form.movementType} onChange={(e) => update('movementType', e.target.value)}><option value="pickup_request">Đến nhận Container</option><option value="truck_dropoff">Đưa Container vào cảng</option></select></label>
                 {form.movementType === 'pickup_request' && field('Ngày mong muốn nhận', 'requestedPickupDate', { type: 'date', required: true })}
               </> : <>
-                {field('Mã chuyến tàu', 'vesselCallCode', { placeholder: '1734-006N' })}
                 {field('Thời gian dự kiến cập cảng', 'expectedArrivalAt', { type: 'datetime-local', required: true })}
-                {field('Thời gian dự kiến sẵn sàng', 'expectedAvailableAt', { type: 'datetime-local' })}
-                {field('Đơn vị vận chuyển dự kiến', 'transportCompanyName')}
+                <div className="space-y-1.5 text-sm font-semibold text-graphite">
+                  <span>Thời gian dự kiến hoàn tất bốc dỡ</span>
+                  <div className="rounded-lg border border-chalk bg-fog px-3 py-2.5 text-slate">{estimatedAvailableAt}</div>
+                  <p className="text-xs font-normal text-slate">Tạm tính bằng thời gian cập cảng + 12 giờ.</p>
+                </div>
               </>}
             </div>
             <div className="mt-6 flex justify-end"><button disabled={loading || !types.length} className="rounded-lg bg-signal-orange px-5 py-2.5 text-sm font-extrabold text-white disabled:opacity-50">{loading ? 'Đang lưu...' : 'Lưu Container và lượt cảng'}</button></div>
