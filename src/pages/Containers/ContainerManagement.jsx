@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { containerService } from "../../services/containerService";
 
 const STATUSES = [
@@ -513,6 +514,7 @@ export default function ContainerManagement() {
   const canWrite = ["Administrator", "Dispatcher", "Gate Officer"].includes(
     user?.role,
   );
+  const canIntake = ["Administrator", "Dispatcher"].includes(user?.role);
   const canDelete = user?.role === "Administrator";
   const [items, setItems] = useState([]);
   const [types, setTypes] = useState([]);
@@ -643,18 +645,29 @@ export default function ContainerManagement() {
             Theo dõi xuyên suốt Booking → Gate-In → Yard → Gate-Out
           </p>
         </div>
-        {canWrite && (
-          <button
-            onClick={() => {
-              setFormContainer(undefined);
-              setShowForm(true);
-            }}
-            className="flex items-center justify-center gap-2 rounded-lg bg-signal-orange px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-orange-600"
-          >
-            <span className="material-symbols-outlined text-lg">add</span>
-            Đăng ký Container
-          </button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {canIntake && (
+            <Link
+              to="/container-intake"
+              className="flex items-center justify-center gap-2 rounded-lg border border-carbon bg-white px-5 py-3 text-sm font-bold text-carbon hover:bg-fog"
+            >
+              <span className="material-symbols-outlined text-lg">upload_file</span>
+              Nhập / Import Excel
+            </Link>
+          )}
+          {canWrite && (
+            <button
+              onClick={() => {
+                setFormContainer(undefined);
+                setShowForm(true);
+              }}
+              className="flex items-center justify-center gap-2 rounded-lg bg-signal-orange px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-orange-600"
+            >
+              <span className="material-symbols-outlined text-lg">add</span>
+              Đăng ký Container
+            </button>
+          )}
+        </div>
       </div>
 
       {notice && (
