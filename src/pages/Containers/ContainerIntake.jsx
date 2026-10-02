@@ -17,7 +17,7 @@ const resultLabel = {
 
 const localDateTimeToIso = (value) => value ? new Date(value).toISOString() : null
 
-export default function ContainerIntake() {
+export default function ContainerIntake({ embedded = false, onBack }) {
   const user = useMemo(() => {
     try { return JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user')) }
     catch { return null }
@@ -87,10 +87,11 @@ export default function ContainerIntake() {
   )
 
   return (
-    <div className="min-h-screen bg-fog p-5 lg:p-8">
+    <div className={embedded ? 'w-full' : 'min-h-screen bg-fog p-5 lg:p-8'}>
       <div className="mx-auto max-w-7xl space-y-6">
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div>
+            {onBack && <button onClick={onBack} className="mb-3 inline-flex items-center gap-1 text-sm font-bold text-slate hover:text-carbon"><span className="material-symbols-outlined text-lg">arrow_back</span>Quay lại danh sách Container</button>}
             <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-signal-orange">NXP-038 · Container Intake</p>
             <h1 className="mt-1 font-heading text-3xl font-black text-carbon">{isTransport ? 'Khai báo Container vận chuyển' : 'Tiếp nhận danh sách Container cảng/tàu'}</h1>
             <p className="mt-2 max-w-3xl text-sm text-slate">{isTransport ? 'Khai báo Container dự kiến giao hoặc nhận. Dữ liệu được giữ ở trạng thái chờ đối soát với nguồn cảng.' : 'Tạo Container Master và lượt cảng dự kiến từ nhập tay hoặc file Excel. Chưa phát hành EIR.'}</p>

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
 import { containerService } from "../../services/containerService";
+import ContainerIntake from "./ContainerIntake";
 
 const STATUSES = [
   "expected",
@@ -515,7 +515,9 @@ export default function ContainerManagement() {
     user?.role,
   );
   const canIntake = ["Administrator", "Dispatcher"].includes(user?.role);
+  const isTransport = ["Transport Company", "Carrier Staff", "Carrier"].includes(user?.role);
   const canDelete = user?.role === "Administrator";
+  const [viewMode, setViewMode] = useState(isTransport ? "intake" : "registry");
   const [items, setItems] = useState([]);
   const [types, setTypes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -551,15 +553,17 @@ export default function ContainerManagement() {
     }
   }, [filters]);
   useEffect(() => {
+    if (isTransport) return;
     containerService
       .getContainerTypes()
       .then(setTypes)
       .catch((e) => setError(e.message));
-  }, []);
+  }, [isTransport]);
   useEffect(() => {
+    if (isTransport || viewMode !== "registry") return undefined;
     const timer = setTimeout(load, 300);
     return () => clearTimeout(timer);
-  }, [load]);
+  }, [isTransport, load, viewMode]);
 
   const openDetail = async (id) => {
     setShowDetail(true);
@@ -630,6 +634,10 @@ export default function ContainerManagement() {
       page: key === "page" ? value : 1,
     }));
 
+  if (viewMode === "intake") {
+    return <ContainerIntake embedded onBack={isTransport ? undefined : () => setViewMode("registry")} />;
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-5 p-1">
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
@@ -647,15 +655,15 @@ export default function ContainerManagement() {
         </div>
         <div className="flex flex-wrap gap-2">
           {canIntake && (
-            <Link
-              to="/container-intake"
+            <button
+              onClick={() => setViewMode("intake")}
               className="flex items-center justify-center gap-2 rounded-lg border border-carbon bg-white px-5 py-3 text-sm font-bold text-carbon hover:bg-fog"
             >
               <span className="material-symbols-outlined text-lg">upload_file</span>
-              Nhập / Import Excel
-            </Link>
+              Tiếp nhận / Đăng ký Container
+            </button>
           )}
-          {canWrite && (
+          {canWrite && !canIntake && (
             <button
               onClick={() => {
                 setFormContainer(undefined);

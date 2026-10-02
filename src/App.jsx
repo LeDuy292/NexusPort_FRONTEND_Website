@@ -9,7 +9,6 @@ import BerthOps from './pages/Ships/BerthOps'
 import CargoDeclaration from './pages/Containers/CargoDeclaration'
 import DamageReport from './pages/Containers/DamageReport'
 import ContainerManagement from './pages/Containers/ContainerManagement'
-import ContainerIntake from './pages/Containers/ContainerIntake'
 import CarrierProfile from './pages/Ships/CarrierProfile'
 import EquipmentDispatch from './pages/Dispatch/EquipmentDispatch'
 import VesselSchedule from './pages/Ships/VesselSchedule'
@@ -125,8 +124,9 @@ function App() {
 
         {/* Toàn bộ các trang quản trị dùng chung cấu trúc Sidebar thông qua MainLayout */}
         <Route element={<MainLayout />}>
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
-            <Route path="/container-intake" element={<ContainerIntake />} />
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
+            <Route path="/containers" element={<ContainerManagement />} />
+            <Route path="/container-intake" element={<Navigate to="/containers" replace />} />
           </Route>
           
           {/* 1. Nhóm Hãng tàu / Doanh nghiệp ngoài cảng */}
@@ -204,7 +204,6 @@ function App() {
 
           {/* Báo cáo hư hỏng (Cần cho cả Yard Operator, Gate Officer, Dispatcher, Admin) */}
           <Route element={<RoleRoute allowedRoles={[ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
-            <Route path="/containers" element={<ContainerManagement />} />
             <Route path="/damage-report" element={<DamageReport />} />
           </Route>
 
