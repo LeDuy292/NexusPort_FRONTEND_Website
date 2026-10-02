@@ -258,12 +258,6 @@ const sidebarItems = [
 
   // ── TRANSPORT COMPANY ──────────────────────────────────────────
   {
-    path: '/containers',
-    label: 'Khai Báo Container',
-    icon: 'inventory_2',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
-  },
-  {
     path: '/carrier-portal',
     label: 'Cổng Hãng Tàu',
     icon: 'anchor',
@@ -277,8 +271,8 @@ const sidebarItems = [
   },
   {
     path: '/cargo',
-    label: 'Khai Báo Hàng Hóa',
-    icon: 'ac_unit',
+    label: 'Khai Báo Container',
+    icon: 'inventory_2',
     roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {

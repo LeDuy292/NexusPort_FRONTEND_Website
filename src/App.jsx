@@ -107,6 +107,16 @@ function HomeRedirect() {
   return <Navigate to="/unauthorized" replace />
 }
 
+function ContainerRoute() {
+  const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
+  let role = ''
+  try { role = JSON.parse(storedUser || '{}')?.role?.trim().toLowerCase() || '' } catch { role = '' }
+  if (['transport company', 'carrier staff', 'carrier'].includes(role)) {
+    return <Navigate to="/cargo" replace />
+  }
+  return <ContainerManagement />
+}
+
 function App() {
   return (
     <Routes>
@@ -125,14 +135,17 @@ function App() {
         {/* Toàn bộ các trang quản trị dùng chung cấu trúc Sidebar thông qua MainLayout */}
         <Route element={<MainLayout />}>
           <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
-            <Route path="/containers" element={<ContainerManagement />} />
+            <Route path="/containers" element={<ContainerRoute />} />
             <Route path="/container-intake" element={<Navigate to="/containers" replace />} />
+          </Route>
+
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF]} />}>
+            <Route path="/cargo" element={<CargoDeclaration />} />
+            <Route path="/transport/cargo-declarations" element={<CargoDeclaration />} />
           </Route>
           
           {/* 1. Nhóm Hãng tàu / Doanh nghiệp ngoài cảng */}
           <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
-            <Route path="/cargo" element={<CargoDeclaration />} />
-            <Route path="/transport/cargo-declarations" element={<CargoDeclaration />} />
             <Route path="/carrier-profile" element={<CarrierProfile />} />
             <Route path="/carrier-portal" element={<CarrierPortal />} />
             <Route path="/booking" element={<BookingManagement />} />

@@ -23,5 +23,6 @@ export const containerService = {
     body.append('file', file)
     return nodeApiClient.postForm('/containers/intake/transport/import', body)
   },
+  getTransportDeclarations: () => nodeApiClient.get('/containers/intake/transport/declarations'),
   getContainerImports: () => nodeApiClient.get('/containers/intake/imports'),
 }
