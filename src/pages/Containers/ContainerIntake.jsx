@@ -99,7 +99,7 @@ export default function ContainerIntake({ embedded = false, onBack }) {
             {onBack && <button onClick={onBack} className="mb-3 inline-flex items-center gap-1 text-sm font-bold text-slate hover:text-carbon"><span className="material-symbols-outlined text-lg">arrow_back</span>Quay lại danh sách Container</button>}
             <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-signal-orange">NXP-038 · Container Intake</p>
             <h1 className="mt-1 font-heading text-3xl font-black text-carbon">{isTransport ? 'Khai báo Container vận chuyển' : 'Tiếp nhận danh sách Container cảng/tàu'}</h1>
-            <p className="mt-2 max-w-3xl text-sm text-slate">{isTransport ? 'Khai báo Container dự kiến giao hoặc nhận. Dữ liệu được giữ ở trạng thái chờ đối soát với nguồn cảng.' : 'Tạo Container Master và lượt cảng dự kiến từ nhập tay hoặc file Excel. Chưa phát hành EIR.'}</p>
+            <p className="mt-2 max-w-3xl text-sm text-slate">{isTransport ? 'Khai báo Container dự kiến giao hoặc nhận để làm dữ liệu đầu vào khi tạo Booking.' : 'Tạo Container Master và lượt cảng dự kiến từ nhập tay hoặc file Excel. Chưa phát hành EIR.'}</p>
           </div>
           <a href={`/templates/${templateFileName}`} download={templateFileName} className="rounded-lg border border-carbon bg-white px-4 py-2.5 text-sm font-bold text-carbon hover:bg-chalk">
             {isTransport ? 'Tải mẫu Công ty vận chuyển' : 'Tải mẫu Cảng/Tàu'}
