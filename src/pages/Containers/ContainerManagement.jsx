@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { containerService } from "../../services/containerService";
+import ContainerIntake from "./ContainerIntake";
 
 const STATUSES = [
   "expected",
@@ -12,14 +13,6 @@ const STATUSES = [
   "loaded",
   "damaged",
   "canceled",
-];
-const CARGO_TYPES = [
-  "general",
-  "reefer",
-  "dangerous",
-  "perishable",
-  "oversized",
-  "overweight",
 ];
 const STATUS_LABELS = {
   expected: "Dự kiến",
@@ -61,18 +54,18 @@ const NEXT_LIFECYCLE_STATUS = {
   ready_for_gate_out: "gate_out",
   gate_out: null,
 };
+const LIFECYCLE_ORDER = [
+  "registered",
+  "booked",
+  "gate_in",
+  "in_yard",
+  "ready_for_gate_out",
+  "gate_out",
+];
 const EMPTY_FORM = {
   containerNumber: "",
   containerTypeId: "",
-  sealNumber: "",
-  cargoType: "general",
-  status: "expected",
-  grossWeightKg: "",
   carrierId: "",
-  vesselCallId: "",
-  expectedGateOutAt: "",
-  arrivedAt: "",
-  leftAt: "",
 };
 
 const formatDate = (value) =>
@@ -84,8 +77,12 @@ const formatDate = (value) =>
     : "—";
 const displaySize = (size) =>
   ({ ft20: "20'", ft40: "40'", ft45: "45'" })[size] || size;
-const toInputDate = (value) =>
-  value ? new Date(value).toISOString().slice(0, 16) : "";
+const activityLabel = (activity) =>
+  ({ in: "Hạ (In)", out: "Bốc (Out)" })[activity] || "—";
+const loadStatusLabel = (status) =>
+  ({ full: "Có hàng", empty: "Rỗng", unknown: "Chưa xác định" })[status] || "—";
+const visitStatusLabel = (status) =>
+  ({ planned: "Dự kiến", active: "Đang ở cảng", completed: "Hoàn tất", canceled: "Đã hủy" })[status] || status || "—";
 
 function Field({ label, required, children }) {
   return (
@@ -106,15 +103,7 @@ function ContainerFormModal({ container, types, onClose, onSaved }) {
       ? {
           containerNumber: container.containerNumber,
           containerTypeId: container.containerTypeId,
-          sealNumber: container.sealNumber || "",
-          cargoType: container.cargoType,
-          status: container.status,
-          grossWeightKg: container.grossWeightKg ?? "",
           carrierId: container.carrierId || "",
-          vesselCallId: container.vesselCallId || "",
-          expectedGateOutAt: toInputDate(container.expectedGateOutAt),
-          arrivedAt: toInputDate(container.arrivedAt),
-          leftAt: toInputDate(container.leftAt),
         }
       : { ...EMPTY_FORM, containerTypeId: types[0]?.id || "" },
   );
@@ -128,28 +117,12 @@ function ContainerFormModal({ container, types, onClose, onSaved }) {
     setSaving(true);
     setError("");
     const payload = {
-      ...form,
       containerNumber: form.containerNumber
         .toUpperCase()
         .replace(/[\s-]+/g, ""),
-      sealNumber: form.sealNumber.trim(),
-      grossWeightKg:
-        form.grossWeightKg === "" ? null : Number(form.grossWeightKg),
+      containerTypeId: form.containerTypeId,
       carrierId: form.carrierId || null,
-      vesselCallId: form.vesselCallId || null,
-      expectedGateOutAt: form.expectedGateOutAt
-        ? new Date(form.expectedGateOutAt).toISOString()
-        : null,
-      ...(editing
-        ? {
-            arrivedAt: form.arrivedAt
-              ? new Date(form.arrivedAt).toISOString()
-              : null,
-            leftAt: form.leftAt ? new Date(form.leftAt).toISOString() : null,
-          }
-        : {}),
     };
-    if (editing) delete payload.status;
     try {
       const saved = editing
         ? await containerService.updateContainer(container.id, payload)
@@ -178,7 +151,7 @@ function ContainerFormModal({ container, types, onClose, onSaved }) {
               {editing ? "Cập nhật Container" : "Đăng ký Container"}
             </h2>
             <p className="mt-1 text-xs text-slate">
-              Thông tin nhận diện theo tiêu chuẩn ISO 6346
+              Hồ sơ vật lý cố định theo tiêu chuẩn ISO 6346
             </p>
           </div>
           <button
@@ -206,18 +179,6 @@ function ContainerFormModal({ container, types, onClose, onSaved }) {
                 onChange={(e) => update("containerNumber", e.target.value)}
               />
             </Field>
-            <Field label="Seal Number" required>
-              <input
-                className={`${inputClass} font-mono uppercase`}
-                required
-                maxLength={50}
-                placeholder="SEAL-2026-001"
-                value={form.sealNumber}
-                onChange={(e) =>
-                  update("sealNumber", e.target.value.toUpperCase())
-                }
-              />
-            </Field>
             <Field label="Size / Type" required>
               <select
                 className={inputClass}
@@ -234,41 +195,6 @@ function ContainerFormModal({ container, types, onClose, onSaved }) {
                 ))}
               </select>
             </Field>
-            <Field label="Loại hàng">
-              <select
-                className={inputClass}
-                value={form.cargoType}
-                onChange={(e) => update("cargoType", e.target.value)}
-              >
-                {CARGO_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {type.replaceAll("_", " ")}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Trạng thái">
-              {editing ? (
-                <div className="w-full rounded-lg border border-chalk bg-gray-100 px-3 py-2.5 text-sm font-semibold text-slate">
-                  {STATUS_LABELS[form.status] || form.status} 
-                </div>
-              ) : (
-                <div className="w-full rounded-lg border border-chalk bg-gray-100 px-3 py-2.5 text-sm font-semibold text-slate">
-                  Dự kiến · Trạng thái khởi tạo
-                </div>
-              )}
-            </Field>
-            <Field label="Khối lượng toàn bộ (kg)">
-              <input
-                className={inputClass}
-                type="number"
-                min="0"
-                step="0.01"
-                placeholder="30480"
-                value={form.grossWeightKg}
-                onChange={(e) => update("grossWeightKg", e.target.value)}
-              />
-            </Field>
             <Field label="Carrier ID">
               <input
                 className={`${inputClass} font-mono`}
@@ -277,42 +203,9 @@ function ContainerFormModal({ container, types, onClose, onSaved }) {
                 onChange={(e) => update("carrierId", e.target.value)}
               />
             </Field>
-            <Field label="Vessel Call ID">
-              <input
-                className={`${inputClass} font-mono`}
-                placeholder="UUID (không bắt buộc)"
-                value={form.vesselCallId}
-                onChange={(e) => update("vesselCallId", e.target.value)}
-              />
-            </Field>
-            <Field label="Dự kiến ra cổng">
-              <input
-                className={inputClass}
-                type="datetime-local"
-                value={form.expectedGateOutAt}
-                onChange={(e) => update("expectedGateOutAt", e.target.value)}
-              />
-            </Field>
-            {editing && (
-              <>
-                <Field label="Thời điểm đến">
-                  <input
-                    className={inputClass}
-                    type="datetime-local"
-                    value={form.arrivedAt}
-                    onChange={(e) => update("arrivedAt", e.target.value)}
-                  />
-                </Field>
-                <Field label="Thời điểm rời cảng">
-                  <input
-                    className={inputClass}
-                    type="datetime-local"
-                    value={form.leftAt}
-                    onChange={(e) => update("leftAt", e.target.value)}
-                  />
-                </Field>
-              </>
-            )}
+          </div>
+          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+            Seal, hàng hóa, trọng lượng, chuyến tàu và thời gian vào/ra thuộc từng lượt cảng/EIR nên được lấy từ dữ liệu nghiệp vụ, không ghi đè vào hồ sơ vật lý Container.
           </div>
           {!types.length && (
             <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
@@ -341,23 +234,82 @@ function ContainerFormModal({ container, types, onClose, onSaved }) {
   );
 }
 
+function InfoItem({ label, value, mono = false }) {
+  return (
+    <div className="rounded-lg border border-chalk bg-white p-3">
+      <dt className="text-[11px] font-bold uppercase tracking-wide text-slate">{label}</dt>
+      <dd className={`mt-1 text-sm font-semibold text-carbon ${mono ? "font-mono" : ""}`}>
+        {value || "—"}
+      </dd>
+    </div>
+  );
+}
+
+function EirCard({ eir, containerNumber, defaultOpen = false }) {
+  const seals = eir.seals?.map((seal) => seal.rawValue || seal.sealNumber).filter(Boolean).join(", ");
+  return (
+    <details open={defaultOpen} className="group rounded-xl border border-chalk bg-white">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 p-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-sm font-extrabold text-carbon">{eir.referenceNumber}</span>
+            <span className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${eir.activity === "in" ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>
+              {activityLabel(eir.activity)}
+            </span>
+            <span className="rounded-full bg-fog px-2.5 py-1 text-[11px] font-bold text-graphite">
+              {eir.status}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-slate">
+            {formatDate(eir.checkInAt)} → {formatDate(eir.checkOutAt)}
+          </p>
+        </div>
+        <span className="material-symbols-outlined text-slate transition group-open:rotate-180">expand_more</span>
+      </summary>
+      <div className="border-t border-chalk bg-fog/50 p-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <InfoItem label="Container" value={containerNumber} mono />
+          <InfoItem label="Vị trí" value={eir.locationCode} mono />
+          <InfoItem label="Số xe" value={eir.plateNumber} mono />
+          <InfoItem label="BL / Booking" value={eir.blBookingNumber} mono />
+          <InfoItem label="Tình trạng hàng" value={loadStatusLabel(eir.loadStatus)} />
+          <InfoItem label="Seal" value={seals} mono />
+          <InfoItem label="ISO / Loại / Size" value={[eir.isoCode, eir.containerTypeDescription, eir.sizeFeet && `${eir.sizeFeet} ft`].filter(Boolean).join(" · ")} />
+          <InfoItem label="Khối lượng" value={eir.grossWeightKg != null ? `${Number(eir.grossWeightKg).toLocaleString("vi-VN")} kg` : null} />
+          <InfoItem label="Hàng hóa" value={eir.cargoTypeDescription} />
+          <InfoItem label="Khách hàng" value={eir.customerName} />
+          <InfoItem label="Đơn vị vận tải" value={eir.transportCompanyName} />
+          <InfoItem label="Tàu / Chuyến" value={[eir.vesselName, eir.voyageIn, eir.voyageOut].filter(Boolean).join(" · ")} />
+          <InfoItem label="Cổng / Làn" value={[eir.gateLabel, eir.laneCode].filter(Boolean).join(" · ")} />
+          <InfoItem label="Hư hỏng" value={eir.soundDamageCode || (eir.damages?.length ? `${eir.damages.length} ghi nhận` : null)} />
+          <InfoItem label="Hình ảnh / tài liệu" value={eir.media?.length ? `${eir.media.length} tệp` : null} />
+        </div>
+        {eir.remark && <p className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-800"><strong>Ghi chú:</strong> {eir.remark}</p>}
+      </div>
+    </details>
+  );
+}
+
 function ContainerDetailModal({ detail, loading, onClose, onEdit, onTransition, transitioning, canWrite }) {
   const lifecycleStatus = detail?.lifecycleStatus?.status;
   const nextStatus = lifecycleStatus ? NEXT_LIFECYCLE_STATUS[lifecycleStatus] : null;
+  const latestVisit = detail?.visits?.[0];
+  const latestEir = latestVisit?.eirs?.[0];
   return (
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-black/45"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 lg:p-6"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
     >
-      <aside className="h-full w-full max-w-xl overflow-y-auto bg-white p-7 shadow-2xl">
-        <div className="mb-6 flex items-start justify-between">
+      <div className="flex max-h-[96vh] w-full max-w-[1500px] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <div className="flex items-start justify-between border-b border-chalk px-5 py-4 lg:px-7">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-signal-orange">
-              Chi tiết Container
+              Hồ sơ Container · Lượt cảng · EIR
             </p>
-            <h2 className="mt-1 font-heading text-2xl font-bold text-carbon">
-              {detail?.containerNumber || "Đang tải..."}
-            </h2>
+            <div className="mt-1 flex flex-wrap items-center gap-3">
+              <h2 className="font-heading text-2xl font-bold text-carbon">{detail?.containerNumber || "Đang tải..."}</h2>
+              {detail && <span className={`rounded-full px-3 py-1 text-xs font-bold ${STATUS_STYLES[detail.status]}`}>{STATUS_LABELS[detail.status]}</span>}
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -371,60 +323,83 @@ function ContainerDetailModal({ detail, loading, onClose, onEdit, onTransition, 
             Đang tải thông tin...
           </div>
         ) : (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between rounded-xl bg-carbon p-5 text-white">
-              <div>
-                <p className="text-xs text-gray-400">Số niêm phong</p>
-                <p className="mt-1 font-mono text-lg font-bold">
-                  {detail.sealNumber || "—"}
-                </p>
-              </div>
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-bold ${STATUS_STYLES[detail.status]}`}
-              >
-                {STATUS_LABELS[detail.status]}
-              </span>
-            </div>
-            <section>
+          <div className="grid min-h-0 flex-1 overflow-y-auto lg:grid-cols-[minmax(0,2fr)_minmax(340px,1fr)] lg:overflow-hidden">
+            <main className="space-y-6 overflow-y-auto p-5 lg:p-7">
+              <section>
               <h3 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-slate">
-                Thông số Container
+                Hồ sơ vật lý Container
               </h3>
-              <dl className="grid grid-cols-2 gap-3 text-sm">
-                {[
-                  ["Type", detail.containerType?.code],
-                  ["Kích thước", displaySize(detail.containerType?.size)],
-                  [
-                    "Phân loại",
-                    detail.containerType?.category?.replaceAll("_", " "),
-                  ],
-                  ["Loại hàng", detail.cargoType?.replaceAll("_", " ")],
-                  [
-                    "Tổng khối lượng",
-                    detail.grossWeightKg
-                      ? `${Number(detail.grossWeightKg).toLocaleString("vi-VN")} kg`
-                      : "—",
-                  ],
-                  ["Đơn vị vận chuyển", detail.carrierName || "—"],
-                  ["Chuyến tàu", detail.vesselCallCode || "—"],
-                  ["Tạo lúc", formatDate(detail.createdAt)],
-                ].map(([label, value]) => (
-                  <div
-                    key={label}
-                    className="rounded-lg border border-chalk p-3"
-                  >
-                    <dt className="text-xs text-slate">{label}</dt>
-                    <dd className="mt-1 font-semibold text-carbon">{value}</dd>
-                  </div>
-                ))}
+              <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <InfoItem label="Container ID" value={detail.containerNumber} mono />
+                <InfoItem label="Type" value={detail.containerType?.code} />
+                <InfoItem label="Kích thước" value={displaySize(detail.containerType?.size)} />
+                <InfoItem label="Phân loại" value={detail.containerType?.category?.replaceAll("_", " ")} />
+                <InfoItem label="Carrier" value={detail.carrierName} />
+                <InfoItem label="Ngày đăng ký" value={formatDate(detail.createdAt)} />
               </dl>
-            </section>
-            <section>
+              <p className="mt-3 text-xs text-slate">Seal, hàng hóa, trọng lượng và tàu được hiển thị theo từng EIR bên dưới, không coi là thuộc tính cố định của vỏ Container.</p>
+              </section>
+
+              <section>
+                <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <h3 className="text-xs font-extrabold uppercase tracking-wider text-slate">Lượt cảng gần nhất</h3>
+                    <p className="mt-1 text-sm text-graphite">Thông tin vận hành tương tự màn tra cứu EIR tại cảng.</p>
+                  </div>
+                  {latestVisit && <span className="rounded-full bg-fog px-3 py-1 text-xs font-bold text-graphite">{visitStatusLabel(latestVisit.status)}</span>}
+                </div>
+                {latestVisit ? (
+                  <div className="rounded-xl border border-chalk bg-carbon p-4 text-white">
+                    <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                      {[
+                        ["Mã lượt cảng", latestVisit.visitReference],
+                        ["BL / Booking", latestVisit.blBookingNumber],
+                        ["Khách hàng", latestVisit.customerName],
+                        ["Đơn vị vận tải", latestVisit.transportCompanyName],
+                        ["Tình trạng hàng", loadStatusLabel(latestVisit.loadStatus)],
+                        ["Khối lượng", latestVisit.grossWeightKg != null ? `${Number(latestVisit.grossWeightKg).toLocaleString("vi-VN")} kg` : null],
+                        ["Bắt đầu", formatDate(latestVisit.startedAt)],
+                        ["Hoàn tất", formatDate(latestVisit.completedAt)],
+                      ].map(([label, value]) => (
+                        <div key={label}><dt className="text-[11px] uppercase text-gray-400">{label}</dt><dd className="mt-1 text-sm font-semibold">{value || "—"}</dd></div>
+                      ))}
+                    </dl>
+                  </div>
+                ) : (
+                  <p className="rounded-xl border border-dashed border-chalk bg-fog p-5 text-sm text-slate">Chưa có lượt cảng/EIR. Hồ sơ Container vẫn được giữ độc lập để liên kết khi phát sinh giao nhận.</p>
+                )}
+              </section>
+
+              <section>
+                <h3 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-slate">EIR và lịch sử giao nhận ({detail.visits?.reduce((sum, visit) => sum + (visit.eirs?.length || 0), 0) || 0})</h3>
+                <div className="space-y-3">
+                  {detail.visits?.flatMap((visit) => visit.eirs || []).length ? detail.visits.flatMap((visit) => visit.eirs || []).map((eir, index) => (
+                    <EirCard key={eir.id} eir={eir} containerNumber={detail.containerNumber} defaultOpen={index === 0} />
+                  )) : <p className="rounded-lg bg-fog p-4 text-sm text-slate">Chưa phát hành Equipment Interchange Receipt cho Container này.</p>}
+                </div>
+              </section>
+
+              <section>
+                <h3 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-slate">Booking liên kết ({detail.bookings?.length || 0})</h3>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {detail.bookings?.length ? detail.bookings.map((booking) => (
+                    <div key={booking.id} className="flex items-center justify-between rounded-lg border border-chalk p-3">
+                      <div><p className="font-mono text-sm font-bold text-carbon">{booking.bookingCode}</p><p className="text-xs text-slate">{booking.bookingType} · {formatDate(booking.appointmentStart)}</p></div>
+                      <span className="rounded-full bg-fog px-2.5 py-1 text-xs font-bold text-graphite">{booking.status}</span>
+                    </div>
+                  )) : <p className="rounded-lg bg-fog p-4 text-sm text-slate">Chưa liên kết Booking.</p>}
+                </div>
+              </section>
+            </main>
+
+            <aside className="space-y-6 border-t border-chalk bg-fog/60 p-5 lg:overflow-y-auto lg:border-l lg:border-t-0 lg:p-6">
+              <section>
               <h3 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-slate">
                 Vòng đời Container
               </h3>
               {lifecycleStatus ? (
-                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
-                  <div className="flex items-center justify-between gap-3">
+                <div className="rounded-xl border border-blue-200 bg-white p-4">
+                  <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-xs text-blue-700">Trạng thái nghiệp vụ hiện tại</p>
                       <p className="mt-1 font-bold text-blue-900">{LIFECYCLE_LABELS[lifecycleStatus]}</p>
@@ -440,14 +415,35 @@ function ContainerDetailModal({ detail, loading, onClose, onEdit, onTransition, 
                     )}
                   </div>
                   {!nextStatus && <p className="mt-2 text-xs text-blue-700">Container đã hoàn tất vòng đời qua cổng.</p>}
+                  <ol className="mt-5 space-y-0">
+                    {LIFECYCLE_ORDER.map((status, index) => {
+                      const currentIndex = LIFECYCLE_ORDER.indexOf(lifecycleStatus);
+                      const complete = index <= currentIndex;
+                      const current = status === lifecycleStatus;
+                      return (
+                        <li key={status} className="relative flex gap-3 pb-4 last:pb-0">
+                          {index < LIFECYCLE_ORDER.length - 1 && (
+                            <span className={`absolute left-[11px] top-6 h-full w-0.5 ${index < currentIndex ? "bg-blue-600" : "bg-chalk"}`} />
+                          )}
+                          <span className={`relative z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-[10px] font-black ${complete ? "border-blue-600 bg-blue-600 text-white" : "border-chalk bg-white text-slate"}`}>
+                            {index < currentIndex ? "✓" : index + 1}
+                          </span>
+                          <div className="pt-0.5">
+                            <p className={`text-sm font-bold ${current ? "text-blue-800" : complete ? "text-carbon" : "text-slate"}`}>{LIFECYCLE_LABELS[status]}</p>
+                            {current && <p className="mt-0.5 text-[11px] font-semibold text-blue-600">Đang ở bước này</p>}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ol>
                 </div>
               ) : (
                 <p className="rounded-lg bg-amber-50 p-4 text-sm text-amber-800">
                   Trạng thái hiện tại nằm ngoài vòng đời cổng tiêu chuẩn.
                 </p>
               )}
-            </section>
-            <section>
+              </section>
+              <section>
               <h3 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-slate">
                 Lịch sử trạng thái ({detail.statusHistory?.length || 0})
               </h3>
@@ -459,12 +455,12 @@ function ContainerDetailModal({ detail, loading, onClose, onEdit, onTransition, 
                       <span className="mx-2 text-slate">→</span>
                       {LIFECYCLE_LABELS[entry.toStatus] || entry.toStatus}
                     </div>
-                    <span className="text-xs text-slate">{formatDate(entry.changedAt)}</span>
+                    <div className="text-right"><span className="block text-xs text-slate">{formatDate(entry.changedAt)}</span><span className="mt-1 block text-[11px] font-semibold text-graphite">{entry.changedByName || entry.changedBy || "Hệ thống"}</span></div>
                   </div>
                 )) : <p className="rounded-lg bg-fog p-4 text-sm text-slate">Chưa có lịch sử chuyển trạng thái.</p>}
               </div>
-            </section>
-            <section>
+              </section>
+              <section>
               <h3 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-slate">
                 Vị trí hiện tại
               </h3>
@@ -480,44 +476,14 @@ function ContainerDetailModal({ detail, loading, onClose, onEdit, onTransition, 
                     Đặt lúc {formatDate(detail.currentPosition.placedAt)}
                   </p>
                 </div>
+              ) : latestEir?.locationCode ? (
+                <div className="rounded-xl border border-blue-200 bg-blue-50 p-4"><p className="font-mono font-bold text-blue-800">{latestEir.locationCode}</p><p className="mt-1 text-xs text-blue-700">Vị trí ghi nhận trên EIR gần nhất</p></div>
               ) : (
                 <p className="rounded-lg bg-fog p-4 text-sm text-slate">
                   Container chưa có vị trí hiện tại trong bãi.
                 </p>
               )}
-            </section>
-            <section>
-              <h3 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-slate">
-                Booking liên kết ({detail.bookings?.length || 0})
-              </h3>
-              <div className="space-y-2">
-                {detail.bookings?.length ? (
-                  detail.bookings.map((booking) => (
-                    <div
-                      key={booking.id}
-                      className="flex items-center justify-between rounded-lg border border-chalk p-3"
-                    >
-                      <div>
-                        <p className="font-mono text-sm font-bold text-carbon">
-                          {booking.bookingCode}
-                        </p>
-                        <p className="text-xs text-slate">
-                          {booking.bookingType} ·{" "}
-                          {formatDate(booking.appointmentStart)}
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-fog px-2.5 py-1 text-xs font-bold text-graphite">
-                        {booking.status}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <p className="rounded-lg bg-fog p-4 text-sm text-slate">
-                    Chưa liên kết Booking.
-                  </p>
-                )}
-              </div>
-            </section>
+              </section>
             {canWrite && detail.status !== "canceled" && (
               <button
                 onClick={() => onEdit(detail)}
@@ -527,9 +493,10 @@ function ContainerDetailModal({ detail, loading, onClose, onEdit, onTransition, 
                 Cập nhật Container
               </button>
             )}
+            </aside>
           </div>
         )}
-      </aside>
+      </div>
     </div>
   );
 }
@@ -547,7 +514,10 @@ export default function ContainerManagement() {
   const canWrite = ["Administrator", "Dispatcher", "Gate Officer"].includes(
     user?.role,
   );
+  const canIntake = ["Administrator", "Dispatcher"].includes(user?.role);
+  const isTransport = ["Transport Company", "Carrier Staff", "Carrier"].includes(user?.role);
   const canDelete = user?.role === "Administrator";
+  const [viewMode, setViewMode] = useState(isTransport ? "intake" : "registry");
   const [items, setItems] = useState([]);
   const [types, setTypes] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -583,15 +553,17 @@ export default function ContainerManagement() {
     }
   }, [filters]);
   useEffect(() => {
+    if (isTransport) return;
     containerService
       .getContainerTypes()
       .then(setTypes)
       .catch((e) => setError(e.message));
-  }, []);
+  }, [isTransport]);
   useEffect(() => {
+    if (isTransport || viewMode !== "registry") return undefined;
     const timer = setTimeout(load, 300);
     return () => clearTimeout(timer);
-  }, [load]);
+  }, [isTransport, load, viewMode]);
 
   const openDetail = async (id) => {
     setShowDetail(true);
@@ -662,6 +634,10 @@ export default function ContainerManagement() {
       page: key === "page" ? value : 1,
     }));
 
+  if (viewMode === "intake") {
+    return <ContainerIntake embedded onBack={isTransport ? undefined : () => setViewMode("registry")} />;
+  }
+
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-5 p-1">
       <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
@@ -677,18 +653,29 @@ export default function ContainerManagement() {
             Theo dõi xuyên suốt Booking → Gate-In → Yard → Gate-Out
           </p>
         </div>
-        {canWrite && (
-          <button
-            onClick={() => {
-              setFormContainer(undefined);
-              setShowForm(true);
-            }}
-            className="flex items-center justify-center gap-2 rounded-lg bg-signal-orange px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-orange-600"
-          >
-            <span className="material-symbols-outlined text-lg">add</span>
-            Đăng ký Container
-          </button>
-        )}
+        <div className="flex flex-wrap gap-2">
+          {canIntake && (
+            <button
+              onClick={() => setViewMode("intake")}
+              className="flex items-center justify-center gap-2 rounded-lg border border-carbon bg-white px-5 py-3 text-sm font-bold text-carbon hover:bg-fog"
+            >
+              <span className="material-symbols-outlined text-lg">upload_file</span>
+              Tiếp nhận / Đăng ký Container
+            </button>
+          )}
+          {canWrite && !canIntake && (
+            <button
+              onClick={() => {
+                setFormContainer(undefined);
+                setShowForm(true);
+              }}
+              className="flex items-center justify-center gap-2 rounded-lg bg-signal-orange px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-orange-600"
+            >
+              <span className="material-symbols-outlined text-lg">add</span>
+              Đăng ký Container
+            </button>
+          )}
+        </div>
       </div>
 
       {notice && (
@@ -757,7 +744,7 @@ export default function ContainerManagement() {
             <input
               value={filters.search}
               onChange={(e) => setFilter("search", e.target.value)}
-              placeholder="Tìm theo Container ID hoặc Seal Number..."
+              placeholder="Tìm Container, EIR, số xe, B/L hoặc seal..."
               className="w-full rounded-lg border border-chalk bg-fog py-2.5 pl-10 pr-3 text-sm outline-none focus:border-signal-orange"
             />
           </div>
@@ -817,16 +804,16 @@ export default function ContainerManagement() {
 
       <div className="overflow-hidden rounded-xl border border-chalk bg-white">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1050px] text-left">
+          <table className="w-full min-w-[1180px] text-left">
             <thead className="border-b border-chalk bg-fog text-[11px] font-extrabold uppercase tracking-wider text-slate">
               <tr>
                 <th className="px-5 py-3.5">Container ID</th>
-                <th className="px-4 py-3.5">Size / Type</th>
-                <th className="px-4 py-3.5">Seal</th>
-                <th className="px-4 py-3.5">Cargo</th>
+                <th className="px-4 py-3.5">Số xe</th>
+                <th className="px-4 py-3.5">Hạ / Bốc</th>
+                <th className="px-4 py-3.5">Vị trí</th>
+                <th className="px-4 py-3.5">Thời gian vào</th>
+                <th className="px-4 py-3.5">Thời gian ra</th>
                 <th className="px-4 py-3.5">Trạng thái</th>
-                <th className="px-4 py-3.5">Booking</th>
-                <th className="px-4 py-3.5">Cập nhật</th>
                 <th className="px-5 py-3.5 text-right">Thao tác</th>
               </tr>
             </thead>
@@ -862,22 +849,23 @@ export default function ContainerManagement() {
                         {container.containerNumber}
                       </button>
                       <p className="mt-1 text-[11px] text-slate">
-                        {container.carrierName || "Chưa gán carrier"}
-                      </p>
-                    </td>
-                    <td className="px-4 py-4">
-                      <p className="text-sm font-bold text-carbon">
-                        {displaySize(container.size)} · {container.typeCode}
-                      </p>
-                      <p className="text-xs capitalize text-slate">
-                        {container.category?.replaceAll("_", " ")}
+                        {container.latestEirReference || `${displaySize(container.size)} · ${container.typeCode}`}
                       </p>
                     </td>
                     <td className="px-4 py-4 font-mono text-xs font-semibold text-graphite">
-                      {container.sealNumber || "—"}
+                      {container.latestPlateNumber || "—"}
                     </td>
-                    <td className="px-4 py-4 text-xs font-semibold capitalize text-graphite">
-                      {container.cargoType?.replaceAll("_", " ")}
+                    <td className="px-4 py-4 text-xs font-bold text-graphite">
+                      {activityLabel(container.latestActivity)}
+                    </td>
+                    <td className="px-4 py-4 font-mono text-xs font-semibold text-graphite">
+                      {container.latestLocationCode || "—"}
+                    </td>
+                    <td className="px-4 py-4 text-xs text-slate">
+                      {formatDate(container.latestCheckInAt)}
+                    </td>
+                    <td className="px-4 py-4 text-xs text-slate">
+                      {formatDate(container.latestCheckOutAt)}
                     </td>
                     <td className="px-4 py-4">
                       <span
@@ -885,12 +873,6 @@ export default function ContainerManagement() {
                       >
                         {STATUS_LABELS[container.status]}
                       </span>
-                    </td>
-                    <td className="px-4 py-4 text-sm font-bold text-graphite">
-                      {container.bookingCount}
-                    </td>
-                    <td className="px-4 py-4 text-xs text-slate">
-                      {formatDate(container.updatedAt || container.createdAt)}
                     </td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-1">

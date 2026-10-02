@@ -12,7 +12,6 @@ const sidebarItems = [
     icon: 'inventory_2',
     roles: [ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.ADMINISTRATOR],
   },
-
   // ── DISPATCHER ────────────────────────────────────────────────
   // 1. Tổng quan trước
   {
@@ -272,8 +271,8 @@ const sidebarItems = [
   },
   {
     path: '/cargo',
-    label: 'Khai Báo Hàng Hóa',
-    icon: 'ac_unit',
+    label: 'Khai Báo Container',
+    icon: 'inventory_2',
     roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
