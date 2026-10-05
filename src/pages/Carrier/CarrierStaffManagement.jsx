@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import nodeApiClient from '../../services/nodeApiClient';
+import expressApiClient from '../../services/expressApiClient';
 
 export default function CarrierStaffManagement() {
   const [staffs, setStaffs] = useState([]);
@@ -21,7 +21,7 @@ export default function CarrierStaffManagement() {
   const fetchStaffs = async () => {
     try {
       setLoading(true);
-      const data = await nodeApiClient.get('/users/carrier-staff');
+      const data = await expressApiClient.get('/users/carrier-staff');
       if (data && data.staffs) {
         setStaffs(data.staffs);
       } else if (Array.isArray(data)) {
@@ -44,7 +44,7 @@ export default function CarrierStaffManagement() {
     setFormLoading(true);
 
     try {
-      await nodeApiClient.post('/users/carrier-staff', formData);
+      await expressApiClient.post('/users/carrier-staff', formData);
       setShowModal(false);
       setFormData({ username: '', email: '', fullName: '', password: '' });
       fetchStaffs();
@@ -61,9 +61,9 @@ export default function CarrierStaffManagement() {
     try {
       setLoading(true);
       if (currentStatus) {
-        await nodeApiClient.patch(`/users/${id}/deactivate`, {});
+        await expressApiClient.patch(`/users/${id}/deactivate`, {});
       } else {
-        await nodeApiClient.patch(`/users/${id}/activate`, {});
+        await expressApiClient.patch(`/users/${id}/activate`, {});
       }
       fetchStaffs();
     } catch (error) {

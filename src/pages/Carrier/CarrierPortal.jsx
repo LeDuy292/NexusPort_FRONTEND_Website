@@ -175,15 +175,24 @@ export default function CarrierPortal() {
               className="bg-white border border-chalk rounded-xl h-24 flex flex-col items-center justify-center gap-2 hover:bg-fog hover:shadow-md transition-all shadow-sm group"
             >
               <span className="material-symbols-outlined text-signal-orange group-hover:scale-110 transition-transform">add_circle</span>
-              <span className="font-bold text-carbon text-xs">Đặt chỗ mới</span>
+              <span className="font-bold text-carbon text-xs">Đặt chỗ cảng</span>
             </button>
 
             <button
               onClick={() => navigate('/cargo')}
               className="bg-white border border-chalk rounded-xl h-24 flex flex-col items-center justify-center gap-2 hover:bg-fog hover:shadow-md transition-all shadow-sm group"
             >
-              <span className="material-symbols-outlined text-signal-orange group-hover:scale-110 transition-transform">location_searching</span>
-              <span className="font-bold text-carbon text-xs">Theo dõi container</span>
+              <span className="material-symbols-outlined text-signal-orange group-hover:scale-110 transition-transform">inventory_2</span>
+              <span className="font-bold text-carbon text-xs">Khai báo container</span>
+            </button>
+
+
+            <button
+              onClick={() => navigate('/drivers')}
+              className="bg-white border border-chalk rounded-xl h-24 flex flex-col items-center justify-center gap-2 hover:bg-fog hover:shadow-md transition-all shadow-sm group"
+            >
+              <span className="material-symbols-outlined text-signal-orange group-hover:scale-110 transition-transform">badge</span>
+              <span className="font-bold text-carbon text-xs">Quản lý tài xế</span>
             </button>
 
             <button
@@ -191,15 +200,15 @@ export default function CarrierPortal() {
               className="bg-white border border-chalk rounded-xl h-24 flex flex-col items-center justify-center gap-2 hover:bg-fog hover:shadow-md transition-all shadow-sm group"
             >
               <span className="material-symbols-outlined text-signal-orange group-hover:scale-110 transition-transform">payments</span>
-              <span className="font-bold text-carbon text-xs">Thanh toán hóa đơn</span>
+              <span className="font-bold text-carbon text-xs">Thanh toán cước</span>
             </button>
 
             <button
               onClick={() => navigate('/carrier-profile')}
               className="bg-white border border-chalk rounded-xl h-24 flex flex-col items-center justify-center gap-2 hover:bg-fog hover:shadow-md transition-all shadow-sm group"
             >
-              <span className="material-symbols-outlined text-signal-orange group-hover:scale-110 transition-transform">person_add</span>
-              <span className="font-bold text-carbon text-xs">Hồ sơ hãng tàu</span>
+              <span className="material-symbols-outlined text-signal-orange group-hover:scale-110 transition-transform">business</span>
+              <span className="font-bold text-carbon text-xs">Hồ sơ doanh nghiệp</span>
             </button>
           </div>
 

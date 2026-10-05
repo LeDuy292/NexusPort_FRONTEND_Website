@@ -15,7 +15,6 @@ export default function GateControl() {
   const [capturedImage, setCapturedImage] = useState(null)
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
-  const fileInputRef = useRef(null)
   const [previewImageModal, setPreviewImageModal] = useState(null)
 
   // Trạng thái Nhận dạng (ANPR) & Thao tác thủ công
@@ -257,12 +256,13 @@ export default function GateControl() {
   }
 
   // ── 5. QUÉT ANPR TỰ ĐỘNG LIÊN TỤC TỪ CAMERA LIVE STREAM (AUTO-SCAN) ──
-  const performAutoScan = async () => {
+  const performAutoScan = async (isManual = false) => {
     if (!videoRef.current || videoRef.current.readyState < 2 || isScanningRef.current) {
+      if (isManual) showToast('⚠️ Camera chưa sẵn sàng nhận hình ảnh. Vui lòng thử lại sau 1-2 giây!')
       return
     }
-    // Nếu barie đã mở hoặc xe vừa xác nhận xong thì tạm dừng quét để tránh lặp
-    if (barrierState === 'opened' || barrierState === 'opening') {
+    // Nếu barie đã mở hoặc xe vừa xác nhận xong thì tạm dừng quét tự động để tránh lặp
+    if (!isManual && (barrierState === 'opened' || barrierState === 'opening')) {
       return
     }
 
@@ -270,12 +270,19 @@ export default function GateControl() {
       isScanningRef.current = true
       setIsAiScanning(true)
       const video = videoRef.current
+      if (!video || !video.videoWidth || !video.videoHeight) {
+        if (isManual) showToast('⚠️ Chưa lấy được khung hình từ Camera.')
+        return
+      }
       const canvas = canvasRef.current || document.createElement('canvas')
-      canvas.width = video.videoWidth || 1280
-      canvas.height = video.videoHeight || 720
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
       const ctx = canvas.getContext('2d')
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
       const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+
+      // Cập nhật ảnh hiện trường để người dùng thấy rõ khung hình camera vừa chụp
+      setCapturedImage(dataUrl)
 
       const res = await fetch(dataUrl)
       const imageBlob = await res.blob()
@@ -288,74 +295,29 @@ export default function GateControl() {
         const conf = plateObj.ocr_confidence ? plateObj.ocr_confidence * 100 : (plate ? 97.5 : 0)
         const cropImg = plateObj.plate_image_base64 || null
 
-        if (plate && plate !== lastScannedPlateRef.current) {
-          setCapturedImage(dataUrl)
-          setDetectedPlate(plate)
-          setConfidence(conf)
-          if (cropImg) setAiCropImage(cropImg)
-          lastScannedPlateRef.current = plate
-          showToast(`🎯 ANPR tự động nhận diện xe: "${plate}" (${conf.toFixed(1)}%)`)
-          await evaluateVerification(plate, conf, dataUrl, cropImg)
+        if (plate) {
+          if (isManual || plate !== lastScannedPlateRef.current) {
+            setDetectedPlate(plate)
+            setConfidence(conf)
+            if (cropImg) setAiCropImage(cropImg)
+            lastScannedPlateRef.current = plate
+            showToast(`🎯 ANPR nhận diện xe thành công: "${plate}" (${conf.toFixed(1)}%)`)
+            await evaluateVerification(plate, conf, dataUrl, cropImg)
+          }
+        } else if (isManual) {
+          showToast('⚠️ AI không phát hiện biển số rõ ràng trong khung hình. Vui lòng căn chỉnh lại góc camera hoặc tăng độ sáng!')
         }
+      } else if (isManual) {
+        showToast('⚠️ AI Service không thể xử lý khung hình: ' + (aiRes.error || 'Lỗi nhận dạng'))
       }
-    } catch (_err) {
-      // Bỏ qua lỗi nền để luồng quét tự động hoạt động liên tục
+    } catch (err) {
+      if (isManual) showToast('⚠️ Lỗi khi quét camera: ' + err.message)
     } finally {
       isScanningRef.current = false
       setIsAiScanning(false)
     }
   }
 
-  // ── 5.1. XỬ LÝ TẢI ẢNH XE LÊN TỪ MÁY (FILE UPLOAD CHO TESTING & BẰNG CHỨNG) ──
-  const handleFileUpload = async (e) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    try {
-      setIsAiScanning(true)
-      showToast('📤 Đang tải ảnh xe lên và phân tích AI ANPR...')
-
-      const reader = new FileReader()
-      reader.onload = async (event) => {
-        const dataUrl = event.target.result
-        setCapturedImage(dataUrl)
-
-        const aiRes = await gateService.recognizeVehicleImage(file, 'GATE_IN_A', 'LANE_01')
-        if (aiRes.success && aiRes.data) {
-          const data = aiRes.data
-          const plateObj = data.license_plate || {}
-          const plate = plateObj.plate_number ? plateObj.plate_number.trim().toUpperCase() : ''
-          const conf = plateObj.ocr_confidence ? plateObj.ocr_confidence * 100 : (plate ? 98.0 : 0)
-          const cropImg = plateObj.plate_image_base64 || null
-
-          if (cropImg) {
-            setAiCropImage(cropImg)
-          } else {
-            setAiCropImage(dataUrl)
-          }
-
-          if (plate) {
-            setDetectedPlate(plate)
-            setConfidence(conf)
-            lastScannedPlateRef.current = plate
-            showToast(`🎯 ANPR nhận diện thành công: "${plate}" (${conf.toFixed(1)}%)`)
-            await evaluateVerification(plate, conf, dataUrl, cropImg || dataUrl)
-          } else {
-            showToast('⚠️ AI không phát hiện biển số rõ ràng trong ảnh tải lên!')
-          }
-        } else {
-          showToast('⚠️ AI Service không thể xử lý ảnh: ' + (aiRes.error || 'Lỗi nhận dạng'))
-        }
-        setIsAiScanning(false)
-      }
-      reader.readAsDataURL(file)
-    } catch (err) {
-      showToast('⚠️ Lỗi đọc file ảnh: ' + err.message)
-      setIsAiScanning(false)
-    } finally {
-      if (e.target) e.target.value = ''
-    }
-  }
 
   // Tự động quét theo chu kỳ 2.5s khi camera đang bật
   useEffect(() => {
@@ -545,30 +507,26 @@ export default function GateControl() {
             </div>
 
             <div className="flex items-center gap-2">
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={handleFileUpload}
-                accept="image/*"
-                className="hidden"
-              />
-
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isAiScanning}
-                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-sm flex items-center gap-1.5 transition-all cursor-pointer font-mono active:scale-95"
-                title="Tải ảnh xe lên từ máy để AI nhận diện biển số và lưu trữ"
-              >
-                <span className="material-symbols-outlined text-base">upload_file</span>
-                TẢI ẢNH XE
-              </button>
 
               {cameraActive && (
-                <div className="px-3.5 py-2 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-black flex items-center gap-2 font-mono shadow-xs">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-                  <span className="material-symbols-outlined text-sm text-emerald-600">radar</span>
-                  {isAiScanning ? 'AI ĐANG PHÂN TÍCH...' : 'ANPR ĐANG TỰ ĐỘNG QUÉT'}
-                </div>
+                <>
+                  <button
+                    type="button"
+                    onClick={() => performAutoScan(true)}
+                    disabled={isAiScanning}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md flex items-center gap-1.5 transition-all cursor-pointer font-mono active:scale-95"
+                    title="Chụp ngay khung hình hiện tại và phân tích nhận diện biển số"
+                  >
+                    <span className="material-symbols-outlined text-base">photo_camera</span>
+                    {isAiScanning ? 'ĐANG PHÂN TÍCH...' : 'CHỤP & QUÉT NGAY'}
+                  </button>
+
+                  <div className="px-3.5 py-2 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-black flex items-center gap-2 font-mono shadow-xs">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                    <span className="material-symbols-outlined text-sm text-emerald-600">radar</span>
+                    {isAiScanning ? 'AI ĐANG QUÉT...' : 'TỰ ĐỘNG QUÉT LIÊN TỤC'}
+                  </div>
+                </>
               )}
 
               {!cameraActive ? (

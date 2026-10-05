@@ -144,12 +144,13 @@ function App() {
             <Route path="/transport/cargo-declarations" element={<CargoDeclaration />} />
           </Route>
           
-          {/* 1. Nhóm Hãng tàu / Doanh nghiệp ngoài cảng */}
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
+          {/* 1. Nhóm Hãng tàu / Doanh nghiệp ngoài cảng (Transport Company) */}
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
             <Route path="/carrier-profile" element={<CarrierProfile />} />
             <Route path="/carrier-portal" element={<CarrierPortal />} />
             <Route path="/booking" element={<BookingManagement />} />
             <Route path="/billing" element={<BillingPayment />} />
+            <Route path="/fleet" element={<VehicleManagement />} />
             <Route path="/drivers" element={<DriverManagement />} />
             <Route path="/carrier-staff" element={<CarrierStaffManagement />} />
           </Route>
