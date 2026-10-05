@@ -1,10 +1,21 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { gateStatusData, waitingVehiclesData, gateBookingsData, gateIncidentsData } from '../../data/gateOfficerData'
+import { gateStatusData, waitingVehiclesData } from '../../data/gateOfficerData'
+import apiClient from '../../services/apiClient'
+import gateService from '../../services/gateService'
 
 export default function GateDashboard() {
   const navigate = useNavigate()
   const [currentTime, setCurrentTime] = useState('')
+  const [stats, setStats] = useState({
+    checkedIn: 0,
+    completed: 0,
+    rejected: 0,
+    waiting: 0,
+    expiredCount: 0,
+    pendingIncidents: 0,
+  })
+  const [todayBookings, setTodayBookings] = useState([])
 
   useEffect(() => {
     const tick = () => setCurrentTime(new Date().toLocaleTimeString('vi-VN'))
@@ -13,13 +24,41 @@ export default function GateDashboard() {
     return () => clearInterval(t)
   }, [])
 
-  // KPI calculations
-  const checkedIn = gateBookingsData.filter(b => b.status === 'Checked-in').length
-  const completed = gateBookingsData.filter(b => b.status === 'Completed').length
-  const rejected = gateBookingsData.filter(b => b.status === 'Rejected').length
-  const waiting = waitingVehiclesData.length
-  const expiredCount = gateBookingsData.filter(b => b.status === 'Expired').length
-  const pendingIncidents = gateIncidentsData.filter(i => i.status === 'Pending' || i.status === 'Under Review').length
+  useEffect(() => {
+    // Tải thống kê thực tế từ API
+    Promise.all([
+      apiClient.get('/v1/booking').catch(() => ({ data: [] })),
+      gateService.getVerificationHistory().catch(() => ({ data: [] })),
+    ]).then(([bookingRes, verifyRes]) => {
+      const bookings = bookingRes.data?.items || bookingRes.data || []
+      const verifications = verifyRes.data || []
+
+      setTodayBookings(bookings)
+      setStats({
+        checkedIn: bookings.filter(b => b.status === 'Checked-in' || b.status === 'CheckedIn').length,
+        completed: bookings.filter(b => b.status === 'Completed').length,
+        rejected: verifications.filter(v => v.status === 'FAIL').length,
+        waiting: bookings.filter(b => b.status === 'Approved').length,
+        expiredCount: bookings.filter(b => b.status === 'Expired').length,
+        pendingIncidents: 0,
+      })
+    })
+  }, [])
+
+  const { checkedIn, completed, rejected, waiting, expiredCount, pendingIncidents } = stats
+
+  const displayWaitingVehicles = todayBookings.length > 0
+    ? todayBookings.map(b => ({
+        bookingId: b.bookingCode || b.bookingNumber || b.id,
+        vehicle: b.truckType || 'Container Truck (Đầu kéo)',
+        plate: b.licensePlate || b.truckPlateNumber || '—',
+        driver: b.driverName || '—',
+        container: b.containerId || b.containerNumber || b.containers?.[0]?.containerNumber || '—',
+        eta: b.validFrom ? new Date(b.validFrom).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '08:30',
+        gate: 'Cổng A · Làn 01',
+        status: b.status === 'Approved' ? 'On Time' : (b.status === 'Early' ? 'Early' : 'On Time')
+      }))
+    : (waitingVehiclesData || [])
 
   const statusBadge = (s) => {
     switch (s) {
@@ -58,22 +97,22 @@ export default function GateDashboard() {
         </div>
         <div className="bg-white rounded-2xl border border-blue-300 p-4 shadow-sm space-y-1">
           <span className="text-[10px] font-bold text-slate uppercase">Đang Xử Lý</span>
-          <div className="text-3xl font-extrabold text-blue-600 font-mono">2</div>
+          <div className="text-3xl font-extrabold text-blue-600 font-mono">{waiting > 0 ? 1 : 0}</div>
           <span className="text-[11px] text-blue-700 font-bold">Đang kiểm tra</span>
         </div>
         <div className="bg-white rounded-2xl border border-green-300 p-4 shadow-sm space-y-1">
           <span className="text-[10px] font-bold text-slate uppercase">Checked-in</span>
-          <div className="text-3xl font-extrabold text-green-600 font-mono">{checkedIn + 17}</div>
+          <div className="text-3xl font-extrabold text-green-600 font-mono">{checkedIn}</div>
           <span className="text-[11px] text-green-700 font-bold">Đã vào cảng</span>
         </div>
         <div className="bg-white rounded-2xl border border-chalk p-4 shadow-sm space-y-1">
           <span className="text-[10px] font-bold text-slate uppercase">Checked-out</span>
-          <div className="text-3xl font-extrabold text-carbon font-mono">{completed + 12}</div>
+          <div className="text-3xl font-extrabold text-carbon font-mono">{completed}</div>
           <span className="text-[11px] text-slate font-bold">Đã ra cổng</span>
         </div>
         <div className="bg-white rounded-2xl border border-red-300 p-4 shadow-sm space-y-1">
           <span className="text-[10px] font-bold text-slate uppercase">Bị Từ Chối</span>
-          <div className="text-3xl font-extrabold text-red-600 font-mono">{rejected + 2}</div>
+          <div className="text-3xl font-extrabold text-red-600 font-mono">{rejected}</div>
           <span className="text-[11px] text-red-600 font-bold">Không đủ điều kiện</span>
         </div>
         <div className="bg-white rounded-2xl border border-orange-300 p-4 shadow-sm space-y-1">
@@ -190,29 +229,37 @@ export default function GateDashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-chalk">
-              {waitingVehiclesData.map(v => (
-                <tr key={v.bookingId} className="hover:bg-fog/70">
-                  <td className="py-3.5 px-5 font-mono font-extrabold text-signal-orange">{v.bookingId}</td>
-                  <td className="py-3.5 px-5">
-                    <div className="font-bold text-carbon">{v.vehicle}</div>
-                    <div className="text-[10px] font-mono text-slate">{v.plate}</div>
-                  </td>
-                  <td className="py-3.5 px-5 font-bold text-carbon">{v.driver}</td>
-                  <td className="py-3.5 px-5 font-mono font-bold text-carbon">{v.container}</td>
-                  <td className="py-3.5 px-5 font-mono font-bold text-carbon">{v.eta}</td>
-                  <td className="py-3.5 px-5 font-mono font-bold">{v.gate}</td>
-                  <td className="py-3.5 px-5">{statusBadge(v.status)}</td>
-                  <td className="py-3.5 px-5 text-right">
-                    <button
-                      onClick={() => navigate('/gate')}
-                      className="px-3 py-1.5 bg-amber-500 text-white rounded-lg font-extrabold text-[11px] hover:bg-amber-600 flex items-center gap-1 ml-auto"
-                    >
-                      <span className="material-symbols-outlined text-sm">fact_check</span>
-                      Process
-                    </button>
+              {displayWaitingVehicles.length > 0 ? (
+                displayWaitingVehicles.map(v => (
+                  <tr key={v.bookingId} className="hover:bg-fog/70">
+                    <td className="py-3.5 px-5 font-mono font-extrabold text-signal-orange">{v.bookingId}</td>
+                    <td className="py-3.5 px-5">
+                      <div className="font-bold text-carbon">{v.vehicle}</div>
+                      <div className="text-[10px] font-mono text-slate">{v.plate}</div>
+                    </td>
+                    <td className="py-3.5 px-5 font-bold text-carbon">{v.driver}</td>
+                    <td className="py-3.5 px-5 font-mono font-bold text-carbon">{v.container}</td>
+                    <td className="py-3.5 px-5 font-mono font-bold text-carbon">{v.eta}</td>
+                    <td className="py-3.5 px-5 font-mono font-bold">{v.gate}</td>
+                    <td className="py-3.5 px-5">{statusBadge(v.status)}</td>
+                    <td className="py-3.5 px-5 text-right">
+                      <button
+                        onClick={() => navigate('/gate')}
+                        className="px-3 py-1.5 bg-amber-500 text-white rounded-lg font-extrabold text-[11px] hover:bg-amber-600 flex items-center gap-1 ml-auto cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-sm">fact_check</span>
+                        Process
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={8} className="py-8 text-center text-slate-400 font-mono">
+                    Hiện chưa có xe trong hàng đợi vào cổng
                   </td>
                 </tr>
-              ))}
+              )}
             </tbody>
           </table>
         </div>

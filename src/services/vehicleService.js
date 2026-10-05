@@ -39,6 +39,24 @@ const vehicleService = {
   assignDriver: async (id, driverId) => {
     const response = await apiClient.patch(`/v1/Vehicle/${id}/assign-driver`, { driverId })
     return response.data
+  },
+
+  extractRegistration: async (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await apiClient.post('/v1/Vehicle/extract-registration', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    })
+    return response.data
+  },
+
+  uploadPhoto: async (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const response = await apiClient.post('/v1/Vehicle/upload-photo', formData)
+    return response.data
   }
 }
 

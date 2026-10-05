@@ -87,11 +87,7 @@ export default function ContainerVerification() {
   const [incidentReason, setIncidentReason] = useState('')
 
   // Inspection history list
-  const [history, setHistory] = useState([
-    { time: '14:02', method: 'OCR', result: 'Match 99.8%', officer: 'Gate A - Nguyễn Văn Hùng', status: 'Passed' },
-    { time: '09:15', method: 'Manual', result: 'Verified', officer: 'Gate B - Trần Thị Mai', status: 'Passed' },
-    { time: '08:45', method: 'OCR', result: 'Mismatch (Wrong Container)', officer: 'Gate A - Nguyễn Văn Hùng', status: 'Failed' },
-  ])
+  const [history, setHistory] = useState([])
 
   // Real-time clock update
   useEffect(() => {
@@ -177,7 +173,7 @@ export default function ContainerVerification() {
     }
     setIsManualVerified(true)
     setShowManualModal(false)
-    
+
     // Add to history table
     const nowTime = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
     setHistory(prev => [
@@ -328,7 +324,7 @@ export default function ContainerVerification() {
             {/* Realtime Camera Background Image */}
             <img src="/images/container_ocr_camera.jpg" alt="Container OCR Camera Feed"
               className="absolute inset-0 w-full h-full object-cover opacity-85 group-hover:scale-[1.02] transition-transform duration-500" />
-            
+
             {/* HUD Overlay Gradient */}
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/20 to-slate-950/60 pointer-events-none"></div>
 
@@ -340,9 +336,8 @@ export default function ContainerVerification() {
 
             {/* Bounding box simulation overlay around Container ID */}
             {scanComplete && (
-              <div className={`absolute top-1/4 left-1/4 right-1/4 bottom-1/3 border-2 border-dashed rounded-xl p-3 flex flex-col justify-between transition-all ${
-                isOcrMatch ? 'border-emerald-400 bg-emerald-950/40' : scenarioKey === 'low_confidence' ? 'border-amber-400 bg-amber-950/40' : 'border-red-400 bg-red-950/40'
-              }`}>
+              <div className={`absolute top-1/4 left-1/4 right-1/4 bottom-1/3 border-2 border-dashed rounded-xl p-3 flex flex-col justify-between transition-all ${isOcrMatch ? 'border-emerald-400 bg-emerald-950/40' : scenarioKey === 'low_confidence' ? 'border-amber-400 bg-amber-950/40' : 'border-red-400 bg-red-950/40'
+                }`}>
                 <div className="flex justify-between items-center text-[10px] font-mono font-black uppercase">
                   <span className={`px-2 py-0.5 rounded ${isOcrMatch ? 'bg-emerald-500 text-slate-950' : scenarioKey === 'low_confidence' ? 'bg-amber-500 text-slate-950' : 'bg-red-500 text-white'}`}>
                     {isOcrMatch ? '✓ CONTAINER DETECTED' : scenarioKey === 'low_confidence' ? '⚠ LOW CONFIDENCE' : '✕ CONTAINER MISMATCH'}
@@ -384,7 +379,7 @@ export default function ContainerVerification() {
               <span className="material-symbols-outlined text-sm">photo_camera</span>
               [ 🎥 Quét Lại OCR Container ]
             </button>
-            
+
             <button onClick={openManualModal}
               className="px-5 h-11 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-extrabold text-xs shadow-md flex items-center justify-center gap-2 cursor-pointer">
               <span className="material-symbols-outlined text-sm">edit_note</span>
@@ -530,28 +525,24 @@ export default function ContainerVerification() {
           </div>
 
           {/* DETECTED Column */}
-          <div className={`border-2 rounded-2xl p-4 space-y-3 ${
-            isCleared ? 'bg-emerald-50/80 border-emerald-400' : 'bg-red-50/80 border-red-400'
-          }`}>
-            <div className={`text-xs font-black uppercase tracking-wider border-b pb-2 ${
-              isCleared ? 'text-emerald-900 border-emerald-200' : 'text-red-900 border-red-200'
+          <div className={`border-2 rounded-2xl p-4 space-y-3 ${isCleared ? 'bg-emerald-50/80 border-emerald-400' : 'bg-red-50/80 border-red-400'
             }`}>
+            <div className={`text-xs font-black uppercase tracking-wider border-b pb-2 ${isCleared ? 'text-emerald-900 border-emerald-200' : 'text-red-900 border-red-200'
+              }`}>
               DETECTED ({isManualVerified ? 'Xác Minh Thủ Công' : 'Camera OCR'})
             </div>
             <div className="space-y-2 text-xs font-mono">
               <div className="flex justify-between items-center">
                 <span className="font-bold font-sans text-slate-700">Container ID:</span>
-                <strong className={`font-black text-sm ${
-                  (isManualVerified ? manualForm.containerId : detected.containerId) === expected.containerId ? 'text-emerald-800' : 'text-red-800'
-                }`}>
+                <strong className={`font-black text-sm ${(isManualVerified ? manualForm.containerId : detected.containerId) === expected.containerId ? 'text-emerald-800' : 'text-red-800'
+                  }`}>
                   {isManualVerified ? manualForm.containerId : detected.containerId}
                 </strong>
               </div>
               <div className="flex justify-between items-center">
                 <span className="font-bold font-sans text-slate-700">Seal Number:</span>
-                <strong className={`font-bold ${
-                  (isManualVerified ? manualForm.sealNumber : detected.sealNumber) === expected.sealNumber ? 'text-emerald-800' : 'text-red-800'
-                }`}>
+                <strong className={`font-bold ${(isManualVerified ? manualForm.sealNumber : detected.sealNumber) === expected.sealNumber ? 'text-emerald-800' : 'text-red-800'
+                  }`}>
                   {isManualVerified ? manualForm.sealNumber : detected.sealNumber}
                 </strong>
               </div>
@@ -641,9 +632,8 @@ export default function ContainerVerification() {
                   <td className="py-3 px-4 font-bold text-slate-900">{h.result}</td>
                   <td className="py-3 px-4 font-sans font-bold text-slate-800">{h.officer}</td>
                   <td className="py-3 px-4 font-sans">
-                    <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-black ${
-                      h.status === 'Passed' ? 'bg-emerald-100 text-emerald-900 border-emerald-300' : 'bg-red-100 text-red-900 border-red-300'
-                    }`}>
+                    <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-black ${h.status === 'Passed' ? 'bg-emerald-100 text-emerald-900 border-emerald-300' : 'bg-red-100 text-red-900 border-red-300'
+                      }`}>
                       {h.status === 'Passed' ? '✓ Verified' : '✕ Failed'}
                     </span>
                   </td>

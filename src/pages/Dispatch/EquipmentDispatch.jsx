@@ -20,57 +20,57 @@ export const PORT_ZONES = {
 
 // Data mẫu phản hồi từ Backend (Dễ dàng thay thế bằng Axios REST API / WebSocket)
 const initialTrucksData = [
-  { 
-    id: 'TRK-001', 
-    license: '43C-123.45', 
-    driver: 'Nguyễn Văn A', 
-    container: 'MSKU1234567', 
+  {
+    id: 'TRK-001',
+    license: '43C-123.45',
+    driver: 'Nguyễn Văn A',
+    container: 'MSKU1234567',
     status: 'Waiting', // Waiting, Moving, Handling, Complete
-    task: 'Lấy hàng', 
-    priority: 'Cao', 
-    currentZoneId: 'GATE_IN', 
+    task: 'Lấy hàng',
+    priority: 'Cao',
+    currentZoneId: 'GATE_IN',
     destZoneId: 'BLOCK_B',
     destSlot: 'B12-04',
     steps: ['Gate In', 'Xác định container', 'Đang di chuyển đến Block B', 'Đang xếp dỡ', 'Hoàn thành'],
     activeStep: 2
   },
-  { 
-    id: 'TRK-004', 
-    license: '15C-338.45', 
-    driver: 'Hoàng Văn D', 
-    container: 'EVER991203-4', 
-    status: 'Waiting', 
-    task: 'Nhập bãi', 
-    priority: 'Khẩn cấp', 
-    currentZoneId: 'GATE_IN', 
+  {
+    id: 'TRK-004',
+    license: '15C-338.45',
+    driver: 'Hoàng Văn D',
+    container: 'EVER991203-4',
+    status: 'Waiting',
+    task: 'Nhập bãi',
+    priority: 'Khẩn cấp',
+    currentZoneId: 'GATE_IN',
     destZoneId: 'BLOCK_A',
     destSlot: 'A02-01',
     steps: ['Gate In', 'Đề xuất vị trí bãi', 'Đang di chuyển đến Block A', 'Đặt container hạ bãi', 'Hoàn thành'],
     activeStep: 1
   },
-  { 
-    id: 'TRK-002', 
-    license: '29C-773.81', 
-    driver: 'Trần Văn B', 
-    container: 'MSCU7654321', 
-    status: 'Moving', 
-    task: 'Nhập bãi', 
-    priority: 'Thường', 
-    currentZoneId: 'MAIN_ROAD', 
+  {
+    id: 'TRK-002',
+    license: '29C-773.81',
+    driver: 'Trần Văn B',
+    container: 'MSCU7654321',
+    status: 'Moving',
+    task: 'Nhập bãi',
+    priority: 'Thường',
+    currentZoneId: 'MAIN_ROAD',
     destZoneId: 'BLOCK_C',
     destSlot: 'C04-02',
     steps: ['Gate In', 'Đề xuất vị trí bãi', 'Đang di chuyển đến Block C', 'Đặt container hạ bãi', 'Hoàn thành'],
     activeStep: 2
   },
-  { 
-    id: 'TRK-003', 
-    license: '51D-992.12', 
-    driver: 'Lê Văn C', 
-    container: 'CMAU882190-2', 
-    status: 'Handling', 
-    task: 'Lấy hàng', 
-    priority: 'Khẩn cấp', 
-    currentZoneId: 'DOCK_D02', 
+  {
+    id: 'TRK-003',
+    license: '51D-992.12',
+    driver: 'Lê Văn C',
+    container: 'CMAU882190-2',
+    status: 'Handling',
+    task: 'Lấy hàng',
+    priority: 'Khẩn cấp',
+    currentZoneId: 'DOCK_D02',
     destZoneId: 'GATE_OUT',
     destSlot: 'Gate Out',
     steps: ['Cập bến tàu', 'Điều phối xe đến cẩu', 'Đang xếp dỡ tại D02', 'Di chuyển ra cổng', 'Hoàn thành'],
@@ -226,7 +226,7 @@ export default function EquipmentDispatch() {
 
   return (
     <div className="p-8 w-full flex flex-col gap-6 font-sans">
-      
+
       {/* 1. Header Control center title */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
@@ -274,7 +274,7 @@ export default function EquipmentDispatch() {
 
       {/* 3. Port Map & Control Panel Split */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-        
+
         {/* Left Side: Interactive SVG Map (2/3 width) */}
         <div className="xl:col-span-2 flex flex-col gap-4">
           <div className="bg-white border border-chalk rounded-xl p-5 shadow-sm space-y-4">
@@ -293,7 +293,7 @@ export default function EquipmentDispatch() {
             {/* Interactive Standardized SVG Map */}
             <div className="bg-fog rounded-xl border border-chalk relative overflow-hidden flex justify-center">
               <svg viewBox="0 0 660 420" className="w-full max-w-[660px] h-auto select-none py-4">
-                
+
                 {/* 1. Background Road Lanes Network */}
                 <g id="roads" opacity="0.4">
                   {/* Road line from Gate to Blocks */}
@@ -306,7 +306,7 @@ export default function EquipmentDispatch() {
                 {/* 2. Docks (Bến tàu) */}
                 <g id="docks">
                   <rect x="0" y="0" width="660" height="70" fill="#e0f2fe" opacity="0.6" />
-                  
+
                   {['DOCK_D01', 'DOCK_D02', 'DOCK_D03', 'DOCK_D04'].map((dockKey) => {
                     const zone = PORT_ZONES[dockKey]
                     return (
@@ -359,7 +359,7 @@ export default function EquipmentDispatch() {
                 {/* 5. Active Dynamic Truck Route Line */}
                 {currentTruck && (
                   <path
-                    d={`M ${startPos.x} ${startPos.y} Q ${(startPos.x + endPos.x)/2} ${(startPos.y + endPos.y)/2 - 30}, ${endPos.x} ${endPos.y}`}
+                    d={`M ${startPos.x} ${startPos.y} Q ${(startPos.x + endPos.x) / 2} ${(startPos.y + endPos.y) / 2 - 30}, ${endPos.x} ${endPos.y}`}
                     fill="none"
                     stroke="#ff682c"
                     strokeWidth="3.5"
@@ -411,7 +411,7 @@ export default function EquipmentDispatch() {
 
         {/* Right Side: Active Truck Details & Queue Panel (1/3 width) */}
         <div className="space-y-6">
-          
+
           {/* Active selected truck card */}
           {currentTruck && (
             <div className="bg-white border border-chalk rounded-xl p-5 shadow-sm space-y-4">
@@ -465,9 +465,8 @@ export default function EquipmentDispatch() {
                     return (
                       <div key={idx} className="flex items-start gap-3 text-xs">
                         <div className="flex flex-col items-center">
-                          <div className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] ${
-                            isCompleted ? 'bg-green-500 text-white' : isActive ? 'bg-signal-orange text-white animate-pulse' : 'bg-chalk text-slate'
-                          }`}>
+                          <div className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] ${isCompleted ? 'bg-green-500 text-white' : isActive ? 'bg-signal-orange text-white animate-pulse' : 'bg-chalk text-slate'
+                            }`}>
                             {isCompleted ? '✓' : idx + 1}
                           </div>
                           {idx < currentTruck.steps.length - 1 && (
@@ -501,9 +500,8 @@ export default function EquipmentDispatch() {
                 <button
                   key={f}
                   onClick={() => setFilter(f)}
-                  className={`px-2.5 py-1 rounded border transition-colors ${
-                    filter === f ? 'bg-carbon text-white border-carbon' : 'border-chalk text-slate hover:bg-fog'
-                  }`}
+                  className={`px-2.5 py-1 rounded border transition-colors ${filter === f ? 'bg-carbon text-white border-carbon' : 'border-chalk text-slate hover:bg-fog'
+                    }`}
                 >
                   {f}
                 </button>
@@ -516,9 +514,8 @@ export default function EquipmentDispatch() {
                 <div
                   key={truck.id}
                   onClick={() => setActiveTruckId(truck.id)}
-                  className={`p-3 border rounded-lg cursor-pointer transition-all hover:border-signal-orange flex justify-between items-center ${
-                    truck.id === activeTruckId ? 'border-2 border-signal-orange bg-orange-50/20' : 'border-chalk'
-                  }`}
+                  className={`p-3 border rounded-lg cursor-pointer transition-all hover:border-signal-orange flex justify-between items-center ${truck.id === activeTruckId ? 'border-2 border-signal-orange bg-orange-50/20' : 'border-chalk'
+                    }`}
                 >
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -535,7 +532,7 @@ export default function EquipmentDispatch() {
                       Khu vực: <strong className="text-carbon">{PORT_ZONES[truck.currentZoneId]?.label || truck.currentZoneId}</strong>
                     </div>
                   </div>
-                  
+
                   <button
                     onClick={(e) => {
                       e.stopPropagation()
@@ -556,11 +553,11 @@ export default function EquipmentDispatch() {
 
       {/* 4. Queue Table & System Alerts */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
+
         {/* Table of containers in queue (2/3 width) */}
         <div className="lg:col-span-2 bg-white border border-chalk rounded-xl p-5 shadow-sm space-y-4">
           <h3 className="text-lg font-bold text-carbon">Container đang chờ xử lý</h3>
-          
+
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
@@ -577,18 +574,16 @@ export default function EquipmentDispatch() {
                   <tr key={c.id} className="hover:bg-fog/50 font-medium">
                     <td className="py-3 font-bold text-carbon">{c.id}</td>
                     <td className="py-3">
-                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${
-                        c.task === 'Lấy hàng' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'
-                      }`}>
+                      <span className={`text-[10px] px-2 py-0.5 rounded font-bold uppercase ${c.task === 'Lấy hàng' ? 'bg-orange-50 text-orange-600' : 'bg-blue-50 text-blue-600'
+                        }`}>
                         {c.task}
                       </span>
                     </td>
                     <td className="py-3 font-mono font-bold text-carbon">{c.loc}</td>
                     <td className="py-3 text-slate">🚛 {c.truck}</td>
                     <td className="py-3">
-                      <span className={`text-[10px] font-semibold ${
-                        c.status === 'Waiting' ? 'text-amber-500' : c.status === 'Moving' ? 'text-blue-500' : 'text-green-600'
-                      }`}>
+                      <span className={`text-[10px] font-semibold ${c.status === 'Waiting' ? 'text-amber-500' : c.status === 'Moving' ? 'text-blue-500' : 'text-green-600'
+                        }`}>
                         ● {c.status === 'Waiting' ? 'Chờ điều phối' : c.status === 'Moving' ? 'Đang chạy' : 'Đang xử lý'}
                       </span>
                     </td>

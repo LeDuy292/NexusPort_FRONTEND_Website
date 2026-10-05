@@ -1,5 +1,5 @@
 const REALTIME_URL = import.meta.env.VITE_REALTIME_URL || 'http://localhost:4000'
-const EVENT_NAME = 'yard.operation.completed'
+const EVENT_NAME = 'dispatcher.status.updated'
 
 const getToken = () => {
   try {
@@ -10,12 +10,11 @@ const getToken = () => {
   }
 }
 
-export function connectDriverRealtime(onOperationCompleted, onConnectionError) {
+export function connectDispatcherRealtime(onStatusUpdated, onConnectionError) {
   const token = getToken()
   if (!token) return () => {}
 
   try {
-    // Dynamic import fallback for build stability
     const io = window?.io;
     if (typeof io === 'function') {
       const socket = io(REALTIME_URL, {
@@ -23,11 +22,11 @@ export function connectDriverRealtime(onOperationCompleted, onConnectionError) {
         transports: ['websocket'],
         reconnection: true,
       })
-      socket.on(EVENT_NAME, onOperationCompleted)
+      socket.on(EVENT_NAME, onStatusUpdated)
       socket.on('connect_error', onConnectionError)
 
       return () => {
-        socket.off(EVENT_NAME, onOperationCompleted)
+        socket.off(EVENT_NAME, onStatusUpdated)
         socket.off('connect_error', onConnectionError)
         socket.disconnect()
       }
@@ -38,3 +37,5 @@ export function connectDriverRealtime(onOperationCompleted, onConnectionError) {
 
   return () => {}
 }
+
+export default connectDispatcherRealtime
