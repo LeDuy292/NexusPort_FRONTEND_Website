@@ -24,8 +24,8 @@ export default function ContainerIntake({ embedded = false, onBack }) {
   }, [])
   const isTransport = ['Transport Company', 'Carrier Staff', 'Carrier'].includes(user?.role)
   const templateFileName = isTransport
-    ? 'NXP-038_Container_Import_Cong_Ty_Van_Chuyen.xlsx'
-    : 'NXP-038_Container_Import_Cang_Tau.xlsx'
+    ? 'Mau_Import_Container_Cong_Ty_Van_Chuyen.xlsx'
+    : 'Mau_Import_Container_Cang_Tau.xlsx'
   const [mode, setMode] = useState('manual')
   const [types, setTypes] = useState([])
   const [form, setForm] = useState({ ...initialForm, transportCompanyName: isTransport ? (user?.companyName || user?.fullName || '') : '' })
@@ -97,7 +97,7 @@ export default function ContainerIntake({ embedded = false, onBack }) {
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div>
             {onBack && <button onClick={onBack} className="mb-3 inline-flex items-center gap-1 text-sm font-bold text-slate hover:text-carbon"><span className="material-symbols-outlined text-lg">arrow_back</span>Quay lại danh sách Container</button>}
-            <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-signal-orange">NXP-038 · Container Intake</p>
+            <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-signal-orange">Quản lý Container</p>
             <h1 className="mt-1 font-heading text-3xl font-black text-carbon">{isTransport ? 'Khai báo Container vận chuyển' : 'Tiếp nhận danh sách Container cảng/tàu'}</h1>
             <p className="mt-2 max-w-3xl text-sm text-slate">{isTransport ? 'Khai báo Container dự kiến giao hoặc nhận để làm dữ liệu đầu vào khi tạo Booking.' : 'Tạo Container Master và lượt cảng dự kiến từ nhập tay hoặc file Excel. Chưa phát hành EIR.'}</p>
           </div>
