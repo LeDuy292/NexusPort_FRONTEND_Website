@@ -256,48 +256,48 @@ const sidebarItems = [
     roles: [ROLES.BERTH_STAFF],
   },
 
-  // ── TRANSPORT COMPANY ──────────────────────────────────────────
+  // ── TRANSPORT COMPANY (Doanh Nghiệp Vận Tải) ───────────────────
   {
     path: '/carrier-portal',
-    label: 'Cổng Hãng Tàu',
-    icon: 'anchor',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+    label: 'Cổng Doanh Nghiệp',
+    icon: 'corporate_fare',
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
   },
   {
     path: '/booking',
     label: 'Đặt Lịch Cảng',
     icon: 'calendar_month',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
   },
   {
     path: '/cargo',
     label: 'Khai Báo Container',
     icon: 'inventory_2',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
   },
   {
     path: '/drivers',
     label: 'Quản Lý Tài Xế',
     icon: 'badge',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
   },
   {
     path: '/carrier-staff',
     label: 'Quản Lý Nhân Viên',
     icon: 'manage_accounts',
-    roles: [ROLES.TRANSPORT_COMPANY],
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER],
   },
   {
     path: '/carrier-profile',
-    label: 'Hồ Sơ Hãng Tàu',
-    icon: 'corporate_fare',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+    label: 'Hồ Sơ Doanh Nghiệp',
+    icon: 'business',
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
   },
   {
     path: '/billing',
     label: 'Thanh Toán & Cước Phí',
     icon: 'payments',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
   },
   {
     path: '/users',

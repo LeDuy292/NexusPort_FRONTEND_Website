@@ -506,11 +506,18 @@ export default function GateBookings() {
                   <div className="text-[10px] text-slate-500 uppercase font-semibold mb-0.5">{k}</div>
                   <div className="font-bold text-slate-800 truncate">{v}</div>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500 font-bold">Containers:</span>
-                  <span className="font-bold text-emerald-700">{selectedBooking.containerIds?.join(', ') || 'MSKU8891024'}</span>
-                </div>
+              ))}
+            </div>
+
+            {/* Containers List if available */}
+            {selectedBooking.containerIds && selectedBooking.containerIds.length > 0 && (
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex justify-between items-center text-xs">
+                <span className="text-slate-500 font-bold">Containers:</span>
+                <span className="font-bold text-emerald-700 font-mono">
+                  {selectedBooking.containerIds.join(', ')}
+                </span>
               </div>
+            )}
 
             {/* Checklist */}
             <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs space-y-1.5">

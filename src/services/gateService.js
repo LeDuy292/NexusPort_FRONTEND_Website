@@ -52,15 +52,17 @@ export const gateService = {
    */
   async recognizeVehicleImage(file, gateCode = 'GATE_IN_A', laneCode = 'LANE_01') {
     const formData = new FormData()
-    formData.append('file', file)
+    if (file instanceof Blob && !(file instanceof File)) {
+      formData.append('file', file, 'capture.jpg')
+    } else {
+      formData.append('file', file)
+    }
     formData.append('gate_code', gateCode)
     formData.append('lane_code', laneCode)
     formData.append('camera_id', `CAM_${gateCode}_${laneCode}`)
 
     try {
-      const res = await aiClient.post('/api/v1/gate/recognize', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
+      const res = await aiClient.post('/api/v1/gate/recognize', formData)
       return { success: true, isLive: true, data: res.data }
     } catch (err) {
       return {
