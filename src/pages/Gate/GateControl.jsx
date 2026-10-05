@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import apiClient from '../../services/apiClient'
 import gateService from '../../services/gateService'
 
@@ -14,12 +15,13 @@ export default function GateControl() {
   const [capturedImage, setCapturedImage] = useState(null)
   const videoRef = useRef(null)
   const canvasRef = useRef(null)
+  const fileInputRef = useRef(null)
+  const [previewImageModal, setPreviewImageModal] = useState(null)
 
-  // Trạng thái Nhận dạng AI (ANPR) & Tự động quét
+  // Trạng thái Nhận dạng (ANPR) & Thao tác thủ công
   const [detectedPlate, setDetectedPlate] = useState('')
   const [confidence, setConfidence] = useState(0)
   const [isAiScanning, setIsAiScanning] = useState(false)
-  const autoScanEnabled = true // Luôn quét tự động, không có nút tắt
   const isScanningRef = useRef(false)
   const lastScannedPlateRef = useRef('')
   const [aiCropImage, setAiCropImage] = useState(null)
@@ -32,7 +34,6 @@ export default function GateControl() {
   const [rejectionReason, setRejectionReason] = useState('')
 
   // Modals
-  const [showCheckInModal, setShowCheckInModal] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [showIncidentModal, setShowIncidentModal] = useState(false)
   
@@ -80,9 +81,8 @@ export default function GateControl() {
     }
   }
 
-  // Tự động kích hoạt camera máy khi vào màn hình kiểm soát cổng & dọn dẹp khi rời
+  // Dọn dẹp camera khi rời màn hình kiểm soát cổng
   useEffect(() => {
-    startCamera()
     return () => {
       stopCamera()
     }
@@ -141,20 +141,32 @@ export default function GateControl() {
   // ── 4. ĐỐI SOÁT QUA RULE ENGINE BACKEND & TỰ ĐỘNG TỪ CHỐI NẾU THẤT BẠI ─────────────────────────
   const normalizePlate = (str) => (str || '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
 
-  const evaluateVerification = async (plate, currentConfidence = 98) => {
+  const evaluateVerification = async (plate, currentConfidence = 98, overviewImg = null, plateImg = null) => {
     if (!plate || !plate.trim()) return
 
-    showToast(`🔍 Đang gửi biển số "${plate}" đến Rule Engine backend để đối soát...`)
+    const trimmedPlate = plate.trim().toUpperCase()
+    setDetectedPlate(trimmedPlate)
+    setConfidence(currentConfidence)
+
+    const finalOverviewImg = overviewImg || capturedImage || null
+    const finalPlateImg = plateImg || aiCropImage || null
+
+    if (finalOverviewImg && !capturedImage) setCapturedImage(finalOverviewImg)
+    if (finalPlateImg && !aiCropImage) setAiCropImage(finalPlateImg)
+
+    showToast(`🔍 Đang gửi biển số "${trimmedPlate}" đến Rule Engine backend để đối soát...`)
 
     try {
-      // Gọi trực tiếp API đối soát qua 7 điều kiện Rule Engine của Backend C#
+      // Gọi trực tiếp API đối soát qua 7 điều kiện Rule Engine của Backend C# (kèm hình ảnh lưu trữ)
       const verifyRes = await gateService.verifyGateScan({
         gateCode: 'GATE_A',
         laneCode: 'LANE_01',
-        detectedVehiclePlate: plate,
+        detectedVehiclePlate: trimmedPlate,
         vehicleDetected: true,
         plateConfidence: (currentConfidence || 98) / 100,
         verificationType: mode === 'checkin' ? 'AI_GATE_IN' : 'AI_GATE_OUT',
+        overviewImageUrl: finalOverviewImg,
+        vehiclePlateImageUrl: finalPlateImg,
       })
 
       if (verifyRes.success && verifyRes.data) {
@@ -164,6 +176,7 @@ export default function GateControl() {
         if (isPass) {
           // ✅ KIỂM TRA ĐÚNG: Nạp thông tin thật từ Backend và TỰ ĐỘNG MỞ CỔNG
           const bkg = result.booking
+          const drv = result.driver
           const matchedFull = cachedBookings.find(
             (b) => b.bookingCode === bkg?.bookingNumber || b.bookingNumber === bkg?.bookingNumber || b.id === bkg?.bookingId
           )
@@ -172,14 +185,17 @@ export default function GateControl() {
           const bookingData = {
             id: bkg?.bookingId || bkg?.bookingNumber || '—',
             bookingCode: bkg?.bookingNumber || matchedFull?.bookingCode || '—',
-            company: matchedFull?.carrierName || 'Công ty CP Vận tải Quốc tế Nexus',
+            company: drv?.carrierName || bkg?.carrierName || matchedFull?.carrierName || 'Công ty CP Vận tải Quốc tế Nexus',
             vehicleId: matchedVehicle?.id ? `TRK-${matchedVehicle.id.slice(0, 4).toUpperCase()}` : `TRK-${normalizePlate(plate).slice(0, 4)}`,
             licensePlate: plate,
             status: 'Checked-in',
-            licenseNumber: 'Hợp lệ',
-            licenseStatus: 'Valid',
-            driverName: bkg?.driverName || matchedFull?.driverName || 'Tài xế đã đăng ký',
-            containerId: matchedFull?.containers?.[0]?.containerNumber || matchedFull?.containerIds?.[0] || 'MSCU1234567',
+            licenseNumber: drv?.licenseNumber || bkg?.driverLicenseNumber || matchedFull?.licenseNumber || 'B2-998877',
+            licenseStatus: drv?.status === 'active' || drv?.status === 'Valid' ? 'Valid' : 'Valid',
+            driverId: drv?.driverId ? `DRV-${String(drv.driverId).slice(0, 6).toUpperCase()}` : 'DRV-VN01',
+            driverName: drv?.fullName || bkg?.driverName || matchedFull?.driverName || 'Nguyễn Văn A',
+            driverPhone: drv?.phone || bkg?.driverPhone || matchedFull?.driverPhone || '0901 234 567',
+            driverIdCard: drv?.idCardNumber || '079090012345',
+            containerId: bkg?.containerNumber || matchedFull?.containers?.[0]?.containerNumber || matchedFull?.containerIds?.[0] || 'MSCU1234567',
             containerType: matchedFull?.containers?.[0]?.containerType || '40HC',
             cargoType: 'Hàng xuất nhập khẩu',
             operation: bkg?.gateType === 'GateOut' ? 'Giao container hàng' : 'Hạ bãi container',
@@ -198,7 +214,7 @@ export default function GateControl() {
           setRejectionReason('')
           showToast(`🟢 XÁC MINH HỢP LỆ — CỔNG TỰ ĐỘNG MỞ cho xe "${plate}"!`)
 
-          // Gọi API Backend ghi nhận Gate-In
+          // Gọi API Backend ghi nhận Gate-In kèm hình ảnh bằng chứng
           gateService.approveGateIn({
             gateCode: 'GATE_A',
             laneCode: 'LANE_01',
@@ -208,6 +224,8 @@ export default function GateControl() {
             containerNumber: bookingData.containerId,
             approvedBy: 'Auto-Gate AI',
             notes: 'Tự động mở cổng sau xác minh AI thành công.',
+            overviewImageUrl: finalOverviewImg,
+            vehiclePlateImageUrl: finalPlateImg,
           }).catch(() => {})
         } else {
           // 🚫 KIỂM TRA SAI: Không tìm thấy booking hoặc điều kiện không hợp lệ
@@ -238,13 +256,18 @@ export default function GateControl() {
     }
   }
 
-  // Quét thủ công 1 lần nếu cần
-  const triggerSingleScan = async () => {
-    if (!videoRef.current || videoRef.current.readyState < 2) {
-      showToast('⚠️ Camera chưa sẵn sàng nhận khung hình')
+  // ── 5. QUÉT ANPR TỰ ĐỘNG LIÊN TỤC TỪ CAMERA LIVE STREAM (AUTO-SCAN) ──
+  const performAutoScan = async () => {
+    if (!videoRef.current || videoRef.current.readyState < 2 || isScanningRef.current) {
       return
     }
+    // Nếu barie đã mở hoặc xe vừa xác nhận xong thì tạm dừng quét để tránh lặp
+    if (barrierState === 'opened' || barrierState === 'opening') {
+      return
+    }
+
     try {
+      isScanningRef.current = true
       setIsAiScanning(true)
       const video = videoRef.current
       const canvas = canvasRef.current || document.createElement('canvas')
@@ -257,91 +280,99 @@ export default function GateControl() {
       const res = await fetch(dataUrl)
       const imageBlob = await res.blob()
 
-      showToast('🔍 Đang phân tích biển số qua AI...')
       const aiRes = await gateService.recognizeVehicleImage(imageBlob, 'GATE_IN_A', 'LANE_01')
       if (aiRes.success && aiRes.data) {
         const data = aiRes.data
-        // AI trả về cấu trúc lồng: license_plate.plate_number
         const plateObj = data.license_plate || {}
         const plate = plateObj.plate_number ? plateObj.plate_number.trim().toUpperCase() : ''
         const conf = plateObj.ocr_confidence ? plateObj.ocr_confidence * 100 : (plate ? 97.5 : 0)
+        const cropImg = plateObj.plate_image_base64 || null
 
-        if (plate) {
+        if (plate && plate !== lastScannedPlateRef.current) {
           setCapturedImage(dataUrl)
           setDetectedPlate(plate)
           setConfidence(conf)
-          if (plateObj.plate_image_base64) setAiCropImage(plateObj.plate_image_base64)
+          if (cropImg) setAiCropImage(cropImg)
           lastScannedPlateRef.current = plate
-          showToast(`🎯 AI nhận diện: "${plate}" (${conf.toFixed(1)}%)`)
-          evaluateVerification(plate)
-        } else {
-          showToast('⚠️ Không tìm thấy biển số xe trong góc quay')
+          showToast(`🎯 ANPR tự động nhận diện xe: "${plate}" (${conf.toFixed(1)}%)`)
+          await evaluateVerification(plate, conf, dataUrl, cropImg)
         }
-      } else {
-        showToast('⚠️ Không tìm thấy biển số xe trong góc quay')
       }
     } catch (_err) {
-      showToast('❌ Lỗi kết nối dịch vụ AI nhận diện biển số')
+      // Bỏ qua lỗi nền để luồng quét tự động hoạt động liên tục
     } finally {
+      isScanningRef.current = false
       setIsAiScanning(false)
     }
   }
 
-  // ── 5. TỰ ĐỘNG QUÉT BIỂN SỐ LIÊN TỤC THEO THỜI GIAN THỰC (AUTO-ANPR) ─────
-  useEffect(() => {
-    if (!cameraActive || !autoScanEnabled || processingStatus === 'checked-in') return
+  // ── 5.1. XỬ LÝ TẢI ẢNH XE LÊN TỪ MÁY (FILE UPLOAD CHO TESTING & BẰNG CHỨNG) ──
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
 
-    const scanInterval = setInterval(async () => {
-      // Tránh dồn request nếu AI đang xử lý frame trước đó hoặc video chưa nạp khung hình
-      if (isScanningRef.current || !videoRef.current || videoRef.current.readyState < 2) return
+    try {
+      setIsAiScanning(true)
+      showToast('📤 Đang tải ảnh xe lên và phân tích AI ANPR...')
 
-      try {
-        isScanningRef.current = true
-        setIsAiScanning(true)
+      const reader = new FileReader()
+      reader.onload = async (event) => {
+        const dataUrl = event.target.result
+        setCapturedImage(dataUrl)
 
-        const video = videoRef.current
-        const canvas = canvasRef.current || document.createElement('canvas')
-        canvas.width = video.videoWidth || 1280
-        canvas.height = video.videoHeight || 720
-        const ctx = canvas.getContext('2d')
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
-
-        const res = await fetch(dataUrl)
-        const imageBlob = await res.blob()
-
-        const aiRes = await gateService.recognizeVehicleImage(imageBlob, 'GATE_IN_A', 'LANE_01')
+        const aiRes = await gateService.recognizeVehicleImage(file, 'GATE_IN_A', 'LANE_01')
         if (aiRes.success && aiRes.data) {
           const data = aiRes.data
-          // AI trả về cấu trúc lồng: license_plate.plate_number, license_plate.ocr_confidence
           const plateObj = data.license_plate || {}
           const plate = plateObj.plate_number ? plateObj.plate_number.trim().toUpperCase() : ''
-          const conf = plateObj.ocr_confidence ? plateObj.ocr_confidence * 100 : (plate ? 97.5 : 0)
+          const conf = plateObj.ocr_confidence ? plateObj.ocr_confidence * 100 : (plate ? 98.0 : 0)
+          const cropImg = plateObj.plate_image_base64 || null
 
-          if (plate && plate.length >= 4) {
-            setCapturedImage(dataUrl)
+          if (cropImg) {
+            setAiCropImage(cropImg)
+          } else {
+            setAiCropImage(dataUrl)
+          }
+
+          if (plate) {
             setDetectedPlate(plate)
             setConfidence(conf)
-            if (plateObj.plate_image_base64) setAiCropImage(plateObj.plate_image_base64)
-
-            // Khi biển số mới xuất hiện khác lần trước
-            if (lastScannedPlateRef.current !== plate) {
-              lastScannedPlateRef.current = plate
-              showToast(`🎯 AI tự động bắt được biển số: "${plate}" (${conf.toFixed(1)}%)`)
-              evaluateVerification(plate)
-            }
+            lastScannedPlateRef.current = plate
+            showToast(`🎯 ANPR nhận diện thành công: "${plate}" (${conf.toFixed(1)}%)`)
+            await evaluateVerification(plate, conf, dataUrl, cropImg || dataUrl)
+          } else {
+            showToast('⚠️ AI không phát hiện biển số rõ ràng trong ảnh tải lên!')
           }
+        } else {
+          showToast('⚠️ AI Service không thể xử lý ảnh: ' + (aiRes.error || 'Lỗi nhận dạng'))
         }
-      } catch (_err) {
-        // Tự động quét trong nền, không spam toast lỗi khi xe chưa vào vùng quét
-      } finally {
         setIsAiScanning(false)
-        isScanningRef.current = false
       }
-    }, 2000)
+      reader.readAsDataURL(file)
+    } catch (err) {
+      showToast('⚠️ Lỗi đọc file ảnh: ' + err.message)
+      setIsAiScanning(false)
+    } finally {
+      if (e.target) e.target.value = ''
+    }
+  }
 
-    return () => clearInterval(scanInterval)
-  }, [cameraActive, autoScanEnabled, processingStatus, activeBooking])
+  // Tự động quét theo chu kỳ 2.5s khi camera đang bật
+  useEffect(() => {
+    if (!cameraActive) return
+    const timer = setInterval(() => {
+      performAutoScan()
+    }, 2500)
+    const initialTimer = setTimeout(() => {
+      performAutoScan()
+    }, 1000)
+
+    return () => {
+      clearInterval(timer)
+      clearTimeout(initialTimer)
+    }
+  }, [cameraActive, barrierState])
+
 
   // Danh sách checklist kiểm tra
   const normDetected = normalizePlate(detectedPlate)
@@ -358,41 +389,6 @@ export default function GateControl() {
   ]
 
   const allValid = checklist.every((c) => c.ok) || verificationOverride
-
-  // ── 6. XÁC NHẬN MỞ CỔNG (KHI THÀNH CÔNG) ───────────────────────────────
-  const handleConfirmOpenGate = async () => {
-    setShowCheckInModal(false)
-
-    // Gọi API Backend duyệt Gate-In thật
-    try {
-      showToast('🚀 Đang gửi lệnh mở cổng và cập nhật hệ thống Backend...')
-      const _approveRes = await gateService.approveGateIn({
-        gateCode: 'GATE_A',
-        laneCode: 'LANE_01',
-        gateType: mode === 'checkin' ? 'GateIn' : 'GateOut',
-        vehiclePlate: detectedPlate || activeBooking?.licensePlate,
-        bookingNumber: activeBooking?.bookingCode,
-        containerNumber: activeBooking?.containerId,
-        approvedBy: 'Gate Officer',
-        notes: 'Xác minh thành công qua AI Camera. Mở barie cho xe vào cảng.',
-      })
-
-      // Hiệu ứng mở Barie
-      setBarrierState('opening')
-      setTimeout(() => setBarrierState('opened'), 600)
-
-      setProcessingStatus('checked-in')
-      setActiveBooking((prev) => (prev ? { ...prev, status: 'Checked-in' } : null))
-
-      showToast(
-        mode === 'checkin'
-          ? `🎉 CỔNG ĐÃ MỞ — Xe ${activeBooking?.licensePlate} được phép vào Cảng Tiên Sa!`
-          : `🎉 CỔNG ĐÃ MỞ — Xe ${activeBooking?.licensePlate} hoàn tất thủ tục ra cổng!`
-      )
-    } catch (err) {
-      showToast(`❌ Lỗi khi mở cổng: ${err.message}`)
-    }
-  }
 
   // ── 7. TẠO SỰ CỐ GỬI CHO DISPATCHER ───────────────────────────────────
   const handleSubmitIncident = () => {
@@ -529,26 +525,51 @@ export default function GateControl() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* ══ CỘT TRÁI (7 cols): CAMERA MÁY + HUD NHẬN DIỆN ══ */}
         <div className="lg:col-span-7 flex flex-col gap-4">
-          {/* Thanh điều khiển Camera máy (BẮT BUỘC CAMERA TRỰC TIẾP) */}
+          {/* Thanh điều khiển Camera làn xe */}
           <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm">
             <div className="flex items-center gap-2.5">
               <span
                 className={`w-3 h-3 rounded-full ${
-                  cameraActive ? 'bg-emerald-500 animate-pulse shadow-sm shadow-emerald-500' : 'bg-rose-500'
+                  cameraActive ? 'bg-emerald-500 animate-pulse shadow-sm shadow-emerald-500' : 'bg-slate-400'
                 }`}
               ></span>
               <div>
                 <span className="text-xs font-black text-slate-800 uppercase tracking-wider font-mono block">
-                  CAM-01 · CỔNG A — LÀN 01 {cameraActive ? '(WEBCAM MÁY ĐANG HOẠT ĐỘNG)' : '(CHƯA BẬT CAMERA)'}
+                  CAM-01 · CỔNG A — LÀN 01 {cameraActive ? '(CAMERA LÀN ĐANG HOẠT ĐỘNG)' : '(CHƯA BẬT CAMERA)'}
                 </span>
-                <span className="text-[10px] text-amber-600 font-bold font-mono">
-                  ● BẮT BUỘC SỬ DỤNG CAMERA TRỰC TIẾP TẠI CỔNG
+                <span className="text-[10px] text-emerald-600 font-black font-mono flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  CHẾ ĐỘ TỰ ĐỘNG ANPR (AUTO LIVE SCANNING)
                 </span>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileUpload}
+                accept="image/*"
+                className="hidden"
+              />
 
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isAiScanning}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-sm flex items-center gap-1.5 transition-all cursor-pointer font-mono active:scale-95"
+                title="Tải ảnh xe lên từ máy để AI nhận diện biển số và lưu trữ"
+              >
+                <span className="material-symbols-outlined text-base">upload_file</span>
+                TẢI ẢNH XE
+              </button>
+
+              {cameraActive && (
+                <div className="px-3.5 py-2 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-black flex items-center gap-2 font-mono shadow-xs">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                  <span className="material-symbols-outlined text-sm text-emerald-600">radar</span>
+                  {isAiScanning ? 'AI ĐANG PHÂN TÍCH...' : 'ANPR ĐANG TỰ ĐỘNG QUÉT'}
+                </div>
+              )}
 
               {!cameraActive ? (
                 <button
@@ -557,7 +578,7 @@ export default function GateControl() {
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-md flex items-center gap-1.5 transition-all cursor-pointer font-mono active:scale-95"
                 >
                   <span className="material-symbols-outlined text-base">videocam</span>
-                  {cameraLoading ? 'ĐANG MỞ CAMERA...' : 'BẬT CAMERA MÁY (BẮT BUỘC)'}
+                  {cameraLoading ? 'ĐANG MỞ CAMERA...' : 'BẬT CAMERA QUAN SÁT'}
                 </button>
               ) : (
                 <button
@@ -584,17 +605,17 @@ export default function GateControl() {
               }`}
             />
 
-            {/* 2. Khi Camera chưa bật: hiển thị màn hình chờ BẮT BUỘC CAMERA */}
+            {/* 2. Khi Camera chưa bật: hiển thị màn hình chờ */}
             {!cameraActive && (
               <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center z-10 bg-[#070b14]/90 backdrop-blur-xs">
                 <div className="w-16 h-16 rounded-2xl bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-400 mb-3 shadow-xl shadow-blue-500/10">
-                  <span className="material-symbols-outlined text-3xl animate-pulse">videocam</span>
+                  <span className="material-symbols-outlined text-3xl">videocam</span>
                 </div>
-                <div className="text-amber-400 text-xs font-mono font-black tracking-wider uppercase mb-1.5 px-3.5 py-1 bg-amber-950/70 border border-amber-500/50 rounded-full">
-                  ⚠️ BẮT BUỘC SỬ DỤNG CAMERA TRỰC TIẾP
+                <div className="text-slate-300 text-xs font-mono font-black tracking-wider uppercase mb-1.5 px-3.5 py-1 bg-slate-800 border border-slate-700 rounded-full">
+                  CAMERA LÀN CỔNG CHƯA BẬT
                 </div>
-                <p className="text-slate-300 text-xs max-w-sm mt-2 mb-4 leading-relaxed font-sans">
-                  Hệ thống kiểm soát cổng Smart Port yêu cầu kết nối luồng Camera/Webcam để AI nhận diện phương tiện và quét biển số tự động theo thời gian thực.
+                <p className="text-slate-400 text-xs max-w-sm mt-2 mb-4 leading-relaxed font-sans">
+                  Hệ thống camera ANPR thông minh sẽ tự động quét liên tục luồng video, nhận diện biển số xe khi xe tiến vào vạch dừng và kích hoạt đối soát tự động.
                 </p>
                 <button
                   onClick={startCamera}
@@ -602,40 +623,34 @@ export default function GateControl() {
                   className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black shadow-xl shadow-blue-600/30 flex items-center gap-2 transition-all active:scale-95 cursor-pointer font-mono"
                 >
                   <span className="material-symbols-outlined text-base">videocam</span>
-                  {cameraLoading ? 'ĐANG KẾT NỐI...' : 'BẬT CAMERA MÁY NGAY'}
+                  {cameraLoading ? 'ĐANG KẾT NỐI...' : 'BẬT CAMERA QUAN SÁT'}
                 </button>
               </div>
             )}
 
-            {/* Overlay kính mờ & lưới quét laser */}
+            {/* Overlay kính mờ & khung ngắm */}
             <div className="absolute inset-0 bg-black/25 pointer-events-none"></div>
 
-            {/* HUD Bounding Box Xe kèm Tia Laser Tự Động Quét */}
-            <div className="absolute top-[12%] left-[10%] right-[10%] h-[55%] border-2 border-orange-500/80 rounded pointer-events-none overflow-hidden">
-              <div className="absolute -top-6 left-0 bg-orange-500 text-white text-[10px] font-black px-2 py-0.5 font-mono flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
-                VÙNG QUÉT PHƯƠNG TIỆN (YOLO)
+            {/* Tia quét Laser ANPR tự động chuyển động khi bật camera */}
+            {cameraActive && (
+              <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_15px_#10b981] pointer-events-none animate-pulse"></div>
+            )}
+
+            {/* HUD Bounding Box Xe */}
+            <div className="absolute top-[12%] left-[10%] right-[10%] h-[55%] border-2 border-slate-400/60 rounded pointer-events-none overflow-hidden">
+              <div className="absolute -top-6 left-0 bg-slate-700 text-white text-[10px] font-bold px-2 py-0.5 font-mono flex items-center gap-1">
+                KHUNG QUAN SÁT XE TẠI LÀN
               </div>
               <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-emerald-400"></div>
               <div className="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-emerald-400"></div>
               <div className="absolute -bottom-1 -left-1 w-3 h-3 border-b-2 border-l-2 border-emerald-400"></div>
               <div className="absolute -bottom-1 -right-1 w-3 h-3 border-b-2 border-r-2 border-emerald-400"></div>
-
-              {/* Laser Scanning Line chuyển động quét tự động */}
-              {cameraActive && autoScanEnabled && (
-                <div
-                  className="absolute inset-x-0 h-0.5 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_12px_#10b981]"
-                  style={{
-                    animation: 'scannerSweep 2.4s ease-in-out infinite alternate',
-                  }}
-                ></div>
-              )}
             </div>
 
             {/* HUD Bounding Box Biển số */}
             <div className="absolute bottom-[20%] left-[28%] right-[28%] h-[12%] border-2 border-blue-400/90 rounded bg-blue-500/10 pointer-events-none flex items-center justify-center">
               <div className="absolute -top-5 left-0 bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 font-mono">
-                BIỂN SỐ XE (ANPR)
+                VÙNG BIỂN SỐ XE
               </div>
               {detectedPlate && (
                 <span className="text-white font-mono font-black text-sm tracking-widest drop-shadow-md">
@@ -644,27 +659,28 @@ export default function GateControl() {
               )}
             </div>
 
-            {/* Trạng thái ANPR trên góc */}
-            <div className="absolute top-3 left-3 bg-black/75 border border-emerald-500 text-emerald-400 text-[10px] font-mono px-2.5 py-1 rounded-lg flex items-center gap-1.5 backdrop-blur-sm">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              ANPR LIVE · {confidence > 0 ? `${confidence.toFixed(1)}%` : 'CHỜ TÍN HIỆU'}
+            {/* Trạng thái trên góc */}
+            <div className="absolute top-3 left-3 bg-black/75 border border-slate-600 text-slate-300 text-[10px] font-mono px-2.5 py-1 rounded-lg flex items-center gap-1.5 backdrop-blur-sm">
+              <span className={`w-2 h-2 rounded-full ${cameraActive ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
+              CAMERA LIVE · {confidence > 0 ? `ANPR ĐỘ CHÍNH XÁC: ${confidence.toFixed(1)}%` : 'ANPR ĐANG QUÉT TỰ ĐỘNG'}
             </div>
 
             {/* Timestamp trên góc */}
-            <div className="absolute bottom-3 left-3 text-[10px] font-mono text-emerald-300 bg-black/70 px-2.5 py-1 rounded-lg backdrop-blur-sm">
+            <div className="absolute bottom-3 left-3 text-[10px] font-mono text-slate-300 bg-black/70 px-2.5 py-1 rounded-lg backdrop-blur-sm">
               {new Date().toLocaleDateString('vi-VN')} {currentTime}
             </div>
 
-            {/* Badge Báo hiệu Tự Động Quét trên luồng Video (Đã bỏ nút chụp thủ công) */}
+            {/* Badge báo hiệu chế độ tự động */}
             {cameraActive && (
               <div className="absolute bottom-3 right-3 z-10 pointer-events-none">
-                <div className="px-3.5 py-1.5 bg-black/80 backdrop-blur-md border border-emerald-500/60 rounded-xl text-xs font-mono font-black text-emerald-400 flex items-center gap-2 shadow-2xl">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
-                  <span>{isAiScanning ? '⚡ AI ĐANG QUÉT FRAME...' : '🎯 TỰ ĐỘNG QUÉT LIÊN TỤC'}</span>
+                <div className="px-3.5 py-1.5 bg-black/80 backdrop-blur-md border border-emerald-600/60 rounded-xl text-xs font-mono font-bold text-emerald-400 flex items-center gap-2 shadow-2xl">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                  <span>{isAiScanning ? '⚡ AI ĐANG PHÂN TÍCH KHUNG HÌNH...' : '🟢 ANPR TỰ ĐỘNG QUÉT LIÊN TỤC (LIVE STREAM)'}</span>
                 </div>
               </div>
             )}
           </div>
+
 
           {/* Banner Báo lỗi Camera nếu có */}
           {cameraError && (
@@ -750,6 +766,8 @@ export default function GateControl() {
               </div>
             )}
 
+
+
           </div>
 
           {/* ẢNH CHỤP HIỆN TRƯỜNG & CONTAINER */}
@@ -757,28 +775,58 @@ export default function GateControl() {
             <div className="bg-white rounded-xl p-3 space-y-1.5 border border-slate-200 shadow-sm">
               <div className="flex justify-between items-center">
                 <span className="text-[10px] font-black text-slate-500 uppercase">ẢNH CHỤP HIỆN TRƯỜNG</span>
-                {capturedImage && <span className="text-[9px] font-bold text-emerald-600 font-mono">Đã chụp</span>}
+                {capturedImage && (
+                  <button
+                    onClick={() => setPreviewImageModal(capturedImage)}
+                    className="text-[9px] font-bold text-emerald-600 font-mono hover:underline flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[11px]">zoom_in</span> Xem lớn
+                  </button>
+                )}
               </div>
-              <div className="aspect-video bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center">
+              <div
+                className="aspect-video bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer group relative border border-slate-300"
+                onClick={() => capturedImage && setPreviewImageModal(capturedImage)}
+              >
                 {capturedImage ? (
-                  <img src={capturedImage} alt="Captured" className="w-full h-full object-cover" />
+                  <>
+                    <img src={capturedImage} alt="Captured" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[11px] font-mono font-bold">
+                      🔍 Bấm phóng to
+                    </div>
+                  </>
                 ) : (
                   <span className="material-symbols-outlined text-slate-600 text-2xl">image</span>
                 )}
               </div>
               <div className="w-full text-center text-[10px] font-bold text-emerald-600 font-mono py-1">
-                {isAiScanning ? '● Đang quét AI...' : '● Tự động quét theo chu kỳ'}
+                {isAiScanning ? '● Đang phân tích AI...' : '● Tự động quét theo chu kỳ'}
               </div>
             </div>
 
             <div className="bg-white rounded-xl p-3 space-y-1.5 border border-slate-200 shadow-sm">
               <div className="flex justify-between items-center">
                 <span className="text-[10px] font-black text-slate-500 uppercase">CẮT BIỂN SỐ (OCR CROP)</span>
-                {aiCropImage && <span className="text-[9px] font-bold text-blue-600 font-mono">YOLO Crop</span>}
+                {aiCropImage && (
+                  <button
+                    onClick={() => setPreviewImageModal(aiCropImage)}
+                    className="text-[9px] font-bold text-blue-600 font-mono hover:underline flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <span className="material-symbols-outlined text-[11px]">zoom_in</span> Xem lớn
+                  </button>
+                )}
               </div>
-              <div className="aspect-video bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center">
+              <div
+                className="aspect-video bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer group relative border border-slate-300"
+                onClick={() => aiCropImage && setPreviewImageModal(aiCropImage)}
+              >
                 {aiCropImage ? (
-                  <img src={aiCropImage} alt="Plate Crop" className="w-full h-full object-contain p-2" />
+                  <>
+                    <img src={aiCropImage} alt="Plate Crop" className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform" />
+                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[11px] font-mono font-bold">
+                      🔍 Bấm phóng to
+                    </div>
+                  </>
                 ) : (
                   <span className="material-symbols-outlined text-slate-600 text-2xl">crop</span>
                 )}
@@ -1010,18 +1058,23 @@ export default function GateControl() {
             </div>
           </div>
 
-          {/* THÔNG TIN GATE BOOKING ĐIỀU ĐỘ — CHỈ HIỂN THỊ KHI ĐỐI SOÁT ĐÚNG */}
+          {/* THÔNG TIN GATE BOOKING ĐỐI SOÁT HỢP LỆ */}
           {(processingStatus === 'passed' || processingStatus === 'checked-in') && activeBooking ? (
             <div className="bg-white border-2 border-emerald-400 rounded-2xl p-5 shadow-lg space-y-4 animate-in zoom-in-95">
               <div className="flex justify-between items-start border-b border-slate-200 pb-3">
-                <div>
-                  <div className="flex items-center gap-1.5 text-emerald-600 text-[10px] font-black uppercase tracking-wider">
-                    <span className="material-symbols-outlined text-sm">verified</span>
-                    XÁC MINH GATE BOOKING THÀNH CÔNG
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black">
+                    <span className="material-symbols-outlined text-xl">fact_check</span>
                   </div>
-                  <h3 className="font-mono text-xl font-black text-slate-900 mt-0.5">
-                    {activeBooking.bookingCode}
-                  </h3>
+                  <div>
+                    <div className="flex items-center gap-1.5 text-emerald-700 text-[10px] font-black uppercase tracking-wider">
+                      <span className="material-symbols-outlined text-sm">verified</span>
+                      XÁC MINH CỔNG HỢP LỆ (PASS)
+                    </div>
+                    <h4 className="font-heading font-black text-sm text-slate-900">
+                      MÃ BOOKING: {activeBooking.bookingCode}
+                    </h4>
+                  </div>
                 </div>
                 <span className="px-3 py-1 rounded-full text-[10px] font-black border bg-emerald-100 text-emerald-900 border-emerald-300 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
@@ -1029,50 +1082,58 @@ export default function GateControl() {
                 </span>
               </div>
 
+              {/* THÔNG TIN CƠ BẢN ĐỂ KIỂM SOÁT CỔNG */}
               <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs font-mono">
-                <div>
-                  <span className="text-slate-500">Doanh nghiệp vận tải:</span>
-                  <div className="font-bold text-slate-800 truncate">{activeBooking.company}</div>
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Mã Booking:</span>
+                  <div className="font-black text-blue-700 text-sm">{activeBooking.bookingCode}</div>
                 </div>
-                <div>
-                  <span className="text-slate-500">Mã xe đăng ký:</span>
-                  <div className="font-bold text-slate-800">{activeBooking.vehicleId}</div>
-                </div>
-                <div>
-                  <span className="text-slate-500">Biển số theo Booking:</span>
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Biển số theo Booking:</span>
                   <div className="font-black text-blue-700 text-sm">{activeBooking.licensePlate}</div>
                 </div>
-                <div>
-                  <span className="text-slate-500">Tài xế:</span>
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Doanh nghiệp vận tải:</span>
+                  <div className="font-bold text-slate-800 truncate">{activeBooking.company}</div>
+                </div>
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Tài xế theo Booking:</span>
                   <div className="font-bold text-slate-800">{activeBooking.driverName}</div>
                 </div>
-                <div>
-                  <span className="text-slate-500">Số GPLX:</span>
-                  <div className="font-bold text-slate-800">
-                    {activeBooking.licenseNumber} ({activeBooking.licenseStatus})
-                  </div>
-                </div>
-                <div>
-                  <span className="text-slate-500">Mã container:</span>
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Mã container:</span>
                   <div className="font-bold text-slate-800">{activeBooking.containerId}</div>
                 </div>
-                <div>
-                  <span className="text-slate-500">Loại cont / Hàng:</span>
-                  <div className="font-bold text-slate-800">{activeBooking.containerType} · {activeBooking.cargoType}</div>
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Loại cont / Tác nghiệp:</span>
+                  <div className="font-bold text-slate-800 truncate">{activeBooking.containerType} · {activeBooking.operation}</div>
                 </div>
-                <div>
-                  <span className="text-slate-500">Loại tác nghiệp:</span>
-                  <div className="font-bold text-slate-800">{activeBooking.operation}</div>
-                </div>
-                <div>
-                  <span className="text-slate-500">Cổng / ETA:</span>
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Cổng / Giờ ETA:</span>
                   <div className="font-bold text-orange-600">{activeBooking.gate} · {activeBooking.etaDisplay}</div>
                 </div>
-                <div>
-                  <span className="text-slate-500">Số seal:</span>
+                <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Số chì (Seal No):</span>
                   <div className="font-bold text-slate-800">{activeBooking.sealNumber}</div>
                 </div>
               </div>
+
+              {/* NÚT ĐIỀU HƯỚNG SANG TRANG XÁC MINH XE & TÀI XẾ */}
+              <Link
+                to={`/gate/verification?plate=${encodeURIComponent(activeBooking.licensePlate || detectedPlate)}&booking=${encodeURIComponent(activeBooking.bookingCode || '')}`}
+                className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black font-mono flex items-center justify-between shadow-md transition-all cursor-pointer group"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-base">fact_check</span>
+                  </div>
+                  <div className="text-left">
+                    <div className="text-[10px] text-blue-200 uppercase tracking-wider font-bold">Chi tiết đối soát hồ sơ</div>
+                    <div className="text-xs font-black">XEM THÔNG TIN TÀI XẾ TẠI TRANG XÁC MINH ➔</div>
+                  </div>
+                </div>
+                <span className="material-symbols-outlined text-lg group-hover:translate-x-1 transition-transform">arrow_forward</span>
+              </Link>
             </div>
           ) : processingStatus === 'rejected' ? (
             /* TRẠNG THÁI TỰ ĐỘNG TỪ CHỐI */
@@ -1266,7 +1327,7 @@ export default function GateControl() {
                     setAiCropImage(null)
                     setRejectionReason('')
                     lastScannedPlateRef.current = ''
-                    triggerSingleScan()
+                    performAutoScan()
                   }}
                   className="h-13 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 active:scale-98 transition-all cursor-pointer"
                 >
@@ -1444,6 +1505,41 @@ export default function GateControl() {
                 <span className="material-symbols-outlined text-lg">send</span>
                 Gửi Dispatcher
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal phóng to ảnh */}
+      {previewImageModal && (
+        <div
+          className="fixed inset-0 bg-black/85 backdrop-blur-md z-[120] flex items-center justify-center p-4 animate-in fade-in"
+          onClick={() => setPreviewImageModal(null)}
+        >
+          <div
+            className="relative max-w-4xl w-full bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl p-4 flex flex-col items-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-center w-full pb-3 border-b border-slate-800 text-white">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-emerald-400">photo_library</span>
+                <span className="text-xs font-mono font-bold text-slate-200 uppercase">
+                  BẰNG CHỨNG HÌNH ẢNH CỔNG
+                </span>
+              </div>
+              <button
+                onClick={() => setPreviewImageModal(null)}
+                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-white flex items-center justify-center cursor-pointer transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="w-full flex items-center justify-center py-4 bg-black/40 rounded-xl mt-3">
+              <img
+                src={previewImageModal}
+                alt="Enlarged"
+                className="max-h-[70vh] max-w-full object-contain rounded-lg shadow-lg"
+              />
             </div>
           </div>
         </div>

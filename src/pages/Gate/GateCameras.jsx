@@ -52,7 +52,7 @@ export default function GateCameras() {
         <div className="text-right">
           <div className="font-mono text-xl font-extrabold text-carbon">{currentTime}</div>
           <div className="text-xs text-slate font-mono">
-            {CAMERAS.filter(c => c.status === 'Online').length}/{CAMERAS.length} camera hoạt động
+            {cameras.filter(c => c.status === 'Online').length}/{cameras.length} camera hoạt động
           </div>
         </div>
       </div>
