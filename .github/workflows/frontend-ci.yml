@@ -1,0 +1,43 @@
+name: NexusPort Frontend CI
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+      - 'UI/**'
+  pull_request:
+    branches:
+      - main
+      - develop
+
+jobs:
+  build-frontend:
+    name: Build & Lint Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run Linter (Oxlint)
+        run: npm run lint
+
+      - name: Build Vite App
+        run: npm run build
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: dist/
+          retention-days: 7
