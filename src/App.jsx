@@ -8,6 +8,7 @@ import MainLayout from './layouts/MainLayout'
 import BerthOps from './pages/Ships/BerthOps'
 import CargoDeclaration from './pages/Containers/CargoDeclaration'
 import DamageReport from './pages/Containers/DamageReport'
+import ContainerManagement from './pages/Containers/ContainerManagement'
 import CarrierProfile from './pages/Ships/CarrierProfile'
 import EquipmentDispatch from './pages/Dispatch/EquipmentDispatch'
 import VesselSchedule from './pages/Ships/VesselSchedule'
@@ -23,6 +24,7 @@ import YardMap from './pages/Yard/YardMap'
 import BillingPayment from './pages/Billing/BillingPayment'
 import UserRoleManagement from './pages/Users/UserRoleManagement'
 import CarrierPortal from './pages/Carrier/CarrierPortal'
+import CarrierStaffManagement from './pages/Carrier/CarrierStaffManagement'
 import DashboardIndex from './pages/Dashboard/DashboardIndex'
 import GateControl from './pages/Gate/GateControl'
 import GateDashboard from './pages/Gate/GateDashboard'
@@ -42,6 +44,7 @@ import ContainerInventoryInspection from './pages/Yard/ContainerInventoryInspect
 import YardMovementOperations from './pages/Yard/YardMovementOperations'
 import ContainerGateOutPreparation from './pages/Yard/ContainerGateOutPreparation'
 import ContainerDetail from './pages/Yard/ContainerDetail'
+import YardReceiving from './pages/Yard/YardReceiving'
 import DriverPortalContainer from './pages/Driver/DriverPortalContainer'
 import BerthOperationsDashboard from './pages/BerthStaff/BerthOperationsDashboard'
 import VesselOperationControl from './pages/BerthStaff/VesselOperationControl'
@@ -68,29 +71,50 @@ import BillingChargesManagement from './pages/Admin/BillingChargesManagement'
 
 // Component chuyển hướng trang chủ dựa trên vai trò (Role-based Home Redirect)
 function HomeRedirect() {
-  const user = JSON.parse(localStorage.getItem('user'))
-  if (!user) return <Navigate to="/login" replace />
+  const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
+  let user = null
+  try {
+    user = storedUser ? JSON.parse(storedUser) : null
+  } catch {
+    user = null
+  }
 
-  if (user.role === ROLES.TRANSPORT_COMPANY) {
+  if (!user || !user.role) return <Navigate to="/login" replace />
+
+  const role = (user.role || '').trim().toLowerCase()
+  if (role === 'transport company' || role === 'carrier' || role === 'carrier staff') {
     return <Navigate to="/carrier-portal" replace />
   }
-  if (user.role === ROLES.GATE_OFFICER) {
-    return <Navigate to="/gate" replace />
-  }
-  if (user.role === ROLES.DRIVER) {
+  if (role === 'driver') {
     return <Navigate to="/driver-portal" replace />
   }
-  
-  // Các vai trò có quyền vào Dashboard (Dispatcher, Yard Operator, Administrator)
-  if ([ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR].includes(user.role)) {
+  if (role === 'gate officer' || role === 'gate') {
+    return <Navigate to="/gate" replace />
+  }
+  if (role === 'dispatcher' || role === 'operator') {
+    return <Navigate to="/dashboard" replace />
+  }
+  if (role === 'yard operator' || role === 'yard staff' || role === 'yard') {
+    return <Navigate to="/yard-staff/dashboard" replace />
+  }
+  if (role === 'berth staff' || role === 'berth') {
+    return <Navigate to="/berth-staff/dashboard" replace />
+  }
+  if (role === 'administrator' || role === 'admin') {
     return <Navigate to="/dashboard" replace />
   }
 
-  if (user.role === ROLES.BERTH_STAFF) {
-    return <Navigate to="/berth" replace />
-  }
-
   return <Navigate to="/unauthorized" replace />
+}
+
+function ContainerRoute() {
+  const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
+  let role = ''
+  try { role = JSON.parse(storedUser || '{}')?.role?.trim().toLowerCase() || '' } catch { role = '' }
+  if (['transport company', 'carrier staff', 'carrier'].includes(role)) {
+    return <Navigate to="/cargo" replace />
+  }
+  return <ContainerManagement />
 }
 
 function App() {
@@ -110,16 +134,24 @@ function App() {
 
         {/* Toàn bộ các trang quản trị dùng chung cấu trúc Sidebar thông qua MainLayout */}
         <Route element={<MainLayout />}>
-          
-          {/* 1. Nhóm Hãng tàu / Doanh nghiệp ngoài cảng */}
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.ADMINISTRATOR]} />}>
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
+            <Route path="/containers" element={<ContainerRoute />} />
+            <Route path="/container-intake" element={<Navigate to="/containers" replace />} />
+          </Route>
+
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF]} />}>
             <Route path="/cargo" element={<CargoDeclaration />} />
             <Route path="/transport/cargo-declarations" element={<CargoDeclaration />} />
+          </Route>
+          
+          {/* 1. Nhóm Hãng tàu / Doanh nghiệp ngoài cảng */}
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
             <Route path="/carrier-profile" element={<CarrierProfile />} />
             <Route path="/carrier-portal" element={<CarrierPortal />} />
             <Route path="/booking" element={<BookingManagement />} />
             <Route path="/billing" element={<BillingPayment />} />
             <Route path="/drivers" element={<DriverManagement />} />
+            <Route path="/carrier-staff" element={<CarrierStaffManagement />} />
           </Route>
 
           {/* 2. Nhóm Điều độ (Dispatcher) */}
@@ -142,17 +174,19 @@ function App() {
             <Route path="/berth" element={<BerthOps />} />
           </Route>
 
-          {/* 3. Nhóm Nhân viên Bãi (Yard Operator / Staff) */}
-          <Route element={<RoleRoute allowedRoles={[ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR, ROLES.DISPATCHER]} />}>
-            <Route path="/equipment-dispatch" element={<EquipmentDispatch />} />
-            <Route path="/yard" element={<YardMap />} />
-            <Route path="/yard-ops" element={<YardOperations />} />
+          {/* 3. Nhóm Vận hành Bãi (Yard Operator) */}
+          <Route element={<RoleRoute allowedRoles={[ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
+            <Route path="/dashboard" element={<DashboardIndex />} />
             <Route path="/yard-staff/dashboard" element={<YardOperationsDashboard />} />
-            <Route path="/yard-staff/map" element={<YardMapContainerManagement />} />
+            <Route path="/yard" element={<YardOperations />} />
+            <Route path="/yard-staff/map" element={<YardMap />} />
+            <Route path="/yard-ops" element={<YardOperations />} />
+            <Route path="/yard/receiving" element={<YardReceiving />} />
             <Route path="/yard-staff/inventory-inspection" element={<ContainerInventoryInspection />} />
             <Route path="/yard-staff/movement-operations" element={<YardMovementOperations />} />
             <Route path="/yard-staff/gate-out-preparation" element={<ContainerGateOutPreparation />} />
             <Route path="/yard-staff/container-detail" element={<ContainerDetail />} />
+            <Route path="/yard-staff/receiving" element={<YardReceiving />} />
           </Route>
 
           {/* Nhóm Nhân viên Cổng (Gate Officer) */}

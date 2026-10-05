@@ -1,39 +1,149 @@
-import axios from 'axios'
-
 // Lấy API base URL từ biến môi trường, mặc định là http://localhost:5000/api
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
-const apiClient = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-})
-
-// Đính kèm JWT Token vào Header của mọi Request
-apiClient.interceptors.request.use(
-  (config) => {
-    const user = JSON.parse(localStorage.getItem('user'))
-    if (user && user.token) {
-      config.headers.Authorization = `Bearer ${user.token}`
+const apiClient = {
+  get: async (url, config = {}) => {
+    let fullUrl = `${API_URL}${url}`
+    if (config.params) {
+      const queryParams = new URLSearchParams()
+      Object.keys(config.params).forEach((key) => {
+        if (config.params[key] !== undefined && config.params[key] !== null) {
+          queryParams.append(key, config.params[key])
+        }
+      })
+      const queryString = queryParams.toString()
+      if (queryString) {
+        fullUrl += `?${queryString}`
+      }
     }
-    return config
-  },
-  (error) => {
-    return Promise.reject(error)
-  }
-)
 
-// Xử lý lỗi tập trung (ví dụ: Token hết hạn 401)
-apiClient.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response && error.response.status === 401) {
+    const headers = { 
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0'
+    }
+    try {
+      const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
+      const user = stored ? JSON.parse(stored) : null
+      if (user && user.token) {
+        headers['Authorization'] = `Bearer ${user.token}`
+      }
+    } catch (e) {}
+
+    const res = await fetch(fullUrl, { method: 'GET', headers })
+    if (res.status === 401) {
       localStorage.removeItem('user')
       window.location.href = '/login'
+      throw new Error('Unauthorized')
     }
-    return Promise.reject(error)
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}))
+      const err = new Error(errorData.message || `HTTP error ${res.status}`)
+      err.response = { status: res.status, data: errorData }
+      throw err
+    }
+    if (res.status === 204) return { data: null };
+    return { data: await res.json().catch(() => null) }
+  },
+
+  post: async (url, data = {}) => {
+    const fullUrl = `${API_URL}${url}`
+    const isFormData = data instanceof FormData;
+    const headers = {};
+    if (!isFormData) {
+      headers['Content-Type'] = 'application/json';
+    }
+    try {
+      const stored = localStorage.getItem('user') || sessionStorage.getItem('user');
+      const user = stored ? JSON.parse(stored) : null
+      if (user && user.token) {
+        headers['Authorization'] = `Bearer ${user.token}`
+      }
+    } catch (e) {}
+
+    const res = await fetch(fullUrl, {
+      method: 'POST',
+      headers,
+      body: isFormData ? data : JSON.stringify(data)
+    })
+    if (res.status === 401) {
+      localStorage.removeItem('user')
+      window.location.href = '/login'
+      throw new Error('Unauthorized')
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}))
+      const err = new Error(errorData.message || `HTTP error ${res.status}`)
+      err.response = { status: res.status, data: errorData }
+      throw err
+    }
+    if (res.status === 204) return { data: null };
+    return { data: await res.json().catch(() => null) }
+  },
+
+  put: async (url, data = {}) => {
+    const fullUrl = `${API_URL}${url}`
+    const isFormData = data instanceof FormData;
+    const headers = {};
+    if (!isFormData) {
+      headers['Content-Type'] = 'application/json';
+    }
+    try {
+      const stored = localStorage.getItem('user') || sessionStorage.getItem('user');
+      const user = stored ? JSON.parse(stored) : null
+      if (user && user.token) {
+        headers['Authorization'] = `Bearer ${user.token}`
+      }
+    } catch (e) {}
+
+    const res = await fetch(fullUrl, { method: 'PUT', headers, body: isFormData ? data : JSON.stringify(data) })
+    if (res.status === 401) {
+      localStorage.removeItem('user')
+      window.location.href = '/login'
+      throw new Error('Unauthorized')
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}))
+      const err = new Error(errorData.message || `HTTP error ${res.status}`)
+      err.response = { status: res.status, data: errorData }
+      throw err
+    }
+    if (res.status === 204) return { data: null }
+    return { data: await res.json().catch(() => null) }
+  },
+
+  patch: async (url, data = {}) => {
+    const fullUrl = `${API_URL}${url}`
+    const isFormData = data instanceof FormData;
+    const headers = {};
+    if (!isFormData) {
+      headers['Content-Type'] = 'application/json';
+    }
+    try {
+      const stored = localStorage.getItem('user') || sessionStorage.getItem('user');
+      const user = stored ? JSON.parse(stored) : null
+      if (user && user.token) {
+        headers['Authorization'] = `Bearer ${user.token}`
+      }
+    } catch (e) {}
+
+    const res = await fetch(fullUrl, { method: 'PATCH', headers, body: isFormData ? data : JSON.stringify(data) })
+    if (res.status === 401) {
+      localStorage.removeItem('user')
+      window.location.href = '/login'
+      throw new Error('Unauthorized')
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}))
+      const err = new Error(errorData.message || `HTTP error ${res.status}`)
+      err.response = { status: res.status, data: errorData }
+      throw err
+    }
+    // Handle 204 No Content which might not return JSON
+    if (res.status === 204) return { data: null }
+    return { data: await res.json().catch(() => ({})) }
   }
-)
+}
 
 export default apiClient

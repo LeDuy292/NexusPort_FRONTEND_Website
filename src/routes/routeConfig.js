@@ -8,7 +8,8 @@ export const ROLES = {
   DISPATCHER: 'Dispatcher',
   YARD_OPERATOR: 'Yard Operator',
   BERTH_STAFF: 'Berth Staff',
-  ADMINISTRATOR: 'Administrator'
+  ADMINISTRATOR: 'Administrator',
+  CARRIER_STAFF: 'Carrier Staff'
 }
 
 export const routeConfig = [
@@ -28,11 +29,19 @@ export const routeConfig = [
     allowedRoles: [ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
   },
   {
+    path: '/containers',
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.ADMINISTRATOR],
+  },
+  {
     path: '/booking',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/yard',
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/yard/map',
     allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {
@@ -44,6 +53,14 @@ export const routeConfig = [
     allowedRoles: [ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
   },
   {
+    path: '/yard/receiving',
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/yard-staff/receiving',
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
     path: '/berth',
     allowedRoles: [ROLES.BERTH_STAFF, ROLES.ADMINISTRATOR],
   },
@@ -53,11 +70,11 @@ export const routeConfig = [
   },
   {
     path: '/cargo',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/transport/cargo-declarations',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/gate',
@@ -101,7 +118,7 @@ export const routeConfig = [
   },
   {
     path: '/yard-staff/movement-operations',
-    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {
     path: '/yard-staff/gate-out-preparation',
@@ -125,15 +142,15 @@ export const routeConfig = [
   },
   {
     path: '/carrier-profile',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/carrier-portal',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/billing',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/users',
@@ -149,7 +166,7 @@ export const routeConfig = [
   },
   {
     path: '/drivers',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
   },
   {
     path: '/dispatch',
