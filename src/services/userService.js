@@ -64,3 +64,20 @@ export async function deactivateUser(id) {
   const response = await apiClient.patch(`/users/${id}/deactivate`)
   return response.data
 }
+
+/**
+ * Tạo tài khoản nhân viên hãng vận tải.
+ * @param {Object} data - { username, email, password, fullName }
+ */
+export async function createCarrierStaff(data) {
+  const response = await apiClient.post('/users/carrier-staff', data)
+  return response.data
+}
+
+/**
+ * Lấy danh sách nhân viên của hãng vận tải.
+ */
+export async function getCarrierStaffs() {
+  const response = await apiClient.get('/users/carrier-staff')
+  return response.data
+}

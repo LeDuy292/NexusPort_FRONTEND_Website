@@ -1,16 +1,24 @@
 import React, { useState, useEffect } from 'react'
-import { gateStatusData } from '../../data/gateOfficerData'
-
-const CAMERAS = [
-  { id: 'CAM-01', gate: 'Cổng A', status: 'Online', anpr: true, lastPlate: '43C-123.45', lastConfidence: 99.2, lastTime: '17:24:11', vehiclesProcessed: 18 },
-  { id: 'CAM-02', gate: 'Cổng B', status: 'Online', anpr: true, lastPlate: '43C-556.78', lastConfidence: 97.8, lastTime: '17:21:44', vehiclesProcessed: 11 },
-  { id: 'CAM-03', gate: 'Cổng C', status: 'Offline', anpr: false, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
-]
+import gateService from '../../services/gateService'
 
 export default function GateCameras() {
   const [currentTime, setCurrentTime] = useState('')
   const [fullscreen, setFullscreen] = useState(null)
-  const [confidences, setConfidences] = useState({ 'CAM-01': 99.2, 'CAM-02': 97.8, 'CAM-03': 0 })
+  const [cameras, setCameras] = useState([
+    { id: 'CAM-01', gate: 'Cổng A (AI YOLO)', status: 'Checking...', anpr: true, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
+    { id: 'CAM-02', gate: 'Cổng B (Làn ra)', status: 'Online', anpr: true, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
+    { id: 'CAM-03', gate: 'Cổng C (Dự phòng)', status: 'Offline', anpr: false, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
+  ])
+  const [confidences, setConfidences] = useState({ 'CAM-01': 0, 'CAM-02': 0, 'CAM-03': 0 })
+
+  useEffect(() => {
+    gateService.checkAiHealth().then((res) => {
+      setCameras(prev => prev.map(c => c.id === 'CAM-01' ? { ...c, status: res.isOnline ? 'Online' : 'Offline' } : c))
+      if (res.isOnline) {
+        setConfidences(prev => ({ ...prev, 'CAM-01': 98.5 }))
+      }
+    })
+  }, [])
 
   useEffect(() => {
     const tick = () => setCurrentTime(new Date().toLocaleTimeString('vi-VN'))
@@ -51,7 +59,7 @@ export default function GateCameras() {
 
       {/* Camera Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {CAMERAS.map(cam => (
+        {cameras.map(cam => (
           <div key={cam.id} className={`bg-white rounded-2xl border-2 shadow-sm overflow-hidden flex flex-col ${cam.status === 'Online' ? 'border-green-300' : 'border-slate-300 opacity-75'}`}>
 
             {/* Camera Header */}

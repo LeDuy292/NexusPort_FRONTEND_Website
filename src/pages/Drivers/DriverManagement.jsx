@@ -3,13 +3,16 @@ import driverService from '../../services/driverService'
 
 // ─── STATUS CONFIG ─────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
-  active: { label: 'Sẵn sàng', dot: 'bg-green-500', badge: 'bg-green-50 text-green-800 border-green-300', icon: '🟢' },
+  active: { label: 'Đang hoạt động', dot: 'bg-green-500', badge: 'bg-green-50 text-green-800 border-green-300', icon: '🟢' },
   inactive: { label: 'Tạm nghỉ', dot: 'bg-amber-400', badge: 'bg-amber-50 text-amber-800 border-amber-300', icon: '🟡' },
   banned: { label: 'Đình chỉ', dot: 'bg-red-500', badge: 'bg-red-50 text-red-800 border-red-300', icon: '🔴' },
 }
 
+import { resolveMediaUrl } from '../../utils/mediaUtils'
+
 function StatusBadge({ status }) {
-  const cfg = STATUS_CONFIG[status] || STATUS_CONFIG.inactive
+  const normalizedStatus = status ? status.toLowerCase() : 'inactive';
+  const cfg = STATUS_CONFIG[normalizedStatus] || STATUS_CONFIG.inactive;
   return (
     <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${cfg.badge}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`}></span>
@@ -19,33 +22,130 @@ function StatusBadge({ status }) {
 }
 
 function AvatarCircle({ driver }) {
-  const color = driver.status === 'banned' ? 'bg-red-400' : driver.status === 'inactive' ? 'bg-amber-400' : 'bg-green-500'
-  const nameParts = driver.fullName ? driver.fullName.trim().split(' ') : ['?']
+  const [imgError, setImgError] = useState(false)
+
+  useEffect(() => {
+    setImgError(false)
+  }, [driver?.photoUrl])
+
+  if (driver?.photoUrl && !imgError) {
+    return <img src={resolveMediaUrl(driver.photoUrl) || undefined} alt={driver.fullName} onError={() => setImgError(true)} className="w-full h-full object-cover rounded-[inherit] border border-chalk" />
+  }
+  const color = driver?.status === 'banned' ? 'bg-red-400' : driver?.status === 'inactive' ? 'bg-amber-400' : 'bg-green-500'
+  const nameParts = driver?.fullName ? driver.fullName.trim().split(' ') : ['?']
   const initials = nameParts.length > 1
     ? nameParts[nameParts.length - 1].charAt(0) + nameParts[0].charAt(0)
     : nameParts[0].substring(0, 2)
-  return <div className={`flex items-center justify-center text-white font-extrabold flex-shrink-0 uppercase ${color}`}>{initials}</div>
+  return <div className={`flex items-center justify-center text-white font-extrabold flex-shrink-0 uppercase ${color} rounded-[inherit] w-full h-full`}>{initials}</div>
+}
+
+function DocumentCard({ url, title, alt, onClick }) {
+  const [imgError, setImgError] = useState(false)
+
+  useEffect(() => {
+    setImgError(false)
+  }, [url])
+
+  return (
+    <div className="space-y-1.5">
+      <div className="text-[10px] font-bold text-slate uppercase">{title}</div>
+      {!url || imgError ? (
+        <div className="bg-fog p-3 rounded-xl border border-dashed border-chalk h-32 flex flex-col items-center justify-center text-slate select-none">
+          <span className="material-symbols-outlined text-2xl text-slate/40 mb-1">badge</span>
+          <span className="text-[11px] font-medium text-slate/70">Chưa có {alt}</span>
+        </div>
+      ) : (
+        <div
+          className="bg-fog p-1.5 rounded-xl border border-chalk h-32 flex items-center justify-center overflow-hidden cursor-pointer hover:border-signal-orange transition-all group relative shadow-sm"
+          onClick={onClick}
+        >
+          <img
+            src={resolveMediaUrl(url) || undefined}
+            alt={alt}
+            onError={() => setImgError(true)}
+            className="max-w-full max-h-full object-contain rounded-lg transition-transform group-hover:scale-105"
+            onLoad={e => {
+              if (e.target.naturalHeight > e.target.naturalWidth) {
+                e.target.style.transform = 'rotate(-90deg) scale(1.2)';
+              }
+            }}
+          />
+          <div className="absolute inset-0 bg-carbon/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl pointer-events-none">
+            <span className="material-symbols-outlined text-white text-lg drop-shadow">zoom_in</span>
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function DispatcherDriverManagement() {
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('') // '' means ALL
+  const [statusFilter, setStatusFilter] = useState('ALL')
+  const [vehicleFilter, setVehicleFilter] = useState('ALL')
   const [currentPage, setCurrentPage] = useState(1)
   const [drawerDriver, setDrawerDriver] = useState(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editMode, setEditMode] = useState(false)
   const [toast, setToast] = useState('')
+  const [zoomedImage, setZoomedImage] = useState(null)
 
   const [drivers, setDrivers] = useState([])
   const [loading, setLoading] = useState(true)
-
   const [editForm, setEditForm] = useState(null)
-  const PAGE_SIZE = 8
+  const PAGE_SIZE = 5
 
-  const emptyForm = { fullName: '', phone: '', idCardNumber: '', licenseNumber: '' }
+  const emptyForm = { fullName: '', phone: '', idCardNumber: '', licenseNumber: '', photoUrl: '', idCardFrontUrl: '', licenseImageUrl: '' }
   const [form, setForm] = useState({ ...emptyForm })
+  const [ocrLoading, setOcrLoading] = useState(false)
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3200) }
+
+  const handleOcrUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setOcrLoading(true);
+    try {
+      showToast('⏳ Đang phân tích CCCD bằng AI...');
+      const data = await driverService.extractCccd(file);
+      setForm(f => ({
+        ...f,
+        fullName: data.fullName || f.fullName,
+        idCardNumber: data.idCardNumber || f.idCardNumber,
+        photoUrl: data.faceImageUrl || f.photoUrl,
+        idCardFrontUrl: data.idCardFrontUrl || f.idCardFrontUrl
+      }));
+      showToast('✅ Quét CCCD thành công!');
+    } catch (err) {
+      showToast('❌ Lỗi quét CCCD: ' + (err.response?.data?.message || err.message));
+    } finally {
+      setOcrLoading(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleGplxUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    setOcrLoading(true);
+    try {
+      const data = await driverService.extractGplx(file);
+      setForm(f => ({
+        ...f,
+        fullName: data?.fullName || f.fullName,
+        licenseNumber: data?.licenseNumber || f.licenseNumber,
+        licenseImageUrl: data?.licenseImageUrl || f.licenseImageUrl,
+        photoUrl: data?.faceImageUrl || f.photoUrl
+      }));
+      showToast('✅ Quét GPLX thành công!');
+    } catch (err) {
+      showToast('❌ Quét GPLX thất bại: ' + (err.response?.data?.message || err.message), 'error');
+    } finally {
+      setOcrLoading(false);
+      e.target.value = '';
+    }
+  };
 
   const loadDrivers = async () => {
     setLoading(true)
@@ -68,13 +168,28 @@ export default function DispatcherDriverManagement() {
 
   const kpi = useMemo(() => ({
     total: drivers.length,
-    active: drivers.filter(d => d.status === 'active').length,
-    inactive: drivers.filter(d => d.status === 'inactive').length,
-    banned: drivers.filter(d => d.status === 'banned').length,
+    available: drivers.filter(d => d.status === 'AVAILABLE').length,
+    assigned: drivers.filter(d => d.status === 'ASSIGNED').length,
+    onTrip: drivers.filter(d => d.status === 'ON_TRIP').length,
+    offDuty: drivers.filter(d => d.status === 'OFF_DUTY').length,
+    suspended: drivers.filter(d => d.status === 'SUSPENDED').length,
   }), [drivers])
 
-  const totalPages = Math.max(1, Math.ceil(drivers.length / PAGE_SIZE))
-  const paginated = drivers.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  const filtered = useMemo(() => {
+    let list = [...drivers]
+    const q = search.toLowerCase()
+    if (q) list = list.filter(d =>
+      d.name.toLowerCase().includes(q) || d.id.toLowerCase().includes(q) ||
+      d.licenseNumber.toLowerCase().includes(q) || d.phone.includes(q)
+    )
+    if (statusFilter !== 'ALL') list = list.filter(d => d.status === statusFilter)
+    if (vehicleFilter === 'ASSIGNED') list = list.filter(d => d.currentVehicle)
+    if (vehicleFilter === 'NO_VEHICLE') list = list.filter(d => !d.currentVehicle)
+    return list
+  }, [drivers, search, statusFilter, vehicleFilter])
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const paginated = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   const openAddModal = () => {
     setForm({ ...emptyForm })
@@ -135,9 +250,11 @@ export default function DispatcherDriverManagement() {
 
   const KPI_CARDS = [
     { label: 'Tổng Tài Xế', value: kpi.total, border: 'border-slate-300', icon: 'group', text: 'text-carbon' },
-    { label: 'Sẵn Sàng', value: kpi.active, border: 'border-green-400', icon: 'check_circle', text: 'text-green-700' },
-    { label: 'Tạm Nghỉ', value: kpi.inactive, border: 'border-amber-400', icon: 'bedtime', text: 'text-amber-700' },
-    { label: 'Đình Chỉ', value: kpi.banned, border: 'border-red-400', icon: 'block', text: 'text-red-700' },
+    { label: 'Sẵn Sàng', value: kpi.available, border: 'border-green-400', icon: 'check_circle', text: 'text-green-700' },
+    { label: 'Đã Giao Lệnh', value: kpi.assigned, border: 'border-blue-400', icon: 'assignment_ind', text: 'text-blue-700' },
+    { label: 'Đang Chạy', value: kpi.onTrip, border: 'border-purple-400', icon: 'directions_car', text: 'text-purple-700' },
+    { label: 'Nghỉ Ca', value: kpi.offDuty, border: 'border-amber-400', icon: 'bedtime', text: 'text-amber-700' },
+    { label: 'Tạm Đình Chỉ', value: kpi.suspended, border: 'border-red-400', icon: 'block', text: 'text-red-700' },
   ]
 
   return (
@@ -190,7 +307,7 @@ export default function DispatcherDriverManagement() {
           />
         </div>
         <div className="flex items-center gap-1 flex-wrap">
-          {[['', 'Tất cả'], ['active', '🟢 Sẵn sàng'], ['inactive', '🟡 Tạm nghỉ'], ['banned', '🔴 Đình chỉ']].map(([val, lbl]) => (
+          {[['ALL', 'Tất cả'], ['AVAILABLE', '🟢 Sẵn sàng'], ['ASSIGNED', '🔵 Đã giao'], ['ON_TRIP', '🟣 Đang chạy'], ['OFF_DUTY', '🟡 Nghỉ ca'], ['SUSPENDED', '🔴 Đình chỉ']].map(([val, lbl]) => (
             <button key={val} onClick={() => { setStatusFilter(val); setCurrentPage(1) }}
               className={`px-3 h-8 rounded-lg text-[11px] font-semibold border transition-all ${statusFilter === val ? 'bg-signal-orange text-white border-signal-orange' : 'bg-fog text-graphite border-chalk hover:border-slate'}`}>
               {lbl}
@@ -296,7 +413,7 @@ export default function DispatcherDriverManagement() {
             <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
               {editMode ? (
                 <form onSubmit={handleSaveEdit} className="space-y-4">
-                  {[['Họ và Tên', 'fullName'], ['Số điện thoại', 'phone'], ['CCCD', 'idCardNumber'], ['Số GPLX (Không sửa được)', 'licenseNumber']].map(([label, field]) => (
+                  {[['Họ và Tên', 'name'], ['Số điện thoại', 'phone'], ['Số GPLX', 'licenseNumber']].map(([label, field]) => (
                     <div key={field}>
                       <label className="block text-[10px] font-bold text-slate uppercase mb-1">{label}</label>
                       <input type="text" value={editForm[field] || ''} onChange={e => field !== 'licenseNumber' && setEditForm(f => ({ ...f, [field]: e.target.value }))}
@@ -329,7 +446,11 @@ export default function DispatcherDriverManagement() {
                         <div className="mt-1"><StatusBadge status={drawerDriver.status} /></div>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3 text-xs mt-4">
+                    <div className="bg-orange-50/50 p-3 rounded-xl border border-orange-100 flex justify-between items-center text-xs mt-4">
+                      <span className="text-orange-800 font-bold uppercase text-[10px]">Trực thuộc đơn vị</span>
+                      <strong className="text-signal-orange text-right">{drawerDriver.carrierName || 'NexusPort · Cảng Tiên Sa'}</strong>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-xs mt-3">
                       {[['Số GPLX', drawerDriver.licenseNumber], ['Số CCCD', drawerDriver.idCardNumber], ['Điện Thoại', drawerDriver.phone], ['Ngày Tạo', new Date(drawerDriver.createdAt).toLocaleDateString()]].map(([l, v]) => (
                         <div key={l} className="bg-fog rounded-lg p-3 border border-chalk">
                           <div className="text-[10px] font-bold text-slate uppercase mb-0.5">{l}</div>
@@ -337,12 +458,113 @@ export default function DispatcherDriverManagement() {
                         </div>
                       ))}
                     </div>
+                    <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-chalk">
+                      <DocumentCard
+                        url={drawerDriver.idCardFrontUrl}
+                        title="Ảnh CCCD"
+                        alt="CCCD"
+                        onClick={() => drawerDriver.idCardFrontUrl && setZoomedImage(resolveMediaUrl(drawerDriver.idCardFrontUrl))}
+                      />
+                      <DocumentCard
+                        url={drawerDriver.licenseImageUrl}
+                        title="Ảnh Bằng Lái"
+                        alt="Bằng Lái"
+                        onClick={() => drawerDriver.licenseImageUrl && setZoomedImage(resolveMediaUrl(drawerDriver.licenseImageUrl))}
+                      />
+                    </div>
+                  </section>
+
+                  {/* Current Assignment */}
+                  <section>
+                    <div className="text-[10px] font-bold text-slate uppercase tracking-wider mb-2">Nhiệm Vụ Hiện Tại</div>
+                    {drawerDriver.currentTask ? (
+                      <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 space-y-2 text-xs">
+                        <div className="flex justify-between items-center border-b border-orange-200 pb-2 mb-2">
+                          <span className="font-mono font-extrabold text-signal-orange">{drawerDriver.currentTask}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800">
+                            {TASK_STATUS_LABEL[drawerDriver.currentTaskStatus] || drawerDriver.currentTaskStatus}
+                          </span>
+                        </div>
+                        {[
+                          ['Phương tiện', drawerDriver.currentVehicle + ' · ' + drawerDriver.currentVehiclePlate],
+                          ['Loại xe', VEHICLE_TYPE_LABELS[drawerDriver.currentVehicleType] || drawerDriver.currentVehicleType],
+                          ['Container', drawerDriver.currentContainer],
+                          ['Xuất phát', drawerDriver.currentOrigin],
+                          ['Điểm đến', drawerDriver.currentDestination],
+                          ['ETA dự kiến', drawerDriver.eta],
+                        ].map(([l, v]) => (
+                          <div key={l} className="flex justify-between">
+                            <span className="text-slate">{l}:</span>
+                            <span className="font-bold text-carbon">{v}</span>
+                          </div>
+                        ))}
+                        <p className="text-[10px] text-slate italic pt-1 border-t border-orange-200">Phân công qua lệnh điều phối · Không gắn cố định theo xe</p>
+                      </div>
+                    ) : (
+                      <div className="bg-green-50 border border-green-200 rounded-xl p-4 text-center space-y-1">
+                        <span className="material-symbols-outlined text-green-500 text-[32px]">check_circle</span>
+                        <div className="text-sm font-bold text-green-800">Không có nhiệm vụ đang thực hiện</div>
+                        <div className="text-xs text-green-700">🟢 Tài xế sẵn sàng nhận lệnh mới</div>
+                      </div>
+                    )}
+                  </section>
+
+                  {/* Today's Activity */}
+                  <section>
+                    <div className="text-[10px] font-bold text-slate uppercase tracking-wider mb-2">Hoạt Động Hôm Nay</div>
+                    <div className="grid grid-cols-3 gap-2 text-xs">
+                      {[
+                        ['Nhiệm vụ', drawerDriver.todayTasks, 'task_alt', 'text-blue-600'],
+                        ['Giờ làm', drawerDriver.todayWorkingTime, 'schedule', 'text-purple-600'],
+                        ['Quãng đường', drawerDriver.todayDistance, 'route', 'text-green-600'],
+                        ['Container', drawerDriver.todayContainers, 'inventory_2', 'text-signal-orange'],
+                        ['Trễ hạn', drawerDriver.todayDelays, 'warning', 'text-red-500'],
+                      ].map(([l, v, icon, color]) => (
+                        <div key={l} className="bg-fog border border-chalk rounded-xl p-3 text-center">
+                          <span className={`material-symbols-outlined text-[20px] ${color}`}>{icon}</span>
+                          <div className={`font-extrabold text-base ${color}`}>{v}</div>
+                          <div className="text-[10px] text-slate leading-tight">{l}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+
+                  {/* Recent Tasks */}
+                  <section>
+                    <div className="text-[10px] font-bold text-slate uppercase tracking-wider mb-2">Nhiệm Vụ Gần Đây</div>
+                    {drawerDriver.recentTasks.length === 0
+                      ? <div className="text-xs text-slate text-center py-4 bg-fog rounded-xl border border-chalk">Chưa có nhiệm vụ nào.</div>
+                      : drawerDriver.recentTasks.map(task => (
+                        <div key={task.id} className="bg-fog border border-chalk rounded-xl p-3 text-xs space-y-1 mb-2">
+                          <div className="flex justify-between items-center">
+                            <span className="font-mono font-extrabold text-signal-orange">{task.id}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${task.status === 'COMPLETED' ? 'bg-green-100 text-green-800' : task.status === 'IN_TRANSIT' ? 'bg-purple-100 text-purple-800' : 'bg-blue-100 text-blue-800'}`}>
+                              {TASK_STATUS_LABEL[task.status] || task.status}
+                            </span>
+                          </div>
+                          <div className="font-semibold text-carbon">{task.type} · {task.container}</div>
+                          <div className="text-slate">{task.origin} → {task.destination}</div>
+                          <div className="text-[10px] text-slate">{task.time}</div>
+                        </div>
+                      ))
+                    }
                   </section>
                 </>
               )}
             </div>
           </div>
         </>
+      )}
+
+      {/* ═══ ZOOMED IMAGE MODAL ═══ */}
+      {zoomedImage && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-carbon/80 backdrop-blur-sm p-4" onClick={() => setZoomedImage(null)}>
+          <button className="absolute top-6 right-6 text-white hover:text-signal-orange bg-carbon/50 w-10 h-10 rounded-full flex items-center justify-center backdrop-blur-md">
+            <span className="material-symbols-outlined text-2xl">close</span>
+          </button>
+          <img src={zoomedImage} alt="Zoomed" className="max-w-full max-h-[90vh] object-contain rounded-xl shadow-2xl" onClick={e => e.stopPropagation()} 
+               onLoad={e => { if (e.target.naturalHeight > e.target.naturalWidth) e.target.style.transform = 'rotate(-90deg) scale(1.1)'; else e.target.style.transform = 'none'; }} />
+        </div>
       )}
 
       {/* ═══ ADD DRIVER MODAL ═══ */}
@@ -361,6 +583,61 @@ export default function DispatcherDriverManagement() {
                 </button>
               </div>
               <form onSubmit={handleAddDriver} className="px-6 py-5 space-y-4">
+                <div className="mb-4 space-y-3">
+                  <div className="flex items-center gap-4 p-4 border border-dashed border-chalk rounded-xl bg-fog">
+                    <AvatarCircle driver={{ photoUrl: form.photoUrl || form.idCardFrontUrl, fullName: form.fullName }} />
+                    <div className="flex-1 flex gap-2">
+                      <div className="flex-1">
+                        <label className={`inline-flex items-center justify-center w-full px-2 py-2 bg-white border border-chalk rounded-lg text-[11px] font-bold ${ocrLoading ? 'text-slate opacity-70 cursor-not-allowed' : 'text-carbon hover:bg-mist cursor-pointer'} relative overflow-hidden transition-colors shadow-sm`}>
+                          {ocrLoading ? '⏳ Đang quét...' : '📷 Quét CCCD'}
+                          <input type="file" accept="image/*" onChange={handleOcrUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={ocrLoading} />
+                        </label>
+                      </div>
+                      <div className="flex-1">
+                        <label className={`inline-flex items-center justify-center w-full px-2 py-2 bg-white border border-chalk rounded-lg text-[11px] font-bold ${ocrLoading ? 'text-slate opacity-70 cursor-not-allowed' : 'text-carbon hover:bg-mist cursor-pointer'} relative overflow-hidden transition-colors shadow-sm`}>
+                          {ocrLoading ? '⏳ Đang quét...' : '📷 Quét GPLX'}
+                          <input type="file" accept="image/*" onChange={handleGplxUpload} className="absolute inset-0 opacity-0 cursor-pointer" disabled={ocrLoading} />
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {(form.idCardFrontUrl || form.licenseImageUrl) && (
+                    <div className="grid grid-cols-2 gap-3 p-3 bg-white border border-chalk rounded-xl">
+                      {form.idCardFrontUrl && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-slate uppercase flex items-center gap-1">
+                            <span className="material-symbols-outlined text-xs text-green-600">check_circle</span>
+                            Ảnh CCCD đã quét
+                          </span>
+                          <div className="h-20 bg-fog rounded-lg border border-chalk overflow-hidden cursor-pointer hover:border-signal-orange relative group" onClick={() => setZoomedImage(resolveMediaUrl(form.idCardFrontUrl))}>
+                            <img src={resolveMediaUrl(form.idCardFrontUrl) || undefined} alt="CCCD Scan" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+                            <div className="absolute inset-0 bg-carbon/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                              <span className="material-symbols-outlined text-sm">zoom_in</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {form.licenseImageUrl && (
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-bold text-slate uppercase flex items-center gap-1">
+                            <span className="material-symbols-outlined text-xs text-green-600">check_circle</span>
+                            Ảnh GPLX đã quét
+                          </span>
+                          <div className="h-20 bg-fog rounded-lg border border-chalk overflow-hidden cursor-pointer hover:border-signal-orange relative group" onClick={() => setZoomedImage(resolveMediaUrl(form.licenseImageUrl))}>
+                            <img src={resolveMediaUrl(form.licenseImageUrl) || undefined} alt="GPLX Scan" className="w-full h-full object-contain group-hover:scale-105 transition-transform" />
+                            <div className="absolute inset-0 bg-carbon/20 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition-opacity">
+                              <span className="material-symbols-outlined text-sm">zoom_in</span>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <p className="text-[10px] text-slate leading-tight">Tự động trích xuất thông tin và lưu ảnh trực tiếp lên AWS S3.</p>
+                </div>
+
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
                     <label className="block text-[10px] font-bold text-slate uppercase mb-1">Họ và Tên <span className="text-red-500">*</span></label>

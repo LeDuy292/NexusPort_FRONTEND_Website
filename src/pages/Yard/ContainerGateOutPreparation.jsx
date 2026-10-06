@@ -105,16 +105,16 @@ const GATE_OUT_REQUESTS = [
 ]
 
 const URGENCY_CFG = {
-  CRITICAL: { cls: 'bg-red-200 text-red-950 border-red-500',       label: '🔴 KHẨN CẤP' },
-  HIGH:     { cls: 'bg-orange-100 text-orange-950 border-orange-400', label: '🟠 ƯU TIÊN CAO' },
-  MEDIUM:   { cls: 'bg-amber-100 text-amber-950 border-amber-400',   label: '🟡 TRUNG BÌNH' },
-  LOW:      { cls: 'bg-emerald-100 text-emerald-950 border-emerald-400', label: '🟢 THÔNG THƯỜNG' },
+  CRITICAL: { cls: 'bg-red-200 text-red-950 border-red-500', label: '🔴 KHẨN CẤP' },
+  HIGH: { cls: 'bg-orange-100 text-orange-950 border-orange-400', label: '🟠 ƯU TIÊN CAO' },
+  MEDIUM: { cls: 'bg-amber-100 text-amber-950 border-amber-400', label: '🟡 TRUNG BÌNH' },
+  LOW: { cls: 'bg-emerald-100 text-emerald-950 border-emerald-400', label: '🟢 THÔNG THƯỜNG' },
 }
 
 const STATUS_CFG = {
-  'CHỜ TIẾP NHẬN':   { cls: 'bg-amber-100 text-amber-950 border-amber-400',    icon: '⏳' },
-  'ĐANG THỰC HIỆN':  { cls: 'bg-blue-100 text-blue-950 border-blue-400',       icon: '⚡' },
-  'HOÀN THÀNH':      { cls: 'bg-emerald-100 text-emerald-950 border-emerald-400', icon: '✓' },
+  'CHỜ TIẾP NHẬN': { cls: 'bg-amber-100 text-amber-950 border-amber-400', icon: '⏳' },
+  'ĐANG THỰC HIỆN': { cls: 'bg-blue-100 text-blue-950 border-blue-400', icon: '⚡' },
+  'HOÀN THÀNH': { cls: 'bg-emerald-100 text-emerald-950 border-emerald-400', icon: '✓' },
 }
 
 // ─── DETAIL EXECUTION VIEW ────────────────────────────────────────────────────
@@ -224,11 +224,10 @@ function GateOutDetailView({ request, onBack, showToast }) {
         <div className="flex items-center gap-0">
           {FLOW_STEPS.map((step, idx) => (
             <React.Fragment key={idx}>
-              <div className={`flex-1 py-2 px-1 text-center rounded-lg border-2 text-[10px] font-black font-mono transition-all ${
-                flowStep === idx ? 'bg-orange-500 text-white border-orange-600 shadow-md'
-                : flowStep > idx  ? 'bg-emerald-100 text-emerald-950 border-emerald-400'
-                : 'bg-white text-slate-400 border-slate-200'
-              }`}>
+              <div className={`flex-1 py-2 px-1 text-center rounded-lg border-2 text-[10px] font-black font-mono transition-all ${flowStep === idx ? 'bg-orange-500 text-white border-orange-600 shadow-md'
+                  : flowStep > idx ? 'bg-emerald-100 text-emerald-950 border-emerald-400'
+                    : 'bg-white text-slate-400 border-slate-200'
+                }`}>
                 {flowStep > idx ? '✓ ' : ''}{step}
               </div>
               {idx < FLOW_STEPS.length - 1 && <div className="w-3 h-0.5 bg-slate-300 flex-shrink-0" />}
@@ -405,13 +404,12 @@ function GateOutDetailView({ request, onBack, showToast }) {
               </label>
 
               <button onClick={handleConfirmLoaded} disabled={!allChecksPassed || flowStep === 4}
-                className={`w-full h-16 rounded-xl font-black text-base flex items-center justify-center gap-2 border-2 transition-all ${
-                  allChecksPassed && flowStep < 4
+                className={`w-full h-16 rounded-xl font-black text-base flex items-center justify-center gap-2 border-2 transition-all ${allChecksPassed && flowStep < 4
                     ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-950 border-emerald-400 cursor-pointer shadow-md'
                     : flowStep === 4
                       ? 'bg-emerald-100 text-emerald-950 border-emerald-400 cursor-default'
                       : 'bg-slate-100 text-slate-400 border-slate-300 cursor-not-allowed'
-                }`}>
+                  }`}>
                 <span className="material-symbols-outlined text-2xl">check_circle</span>
                 {flowStep === 4 ? '✓ ĐÃ XÁC NHẬN HOÀN TẤT' : '[ XÁC NHẬN ĐÃ CẨU CONTAINER LÊN XE ]'}
               </button>

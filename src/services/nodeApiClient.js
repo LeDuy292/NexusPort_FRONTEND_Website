@@ -15,19 +15,24 @@ const request = async (method, path, { params, body } = {}) => {
     if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value))
   })
   const token = getToken()
-  const response = await fetch(url, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
-  })
+  let response
+  try {
+    response = await fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+    })
+  } catch {
+    throw new Error('Không thể kết nối đến dịch vụ quản lý Container. Vui lòng thử lại sau.')
+  }
 
   if (response.status === 204) return null
   const payload = await response.json().catch(() => ({}))
   if (!response.ok || payload.success === false) {
-    const error = new Error(payload?.error?.message || payload?.message || `HTTP ${response.status}`)
+    const error = new Error(payload?.error?.message || payload?.message || `Yêu cầu không thành công (HTTP ${response.status}).`)
     error.status = response.status
     error.code = payload?.error?.code
     error.details = payload?.error?.details

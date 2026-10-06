@@ -1,17 +1,51 @@
 import React, { useState, useEffect, useMemo } from 'react'
-import { bookingService } from '../../services/bookingService'
+import apiClient from '../../services/apiClient'
 
 export default function GateBookings() {
   const [bookings, setBookings] = useState([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
+  const [gateFilter, setGateFilter] = useState('All')
   const [operationFilter, setOperationFilter] = useState('All')
+  const [dateFilter, setDateFilter] = useState('All')
   
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [showCheckInModal, setShowCheckInModal] = useState(false)
   const [toastMessage, setToastMessage] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+
+  useEffect(() => {
+    loadBookings()
+  }, [])
+
+  const loadBookings = async () => {
+    setLoading(true)
+    try {
+      const res = await apiClient.get('/v1/booking')
+      const items = res.data?.items || res.data || []
+      const mapped = items.map((b) => ({
+        id: b.id || b.bookingNumber,
+        company: b.carrierName || 'Hãng Vận Tải',
+        vehicleId: b.vehiclePlate || 'TRK-AUTO',
+        licensePlate: b.vehiclePlate || '—',
+        driverName: b.driverName || '—',
+        licenseStatus: 'Valid',
+        containerId: b.containers?.[0]?.containerNumber || '—',
+        containerType: b.containers?.[0]?.containerType || '40HC',
+        operation: b.operationType || 'Pickup',
+        gate: 'Gate A',
+        status: b.status || 'Approved',
+        date: b.timeSlotStart ? b.timeSlotStart.split('T')[0] : 'Hôm nay',
+        dateDisplay: b.timeSlotStart ? new Date(b.timeSlotStart).toLocaleDateString('vi-VN') : 'Hôm nay',
+      }))
+      setBookings(mapped)
+    } catch (err) {
+      setBookings([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const showToast = (msg) => { setToastMessage(msg); setTimeout(() => setToastMessage(''), 3500) }
 

@@ -3,7 +3,12 @@ import { Navigate, Outlet } from 'react-router-dom'
 
 export default function ProtectedRoute() {
   const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
-  const user = storedUser ? JSON.parse(storedUser) : null
+  let user = null
+  try {
+    user = storedUser ? JSON.parse(storedUser) : null
+  } catch {
+    user = null
+  }
 
   // Nếu chưa đăng nhập, chuyển hướng sang trang login
   if (!user) {
@@ -13,3 +18,4 @@ export default function ProtectedRoute() {
   // Nếu đã đăng nhập, render các route con bên trong
   return <Outlet />
 }
+
