@@ -374,8 +374,8 @@ export default function MainLayout() {
                 key={item.path}
                 to={item.path}
                 className={`flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${isActive
-                    ? 'bg-fog border-l-4 border-signal-orange text-[#ff682c] font-bold'
-                    : 'text-graphite hover:bg-mist hover:text-carbon'
+                  ? 'bg-fog border-l-4 border-signal-orange text-[#ff682c] font-bold'
+                  : 'text-graphite hover:bg-mist hover:text-carbon'
                   }`}
               >
                 {/* Material Icon (loaded from index.html) */}

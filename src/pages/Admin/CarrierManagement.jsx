@@ -198,13 +198,6 @@ export default function CarrierManagement() {
         </div>
       )}
 
-      {/* Warning business rule banner */}
-      <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex gap-3 text-xs text-orange-800">
-        <span className="material-symbols-outlined text-signal-orange text-lg">info</span>
-        <div>
-          <strong className="font-bold">Lưu ý nghiệp vụ:</strong> Phân hệ quản lý đối tác Hãng tàu và Đơn vị vận tải ngoại cảng (Carrier & Transport Company Master Data) dành riêng cho quản trị viên. Các thao tác lập kế hoạch tàu cập bến, điều động xếp dỡ bãi hoặc điều xe thuộc về nhiệm vụ của nhân viên <strong className="font-semibold text-orange-950">Điều độ cảng (Dispatcher)</strong>.
-        </div>
-      </div>
 
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -449,9 +442,7 @@ export default function CarrierManagement() {
                         onChange={(e) => setEditFormData({ ...editFormData, companyName: e.target.value })}
                       />
                     </div>
-                  ) : (
-                    <div className="text-sm font-bold text-carbon">Website: {selectedCarrier.website}</div>
-                  )}
+                  ) : null}
                   <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold border mt-1 ${selectedCarrier.status === 'Hoạt động' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
                     }`}>
                     {selectedCarrier.status}
@@ -469,19 +460,7 @@ export default function CarrierManagement() {
                     <span className="text-slate block">Ngày tham gia:</span>
                     <span className="font-mono font-semibold text-carbon">{selectedCarrier.regDate}</span>
                   </div>
-                  <div>
-                    <span className="text-slate block">Website:</span>
-                    {isEditingDetail ? (
-                      <input
-                        type="text"
-                        className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full focus:outline-none focus:border-signal-orange"
-                        value={editFormData.website}
-                        onChange={(e) => setEditFormData({ ...editFormData, website: e.target.value })}
-                      />
-                    ) : (
-                      <span className="font-semibold text-carbon">{selectedCarrier.website}</span>
-                    )}
-                  </div>
+
                   <div className="col-span-2">
                     <span className="text-slate block">Địa chỉ:</span>
                     {isEditingDetail ? (
@@ -711,16 +690,7 @@ export default function CarrierManagement() {
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-slate font-bold">Website</label>
-                  <input
-                    type="text"
-                    value={newCarrier.website}
-                    onChange={(e) => setNewCarrier({ ...newCarrier, website: e.target.value })}
-                    placeholder="VD: www.company.com"
-                    className="w-full bg-fog border border-chalk rounded-lg p-2.5 focus:outline-none focus:border-signal-orange font-mono"
-                  />
-                </div>
+
                 <div className="space-y-1 col-span-2">
                   <label className="text-slate font-bold">Địa chỉ văn phòng tại Việt Nam</label>
                   <AddressAutocomplete
