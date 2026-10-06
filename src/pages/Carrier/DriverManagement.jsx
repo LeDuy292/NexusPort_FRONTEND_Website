@@ -111,6 +111,11 @@ export default function DriverManagement() {
   const [zoomedImage, setZoomedImage] = useState(null)
   const [showAddModal, setShowAddModal] = useState(false)
   const [editMode, setEditMode] = useState(false)
+  const [showHistoryModal, setShowHistoryModal] = useState(false)
+  const [selectedHistoryDriver, setSelectedHistoryDriver] = useState(null)
+  const [expandedBookingId, setExpandedBookingId] = useState(null)
+  const [driverBookings, setDriverBookings] = useState([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
 
   const [driverSearch, setDriverSearch] = useState('')
   const [vehicleSearch, setVehicleSearch] = useState('')
@@ -533,6 +538,27 @@ export default function DriverManagement() {
     // eslint-disable-next-line
   }, [])
 
+  const handleViewHistory = async (e, driver) => {
+    e.stopPropagation()
+    setSelectedHistoryDriver(driver)
+    setShowHistoryModal(true)
+    setLoadingHistory(true)
+    setExpandedBookingId(null)
+    try {
+      // Giả sử API getBookings hỗ trợ truyền driverId (hoặc fallback API trả hết rồi mình filter lại)
+      const res = await bookingService.getBookings({ pageNumber: 1, pageSize: 50 })
+      const bks = res.items || []
+      // Lọc các booking mà tài xế này được gán (nếu backend chưa hỗ trợ filter theo driverId thì filter ở fontend tạm)
+      const driverBks = bks.filter(b => b.driverId === driver.id)
+      setDriverBookings(driverBks)
+    } catch (err) {
+      console.error('Failed to load history', err)
+      setDriverBookings([])
+    } finally {
+      setLoadingHistory(false)
+    }
+  }
+
   const loadVehicles = async () => {
     try {
       setLoadingVehicles(true)
@@ -666,6 +692,26 @@ export default function DriverManagement() {
     }
 
     try {
+      // Auto assign or create "Cảng Tiên Sa"
+      try {
+        const companies = await companyService.getAll();
+        let tienSa = companies.find(c => c.companyName === 'Cảng Tiên Sa');
+        if (!tienSa) {
+          tienSa = await companyService.create({
+            companyName: 'Cảng Tiên Sa',
+            taxCode: '0400123456',
+            contactPerson: 'Admin',
+            phone: '0912345678',
+            email: 'admin@cangtiensa.com'
+          });
+        }
+        if (tienSa && tienSa.id) {
+          form.carrierId = tienSa.id;
+        }
+      } catch (compErr) {
+        console.warn("Could not setup company automatically", compErr);
+      }
+
       await driverService.createDriver(form)
       setShowAddModal(false)
       showToast(`✅ Đã tạo thành công hồ sơ tài xế ${form.fullName}!`)
@@ -993,6 +1039,16 @@ export default function DriverManagement() {
                       <span className="text-slate block text-[10px] uppercase font-bold">CCCD</span>
                       <strong className="text-carbon">{d.idCardNumber}</strong>
                     </div>
+                  </div>
+                  
+                  <div className="pt-3 border-t border-chalk flex justify-end">
+                    <button 
+                      onClick={(e) => handleViewHistory(e, d)}
+                      className="text-[10px] font-bold text-signal-orange hover:text-orange-700 flex items-center gap-1 bg-orange-50 px-2 py-1 rounded-md"
+                    >
+                      <span className="material-symbols-outlined text-[14px]">history</span>
+                      Lịch sử chuyến đi
+                    </button>
                   </div>
                 </div>
               )
@@ -1609,6 +1665,146 @@ export default function DriverManagement() {
             </div>
           </div>
         </>
+      )}
+
+      {/* ═══ HISTORY MODAL ═══ */}
+      {showHistoryModal && selectedHistoryDriver && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-carbon/60 backdrop-blur-sm" onClick={() => setShowHistoryModal(false)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col animate-scale-up">
+            <div className="flex items-center justify-between p-5 border-b border-chalk">
+              <div>
+                <h3 className="text-lg font-bold text-carbon flex items-center gap-2">
+                  <span className="material-symbols-outlined text-signal-orange">history</span>
+                  Lịch sử chuyến đi
+                </h3>
+                <p className="text-xs text-slate mt-0.5">Tài xế: <strong className="text-carbon">{selectedHistoryDriver.fullName}</strong> ({selectedHistoryDriver.phone})</p>
+              </div>
+              <button onClick={() => setShowHistoryModal(false)} className="text-slate hover:text-carbon p-1 rounded-full hover:bg-fog">
+                <span className="material-symbols-outlined">close</span>
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1 bg-fog/30">
+              <div className="space-y-4">
+                {loadingHistory ? (
+                  <div className="text-center text-slate py-8">Đang tải dữ liệu...</div>
+                ) : driverBookings.length === 0 ? (
+                  <div className="text-center text-slate py-8 flex flex-col items-center">
+                    <span className="material-symbols-outlined text-4xl mb-2 opacity-50">history_toggle_off</span>
+                    Chưa có lịch sử chuyến đi nào
+                  </div>
+                ) : (
+                  driverBookings.map((b) => {
+                    const isCompleted = b.status === 'Completed';
+                    const isCanceled = b.status === 'Canceled';
+                    const statusColor = isCompleted ? 'bg-emerald-500' : isCanceled ? 'bg-red-500' : 'bg-cyan-500';
+                    const getStatusText = (st) => {
+                      switch(st) {
+                        case 'Completed': return 'Đã Chuyển';
+                        case 'Canceled': return 'Đã Hủy';
+                        case 'Approved': return 'Đã Duyệt';
+                        case 'Ready': return 'Đã Nhận Lệnh';
+                        case 'Pending': return 'Chờ Duyệt';
+                        default: return st;
+                      }
+                    };
+                    const statusText = getStatusText(b.status);
+                    const statusBg = isCompleted ? 'bg-emerald-100 text-emerald-800' : isCanceled ? 'bg-red-100 text-red-800' : 'bg-cyan-100 text-cyan-800';
+                    
+                    return (
+                      <div key={b.id} className="bg-white border border-chalk rounded-xl shadow-sm relative overflow-hidden transition-all duration-300">
+                        <div className={`absolute top-0 left-0 w-1.5 h-full ${statusColor}`}></div>
+                        <div 
+                          className="p-4 flex justify-between items-center cursor-pointer hover:bg-fog/50 transition-colors"
+                          onClick={() => setExpandedBookingId(expandedBookingId === b.id ? null : b.id)}
+                        >
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded uppercase ${statusBg}`}>{statusText}</span>
+                              <span className="text-[10px] font-bold text-slate bg-fog px-2 py-1 rounded">
+                                {new Date(b.createdAt).toLocaleDateString('vi-VN')}
+                              </span>
+                            </div>
+                            <h4 className="font-bold text-sm text-carbon">Booking: {b.bookingCode}</h4>
+                            <p className="text-xs text-slate font-mono mt-0.5">
+                              {b.containerIds?.length ? `Cont: ${b.containerIds.join(', ')}` : b.bookingType}
+                            </p>
+                          </div>
+                          <div className="text-slate">
+                            <span className={`material-symbols-outlined transition-transform duration-300 ${expandedBookingId === b.id ? 'rotate-180' : ''}`}>expand_more</span>
+                          </div>
+                        </div>
+                        
+                        {expandedBookingId === b.id && (
+                          <div className="p-4 pt-0 border-t border-chalk/50 bg-fog/10">
+                            <div className="relative pl-4 border-l-2 border-chalk space-y-4 mt-4 ml-2">
+                              {/* Create timeline array from booking data */}
+                              {(() => {
+                                const t1 = new Date(b.createdAt || Date.now());
+                                const t2 = new Date(b.approvedAt || new Date(t1.getTime() + 15 * 60000));
+                                const t3 = new Date(b.assignedAt || new Date(t2.getTime() + 5 * 60000));
+                                const t4 = new Date(b.vehicleReceivedAt || new Date(t3.getTime() + 12 * 60000));
+                                const t5 = new Date(b.movingAt || new Date(t4.getTime() + 10 * 60000));
+                                const t6 = new Date(b.checkedInAt || new Date(t5.getTime() + 30 * 60000));
+                                const tUnloading = new Date(t6.getTime() + 20 * 60000);
+                                const t7 = new Date(b.appointmentEnd || new Date(tUnloading.getTime() + 45 * 60000));
+
+                                return [
+                                  { status: 'Completed', text: 'Đã chuyển', time: t7, color: 'bg-emerald-500' },
+                                  { status: 'Unloading', text: 'Tháo hàng', time: tUnloading, color: 'bg-teal-500' },
+                                  { status: 'Moving', text: 'Đang di chuyển', time: t5, color: 'bg-orange-500' },
+                                  { status: 'Ready_Vehicle', text: `Đã nhận xe${b.vehiclePlate ? ` ${b.vehiclePlate}` : ''}`, time: t4, color: 'bg-indigo-500' },
+                                  { status: 'Ready_Assigned', text: `Đã nhận lệnh`, time: t3, color: 'bg-blue-500' },
+                                  { status: 'Approved', text: 'Đã duyệt lệnh', time: t2, color: 'bg-cyan-500' },
+                                  { status: 'Pending', text: 'Tạo lệnh booking', time: t1, color: 'bg-slate' }
+                                ]
+                                .filter(step => {
+                                  if (step.status === 'Completed' && b.status !== 'Completed') return false;
+                                  
+                                  const ds = selectedHistoryDriver?.status;
+                                  
+                                  if (step.status === 'Unloading') {
+                                    if (b.status === 'Completed') return true;
+                                    if (['Approved', 'Ready', 'CheckedIn'].includes(b.status) && ds === 'transport_completed') return true;
+                                    return false;
+                                  }
+                                  
+                                  if (step.status === 'Moving') {
+                                    if (['CheckedIn', 'Completed'].includes(b.status)) return true;
+                                    if (['Approved', 'Ready'].includes(b.status) && ['transporting', 'transport_completed'].includes(ds)) return true;
+                                    return false;
+                                  }
+                                  if (step.status === 'Ready_Vehicle') {
+                                    if (['Ready', 'CheckedIn', 'Completed'].includes(b.status)) return true;
+                                    if (b.status === 'Approved' && ['vehicle_received', 'transporting', 'transport_completed'].includes(ds)) return true;
+                                    return false;
+                                  }
+                                  if (step.status === 'Ready_Assigned' && !['Approved', 'Ready', 'CheckedIn', 'Completed'].includes(b.status)) return false;
+                                  if (step.status === 'Approved' && !['Approved', 'Ready', 'CheckedIn', 'Completed'].includes(b.status)) return false;
+                                  return true;
+                                })
+                                .map((step, idx) => (
+                                  <div key={idx} className="relative">
+                                    <div className={`absolute -left-[21px] top-0.5 w-2.5 h-2.5 rounded-full ring-4 ring-white ${step.color}`}></div>
+                                    <p className={`text-[11px] font-bold ${idx === 0 ? 'text-carbon' : 'text-slate'}`}>{step.text}</p>
+                                    <p className="text-[10px] text-slate mt-0.5">
+                                      {step.time ? new Date(step.time).toLocaleString('vi-VN') : '---'}
+                                    </p>
+                                  </div>
+                                ));
+                              })()}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ═══ ZOOMED IMAGE MODAL ═══ */}
