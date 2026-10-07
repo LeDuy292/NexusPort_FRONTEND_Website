@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import driverService from '../../services/driverService'
 import vehicleService from '../../services/vehicleService'
 import { bookingService } from '../../services/bookingService'
+import { companyService } from '../../services/companyService'
 
 import { resolveMediaUrl } from '../../utils/mediaUtils'
 

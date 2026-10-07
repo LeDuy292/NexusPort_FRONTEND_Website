@@ -2,6 +2,12 @@ import React, { useState, useMemo, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { bookingService } from '../../services/bookingService'
 import { companyService } from '../../services/companyService'
+import { yardOperationService } from '../../services/yardOperationService'
+import apiClient from '../../services/apiClient'
+import MiniYardMap from '../../components/Yard/MiniYardMap'
+import DriverDetailModal from '../../components/Modals/DriverDetailModal'
+import VehicleDetailModal from '../../components/Modals/VehicleDetailModal'
+import CompanyDetailModal from '../../components/Modals/CompanyDetailModal'
 
 export default function GateBookingRequests() {
   const navigate = useNavigate()
@@ -18,6 +24,12 @@ export default function GateBookingRequests() {
 
   // Selected Booking Drawer State
   const [selectedBooking, setSelectedBooking] = useState(null)
+  const [reservedSlot, setReservedSlot] = useState(null)
+  const [blocksData, setBlocksData] = useState([])
+  const [selectedBlock, setSelectedBlock] = useState('A')
+  const [selectedBay, setSelectedBay] = useState('02')
+  const [selectedTierRow, setSelectedTierRow] = useState('T3-R5')
+  const [modalState, setModalState] = useState({ type: null, id: null })
 
   // Action Modals State
   const [showApproveModal, setShowApproveModal] = useState(false)
@@ -113,7 +125,35 @@ export default function GateBookingRequests() {
 
   useEffect(() => {
     fetchBookings()
+    fetchYardMap()
   }, [])
+
+  const fetchYardMap = async () => {
+    try {
+      const res = await apiClient.get('/v1/Yard/Map')
+      const blocks = Array.isArray(res) ? res : (res?.data || [])
+      setBlocksData(blocks)
+      if (blocks.length > 0) {
+        const firstCode = blocks[0].blockCode || blocks[0].description || 'A'
+        setSelectedBlock(firstCode)
+        setSelectedBay('01')
+      }
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const { selectedBlockObj, slotsByBay } = useMemo(() => {
+    const blockObj = blocksData.find(b => (b.blockCode || b.description || b.id) === selectedBlock) || {}
+    const bayMap = {}
+    if (blockObj.slots) {
+      blockObj.slots.forEach(slot => {
+        if (!bayMap[slot.bay]) bayMap[slot.bay] = []
+        bayMap[slot.bay].push(slot)
+      })
+    }
+    return { selectedBlockObj: blockObj, slotsByBay: bayMap }
+  }, [blocksData, selectedBlock])
 
   // 1. KPI Stats Calculation
   const kpiStats = useMemo(() => {
@@ -226,6 +266,14 @@ export default function GateBookingRequests() {
     }
   }
 
+  // Reserve Slot Handler
+  const handleReserveSlot = (slotId, blockCode, res) => {
+    if (res) {
+      setReservedSlot({ ...res, blockCode });
+      showToast(`✅ Đã giữ chỗ thành công Slot ở Block ${blockCode}!`);
+    }
+  }
+
   // Render Status Badge
   const renderStatusBadge = (status) => {
     switch (status) {
@@ -266,7 +314,7 @@ export default function GateBookingRequests() {
       
       {/* Toast Alert */}
       {toastMessage && (
-        <div className="fixed top-20 right-8 bg-carbon text-white px-6 py-3.5 rounded-2xl shadow-2xl text-xs font-extrabold flex items-center gap-3 z-50 animate-bounce border border-signal-orange">
+        <div className="fixed top-20 right-8 bg-carbon text-white px-6 py-3.5 rounded-2xl shadow-2xl text-xs font-extrabold flex items-center gap-3 z-[100] animate-bounce border border-signal-orange">
           <span className="material-symbols-outlined text-signal-orange text-base animate-spin">info</span>
           {toastMessage}
         </div>
@@ -588,7 +636,9 @@ export default function GateBookingRequests() {
                 <div className="flex justify-between items-center">
                   <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">1. TRANSPORT COMPANY</span>
                   <button
-                    onClick={() => showToast(`🏢 Mã Doanh nghiệp Vận tải: ${selectedBooking.companyId} (${selectedBooking.company})`)}
+                    onClick={() => {
+                      setModalState({ type: 'company', id: selectedBooking.companyId })
+                    }}
                     className="px-2.5 py-1 bg-white border border-chalk rounded-lg text-carbon font-bold text-[11px] hover:bg-slate-100"
                   >
                     View Company
@@ -636,7 +686,9 @@ export default function GateBookingRequests() {
                 <div className="flex justify-between items-center">
                   <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">3. VEHICLE INFORMATION</span>
                   <button
-                    onClick={() => navigate('/fleet')}
+                    onClick={() => {
+                      setModalState({ type: 'vehicle', id: selectedBooking.vehicleId })
+                    }}
                     className="px-2.5 py-1 bg-white border border-chalk rounded-lg text-carbon font-bold text-[11px] hover:bg-slate-100"
                   >
                     View Vehicle
@@ -657,7 +709,9 @@ export default function GateBookingRequests() {
                 <div className="flex justify-between items-center">
                   <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">4. DRIVER INFORMATION</span>
                   <button
-                    onClick={() => navigate('/dispatcher/drivers')}
+                    onClick={() => {
+                      setModalState({ type: 'driver', id: selectedBooking.driverId })
+                    }}
                     className="px-2.5 py-1 bg-white border border-chalk rounded-lg text-carbon font-bold text-[11px] hover:bg-slate-100"
                   >
                     View Driver
@@ -737,6 +791,301 @@ export default function GateBookingRequests() {
                   </div>
                 </div>
               </div>
+
+              {/* 9. YARD SLOT RESERVATION */}
+              <section className="bg-white rounded-xl border border-slate-200/90 shadow-sm overflow-hidden mb-6">
+                {/* Module Header */}
+                <div className="px-6 py-4 bg-gradient-to-r from-slate-50 via-white to-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-bold uppercase tracking-wider text-amber-700 flex items-center gap-2">
+                      9. YARD SLOT RESERVATION (ĐẶT TRƯỚC VỊ TRÍ BÃI)
+                    </h2>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Chọn trước vị trí bãi cho container này qua bản đồ 2D thu nhỏ theo thứ tự: Block → Bay → Ma trận Slot (Tier × Row).
+                    </p>
+                  </div>
+                </div>
+
+                <div className="p-6 space-y-6">
+                  {/* BƯỚC 1: Chọn Block */}
+                  <div>
+                    <div className="flex items-center justify-between mb-3">
+                      <label className="text-xs font-bold uppercase tracking-wide text-slate-700 flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-slate-900 text-white inline-flex items-center justify-center text-[11px] font-bold">1</span>
+                        Vui lòng chọn 1 Block:
+                      </label>
+                      <span className="text-xs text-slate-400">Tổng cộng: {blocksData.length} Block đang vận hành</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                      {blocksData.length === 0 && <div className="text-sm text-slate-500 col-span-full">Đang tải cấu trúc bãi từ máy chủ...</div>}
+                      {blocksData.map(block => {
+                        const code = block.blockCode || block.description || block.id;
+                        const isSelected = selectedBlock === code;
+                        const totalSlots = (block.maxBays || 10) * (block.maxRows || 6) * (block.maxTiers || 4);
+                        const occupied = block.slots?.filter(s => s.status === 'occupied').length || 0;
+                        const reserved = block.slots?.filter(s => s.status === 'reserved').length || 0;
+                        const isFull = totalSlots > 0 && occupied + reserved >= totalSlots;
+                        const fillPercent = totalSlots > 0 ? ((occupied + reserved) / totalSlots) * 100 : 0;
+                        return (
+                          <button 
+                            key={block.id} 
+                            onClick={() => { setSelectedBlock(code); setSelectedBay('01'); setSelectedTierRow('T1-R1'); }}
+                            className={`relative text-left p-4 rounded-xl transition-all ${isSelected ? 'border-2 border-orange-500 bg-orange-50/20 shadow-md ring-1 ring-orange-500/20' : 'border border-slate-200 bg-white hover:border-slate-300 hover:shadow'}`} 
+                            type="button">
+                            {isSelected && <div className="absolute -top-2.5 right-4 bg-orange-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">Đang chọn</div>}
+                            <div className="flex justify-between items-start mb-2">
+                              <span className={`text-base font-black tracking-tight truncate pr-2 ${isSelected ? 'text-orange-600' : 'text-slate-800'}`}>Block {code}</span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${isFull ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>{isFull ? 'Hết chỗ' : 'Còn trống'}</span>
+                            </div>
+                            <div className={`flex items-center justify-between text-xs mt-2 ${isSelected ? 'text-slate-600' : 'text-slate-500'}`}>
+                              <span>Đã chứa: <strong className={isSelected ? 'text-slate-800' : 'text-slate-700'}>{occupied}/{totalSlots}</strong></span>
+                              <span>Đã đặt: <strong className={isSelected ? 'text-slate-800' : 'text-slate-700'}>{reserved}</strong></span>
+                            </div>
+                            <div className={`w-full rounded-full h-1.5 mt-2.5 overflow-hidden ${isSelected ? 'bg-orange-100' : 'bg-slate-100'}`}>
+                              <div className={`h-1.5 rounded-full ${isSelected ? 'bg-orange-500' : 'bg-emerald-500'}`} style={{ width: `${Math.max(1, fillPercent)}%` }}></div>
+                            </div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* BƯỚC 2: Chọn Bay */}
+                  <div className="pt-4 border-t border-slate-100">
+                    <div className="flex flex-wrap items-center justify-between mb-3 gap-2">
+                      <div className="flex items-center space-x-3">
+                        <label className="text-xs font-bold uppercase tracking-wide text-slate-700 flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-slate-900 text-white inline-flex items-center justify-center text-[11px] font-bold">2</span>
+                          Chọn 1 Bay (Dãy) trong BLOCK {selectedBlock}:
+                        </label>
+                        <button className="text-xs text-sky-600 hover:text-sky-800 font-medium inline-flex items-center gap-1 transition-colors">
+                          <span className="material-symbols-outlined text-[14px]">arrow_back</span> Đổi Block khác
+                        </button>
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        Tiêu chuẩn xếp: <span className="font-semibold text-slate-700">Cont 20ft → Bay Lẻ/Chẵn</span>
+                      </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-2.5">
+                      {(() => {
+                        const maxBays = selectedBlockObj.maxBays || 10;
+                        const baysList = Object.keys(slotsByBay).sort((a,b) => parseInt(a) - parseInt(b));
+                        const baysToRender = baysList.length > 0 
+                          ? baysList.map(bayNum => ({
+                              id: bayNum.toString().padStart(2, '0'),
+                              max: (selectedBlockObj.maxRows || 6) * (selectedBlockObj.maxTiers || 4),
+                              empty: slotsByBay[bayNum].filter(s => s.status === 'empty').length
+                            }))
+                          : Array.from({ length: maxBays }, (_, i) => {
+                              const id = (i + 1).toString().padStart(2, '0');
+                              const seed = selectedBlock.charCodeAt(0) * (i + 1);
+                              return { id, empty: (seed * 17) % 49, max: 48 };
+                            });
+                        
+                        return baysToRender.map((bay) => {
+                          const isSelected = bay.id === selectedBay;
+                          const fillPercentage = bay.max > 0 ? ((bay.max - bay.empty) / bay.max) * 100 : 0;
+                        
+                        let colorClasses = "";
+                        let textClasses = "";
+                        let subTextClasses = "";
+                        
+                        if (isSelected) {
+                          colorClasses = "border-2 border-orange-500 bg-orange-50 font-medium shadow-sm ring-1 ring-orange-500/20";
+                          textClasses = "text-orange-600";
+                          subTextClasses = "text-orange-700";
+                        } else {
+                          if (fillPercentage >= 90) {
+                            colorClasses = "border border-red-300 bg-red-100 hover:border-red-400 hover:bg-red-200";
+                            textClasses = "text-red-900";
+                            subTextClasses = "text-red-700";
+                          } else if (fillPercentage >= 70) {
+                            colorClasses = "border border-orange-200 bg-orange-100 hover:border-orange-300 hover:bg-orange-200";
+                            textClasses = "text-orange-900";
+                            subTextClasses = "text-orange-700";
+                          } else if (fillPercentage >= 40) {
+                            colorClasses = "border border-amber-200 bg-amber-50 hover:border-amber-300 hover:bg-amber-100";
+                            textClasses = "text-amber-900";
+                            subTextClasses = "text-amber-700";
+                          } else if (fillPercentage >= 1) {
+                            colorClasses = "border border-emerald-200 bg-emerald-50 hover:border-emerald-300 hover:bg-emerald-100";
+                            textClasses = "text-emerald-800";
+                            subTextClasses = "text-emerald-600";
+                          } else {
+                            colorClasses = "border border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50";
+                            textClasses = "text-slate-700";
+                            subTextClasses = "text-slate-500";
+                          }
+                        }
+
+                        return (
+                          <button key={bay.id} onClick={() => setSelectedBay(bay.id)} className={`p-2.5 text-center rounded-lg transition ${colorClasses}`} type="button">
+                            <span className={`block text-xs font-black ${textClasses}`}>BAY {bay.id}</span>
+                            <span className={`text-[11px] font-semibold mt-0.5 block ${subTextClasses}`}>{bay.empty} trống</span>
+                          </button>
+                        );
+                      })})()}
+                    </div>
+                  </div>
+
+                  {/* BƯỚC 3: SƠ ĐỒ 2D MẶT CẮT BÃI */}
+                  <div className="pt-4 border-t border-slate-100">
+                    <div className="flex flex-wrap items-center justify-between mb-4 gap-2">
+                      <div>
+                        <label className="text-xs font-bold uppercase tracking-wide text-slate-700 flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-full bg-slate-900 text-white inline-flex items-center justify-center text-[11px] font-bold">3</span>
+                          Sơ đồ mặt cắt 2D - Chọn 1 Slot trong BAY {selectedBay}:
+                        </label>
+                        <p className="text-xs text-slate-400 mt-0.5">Trục đứng là Tầng (Tier T1 → T4), Trục ngang là Hàng (Row R1 → R6)</p>
+                      </div>
+                      
+                      <div className="flex items-center space-x-4 text-xs bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
+                        <div className="flex items-center space-x-1.5">
+                          <span className="w-3.5 h-3.5 rounded bg-emerald-50 border border-emerald-400 inline-block"></span>
+                          <span className="text-slate-600 font-medium">Khả dụng (Available)</span>
+                        </div>
+                        <div className="flex items-center space-x-1.5">
+                          <span className="w-3.5 h-3.5 rounded bg-orange-100 border-2 border-orange-500 inline-block"></span>
+                          <span className="text-slate-800 font-bold">Đang chọn (Selected)</span>
+                        </div>
+                        <div className="flex items-center space-x-1.5">
+                          <span className="w-3.5 h-3.5 rounded bg-slate-200 border border-slate-300 inline-block"></span>
+                          <span className="text-slate-400">Đã chiếm (Occupied)</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="bg-slate-50/70 border border-slate-200 rounded-2xl p-6 lg:p-8 flex flex-col items-center justify-center">
+                      <div className="w-full max-w-2xl">
+                        {[...Array(selectedBlockObj.maxTiers || 4)].map((_, i) => (selectedBlockObj.maxTiers || 4) - i).map((tier) => (
+                          <div key={`T${tier}`} className="flex items-center mb-3">
+                            <div className="w-12 text-xs font-bold text-slate-500 text-right pr-4 font-mono">T{tier}</div>
+                            <div className={`grid grid-cols-${selectedBlockObj.maxRows || 6} gap-3 flex-1`}>
+                              {[...Array(selectedBlockObj.maxRows || 6)].map((_, i) => i + 1).map((row) => {
+                                const slotId = `T${tier}-R${row}`;
+                                const isSelected = selectedTierRow === slotId;
+                                
+                                const baySlots = Object.keys(slotsByBay).length > 0 ? (slotsByBay[parseInt(selectedBay)] || slotsByBay[selectedBay] || []) : [];
+                                const slotData = baySlots.find(s => s.tier === tier && s.row === row);
+                                
+                                let isOccupied = false;
+                                if (slotData) {
+                                  isOccupied = slotData.status !== 'empty';
+                                } else if (Object.keys(slotsByBay).length === 0) {
+                                  // Fallback mock if no data
+                                  const seed = selectedBlock.charCodeAt(0) + parseInt(selectedBay);
+                                  isOccupied = ((seed * tier * row * 31) % 100) > 70;
+                                }
+                                
+                                if (isOccupied) {
+                                  const text = slotData && slotData.containerNumber ? slotData.containerNumber : 'Đã có Cont';
+                                  return (
+                                    <button key={slotId} className="h-11 rounded-lg bg-slate-200 border border-slate-300 text-slate-500 text-[10px] font-semibold flex flex-col items-center justify-center cursor-not-allowed overflow-hidden" title={text} type="button">
+                                      <span className="material-symbols-outlined text-[14px] text-slate-400">inventory_2</span>
+                                      <span className="truncate w-full px-1">{text}</span>
+                                    </button>
+                                  );
+                                }
+                                
+                                if (isSelected) {
+                                  const displayText = selectedBooking?.containerId || selectedBooking?.company || 'GIỮ CHỖ';
+                                  return (
+                                    <button key={slotId} onClick={() => setSelectedTierRow(slotId)} className="h-11 rounded-lg bg-orange-100 border-2 border-orange-500 text-orange-950 text-xs font-black shadow-[0_0_0_3px_rgba(249,115,22,0.35)] scale-[1.02] flex flex-col items-center justify-center relative cursor-pointer ring-2 ring-orange-400/40 overflow-hidden" title={`Vị trí đang chọn: ${slotId} cho ${displayText}`} type="button">
+                                      <span className="text-orange-900 leading-none mb-0.5 text-[9px] font-bold">R{row}</span>
+                                      <span className="text-[9px] text-orange-700 font-extrabold tracking-tight truncate w-full px-1 text-center leading-tight">{displayText}</span>
+                                    </button>
+                                  );
+                                }
+
+                                return (
+                                  <button key={slotId} onClick={() => setSelectedTierRow(slotId)} className="h-11 rounded-lg bg-emerald-50 border border-emerald-400 hover:border-emerald-600 text-emerald-800 text-xs font-bold transition flex items-center justify-center shadow-sm hover:shadow" type="button">
+                                    R{row}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                        
+                        <div className="flex items-center pt-2 border-t border-slate-200">
+                          <div className="w-12"></div>
+                          <div className={`grid grid-cols-${selectedBlockObj.maxRows || 6} gap-3 flex-1 text-center`}>
+                            {[...Array(selectedBlockObj.maxRows || 6)].map((_, i) => i + 1).map(row => (
+                              <span key={`header-R${row}`} className={`text-xs font-mono ${selectedTierRow.endsWith(`R${row}`) ? 'font-bold text-orange-600' : 'font-semibold text-slate-500'}`}>Row {row}</span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                      <div className="mt-4 p-4 rounded-xl bg-orange-50/60 border border-orange-200 flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 rounded-lg bg-orange-600 text-white flex items-center justify-center shadow-sm">
+                            <span className="material-symbols-outlined text-[20px]">my_location</span>
+                          </div>
+                          <div>
+                            <div className="text-xs uppercase font-bold text-orange-950">Vị trí cấp chỉ định:</div>
+                            <div className="text-sm font-extrabold text-orange-800 flex items-center gap-2">
+                              <span>BLOCK {selectedBlock}</span> • 
+                              <span>BAY {selectedBay}</span> • 
+                              <span>TIER {selectedTierRow.split('-')[0].substring(1).padStart(2, '0')}</span> • 
+                              <span>ROW {selectedTierRow.split('-')[1].substring(1).padStart(2, '0')}</span>
+                              <span className="ml-2 text-xs bg-orange-200/80 text-orange-900 px-2 py-0.5 rounded font-mono font-bold">
+                                POS ID: {selectedBlock}-{selectedBay}-{selectedTierRow}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex flex-col sm:flex-row items-center gap-4">
+                          <div className="flex items-center space-x-6 text-xs text-slate-600">
+                            <div>
+                              <span className="text-slate-400 block">Kiểm tra tải trọng tầng dưới:</span>
+                              <span className="font-bold text-emerald-700 flex items-center gap-1">
+                                <span className="material-symbols-outlined text-[14px]">check_circle</span> Đạt tải an toàn
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-slate-400 block">Cần cẩu RTG phụ trách:</span>
+                              <span className="font-bold text-slate-800">RTG-04 (Khu {selectedBlock})</span>
+                            </div>
+                          </div>
+                          <button
+                            onClick={async () => {
+                              try {
+                                const posId = `${selectedBlock}-${selectedBay}-${selectedTierRow}`;
+                                let res;
+                                
+                                // Call real API if slotData exists, otherwise call mock
+                                const baySlots = Object.keys(slotsByBay).length > 0 ? (slotsByBay[parseInt(selectedBay)] || slotsByBay[selectedBay] || []) : [];
+                                const slotData = baySlots.find(s => s.tier === parseInt(selectedTierRow.split('-')[0].replace('T', '')) && s.row === parseInt(selectedTierRow.split('-')[1].replace('R', '')));
+                                
+                                if (slotData) {
+                                  res = await apiClient.post(`/v1/Yard/Slots/${slotData.id}/Reserve`);
+                                } else {
+                                  res = await yardOperationService.reserveSlot({ posId });
+                                }
+
+                                if (res) {
+                                  // Call the parent's handler
+                                  handleReserveSlot(slotData ? slotData.id : selectedTierRow, selectedBlock, { bay: selectedBay });
+                                  // Refresh Map
+                                  fetchYardMap();
+                                }
+                              } catch(e) {
+                                showToast(`❌ Lỗi kết nối Backend! Không thể giữ chỗ.`);
+                              }
+                            }}
+                            className="whitespace-nowrap px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 shadow-sm flex items-center gap-2 transition"
+                          >
+                            <span className="material-symbols-outlined text-[16px]">how_to_reg</span>
+                            GHI NHẬN ĐẶT CHỖ
+                          </button>
+                        </div>
+                      </div>
+                  </div>
+                </div>
+              </section>
 
             </div>
 
@@ -894,6 +1243,23 @@ export default function GateBookingRequests() {
           </div>
         </div>
       )}
+
+      {/* DETAIL MODALS */}
+      <CompanyDetailModal 
+        isOpen={modalState.type === 'company'} 
+        companyId={modalState.id} 
+        onClose={() => setModalState({ type: null, id: null })} 
+      />
+      <VehicleDetailModal 
+        isOpen={modalState.type === 'vehicle'} 
+        vehicleId={modalState.id} 
+        onClose={() => setModalState({ type: null, id: null })} 
+      />
+      <DriverDetailModal 
+        isOpen={modalState.type === 'driver'} 
+        driverId={modalState.id} 
+        onClose={() => setModalState({ type: null, id: null })} 
+      />
 
     </div>
   )

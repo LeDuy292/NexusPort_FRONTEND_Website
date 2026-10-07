@@ -143,6 +143,46 @@ const apiClient = {
     // Handle 204 No Content which might not return JSON
     if (res.status === 204) return { data: null }
     return { data: await res.json().catch(() => ({})) }
+  },
+
+  delete: async (url, config = {}) => {
+    let fullUrl = `${API_URL}${url}`
+    if (config.params) {
+      const queryParams = new URLSearchParams()
+      Object.keys(config.params).forEach((key) => {
+        if (config.params[key] !== undefined && config.params[key] !== null) {
+          queryParams.append(key, config.params[key])
+        }
+      })
+      const queryString = queryParams.toString()
+      if (queryString) {
+        fullUrl += `?${queryString}`
+      }
+    }
+
+    const headers = { 'Content-Type': 'application/json' }
+    try {
+      const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
+      const user = stored ? JSON.parse(stored) : null
+      if (user && user.token) {
+        headers['Authorization'] = `Bearer ${user.token}`
+      }
+    } catch (e) {}
+
+    const res = await fetch(fullUrl, { method: 'DELETE', headers })
+    if (res.status === 401) {
+      localStorage.removeItem('user')
+      window.location.href = '/login'
+      throw new Error('Unauthorized')
+    }
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}))
+      const err = new Error(errorData.message || `HTTP error ${res.status}`)
+      err.response = { status: res.status, data: errorData }
+      throw err
+    }
+    if (res.status === 204) return { data: null };
+    return { data: await res.json().catch(() => null) }
   }
 }
 
