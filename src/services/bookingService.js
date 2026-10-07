@@ -251,6 +251,28 @@ export const bookingService = {
       console.warn('API error evaluating payload, using fallback:', error?.message)
       return null
     }
+  },
+
+  // Lấy thông tin cước phí & thanh toán từ Backend CSDL
+  getPaymentInfo: async (id) => {
+    try {
+      const response = await apiClient.get(`/v1/Booking/${id}/payment`)
+      return response.data
+    } catch (error) {
+      console.warn(`API error getting payment info for booking ${id}:`, error?.message)
+      return null
+    }
+  },
+
+  // Thực hiện / Xác nhận thanh toán cước cảng VietQR Napas 24/7
+  processPayment: async (id, paymentData = {}) => {
+    try {
+      const response = await apiClient.post(`/v1/Booking/${id}/payment`, paymentData)
+      return response.data
+    } catch (error) {
+      console.warn(`API error processing payment for booking ${id}:`, error?.message)
+      return null
+    }
   }
 }
 
