@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react'
 import CreateYardMoveModal from '../../components/Yard/CreateYardMoveModal'
+import CreateBlockModal from '../../components/Yard/CreateBlockModal'
 import apiClient from '../../services/apiClient'
 import {
   INITIAL_CONTAINERS,
@@ -39,6 +40,9 @@ export default function YardMap() {
   }, [])
 
   const isDispatcher = user.role === 'Dispatcher'
+
+  // Create Block Modal State
+  const [isCreateBlockModalOpen, setIsCreateBlockModalOpen] = useState(false)
 
   // Create Yard Move Modal State
   const [isMoveModalOpen, setIsMoveModalOpen] = useState(false)
@@ -181,12 +185,20 @@ export default function YardMap() {
         // Group slots by Bay for UI
         const baysMap = {}
         for (let i = 1; i <= (block.maxBays || 10); i++) {
-          baysMap[i] = { bayNumber: i, code: `${block.blockCode}-${i.toString().padStart(2, '0')}`, stack: 0, maintenanceCount: 0, type: 'empty', capacity: 0 }
+          baysMap[i] = { bayNumber: i, code: `BAY ${i.toString().padStart(2, '0')}`, stack: 0, maintenanceCount: 0, type: 'empty', capacity: 0, slotsState: [], nonEmptyCount: 0 }
         }
         slots.forEach(s => {
           if (baysMap[s.bay]) {
             baysMap[s.bay].capacity += 1;
-            if (s.containerId) {
+            
+            if (s.status !== 'empty') {
+              if (!baysMap[s.bay].slotsState.includes(s.status)) {
+                baysMap[s.bay].slotsState.push(s.status)
+              }
+              baysMap[s.bay].nonEmptyCount += 1;
+            }
+
+            if (s.containerId || s.status === 'occupied') {
               baysMap[s.bay].stack += 1
               baysMap[s.bay].type = 'dry'
             }
@@ -470,6 +482,19 @@ export default function YardMap() {
     return true
   })
 
+  const handleDeleteBlock = async (blockId, code) => {
+    if (!window.confirm(`Bạn có chắc muốn xóa Block ${code}? Tất cả các slot trong Block này sẽ bị xóa.`)) return;
+    try {
+      await apiClient.delete(`/v1/Yard/${blockId}`);
+      setBlocksData(prev => prev.filter(b => b.id !== blockId));
+      setToastMessage(`✅ Đã xóa Block ${code} thành công!`);
+      setTimeout(() => setToastMessage(''), 3000);
+    } catch (err) {
+      console.error(err);
+      setToastMessage(`❌ Lỗi khi xóa Block: ${err.message}`);
+    }
+  };
+
   return (
     <div className="p-6 sm:p-8 w-full font-sans flex flex-col gap-6 relative bg-mist">
       
@@ -541,6 +566,15 @@ export default function YardMap() {
               <span className="material-symbols-outlined text-[18px]">search</span>
             </button>
           </form>
+
+          {/* Create Block Button */}
+          <button 
+            onClick={() => setIsCreateBlockModalOpen(true)}
+            className="ml-auto flex items-center gap-2 bg-signal-orange text-white px-4 py-2 rounded-full font-bold shadow-sm hover:opacity-90 hover:shadow-md transition-all text-xs"
+          >
+            <span className="material-symbols-outlined text-[18px]">add</span>
+            TẠO BLOCK
+          </button>
         </div>
 
         {/* Stack Type Legend */}
@@ -606,25 +640,37 @@ export default function YardMap() {
               >
                 {/* Block Header Info */}
                 <div className="flex justify-between items-center font-bold font-mono border-b border-slate-200/80 pb-2.5">
-                  <div>
+                  <div className="flex-1 pr-2 overflow-hidden">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-extrabold text-slate-800">
-                        {block.id} ({block.code})
+                      <span className="text-base font-extrabold text-slate-800 uppercase truncate" title={block.code}>
+                        {block.code}
                       </span>
-                      <span className="text-[11px] font-sans font-bold">
+                      <span className="text-[11px] font-sans font-bold shrink-0">
                         {block.statusLabel.split(' ')[0]}
                       </span>
                     </div>
-                    <span className="text-[10px] font-sans text-slate-500 font-bold block mt-0.5">{block.type}</span>
+                    <span className="text-[10px] font-sans text-slate-500 font-bold block mt-0.5 truncate">{block.type}</span>
                   </div>
 
-                  <div className="text-right">
-                    <span className={`px-2.5 py-0.5 rounded text-xs font-extrabold ${block.badgeClass}`}>
-                      {block.occupancy}% Dung tích
-                    </span>
-                    <span className="text-[10px] text-slate-600 font-sans block mt-0.5 font-bold">
-                      Còn {block.freeSlots} slots trống
-                    </span>
+                  <div className="text-right flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <span className={`px-2.5 py-0.5 rounded text-xs font-extrabold ${block.badgeClass}`}>
+                        {block.occupancy}% Dung tích
+                      </span>
+                      <span className="text-[10px] text-slate-600 font-sans block mt-0.5 font-bold">
+                        Còn {block.freeSlots} slots trống
+                      </span>
+                    </div>
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteBlock(block.id, block.code);
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                      title="Xóa Block"
+                    >
+                      <span className="material-symbols-outlined text-[20px]">delete</span>
+                    </button>
                   </div>
                 </div>
 
@@ -655,26 +701,21 @@ export default function YardMap() {
                         <span className="font-extrabold text-carbon text-[10px]">{bay.code}</span>
                         
                         {/* Stack Height visualizer */}
-                        <div className="w-full flex flex-col-reverse gap-0.5 items-center px-0.5">
-                          {Array.from({ length: bay.stack }).map((_, tierIdx) => (
+                        <div className="w-full flex flex-col-reverse gap-0.5 items-center px-0.5 min-h-[16px]">
+                          {bay.slotsState && bay.slotsState.map((status, tierIdx) => (
                             <div
                               key={tierIdx}
                               className={`w-full h-1.5 rounded-xs ${
-                                bay.type === 'overload'
-                                  ? 'bg-red-600'
-                                  : bay.type === 'reefer'
-                                  ? 'bg-cyan-600'
-                                  : bay.type === 'dg'
-                                  ? 'bg-amber-500'
-                                  : bay.type === 'blocked'
-                                  ? 'bg-slate-400'
-                                  : 'bg-emerald-600'
+                                status === 'occupied' ? 'bg-emerald-600' :
+                                status === 'reserved' ? 'bg-amber-400' :
+                                status === 'maintenance' ? 'bg-slate-400' :
+                                'bg-slate-200'
                               }`}
                             ></div>
                           ))}
                         </div>
 
-                        <span className="text-[9px] text-carbon font-extrabold">T{bay.stack}</span>
+                        <span className="text-[9px] text-carbon font-extrabold">T{bay.nonEmptyCount || 0}</span>
                       </div>
                       )
                     })}
@@ -886,6 +927,7 @@ export default function YardMap() {
                           const currentRow = rowIdx + 1;
                           const slot = slotsInBay.find(s => s.row === currentRow && s.tier === currentTier);
                         const isOccupied = slot && slot.containerId;
+                        const isReserved = slot && slot.status === 'reserved';
                         const isMaintenance = slot && slot.status === 'maintenance';
                         const isSearched = searchContainerQuery && slot?.containerNumber?.toUpperCase().includes(searchContainerQuery.toUpperCase());
                         const isSelectedForBatch = selectedSlotsForMaintenance.includes(slot?.id);
@@ -899,11 +941,13 @@ export default function YardMap() {
                                 ? 'bg-blue-50 border-blue-500 ring-2 ring-blue-300'
                                 : isOccupied 
                                   ? (isSearched ? 'bg-signal-orange text-white border-orange-600 animate-pulse' : 'bg-emerald-600 border-emerald-700 text-white shadow-md') 
-                                  : isMaintenance
-                                    ? 'bg-slate-700 border-slate-800 text-white shadow-inner bg-[url("data:image/svg+xml,%3Csvg width=\'10\' height=\'10\' viewBox=\'0 0 10 10\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M0,10 L10,0\' stroke=\'%23ffffff33\' stroke-width=\'2\'/%3E%3C/svg%3E")]'
-                                    : 'bg-white border-dashed border-slate-300 text-slate-400 hover:bg-slate-50'
+                                  : isReserved
+                                    ? 'bg-amber-100 border-amber-400 text-amber-800 shadow-sm'
+                                    : isMaintenance
+                                      ? 'bg-slate-700 border-slate-800 text-white shadow-inner bg-[url("data:image/svg+xml,%3Csvg width=\'10\' height=\'10\' viewBox=\'0 0 10 10\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M0,10 L10,0\' stroke=\'%23ffffff33\' stroke-width=\'2\'/%3E%3C/svg%3E")]'
+                                      : 'bg-white border-dashed border-slate-300 text-slate-400 hover:bg-slate-50'
                             }`}
-                            title={isOccupied ? `Container: ${slot.containerNumber}` : isMaintenance ? 'Đang bảo trì / Có vấn đề' : 'Trống (Click để chọn/khóa)'}
+                            title={isOccupied ? `Container: ${slot.containerNumber}` : isReserved ? 'Đã được đặt chỗ trước' : isMaintenance ? 'Đang bảo trì / Có vấn đề' : 'Trống (Click để chọn/khóa)'}
                           >
                             {isSelectedForBatch && (
                               <div className="absolute -top-2 -right-2 bg-blue-600 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] shadow-sm z-10">
@@ -913,6 +957,11 @@ export default function YardMap() {
                             <span className={`text-[9px] font-bold font-mono block opacity-80 ${isSelectedForBatch ? 'text-blue-800' : ''}`}>R{currentRow.toString().padStart(2, '0')}</span>
                             {isOccupied ? (
                               <span className="text-xs font-extrabold font-mono tracking-wider">{slot.containerNumber}</span>
+                            ) : isReserved ? (
+                              <div className="flex flex-col items-center w-full">
+                                <span className="text-[10px] font-extrabold text-amber-600 leading-tight">GIỮ CHỖ</span>
+                                {slot.containerNumber && <span className="text-[9px] font-bold text-amber-800 truncate w-full px-1 text-center">{slot.containerNumber}</span>}
+                              </div>
                             ) : isMaintenance ? (
                               <span className={`text-[10px] font-bold ${isSelectedForBatch ? 'text-blue-800' : 'text-red-300'} flex items-center gap-1`}><span className="material-symbols-outlined text-[12px]">lock</span> Khóa</span>
                             ) : (
@@ -1171,6 +1220,48 @@ export default function YardMap() {
           </div>
         </div>
       )}
+
+      {/* Create Block Modal */}
+      <CreateBlockModal 
+        isOpen={isCreateBlockModalOpen}
+        onClose={() => setIsCreateBlockModalOpen(false)}
+        onBlockCreated={(newBlock) => {
+          setToastMessage(`✅ Đã tạo thành công Block ${newBlock.blockCode || newBlock.name}`);
+          
+          // Map to internal format and add to state
+          const formattedBlock = {
+            id: newBlock.id,
+            code: newBlock.blockCode || newBlock.name,
+            type: newBlock.description || 'BLOCK CONTAINER',
+            maxBays: newBlock.maxBays || newBlock.max_bays || 10,
+            maxRows: newBlock.maxRows || newBlock.max_rows || 4,
+            maxTiers: newBlock.maxTiers || newBlock.max_tiers || 5,
+            status: 'Operational',
+            statusLabel: '🟢 Operational',
+            occupancy: 0,
+            containers: 0,
+            maxCapacity: (newBlock.maxBays || newBlock.max_bays || 10) * (newBlock.maxRows || newBlock.max_rows || 4) * (newBlock.maxTiers || newBlock.max_tiers || 5),
+            freeSlots: (newBlock.maxBays || newBlock.max_bays || 10) * (newBlock.maxRows || newBlock.max_rows || 4) * (newBlock.maxTiers || newBlock.max_tiers || 5),
+            vehicles: 0,
+            crane: 'Cẩu RTG',
+            colorClass: 'border-emerald-400 bg-white text-carbon',
+            badgeClass: 'bg-emerald-100 text-emerald-900 border border-emerald-300 font-extrabold',
+            barGradient: 'from-emerald-500 to-teal-400',
+            bays: Array.from({ length: newBlock.maxBays || newBlock.max_bays || 10 }).map((_, i) => ({
+              bayNumber: i + 1,
+              code: `${newBlock.blockCode || newBlock.name}-${(i + 1).toString().padStart(2, '0')}`,
+              stack: 0,
+              maintenanceCount: 0,
+              type: 'empty',
+              capacity: 0
+            })),
+            rawSlots: []
+          };
+          
+          setBlocksData(prev => [...prev, formattedBlock]);
+          setIsCreateBlockModalOpen(false);
+        }}
+      />
 
     </div>
   )
