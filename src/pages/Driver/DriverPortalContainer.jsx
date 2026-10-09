@@ -8,6 +8,7 @@ import DriverContainerLocation from './DriverContainerLocation'
 import DriverTransactionStatus from './DriverTransactionStatus'
 import { connectDriverRealtime } from '../../services/driverRealtimeService'
 import { driverContainerConfirmationService } from '../../services/driverContainerConfirmationService'
+import DriverTripDashboard from './DriverTripDashboard'
 
 export default function DriverPortalContainer() {
   const [activeTab, setActiveTab] = useState('home')
@@ -247,31 +248,7 @@ export default function DriverPortalContainer() {
             )}
 
             {activeTab === 'trip' && (
-              <div className="space-y-4">
-                {/* Trip Quick Selector Sub-menu */}
-                <div className="grid grid-cols-3 gap-2 bg-fog p-1 rounded-xl border border-chalk text-[11px] font-bold text-center">
-                  <button
-                    onClick={() => setSubView('navigation')}
-                    className="py-2 bg-white rounded-lg border border-chalk text-carbon shadow-sm"
-                  >
-                    🗺️ Hướng dẫn
-                  </button>
-                  <button
-                    onClick={() => setSubView('location')}
-                    className="py-2 bg-white rounded-lg border border-chalk text-carbon shadow-sm"
-                  >
-                    📍 Vị trí Cont
-                  </button>
-                  <button
-                    onClick={() => setSubView('status')}
-                    className="py-2 bg-white rounded-lg border border-chalk text-carbon shadow-sm"
-                  >
-                    ⏱️ Trạng thái
-                  </button>
-                </div>
-
-                <DriverTransactionStatus driverMode={driverMode} tripStep={tripStep} />
-              </div>
+              <DriverTripDashboard />
             )}
 
             {activeTab === 'profile' && (
