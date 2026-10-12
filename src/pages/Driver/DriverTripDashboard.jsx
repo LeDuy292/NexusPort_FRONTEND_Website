@@ -13,6 +13,7 @@ import {
   confirmGateOut,
   confirmVehicleReturn,
 } from '../../services/tripService'
+import { subscribeDriverTripEvents } from '../../services/driverRealtimeService'
 import DriverYardNavigation from './DriverYardNavigation'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -443,6 +444,8 @@ export default function DriverTripDashboard() {
   const [navigatingTrip, setNavigatingTrip] = useState(null)
   const [filter, setFilter] = useState('IN_PROGRESS')
   const [refreshing, setRefreshing] = useState(false)
+  const [realtimeConnected, setRealtimeConnected] = useState(false)
+  const [realtimeToast, setRealtimeToast] = useState(null)
 
   const loadTrips = useCallback(async (showRefreshing = false) => {
     if (showRefreshing) setRefreshing(true)
@@ -462,6 +465,33 @@ export default function DriverTripDashboard() {
   useEffect(() => {
     loadTrips()
   }, [loadTrips])
+
+  useEffect(() => {
+    const unsubscribe = subscribeDriverTripEvents({
+      onConnected: () => setRealtimeConnected(true),
+      onDisconnected: () => setRealtimeConnected(false),
+      onConnectionError: () => setRealtimeConnected(false),
+      onTripAssigned: (data) => {
+        setRealtimeToast({
+          message: `Có lệnh vận chuyển mới: ${data.orderCode || data.tripCode || ''}!`,
+          type: 'success',
+        })
+        loadTrips(true)
+      },
+      onTripStatusUpdated: (data) => {
+        setRealtimeToast({
+          message: `Chuyến ${data.orderCode || data.tripCode || ''}: cập nhật "${data.status}"`,
+          type: 'info',
+        })
+        loadTrips(true)
+        if (selectedTrip && (selectedTrip.id === data.tripId || selectedTrip.tripCode === data.tripCode)) {
+          getTransportOrderDetail(data.tripId).then(r => setSelectedTrip(r.order || r.trip)).catch(() => {})
+        }
+      },
+    })
+
+    return () => unsubscribe()
+  }, [loadTrips, selectedTrip])
 
   const handleSelectTrip = async (trip) => {
     try {
@@ -507,10 +537,35 @@ export default function DriverTripDashboard() {
 
   return (
     <div className="space-y-4">
+      {realtimeToast && (
+        <Toast
+          message={realtimeToast.message}
+          type={realtimeToast.type}
+          onClose={() => setRealtimeToast(null)}
+        />
+      )}
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-bold text-gray-800 text-lg">Lệnh vận chuyển container</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="font-bold text-gray-800 text-lg">Lệnh vận chuyển container</h1>
+            <span
+              className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold transition-colors ${
+                realtimeConnected
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                  : 'bg-gray-100 text-gray-500 border border-gray-200'
+              }`}
+              title={realtimeConnected ? 'Kết nối thời gian thực đang hoạt động' : 'Đang ở chế độ ngoại tuyến'}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  realtimeConnected ? 'bg-emerald-500 animate-pulse' : 'bg-gray-400'
+                }`}
+              />
+              {realtimeConnected ? 'Trực tuyến' : 'Ngoại tuyến'}
+            </span>
+          </div>
           {activeCount > 0 && (
             <p className="text-xs text-blue-600 font-medium mt-0.5">{activeCount} chuyến đang thực hiện</p>
           )}
