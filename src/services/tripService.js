@@ -87,3 +87,13 @@ export async function confirmVehicleReturn(tripId, note = '') {
   const res = await apiClient.patch(`/driver/trips/${tripId}/return-vehicle`, { note })
   return res.data
 }
+
+/**
+ * Lấy thông tin vị trí Yard, địa chỉ, tọa độ và điều hướng bản đồ.
+ * @param {string} tripId - UUID
+ */
+export async function getYardNavigation(tripId) {
+  const res = await apiClient.get(`/driver/trips/${tripId}/yard-navigation`)
+  return res.data?.data ?? {}
+}
+
