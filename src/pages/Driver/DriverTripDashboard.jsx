@@ -11,6 +11,7 @@ import {
   confirmGateOut,
   confirmVehicleReturn,
 } from '../../services/tripService'
+import DriverYardNavigation from './DriverYardNavigation'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
@@ -102,27 +103,26 @@ function ProgressStepper({ currentStatus }) {
 }
 
 // ── Trip Card (danh sách) ─────────────────────────────────────────────────────
-function TripCard({ trip, onSelect }) {
+function TripCard({ trip, onSelect, onOpenNavigation }) {
   const cfg = STATUS_CONFIG[trip.status] || STATUS_CONFIG['Assigned']
   const isActive = !['Completed', 'Cancelled'].includes(trip.status)
   return (
-    <button
-      onClick={() => onSelect(trip)}
-      className={`w-full text-left border rounded-2xl p-4 transition-all hover:shadow-md active:scale-[0.98] ${
+    <div
+      className={`w-full text-left border rounded-2xl p-4 transition-all hover:shadow-md ${
         isActive ? 'border-blue-200 bg-blue-50/40' : 'border-gray-100 bg-gray-50'
       }`}
     >
       <div className="flex items-start justify-between mb-2">
-        <div>
+        <button onClick={() => onSelect(trip)} className="text-left flex-1">
           <span className="text-xs font-bold text-gray-500 font-mono">{trip.tripCode}</span>
           <h3 className="font-bold text-gray-800 text-sm mt-0.5">{trip.containerNo || '—'}</h3>
           <p className="text-xs text-gray-500">{trip.containerType || ''}</p>
-        </div>
+        </button>
         <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${cfg.color}`}>
           {cfg.icon} {cfg.label}
         </span>
       </div>
-      <div className="grid grid-cols-2 gap-1 text-xs text-gray-600">
+      <div className="grid grid-cols-2 gap-1 text-xs text-gray-600 mb-2">
         <span>🚛 {trip.truckPlate || '—'}</span>
         <span>🏭 {trip.yardBlock ? `${trip.yardBlock} · ${trip.yardSlot || ''}` : '—'}</span>
         <span className="col-span-2">🧾 Booking: {trip.bookingCode ? `${trip.bookingCode}${trip.bookingType ? ` (${trip.bookingType})` : ''}` : '—'}</span>
@@ -130,17 +130,35 @@ function TripCard({ trip, onSelect }) {
           <span className="col-span-2">🕐 {new Date(trip.appointmentStart).toLocaleString('vi-VN')}</span>
         )}
       </div>
+
+      <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+        <button
+          onClick={() => onSelect(trip)}
+          className="flex-1 py-1.5 px-3 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 transition-colors"
+        >
+          Chi tiết chuyến
+        </button>
+        <button
+          onClick={() => onOpenNavigation(trip)}
+          className="py-1.5 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-1 shadow-sm"
+          title="Điều hướng đến bãi"
+        >
+          <span>🧭</span>
+          <span>Đến Bãi</span>
+        </button>
+      </div>
+
       {isActive && (
         <div className="mt-2 pt-2 border-t border-gray-100">
           <ProgressStepper currentStatus={trip.status} />
         </div>
       )}
-    </button>
+    </div>
   )
 }
 
 // ── Trip Detail + Action Panel ────────────────────────────────────────────────
-function TripDetail({ trip, onBack, onTripUpdated }) {
+function TripDetail({ trip, onBack, onTripUpdated, onOpenNavigation }) {
   const [loading, setLoading] = useState(false)
   const [note, setNote] = useState('')
   const [sealNo, setSealNo] = useState(trip.sealNo || '')
@@ -212,6 +230,13 @@ function TripDetail({ trip, onBack, onTripUpdated }) {
           <p className="text-xs font-semibold text-slate-200 leading-relaxed bg-white/5 p-3 rounded-xl border border-white/10">
             {trip.yardInstructions || `Vào Cổng ${trip.gateInCode || 'A1'} ➔ Rẽ theo làn xe tải ➔ Đến ${trip.yardBlock} ➔ Đỗ đúng vị trí ô ${trip.yardSlot || ''}`}
           </p>
+          <button
+            onClick={() => onOpenNavigation(trip)}
+            className="w-full mt-2 py-2 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
+          >
+            <span>🧭</span>
+            <span>Mở bản đồ điều hướng đến bãi</span>
+          </button>
         </div>
       )}
 
@@ -383,6 +408,7 @@ export default function DriverTripDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [selectedTrip, setSelectedTrip] = useState(null)
+  const [navigatingTrip, setNavigatingTrip] = useState(null)
   const [filter, setFilter] = useState('active')
   const [refreshing, setRefreshing] = useState(false)
 
@@ -423,12 +449,26 @@ export default function DriverTripDashboard() {
 
   const activeCount = trips.filter(t => !['Completed', 'Cancelled'].includes(t.status)).length
 
+  if (navigatingTrip) {
+    return (
+      <DriverYardNavigation
+        tripId={navigatingTrip.id}
+        onBack={() => setNavigatingTrip(null)}
+        onStatusUpdated={() => {
+          loadTrips(true)
+          if (selectedTrip) handleSelectTrip(selectedTrip)
+        }}
+      />
+    )
+  }
+
   if (selectedTrip) {
     return (
       <TripDetail
         trip={selectedTrip}
         onBack={() => { setSelectedTrip(null); loadTrips(true) }}
         onTripUpdated={handleTripUpdated}
+        onOpenNavigation={setNavigatingTrip}
       />
     )
   }
@@ -501,7 +541,12 @@ export default function DriverTripDashboard() {
       ) : (
         <div className="space-y-3">
           {trips.map(trip => (
-            <TripCard key={trip.id} trip={trip} onSelect={handleSelectTrip} />
+            <TripCard
+              key={trip.id}
+              trip={trip}
+              onSelect={handleSelectTrip}
+              onOpenNavigation={setNavigatingTrip}
+            />
           ))}
           <p className="text-center text-[11px] text-gray-400 pb-2">
             Hiển thị {trips.length} chuyến
