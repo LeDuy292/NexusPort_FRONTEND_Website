@@ -2,6 +2,8 @@ import React, { useState, useEffect, useCallback } from 'react'
 import {
   getMyTrips,
   getTripById,
+  getTransportOrders,
+  getTransportOrderDetail,
   acknowledgeTrip,
   pickupVehicle,
   pickupContainer,
@@ -49,6 +51,19 @@ const ACTION_CONFIG = {
   'Arrived at Yard':    { label: 'Xác nhận giao container', fn: confirmContainerDelivery,  icon: '🤝', color: 'bg-teal-600 hover:bg-teal-700' },
   'Container Delivered':{ label: 'Thực hiện Gate Out',      fn: confirmGateOut,            icon: '🏁', color: 'bg-lime-600 hover:bg-lime-700' },
   'Gate Out Completed': { label: 'Xác nhận trả xe',         fn: confirmVehicleReturn,      icon: '🔑', color: 'bg-green-600 hover:bg-green-700' },
+}
+
+const NEXT_STEP_LABELS = {
+  'Acknowledged': 'Xác nhận nhận chuyến',
+  'Vehicle Picked Up': 'Xác nhận lấy xe',
+  'Container Picked Up': 'Xác nhận lấy container',
+  'Gate In': 'Thực hiện Gate In',
+  'In Transit': 'Bắt đầu vận chuyển',
+  'Arrived at Yard': 'Xác nhận đến Bãi',
+  'Container Delivered': 'Xác nhận giao cont',
+  'Gate Out Completed': 'Thực hiện Gate Out',
+  'Vehicle Returned': 'Xác nhận trả xe',
+  'Completed': 'Hoàn tất chuyến',
 }
 
 // ── Toast Component ───────────────────────────────────────────────────────────
@@ -106,6 +121,8 @@ function ProgressStepper({ currentStatus }) {
 function TripCard({ trip, onSelect, onOpenNavigation }) {
   const cfg = STATUS_CONFIG[trip.status] || STATUS_CONFIG['Assigned']
   const isActive = !['Completed', 'Cancelled'].includes(trip.status)
+  const nextStepLabel = trip.nextStep ? (NEXT_STEP_LABELS[trip.nextStep] || trip.nextStep) : null
+
   return (
     <div
       className={`w-full text-left border rounded-2xl p-4 transition-all hover:shadow-md ${
@@ -114,29 +131,44 @@ function TripCard({ trip, onSelect, onOpenNavigation }) {
     >
       <div className="flex items-start justify-between mb-2">
         <button onClick={() => onSelect(trip)} className="text-left flex-1">
-          <span className="text-xs font-bold text-gray-500 font-mono">{trip.tripCode}</span>
-          <h3 className="font-bold text-gray-800 text-sm mt-0.5">{trip.containerNo || '—'}</h3>
-          <p className="text-xs text-gray-500">{trip.containerType || ''}</p>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-xs font-bold text-gray-500 font-mono">{trip.orderCode || trip.tripCode}</span>
+            {trip.bookingType && (
+              <span className="text-[10px] bg-slate-200 text-slate-700 px-1.5 py-0.2 rounded font-semibold">
+                {trip.bookingType}
+              </span>
+            )}
+          </div>
+          <h3 className="font-bold text-gray-800 text-sm mt-0.5">{trip.containerNo || 'Chưa gán Container'}</h3>
+          <p className="text-xs text-gray-500">{trip.containerType || 'Cont'} {trip.cargoType ? `· ${trip.cargoType}` : ''}</p>
         </button>
         <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${cfg.color}`}>
           {cfg.icon} {cfg.label}
         </span>
       </div>
+
       <div className="grid grid-cols-2 gap-1 text-xs text-gray-600 mb-2">
-        <span>🚛 {trip.truckPlate || '—'}</span>
-        <span>🏭 {trip.yardBlock ? `${trip.yardBlock} · ${trip.yardSlot || ''}` : '—'}</span>
+        <span>🚛 Xe: {trip.truckPlate || 'Chưa gán xe'}</span>
+        <span>🏭 Bãi: {trip.yardBlock ? `${trip.yardBlock} · ${trip.yardSlot || ''}` : (trip.yardName || '—')}</span>
         <span className="col-span-2">🧾 Booking: {trip.bookingCode ? `${trip.bookingCode}${trip.bookingType ? ` (${trip.bookingType})` : ''}` : '—'}</span>
         {trip.appointmentStart && (
-          <span className="col-span-2">🕐 {new Date(trip.appointmentStart).toLocaleString('vi-VN')}</span>
+          <span className="col-span-2">🕐 Dự kiến: {new Date(trip.appointmentStart).toLocaleString('vi-VN')}</span>
         )}
       </div>
+
+      {nextStepLabel && isActive && (
+        <div className="mb-2 px-2.5 py-1.5 bg-blue-100/80 border border-blue-200 rounded-xl flex items-center justify-between text-xs text-blue-900">
+          <span className="font-medium">👉 Bước tiếp theo:</span>
+          <span className="font-bold">{nextStepLabel}</span>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
         <button
           onClick={() => onSelect(trip)}
           className="flex-1 py-1.5 px-3 bg-white hover:bg-gray-50 border border-gray-200 rounded-xl text-xs font-bold text-gray-700 transition-colors"
         >
-          Chi tiết chuyến
+          Chi tiết lệnh vận chuyển
         </button>
         <button
           onClick={() => onOpenNavigation(trip)}
@@ -409,7 +441,7 @@ export default function DriverTripDashboard() {
   const [error, setError] = useState(null)
   const [selectedTrip, setSelectedTrip] = useState(null)
   const [navigatingTrip, setNavigatingTrip] = useState(null)
-  const [filter, setFilter] = useState('active')
+  const [filter, setFilter] = useState('IN_PROGRESS')
   const [refreshing, setRefreshing] = useState(false)
 
   const loadTrips = useCallback(async (showRefreshing = false) => {
@@ -417,10 +449,10 @@ export default function DriverTripDashboard() {
     else setLoading(true)
     setError(null)
     try {
-      const result = await getMyTrips({ status: filter })
-      setTrips(result.trips || [])
+      const result = await getTransportOrders({ status: filter })
+      setTrips(result.orders || result.trips || [])
     } catch (err) {
-      setError(err.response?.data?.message || err.message || 'Không thể tải danh sách chuyến.')
+      setError(err.response?.data?.message || err.message || 'Không thể tải danh sách lệnh vận chuyển.')
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -433,8 +465,8 @@ export default function DriverTripDashboard() {
 
   const handleSelectTrip = async (trip) => {
     try {
-      const result = await getTripById(trip.id)
-      setSelectedTrip(result.trip)
+      const result = await getTransportOrderDetail(trip.id)
+      setSelectedTrip(result.order || result.trip || trip)
     } catch {
       setSelectedTrip(trip)
     }
@@ -444,7 +476,7 @@ export default function DriverTripDashboard() {
     setSelectedTrip(prev => ({ ...prev, ...updatedTrip }))
     setTrips(prev => prev.map(t => t.id === updatedTrip.id ? { ...t, ...updatedTrip } : t))
     // reload detail with history
-    getTripById(updatedTrip.id).then(r => setSelectedTrip(r.trip)).catch(() => {})
+    getTransportOrderDetail(updatedTrip.id).then(r => setSelectedTrip(r.order || r.trip)).catch(() => {})
   }
 
   const activeCount = trips.filter(t => !['Completed', 'Cancelled'].includes(t.status)).length
@@ -478,9 +510,9 @@ export default function DriverTripDashboard() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-bold text-gray-800 text-lg">Chuyến vận chuyển</h1>
+          <h1 className="font-bold text-gray-800 text-lg">Lệnh vận chuyển container</h1>
           {activeCount > 0 && (
-            <p className="text-xs text-blue-600 font-medium mt-0.5">{activeCount} chuyến đang hoạt động</p>
+            <p className="text-xs text-blue-600 font-medium mt-0.5">{activeCount} chuyến đang thực hiện</p>
           )}
         </div>
         <button
@@ -496,9 +528,11 @@ export default function DriverTripDashboard() {
       {/* Filter Tabs */}
       <div className="flex gap-2 overflow-x-auto pb-1">
         {[
-          { key: 'active', label: 'Đang thực hiện' },
-          { key: 'Completed', label: 'Hoàn thành' },
-          { key: 'all', label: 'Tất cả' },
+          { key: 'IN_PROGRESS', label: 'Đang thực hiện' },
+          { key: 'ASSIGNED',    label: 'Được giao' },
+          { key: 'COMPLETED',   label: 'Hoàn thành' },
+          { key: 'CANCELLED',   label: 'Đã hủy' },
+          { key: 'all',         label: 'Tất cả' },
         ].map(tab => (
           <button
             key={tab.key}
@@ -518,7 +552,7 @@ export default function DriverTripDashboard() {
       {loading ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3">
           <div className="w-10 h-10 border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-          <p className="text-sm text-gray-500">Đang tải danh sách chuyến...</p>
+          <p className="text-sm text-gray-500">Đang tải danh sách lệnh vận chuyển...</p>
         </div>
       ) : error ? (
         <div className="bg-red-50 border border-red-200 rounded-2xl p-5 text-center">
@@ -533,9 +567,17 @@ export default function DriverTripDashboard() {
       ) : trips.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
           <span className="text-5xl">🚛</span>
-          <p className="font-semibold text-gray-600">Không có chuyến nào</p>
+          <p className="font-semibold text-gray-600">Không có lệnh vận chuyển nào</p>
           <p className="text-sm text-gray-400">
-            {filter === 'active' ? 'Bạn chưa có chuyến vận chuyển đang thực hiện.' : 'Không có dữ liệu.'}
+            {filter === 'IN_PROGRESS'
+              ? 'Bạn chưa có lệnh vận chuyển nào đang thực hiện.'
+              : filter === 'ASSIGNED'
+              ? 'Không có lệnh vận chuyển mới nào được phân công.'
+              : filter === 'COMPLETED'
+              ? 'Chưa có lệnh vận chuyển nào hoàn thành.'
+              : filter === 'CANCELLED'
+              ? 'Không có lệnh vận chuyển nào bị hủy.'
+              : 'Không có lệnh vận chuyển nào được phân công.'}
           </p>
         </div>
       ) : (
@@ -549,7 +591,7 @@ export default function DriverTripDashboard() {
             />
           ))}
           <p className="text-center text-[11px] text-gray-400 pb-2">
-            Hiển thị {trips.length} chuyến
+            Hiển thị {trips.length} lệnh vận chuyển
           </p>
         </div>
       )}

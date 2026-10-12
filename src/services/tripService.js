@@ -97,3 +97,32 @@ export async function getYardNavigation(tripId) {
   return res.data?.data ?? {}
 }
 
+/**
+ * Lấy danh sách lệnh vận chuyển container của tài xế.
+ * @param {{ status?: string, page?: number, limit?: number }} params
+ */
+export async function getTransportOrders(params = {}) {
+  try {
+    const res = await apiClient.get('/driver/transport-orders', { params })
+    return res.data?.data ?? {}
+  } catch (err) {
+    // Fallback to /driver/trips if alias route is not reachable
+    return getMyTrips(params)
+  }
+}
+
+/**
+ * Lấy chi tiết lệnh vận chuyển container.
+ * @param {string} orderId - UUID
+ */
+export async function getTransportOrderDetail(orderId) {
+  try {
+    const res = await apiClient.get(`/driver/transport-orders/${orderId}`)
+    return res.data?.data ?? {}
+  } catch (err) {
+    // Fallback to /driver/trips/:id
+    return getTripById(orderId)
+  }
+}
+
+
