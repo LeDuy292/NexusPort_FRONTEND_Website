@@ -10,7 +10,8 @@ import {
 // ─── SEED FALLBACK (Khi chưa kết nối được mạng) ───────────
 const FALLBACK_REQUESTS = [
   {
-    id: 'GOR-001',
+    id: '5ef5910c-2418-48dd-8d84-bd80721db326',
+    code: 'GOR-001',
     containerId: 'CAIU1234567',
     containerType: '40FT HC',
     cargoType: 'Hàng Khô Thông Thường',
@@ -43,7 +44,8 @@ const FALLBACK_REQUESTS = [
     verifiedNoDamage: false,
   },
   {
-    id: 'GOR-002',
+    id: 'ea02bb64-5b03-4e03-814a-61921f4d67b3',
+    code: 'GOR-002',
     containerId: 'HLBU7781920',
     containerType: '40FT HC',
     cargoType: 'Nông Sản Đóng Thùng Xuất Khẩu',
@@ -76,7 +78,8 @@ const FALLBACK_REQUESTS = [
     verifiedNoDamage: false,
   },
   {
-    id: 'GOR-003',
+    id: '2229183b-aa20-4b37-b5ad-d4e7797c5097',
+    code: 'GOR-003',
     containerId: 'ONEY3399102',
     containerType: '40FT HC',
     cargoType: 'Linh Kiện Điện Tử & Bo Mạch',
