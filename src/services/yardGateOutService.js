@@ -9,7 +9,7 @@ const getRealtimeUrl = () => {
   if (import.meta.env.VITE_REALTIME_URL) {
     return import.meta.env.VITE_REALTIME_URL
   }
-  if (import.meta.env.VITE_API_URL) {
+  if (import.meta.env.VITE_API_URL && import.meta.env.VITE_API_URL.startsWith('http')) {
     return import.meta.env.VITE_API_URL.replace(/\/api\/?$/, '')
   }
   return 'http://localhost:3001'
