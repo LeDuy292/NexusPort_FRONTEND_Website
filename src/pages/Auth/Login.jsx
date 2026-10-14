@@ -130,7 +130,8 @@ export default function Login() {
     setLoading(true)
 
     try {
-      const response = await fetch('/api/auth/login', {
+      const apiBase = import.meta.env.VITE_API_URL || '/api'
+      const response = await fetch(`${apiBase}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -208,7 +209,8 @@ export default function Login() {
 
     setForgotLoading(true)
     try {
-      const res = await fetch('/api/auth/forgot-password', {
+      const apiBase = import.meta.env.VITE_API_URL || '/api'
+      const res = await fetch(`${apiBase}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: forgotEmail.trim() })
@@ -252,7 +254,8 @@ export default function Login() {
 
     setForgotLoading(true)
     try {
-      const res = await fetch('/api/auth/reset-password', {
+      const apiBase = import.meta.env.VITE_API_URL || '/api'
+      const res = await fetch(`${apiBase}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
