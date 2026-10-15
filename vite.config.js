@@ -7,18 +7,17 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // TypeScript Node Core (:4000)
+      // Chuyển tiếp /api/* sang Backend Express (:3001)
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+      // TypeScript Node Core (:4000) nếu có
       '/node-api': {
         target: 'http://localhost:4000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/node-api/, '/api/v1'),
       },
-      // Chuyển tiếp mọi request /api/* sang Node Core :4000
-      '/api': {
-        target: 'http://localhost:4000',
-        changeOrigin: true,
-      },
     },
   },
 })
-
