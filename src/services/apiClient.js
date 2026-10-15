@@ -1,5 +1,5 @@
-// Lấy API base URL từ biến môi trường, mặc định là http://localhost:5000/api
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
+// Lấy API base URL từ biến môi trường, mặc định là /api (được proxy sang backend qua Vite)
+const API_URL = import.meta.env.VITE_API_URL || '/api'
 
 const apiClient = {
   get: async (url, config = {}) => {
