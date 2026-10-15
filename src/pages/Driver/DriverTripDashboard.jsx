@@ -515,6 +515,8 @@ export default function DriverTripDashboard() {
     return (
       <DriverYardNavigation
         tripId={navigatingTrip.id}
+        containerId={navigatingTrip.containerId}
+        containerNumber={navigatingTrip.containerNo}
         onBack={() => setNavigatingTrip(null)}
         onStatusUpdated={() => {
           loadTrips(true)

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { getYardNavigation, confirmArrivedAtYard } from '../../services/tripService'
+import DriverSmartRoute from './DriverSmartRoute'
 
 const STATUS_CONFIG = {
   'Assigned':           { label: 'Đã phân công',         icon: '📋', color: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -16,7 +17,7 @@ const STATUS_CONFIG = {
   'Cancelled':          { label: 'Đã hủy',               icon: '❌', color: 'bg-red-50 text-red-700 border-red-200' },
 }
 
-export default function DriverYardNavigation({ tripId, onBack, onStatusUpdated }) {
+export default function DriverYardNavigation({ tripId, containerId, containerNumber, onBack, onStatusUpdated }) {
   const [navData, setNavData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -72,16 +73,21 @@ export default function DriverYardNavigation({ tripId, onBack, onStatusUpdated }
 
   if (loading) {
     return (
-      <div className="bg-white border border-chalk rounded-2xl p-8 text-center space-y-3 shadow-sm">
+      <div className="space-y-4">
+        <DriverSmartRoute containerId={containerId} containerNumber={containerNumber} />
+        <div className="bg-white border border-chalk rounded-2xl p-8 text-center space-y-3 shadow-sm">
         <div className="w-10 h-10 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
         <p className="text-sm font-semibold text-slate">Đang tải thông tin điểm đến & bản đồ Yard...</p>
+        </div>
       </div>
     )
   }
 
   if (error || !navData) {
     return (
-      <div className="bg-white border border-chalk rounded-2xl p-6 text-center space-y-4 shadow-sm">
+      <div className="space-y-4">
+        <DriverSmartRoute containerId={containerId} containerNumber={containerNumber} />
+        <div className="bg-white border border-chalk rounded-2xl p-6 text-center space-y-4 shadow-sm">
         <div className="text-4xl">⚠️</div>
         <h3 className="font-bold text-carbon text-base">Không thể tải thông tin bãi</h3>
         <p className="text-xs text-red-600 bg-red-50 p-3 rounded-xl border border-red-100">{error || 'Không có dữ liệu.'}</p>
@@ -94,6 +100,7 @@ export default function DriverYardNavigation({ tripId, onBack, onStatusUpdated }
           <button onClick={fetchNavigation} className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition-colors">
             Thử lại
           </button>
+        </div>
         </div>
       </div>
     )
@@ -275,132 +282,7 @@ export default function DriverYardNavigation({ tripId, onBack, onStatusUpdated }
         {/* Interactive Map Visualizer */}
         <div className="relative rounded-2xl overflow-hidden border border-chalk bg-slate-900 shadow-inner">
           {activeTab === 'port_map' ? (
-            <div className="w-full h-64 relative bg-[#0f172a] overflow-hidden select-none">
-              {/* SVG Layout of Tiên Sa Port Yard */}
-              <svg viewBox="0 0 500 320" className="w-full h-full">
-                {/* Sea background */}
-                <rect x="0" y="0" width="500" height="70" fill="#0369a1" opacity="0.6" />
-                <text x="250" y="40" fill="#bae6fd" fontSize="12" fontWeight="bold" textAnchor="middle" opacity="0.7">
-                  VỊNH ĐÀ NẴNG · BẾN CẢNG TIÊN SA
-                </text>
-
-                {/* Wharves & Berths */}
-                <rect x="30" y="65" width="440" height="15" fill="#334155" />
-                <text x="250" y="76" fill="#e2e8f0" fontSize="9" textAnchor="middle">CẦU TÀU CONTAINER SỐ 1 - 2 - 3</text>
-
-                {/* Internal Roads */}
-                <rect x="20" y="100" width="460" height="24" fill="#1e293b" />
-                <line x1="20" y1="112" x2="480" y2="112" stroke="#e2e8f0" strokeDasharray="6,6" strokeWidth="1.5" opacity="0.5" />
-                <text x="250" y="116" fill="#94a3b8" fontSize="8" textAnchor="middle">ĐƯỜNG NỘI BỘ ROAD 01</text>
-
-                <rect x="20" y="270" width="460" height="24" fill="#1e293b" />
-                <line x1="20" y1="282" x2="480" y2="282" stroke="#e2e8f0" strokeDasharray="6,6" strokeWidth="1.5" opacity="0.5" />
-                <text x="250" y="286" fill="#94a3b8" fontSize="8" textAnchor="middle">ĐƯỜNG RA CỔNG XUẤT ROAD 02</text>
-
-                {/* Vertical Roads */}
-                <rect x="130" y="100" width="20" height="194" fill="#1e293b" />
-                <rect x="350" y="100" width="20" height="194" fill="#1e293b" />
-
-                {/* Gate Entry */}
-                <rect x="25" y="130" width="80" height="35" rx="6" fill="#047857" opacity="0.9" />
-                <text x="65" y="152" fill="white" fontSize="10" fontWeight="bold" textAnchor="middle">CỔNG A (Gate In)</text>
-
-                {/* Yard Blocks */}
-                {/* Block A */}
-                <g className={yard?.block?.includes('A') ? 'animate-pulse' : ''}>
-                  <rect
-                    x="160"
-                    y="135"
-                    width="80"
-                    height="120"
-                    rx="8"
-                    fill={yard?.block?.includes('A') ? '#4f46e5' : '#1e293b'}
-                    stroke={yard?.block?.includes('A') ? '#a5b4fc' : '#475569'}
-                    strokeWidth="2"
-                  />
-                  <text x="200" y="160" fill="white" fontSize="13" fontWeight="bold" textAnchor="middle">BLOCK A</text>
-                  <text x="200" y="180" fill={yard?.block?.includes('A') ? '#c7d2fe' : '#94a3b8'} fontSize="9" textAnchor="middle">Bãi hàng Dry Cont</text>
-                  <text x="200" y="200" fill={yard?.block?.includes('A') ? '#fde047' : '#94a3b8'} fontSize="9" fontWeight="bold" textAnchor="middle">
-                    {yard?.block?.includes('A') && yard?.slot ? `Ô: ${yard.slot}` : 'A01 → A20'}
-                  </text>
-                </g>
-
-                {/* Block B */}
-                <g className={yard?.block?.includes('B') ? 'animate-pulse' : ''}>
-                  <rect
-                    x="255"
-                    y="135"
-                    width="80"
-                    height="120"
-                    rx="8"
-                    fill={yard?.block?.includes('B') ? '#4f46e5' : '#1e293b'}
-                    stroke={yard?.block?.includes('B') ? '#a5b4fc' : '#475569'}
-                    strokeWidth="2"
-                  />
-                  <text x="295" y="160" fill="white" fontSize="13" fontWeight="bold" textAnchor="middle">BLOCK B</text>
-                  <text x="295" y="180" fill={yard?.block?.includes('B') ? '#c7d2fe' : '#94a3b8'} fontSize="9" textAnchor="middle">Bãi hàng Dry Cont</text>
-                  <text x="295" y="200" fill={yard?.block?.includes('B') ? '#fde047' : '#94a3b8'} fontSize="9" fontWeight="bold" textAnchor="middle">
-                    {yard?.block?.includes('B') && yard?.slot ? `Ô: ${yard.slot}` : 'B01 → B20'}
-                  </text>
-                </g>
-
-                {/* Block C (Reefer) */}
-                <g className={yard?.block?.includes('C') ? 'animate-pulse' : ''}>
-                  <rect
-                    x="380"
-                    y="135"
-                    width="80"
-                    height="120"
-                    rx="8"
-                    fill={yard?.block?.includes('C') ? '#0284c7' : '#1e293b'}
-                    stroke={yard?.block?.includes('C') ? '#7dd3fc' : '#475569'}
-                    strokeWidth="2"
-                  />
-                  <text x="420" y="160" fill="white" fontSize="13" fontWeight="bold" textAnchor="middle">BLOCK C</text>
-                  <text x="420" y="180" fill={yard?.block?.includes('C') ? '#bae6fd' : '#94a3b8'} fontSize="9" textAnchor="middle">Bãi Cont Lạnh ❄️</text>
-                  <text x="420" y="200" fill={yard?.block?.includes('C') ? '#fde047' : '#94a3b8'} fontSize="9" fontWeight="bold" textAnchor="middle">
-                    {yard?.block?.includes('C') && yard?.slot ? `Ô: ${yard.slot}` : 'C01 → C15'}
-                  </text>
-                </g>
-
-                {/* Route Arrow Indicator from Gate to Target Block */}
-                <path
-                  d={
-                    yard?.block?.includes('A')
-                      ? 'M 105 147 L 140 147 L 140 195 L 158 195'
-                      : yard?.block?.includes('B')
-                      ? 'M 105 147 L 140 147 L 245 147 L 245 195 L 253 195'
-                      : 'M 105 147 L 140 147 L 360 147 L 360 195 L 378 195'
-                  }
-                  fill="none"
-                  stroke="#38bdf8"
-                  strokeWidth="3.5"
-                  strokeDasharray="6,4"
-                  strokeLinecap="round"
-                />
-
-                {/* Destination Pin */}
-                <g
-                  transform={
-                    yard?.block?.includes('A')
-                      ? 'translate(200, 120)'
-                      : yard?.block?.includes('B')
-                      ? 'translate(295, 120)'
-                      : 'translate(420, 120)'
-                  }
-                >
-                  <circle cx="0" cy="0" r="14" fill="#ef4444" className="animate-ping" opacity="0.6" />
-                  <circle cx="0" cy="0" r="10" fill="#ef4444" />
-                  <text x="0" y="4" fill="white" fontSize="10" fontWeight="bold" textAnchor="middle">★</text>
-                </g>
-              </svg>
-
-              {/* Float Overlay Info */}
-              <div className="absolute bottom-2 left-2 right-2 bg-slate-900/90 backdrop-blur-sm p-2 rounded-xl border border-slate-700/80 text-[11px] text-slate-300 flex justify-between items-center">
-                <span>📍 Điểm đích: <strong>{yard?.block || 'Block A'}</strong> {yard?.slot ? `(${yard.slot})` : ''}</span>
-                <span className="text-emerald-400 font-mono font-bold">16°07'35"N 108°13'21"E</span>
-              </div>
-            </div>
+            <DriverSmartRoute containerId={containerId} containerNumber={containerNumber || navData?.container?.containerNo} />
           ) : (
             <div className="w-full h-64 relative bg-slate-800 flex items-center justify-center">
               {/* Embedded OpenStreetMap Preview */}

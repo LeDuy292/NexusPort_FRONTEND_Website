@@ -3,7 +3,7 @@ import DriverHome from './DriverHome'
 import DriverAppointments from './DriverAppointments'
 import DriverQR from './DriverQR'
 import DriverCheckin from './DriverCheckin'
-import DriverNavigation from './DriverNavigation'
+import DriverSmartRoute from './DriverSmartRoute'
 import DriverContainerLocation from './DriverContainerLocation'
 import DriverTransactionStatus from './DriverTransactionStatus'
 import { connectDriverRealtime } from '../../services/driverRealtimeService'
@@ -210,6 +210,7 @@ export default function DriverPortalContainer() {
 
       {/* MAIN CONTAINER CONTENT AREA */}
       <main className="flex-1 p-5 overflow-y-auto pb-24">
+        {!subView && <div className="mb-5"><DriverSmartRoute compact onOpen={handleGoToNavigation} /></div>}
         
         {/* SUBVIEWS (WORKFLOW STEP OVERLAYS) */}
         {subView === 'checkin' && (
@@ -217,7 +218,7 @@ export default function DriverPortalContainer() {
         )}
 
         {subView === 'navigation' && (
-          <DriverNavigation driverMode={driverMode} tripStep={tripStep} setTripStep={setTripStep} onArrived={handleGoToLocation} />
+          <DriverSmartRoute />
         )}
 
         {subView === 'location' && (
