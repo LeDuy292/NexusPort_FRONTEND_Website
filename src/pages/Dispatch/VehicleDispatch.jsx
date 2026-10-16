@@ -1,7 +1,25 @@
 import React, { useState } from "react";
 import yardTaskService from "../../services/yardTaskService";
+import { createTransportTrip } from "../../services/tripService";
 
 export default function VehicleDispatch() {
+  const [showAssignDriverModal, setShowAssignDriverModal] = useState(false);
+  const [assigningDriver, setAssigningDriver] = useState(false);
+  const [assignDriverForm, setAssignDriverForm] = useState({
+    driverId: "523f7508-3368-4ca0-a0b1-93daf5a3eec0",
+    driverName: "Đặng Tài Xế (driver01)",
+    truckPlate: "43C-123.45",
+    containerNo: "MSCU" + Math.floor(1000000 + Math.random() * 9000000),
+    containerType: "40ft HC",
+    cargoType: "Hàng Điện Tử & Bo Mạch",
+    bookingCode: "BK-2026-NXP01",
+    bookingType: "Import",
+    gateInCode: "GATE-A1",
+    yardBlock: "Block A",
+    yardSlot: "A05-12",
+    yardInstructions: "Vào Cổng A1 ➔ Làn số 2 xe tải ➔ Rẽ vào Block A ➔ Đỗ đúng ô A05-12",
+    note: "Ưu tiên vận chuyển trong ca sáng",
+  });
   const [activeFilter, setActiveFilter] = useState("All"); // 'All' | 'PORT_PICKUP' | 'YARD_MOVE' | 'DELIVERY' | 'High' | 'Waiting'
   const [selectedTask, setSelectedTask] = useState({
     id: "TSK-1001",
@@ -455,6 +473,50 @@ export default function VehicleDispatch() {
     setTimeout(() => setToastMessage(""), 3500);
   };
 
+  // Giao Chuyến Cho Tài Xế Realtime (NXP-137 / NXP-139)
+  const handleAssignTripToDriver = async (e) => {
+    e.preventDefault();
+    setAssigningDriver(true);
+    try {
+      const payload = {
+        driverId: assignDriverForm.driverId,
+        bookingCode: assignDriverForm.bookingCode,
+        bookingType: assignDriverForm.bookingType,
+        truckPlate: assignDriverForm.truckPlate,
+        containerNo: assignDriverForm.containerNo,
+        containerType: assignDriverForm.containerType,
+        cargoType: assignDriverForm.cargoType,
+        gateInCode: assignDriverForm.gateInCode,
+        yardBlock: assignDriverForm.yardBlock,
+        yardSlot: assignDriverForm.yardSlot,
+        yardInstructions: assignDriverForm.yardInstructions,
+        note: assignDriverForm.note,
+        appointmentStart: new Date().toISOString(),
+        appointmentEnd: new Date(Date.now() + 4 * 3600000).toISOString(),
+      };
+      const result = await createTransportTrip(payload);
+      const createdTrip = result.data?.trip;
+      setShowAssignDriverModal(false);
+      setToastMessage(
+        `🚀 ĐÃ GIAO CHUYẾN ${createdTrip?.tripCode || ''} CHO TÀI XẾ THÀNH CÔNG! Driver App nhận realtime ngay lập tức.`
+      );
+      setTimeout(() => setToastMessage(""), 4500);
+
+      // Cập nhật thống kê
+      setKpiStats((prev) => ({ ...prev, assigned: prev.assigned + 1 }));
+
+      // Random mã container tiếp theo
+      setAssignDriverForm((prev) => ({
+        ...prev,
+        containerNo: "MSCU" + Math.floor(1000000 + Math.random() * 9000000),
+      }));
+    } catch (err) {
+      alert(err.response?.data?.message || err.message || "Không thể phân công chuyến.");
+    } finally {
+      setAssigningDriver(false);
+    }
+  };
+
   return (
     <div className="p-8 w-full font-sans flex flex-col gap-6 relative">
       {/* Toast Alert */}
@@ -486,13 +548,23 @@ export default function VehicleDispatch() {
           </p>
         </div>
 
-        <button
-          onClick={() => setShowCreateTaskModal(true)}
-          className="h-11 px-5 bg-signal-orange text-white rounded-xl font-extrabold text-xs hover:opacity-95 transition-opacity shadow-lg flex items-center gap-2"
-        >
-          <span className="material-symbols-outlined text-lg">add_task</span>+
-          Tạo Yêu Cầu Điều Phối
-        </button>
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setShowAssignDriverModal(true)}
+            className="h-11 px-5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-xl font-extrabold text-xs hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md flex items-center gap-2 cursor-pointer active:scale-95"
+          >
+            <span className="material-symbols-outlined text-lg">local_shipping</span>
+            ⚡ Giao Chuyến Cho Tài Xế (Realtime)
+          </button>
+
+          <button
+            onClick={() => setShowCreateTaskModal(true)}
+            className="h-11 px-4 bg-signal-orange text-white rounded-xl font-extrabold text-xs hover:opacity-95 transition-opacity shadow-md flex items-center gap-2 cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-lg">add_task</span>
+            + Tạo Yêu Cầu Điều Phối
+          </button>
+        </div>
       </div>
 
       {/* KPI BAR (6 CARDS) */}
@@ -1586,6 +1658,212 @@ export default function VehicleDispatch() {
           </div>
         </div>
       )}
+
+      {/* MODAL GIAO CHUYẾN CHO TÀI XẾ (REALTIME DRIVER TRIP ASSIGNMENT) */}
+      {showAssignDriverModal && (
+        <div className="fixed inset-0 bg-carbon/70 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border-2 border-indigo-500 space-y-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center border-b border-chalk pb-3">
+              <div className="flex items-center gap-2.5">
+                <span className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-700 flex items-center justify-center font-bold text-lg">
+                  ⚡
+                </span>
+                <div>
+                  <h3 className="font-heading text-lg font-black text-carbon">
+                    Giao Chuyến Vận Chuyển Cho Tài Xế
+                  </h3>
+                  <p className="text-xs text-indigo-700 font-semibold">
+                    Phát sự kiện Socket.IO Realtime trực tiếp đến ứng dụng Driver
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAssignDriverModal(false)}
+                className="w-8 h-8 rounded-lg bg-fog hover:bg-chalk text-slate flex items-center justify-center font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAssignTripToDriver} className="space-y-4 text-xs font-mono">
+              {/* Chọn tài xế */}
+              <div className="bg-indigo-50/70 p-3.5 rounded-xl border border-indigo-200 space-y-2">
+                <label className="block text-[11px] font-bold text-indigo-950 uppercase tracking-wider font-sans">
+                  👤 Tài xế tiếp nhận chuyến xe:
+                </label>
+                <select
+                  value={assignDriverForm.driverId}
+                  onChange={(e) =>
+                    setAssignDriverForm({
+                      ...assignDriverForm,
+                      driverId: e.target.value,
+                      driverName: e.target.options[e.target.selectedIndex].text,
+                    })
+                  }
+                  className="w-full px-3 py-2 bg-white border border-indigo-300 rounded-xl font-bold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="523f7508-3368-4ca0-a0b1-93daf5a3eec0">
+                    🟢 Đặng Tài Xế (driver01) - Đang Trực Tuyến
+                  </option>
+                  <option value="22222222-3333-4444-5555-666666666666">
+                    ⚪ Nguyễn Văn Thử Nghiệm (driver_test)
+                  </option>
+                </select>
+                <p className="text-[10px] text-indigo-700 font-sans">
+                  💡 Tài xế <strong className="text-indigo-950 font-bold">driver01</strong> đang mở tab Chuyến xe sẽ nhận ngay thông báo chuyến này tức thì.
+                </p>
+              </div>
+
+              {/* Thông tin Container & Phương tiện */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate uppercase text-[10px] font-bold font-sans mb-1">
+                    Mã Container
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={assignDriverForm.containerNo}
+                    onChange={(e) =>
+                      setAssignDriverForm({ ...assignDriverForm, containerNo: e.target.value })
+                    }
+                    className="w-full px-3 py-2 bg-fog border border-chalk rounded-xl text-carbon font-bold focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate uppercase text-[10px] font-bold font-sans mb-1">
+                    Biển Số Đầu Kéo
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={assignDriverForm.truckPlate}
+                    onChange={(e) =>
+                      setAssignDriverForm({ ...assignDriverForm, truckPlate: e.target.value })
+                    }
+                    className="w-full px-3 py-2 bg-fog border border-chalk rounded-xl text-carbon font-bold focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate uppercase text-[10px] font-bold font-sans mb-1">
+                    Loại Container
+                  </label>
+                  <select
+                    value={assignDriverForm.containerType}
+                    onChange={(e) =>
+                      setAssignDriverForm({ ...assignDriverForm, containerType: e.target.value })
+                    }
+                    className="w-full px-3 py-2 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-indigo-600"
+                  >
+                    <option value="40ft HC">40ft High Cube (40HC)</option>
+                    <option value="20ft Dry">20ft Dry Container (20GP)</option>
+                    <option value="40ft Reefer">40ft Reefer (Cont Lạnh)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate uppercase text-[10px] font-bold font-sans mb-1">
+                    Mã Booking / Lệnh
+                  </label>
+                  <input
+                    type="text"
+                    value={assignDriverForm.bookingCode}
+                    onChange={(e) =>
+                      setAssignDriverForm({ ...assignDriverForm, bookingCode: e.target.value })
+                    }
+                    className="w-full px-3 py-2 bg-fog border border-chalk rounded-xl text-carbon font-bold focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+              </div>
+
+              {/* Thông tin Địa điểm & Ô Bãi */}
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-slate uppercase text-[10px] font-bold font-sans mb-1">
+                    Cổng Vào (Gate In)
+                  </label>
+                  <input
+                    type="text"
+                    value={assignDriverForm.gateInCode}
+                    onChange={(e) =>
+                      setAssignDriverForm({ ...assignDriverForm, gateInCode: e.target.value })
+                    }
+                    className="w-full px-3 py-2 bg-fog border border-chalk rounded-xl text-carbon font-bold text-center focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-slate uppercase text-[10px] font-bold font-sans mb-1">
+                    Block Bãi
+                  </label>
+                  <select
+                    value={assignDriverForm.yardBlock}
+                    onChange={(e) =>
+                      setAssignDriverForm({ ...assignDriverForm, yardBlock: e.target.value })
+                    }
+                    className="w-full px-3 py-2 bg-fog border border-chalk rounded-xl text-carbon font-bold text-center focus:outline-none focus:border-indigo-600"
+                  >
+                    <option value="Block A">Block A</option>
+                    <option value="Block B">Block B</option>
+                    <option value="Block C">Block C (Reefer)</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-slate uppercase text-[10px] font-bold font-sans mb-1">
+                    Vị Trí Ô (Slot)
+                  </label>
+                  <input
+                    type="text"
+                    value={assignDriverForm.yardSlot}
+                    onChange={(e) =>
+                      setAssignDriverForm({ ...assignDriverForm, yardSlot: e.target.value })
+                    }
+                    className="w-full px-3 py-2 bg-fog border border-chalk rounded-xl text-carbon font-bold text-center focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+              </div>
+
+              {/* Hướng dẫn di chuyển nội bộ */}
+              <div>
+                <label className="block text-slate uppercase text-[10px] font-bold font-sans mb-1">
+                  Chỉ Dẫn Đường Đi Đến Bãi (Yard Navigation Guide)
+                </label>
+                <input
+                  type="text"
+                  value={assignDriverForm.yardInstructions}
+                  onChange={(e) =>
+                    setAssignDriverForm({ ...assignDriverForm, yardInstructions: e.target.value })
+                  }
+                  className="w-full px-3 py-2 bg-fog border border-chalk rounded-xl text-carbon font-sans focus:outline-none focus:border-indigo-600"
+                />
+              </div>
+
+              {/* Nút hành động */}
+              <div className="flex gap-3 pt-3 border-t border-chalk">
+                <button
+                  type="button"
+                  onClick={() => setShowAssignDriverModal(false)}
+                  className="flex-1 h-11 border border-chalk rounded-xl font-bold hover:bg-fog text-slate font-sans"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={assigningDriver}
+                  className="flex-2 h-11 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black rounded-xl shadow-lg flex items-center justify-center gap-2 font-sans text-xs uppercase tracking-wider disabled:opacity-50 cursor-pointer active:scale-98 transition-all"
+                >
+                  <span className="material-symbols-outlined text-base">send</span>
+                  {assigningDriver ? "ĐANG PHÁT LỆNH..." : "🚀 PHÂN CÔNG & PHÁT REALTIME"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

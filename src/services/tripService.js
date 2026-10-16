@@ -125,4 +125,31 @@ export async function getTransportOrderDetail(orderId) {
   }
 }
 
+/**
+ * [Admin/Dispatcher/Company] Tạo chuyến vận chuyển mới và phân công cho Tài xế.
+ * Hệ thống sẽ tự động phát sự kiện Socket.IO trip:assigned tới Driver App.
+ * @param {Object} tripData
+ */
+export async function createTransportTrip(tripData) {
+  const res = await apiClient.post('/trips', tripData)
+  return res.data
+}
+
+export default {
+  getMyTrips,
+  getTripById,
+  acknowledgeTrip,
+  pickupVehicle,
+  pickupContainer,
+  confirmGateIn,
+  confirmArrivedAtYard,
+  confirmContainerDelivery,
+  confirmGateOut,
+  confirmVehicleReturn,
+  getYardNavigation,
+  getTransportOrders,
+  getTransportOrderDetail,
+  createTransportTrip,
+}
+
 
