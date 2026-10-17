@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import DriverHome from './DriverHome'
 import DriverAppointments from './DriverAppointments'
 import DriverQR from './DriverQR'
@@ -11,6 +12,7 @@ import { driverContainerConfirmationService } from '../../services/driverContain
 import DriverTripDashboard from './DriverTripDashboard'
 
 export default function DriverPortalContainer() {
+  const navigate = useNavigate()
   const [activeTab, setActiveTab] = useState('home')
   const [subView, setSubView] = useState(null) // 'checkin', 'navigation', 'location', 'status', 'qr_fullscreen'
   const [selectedApp, setSelectedApp] = useState(null)
@@ -21,6 +23,15 @@ export default function DriverPortalContainer() {
   const [showNotifications, setShowNotifications] = useState(false)
   const [pendingConfirmation, setPendingConfirmation] = useState(null)
   const [isConfirming, setIsConfirming] = useState(false)
+
+  const [driverUser, setDriverUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem('user') || sessionStorage.getItem('user')
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  })
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
@@ -84,6 +95,23 @@ export default function DriverPortalContainer() {
     setTimeout(() => setToastMessage(''), 3000)
   }
 
+  const handleLogout = async () => {
+    if (window.confirm('Bạn có chắc chắn muốn đăng xuất khỏi tài khoản tài xế không?')) {
+      try {
+        const apiBase = import.meta.env.VITE_API_URL || '/api'
+        await fetch(`${apiBase}/auth/logout`, { method: 'POST' }).catch(() => {})
+      } catch (_) {}
+      localStorage.removeItem('user')
+      sessionStorage.removeItem('user')
+      localStorage.removeItem('token')
+      sessionStorage.removeItem('token')
+      navigate('/login')
+    }
+  }
+
+  const driverDisplayName = driverUser?.fullName || driverUser?.username || 'Tài xế container'
+  const driverInitials = (driverDisplayName.split(' ').map(w => w[0]).join('') || 'TX').slice(-2).toUpperCase()
+
   return (
     <div className="min-h-screen bg-fog text-carbon font-sans flex flex-col justify-between max-w-[480px] mx-auto shadow-2xl relative border-x border-chalk">
       
@@ -99,11 +127,11 @@ export default function DriverPortalContainer() {
       <header className="bg-white border-b border-chalk px-5 py-3.5 sticky top-0 z-40 flex justify-between items-center shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-carbon text-white flex items-center justify-center font-bold text-sm shadow">
-            VA
+            {driverInitials}
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <h1 className="font-bold text-carbon text-sm">Nguyễn Văn A</h1>
+              <h1 className="font-bold text-carbon text-sm">{driverDisplayName}</h1>
               <span className="w-2 h-2 rounded-full bg-green-500"></span>
             </div>
             <p className="text-[11px] text-slate font-mono font-bold">Xe: 43C-123.45 • NexusPort Fleet</p>
@@ -123,6 +151,14 @@ export default function DriverPortalContainer() {
           <button onClick={() => setShowNotifications(current => !current)} className="relative p-2 text-slate hover:text-carbon transition-colors">
             <span className="material-symbols-outlined text-2xl">notifications</span>
             {yardNotifications.length > 0 && <span className="absolute top-1 right-1 min-w-4 h-4 px-1 bg-signal-orange text-white rounded-full ring-2 ring-white text-[9px] font-bold leading-4">{yardNotifications.length}</span>}
+          </button>
+
+          <button
+            onClick={handleLogout}
+            title="Đăng xuất"
+            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center ml-1"
+          >
+            <span className="material-symbols-outlined text-2xl">logout</span>
           </button>
         </div>
       </header>
