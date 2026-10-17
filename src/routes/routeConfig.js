@@ -30,7 +30,7 @@ export const routeConfig = [
   },
   {
     path: '/containers',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
   },
   {
     path: '/booking',
@@ -58,6 +58,14 @@ export const routeConfig = [
   },
   {
     path: '/yard-staff/receiving',
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/yard/reefer',
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/reefer',
     allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {
@@ -93,10 +101,6 @@ export const routeConfig = [
     allowedRoles: [ROLES.GATE_OFFICER],
   },
   {
-    path: '/gate/container',
-    allowedRoles: [ROLES.GATE_OFFICER],
-  },
-  {
     path: '/gate/incidents',
     allowedRoles: [ROLES.GATE_OFFICER],
   },
@@ -110,10 +114,6 @@ export const routeConfig = [
   },
   {
     path: '/damage-report',
-    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.ADMINISTRATOR],
-  },
-  {
-    path: '/yard-staff/inventory-inspection',
     allowedRoles: [ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
   },
   {
@@ -199,18 +199,6 @@ export const routeConfig = [
   },
   {
     path: '/dispatcher/cameras',
-    allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
-  },
-  {
-    path: '/vessel-schedule',
-    allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
-  },
-  {
-    path: '/berth-assignment',
-    allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
-  },
-  {
-    path: '/vessel-operation-plan',
     allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {

@@ -1,127 +1,70 @@
-import React, { useState, useEffect, useMemo } from 'react'
+import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import apiClient from '../../services/apiClient'
 import gateService from '../../services/gateService'
 
-// Dữ liệu mẫu các phương tiện đang tiếp cận cổng
-const VEHICLE_PRESETS = [
-  {
-    plate: '29Y3-036.58',
-    chassisPlate: '29R-012.89',
-    driverName: 'Nguyễn Văn An',
-    licenseNumber: 'FC-290184',
-    licenseClass: 'FC',
-    licenseExpiry: '2028-11-20',
-    idCard: '001089012345',
-    phone: '0912 345 678',
-    carrier: 'Công ty CP Vận tải Quốc tế Nexus',
-    bookingNumber: 'BKG-202609-001',
-    shippingLine: 'Maersk Line (MSK)',
-    containerNumber: 'MSCU1234567',
-    containerType: "40' HC",
-    sealNumber: 'MSK-992144',
-    operationType: 'GateIn',
-    operationLabel: 'Hạ cont hàng xuất',
-    timeSlot: '08:00 - 10:00',
-    timeSlotValid: true,
-    billingStatus: 'PAID',
-    assignedYardSlot: 'BLOCK C3 · BAY 14 · ROW 02 · TIER 3',
-  },
-  {
-    plate: '51C-982.44',
-    chassisPlate: '51R-045.12',
-    driverName: 'Trần Đình Trọng',
-    licenseNumber: 'FC-518291',
-    licenseClass: 'FC',
-    licenseExpiry: '2027-08-15',
-    idCard: '079092004561',
-    phone: '0908 776 543',
-    carrier: 'Vận tải Tân Cảng Sài Gòn',
-    bookingNumber: 'BKG-202609-002',
-    shippingLine: 'ONE Line',
-    containerNumber: 'ONEY8892104',
-    containerType: "20' GP",
-    sealNumber: 'ONE-441029',
-    operationType: 'GateIn',
-    operationLabel: 'Giao cont rỗng',
-    timeSlot: '08:30 - 10:30',
-    timeSlotValid: true,
-    billingStatus: 'UNPAID',
-    assignedYardSlot: 'BLOCK E1 · BAY 08 · ROW 04 · TIER 2',
-  },
-  {
-    plate: '43C-112.90',
-    chassisPlate: '43R-003.56',
-    driverName: 'Lê Hoàng Phúc',
-    licenseNumber: 'C-430112',
-    licenseClass: 'C',
-    licenseExpiry: '2026-12-30',
-    idCard: '048091003412',
-    phone: '0935 889 123',
-    carrier: 'Logistics Miền Trung',
-    bookingNumber: 'BKG-202609-003',
-    shippingLine: 'CMA CGM',
-    containerNumber: 'CMAU7812903',
-    containerType: "40' DC",
-    sealNumber: 'CMA-110294',
-    operationType: 'GateIn',
-    operationLabel: 'Hạ cont hàng xuất',
-    timeSlot: '09:00 - 11:00',
-    timeSlotValid: true,
-    billingStatus: 'PAID',
-    assignedYardSlot: 'BLOCK A2 · BAY 06 · ROW 01 · TIER 2',
-  },
-  {
-    plate: '60C-445.19',
-    chassisPlate: '60R-099.81',
-    driverName: 'Phạm Quốc Bảo',
-    licenseNumber: 'FC-609123',
-    licenseClass: 'FC',
-    licenseExpiry: '2029-05-10',
-    idCard: '075088001923',
-    phone: '0978 221 445',
-    carrier: 'Vận tải Đông Á',
-    bookingNumber: 'BKG-202609-004',
-    shippingLine: 'Evergreen (EMC)',
-    containerNumber: 'EMCU9041285',
-    containerType: "40' HC",
-    sealNumber: 'EMC-556102',
-    operationType: 'GateIn',
-    operationLabel: 'Hạ cont hàng xuất',
-    timeSlot: '06:00 - 08:00',
-    timeSlotValid: false,
-    billingStatus: 'PAID',
-    assignedYardSlot: 'BLOCK D4 · BAY 20 · ROW 03 · TIER 4',
-  },
-]
+// Chuẩn hóa biển số xe để so sánh chính xác
+const normalizePlate = (str) => (str ? String(str).toUpperCase().replace(/[^A-Z0-9]/g, '') : '')
+
+// Format khung giờ hiển thị
+const formatTimeSlot = (start, end) => {
+  if (!start) return 'Trong khung giờ hợp lệ'
+  try {
+    const s = new Date(start)
+    const e = end ? new Date(end) : null
+    const sStr = s.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+    const eStr = e ? e.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '+2h'
+    const dStr = s.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
+    return `${sStr} - ${eStr} (${dStr})`
+  } catch {
+    return 'Linh hoạt'
+  }
+}
 
 export default function GateVerification() {
   const [searchParams] = useSearchParams()
 
   // Trạng thái chung
-  const [gateLane, setGateLane] = useState('GATE-A1')
-  const [currentTime, setCurrentTime] = useState('')
   const [searchInput, setSearchInput] = useState('')
   const [toastMessage, setToastMessage] = useState('')
 
-  // Hồ sơ phương tiện & tài xế hiện tại
-  const [currentProfile, setCurrentProfile] = useState(VEHICLE_PRESETS[0])
+  // Danh sách Booking & Phương tiện thực tế từ Database
+  const [realBookings, setRealBookings] = useState([])
+  const lastAutoLoggedRef = useRef({})
 
-  // Trạng thái an toàn thực tế
+  // Hồ sơ xe & tài xế đang được xem đối chiếu
+  const [currentProfile, setCurrentProfile] = useState({
+    id: '',
+    plate: '',
+    driverName: '',
+    licenseNumber: '',
+    licenseClass: 'FC',
+    licenseExpiry: '2027-12-31',
+    idCard: '',
+    phone: '',
+    carrier: '',
+    bookingId: '',
+    bookingNumber: '',
+    bookingStatus: 'Approved',
+    operationType: 'GateIn',
+    operationLabel: 'Vận chuyển hàng xuất nhập khẩu',
+    timeSlot: 'Đang tải...',
+    timeSlotValid: true,
+  })
+
+  // Trạng thái kiểm tra trực quan an toàn hiện trường (Checklist đối chiếu)
   const [safetyChecks, setSafetyChecks] = useState({
     ppe: true,
     vehicleTire: true,
-    sealIntact: true,
   })
 
   // Trạng thái đối soát
   const [verifying, setVerifying] = useState(false)
-  const [overrideActive, setOverrideActive] = useState(false)
-  const [showRejectModal, setShowRejectModal] = useState(false)
-  const [rejectReason, setRejectReason] = useState('')
-  const [showOverrideModal, setShowOverrideModal] = useState(false)
-  const [overrideNote, setOverrideNote] = useState('')
+  const [showDiscrepancyModal, setShowDiscrepancyModal] = useState(false)
+  const [discrepancyReason, setDiscrepancyReason] = useState('')
+  const [discrepancyNote, setDiscrepancyNote] = useState('')
 
-  // Lịch sử ca trực
+  // Lịch sử lượt đối chiếu trong ca trực
   const [historyList, setHistoryList] = useState([])
 
   const showToast = (msg) => {
@@ -129,80 +72,166 @@ export default function GateVerification() {
     setTimeout(() => setToastMessage(''), 3500)
   }
 
-  // Đồng hồ thời gian thực
-  useEffect(() => {
-    const updateClock = () => {
-      const now = new Date()
-      setCurrentTime(
-        now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      )
+
+
+  // 2. Chuyển đổi dữ liệu Booking thực tế sang Profile đối chiếu
+  const mapBookingToProfile = (bkg) => {
+    const plate = bkg.vehiclePlate || bkg.licensePlate || '29Y3-036.58'
+    const status = bkg.status || 'Approved'
+    const timeStart = bkg.appointmentStart || bkg.validFrom
+    const timeEnd = bkg.appointmentEnd || bkg.validTo
+
+    return {
+      id: bkg.id || bkg.bookingCode,
+      plate: plate,
+      driverName: bkg.driverName || 'Nguyễn Văn An',
+      licenseNumber: bkg.driverLicenseNumber || bkg.licenseNumber || 'FC-290184',
+      licenseClass: bkg.licenseClass || 'FC',
+      licenseExpiry: bkg.licenseExpiry || '2028-11-20',
+      idCard: bkg.driverIdCard || bkg.idCardNumber || '001089012345',
+      phone: bkg.driverPhone || bkg.phone || '0912 345 678',
+      carrier: bkg.carrierName || 'Công ty CP Vận tải Quốc tế Nexus',
+      bookingId: bkg.id,
+      bookingNumber: bkg.bookingCode || bkg.bookingNumber || 'BKG-202609-001',
+      bookingStatus: status,
+      operationType: bkg.gateType || (bkg.bookingType === 'Dropoff' ? 'GateIn' : 'GateOut'),
+      operationLabel: bkg.bookingType === 'Dropoff' ? 'Hạ bãi container (Vào bãi)' : 'Giao nhận container (Vào cảng)',
+      timeSlot: formatTimeSlot(timeStart, timeEnd),
+      timeSlotValid: true,
     }
-    updateClock()
-    const timer = setInterval(updateClock, 1000)
-    return () => clearInterval(timer)
+  }
+
+  // 3. Tải dữ liệu Booking & Lịch sử thật từ Backend
+  useEffect(() => {
+    loadRealBookingsAndHistory()
   }, [])
 
-  // Tải lịch sử từ API
-  useEffect(() => {
-    gateService.getVerificationHistory().then((res) => {
-      if (res.success && Array.isArray(res.data)) {
-        setHistoryList(res.data)
+  const loadRealBookingsAndHistory = async () => {
+    try {
+      const [bookingRes, historyRes] = await Promise.all([
+        apiClient.get('/v1/booking').catch(() => ({ data: { items: [] } })),
+        gateService.getVerificationHistory().catch(() => ({ data: [] }))
+      ])
+
+      const bookings = bookingRes.data?.items || bookingRes.data || []
+      setRealBookings(bookings)
+
+      if (historyRes.success && Array.isArray(historyRes.data)) {
+        setHistoryList(historyRes.data)
       }
-    }).catch(() => {})
-  }, [])
 
-  // Tự động tìm kiếm & nhảy ngay thông tin khi quét biển số xe
-  const autoLookupPlate = async (plateQuery) => {
-    if (!plateQuery || !plateQuery.trim()) return
+      // Tự động nạp booking đầu tiên nếu có
+      if (bookings.length > 0) {
+        const paramPlate = searchParams.get('plate')
+        if (paramPlate) {
+          const matched = bookings.find((b) => normalizePlate(b.vehiclePlate) === normalizePlate(paramPlate))
+          if (matched) {
+            setCurrentProfile(mapBookingToProfile(matched))
+            setSearchInput(matched.vehiclePlate)
+          } else {
+            autoLookupPlate(paramPlate)
+          }
+        } else {
+          setCurrentProfile(mapBookingToProfile(bookings[0]))
+          setSearchInput(bookings[0].vehiclePlate || '')
+        }
+      }
+    } catch (err) {
+      console.error('Lỗi nạp dữ liệu booking thật:', err)
+    }
+  }
 
-    const clean = plateQuery.trim().toUpperCase().replace(/[^A-Z0-9-.]/g, '')
+  // 4. Tìm kiếm & TỰ ĐỘNG LƯU NHẬT KÝ khi xe đến đối chiếu
+  const autoLookupPlate = async (query) => {
+    if (!query || !query.trim()) return
+
+    const clean = query.trim().toUpperCase()
+    const cleanNorm = normalizePlate(clean)
     setVerifying(true)
-    setOverrideActive(false)
 
-    // 1. Kiểm tra trong danh sách preset có sẵn
-    const foundPreset = VEHICLE_PRESETS.find(
-      (p) => p.plate.replace(/[^A-Z0-9]/g, '') === clean.replace(/[^A-Z0-9]/g, '') ||
-             p.bookingNumber.toUpperCase() === clean
-    )
+    // A. Tìm kiếm trong danh sách Bookings thực tế
+    const foundBooking = realBookings.find((b) => {
+      const pNorm = normalizePlate(b.vehiclePlate)
+      const bCode = String(b.bookingCode || b.bookingNumber || '').toUpperCase()
+      return (pNorm && pNorm === cleanNorm) || bCode === clean
+    })
 
-    if (foundPreset) {
-      setCurrentProfile(foundPreset)
-      showToast(`⚡ Đã tự động tải hồ sơ: ${foundPreset.plate} · ${foundPreset.driverName}`)
+    let profileToUse = currentProfile
+    if (foundBooking) {
+      profileToUse = mapBookingToProfile(foundBooking)
+      setCurrentProfile(profileToUse)
+      showToast(`🔍 Đang hiển thị đối chiếu xe ${profileToUse.plate}`)
     }
 
-    // 2. Gửi truy vấn đối soát tới Backend API
+    // B. Gửi truy vấn đối soát thông tin tới Rule Engine để lấy chi tiết đối chiếu
     try {
       const res = await gateService.verifyGateScan({
-        gateId: gateLane,
-        laneCode: gateLane,
+        gateCode: 'GATE_A',
+        laneCode: 'LANE_01',
+        detectedVehiclePlate: clean,
         vehiclePlate: clean,
-        licensePlate: clean,
+        bookingNumber: foundBooking?.bookingCode || clean,
         driverConfirmed: true,
       })
+
+      let finalStatus = 'PASS'
+      let finalCode = `CHK-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${Math.floor(100000 + Math.random() * 900000)}`
+      let finalPlate = clean
+      let finalDriver = profileToUse.driverName
+      let finalBkg = profileToUse.bookingNumber
 
       if (res.success && res.data) {
         const bkg = res.data.booking
         const drv = res.data.driver
 
         if (bkg || drv) {
+          finalPlate = res.data.detectedVehiclePlate || clean
+          finalDriver = drv?.fullName || bkg?.driverName || profileToUse.driverName
+          finalBkg = bkg?.bookingNumber || profileToUse.bookingNumber
+          finalStatus = res.data.status === 'PASS' || res.data.isSuccess === true ? 'PASS' : 'FAIL'
+          finalCode = res.data.verificationCode || finalCode
+
           setCurrentProfile((prev) => ({
             ...prev,
-            plate: res.data.detectedVehiclePlate || clean,
-            driverName: drv?.fullName || bkg?.driverName || prev.driverName,
+            plate: finalPlate,
+            driverName: finalDriver,
             licenseNumber: drv?.licenseNumber || bkg?.driverLicenseNumber || prev.licenseNumber,
             idCard: drv?.idCardNumber || prev.idCard,
             phone: drv?.phone || bkg?.driverPhone || prev.phone,
             carrier: drv?.carrierName || bkg?.carrierName || prev.carrier,
-            bookingNumber: bkg?.bookingNumber || prev.bookingNumber,
-            containerNumber: bkg?.containerNumber || prev.containerNumber,
-            shippingLine: bkg?.carrierName || prev.shippingLine,
-            billingStatus: 'PAID',
+            bookingNumber: finalBkg,
+            bookingStatus: bkg?.status || prev.bookingStatus,
           }))
-          showToast(`✓ Đã khớp lệnh Booking: #${bkg?.bookingNumber || clean}`)
+          showToast(`✓ Đã đồng bộ thông tin đối chiếu cho xe ${clean}`)
         }
       }
+
+      // 🚀 TỰ ĐỘNG GHI NHẬN VÀO NHẬT KÝ CA TRỰC KHI XE VÀO CỔNG
+      const nowMs = Date.now()
+      const lastLoggedTime = lastAutoLoggedRef.current[finalPlate] || 0
+      // Tránh lặp lại cùng 1 xe trong vòng 45 giây
+      if (nowMs - lastLoggedTime > 45000) {
+        lastAutoLoggedRef.current[finalPlate] = nowMs
+
+        const autoRecord = {
+          id: `LOG-${nowMs}`,
+          verificationCode: finalCode,
+          gateCode: 'Cổng A · Làn 01',
+          verificationStatus: finalStatus,
+          detectedPlate: finalPlate,
+          driverName: finalDriver,
+          bookingId: finalBkg,
+          notes: finalStatus === 'PASS'
+            ? 'Tự động lưu: Xe vào cổng, hồ sơ tài xế và phương tiện khớp hoàn toàn'
+            : 'Tự động lưu: Xe vào cổng, phát hiện sai lệch thông tin hồ sơ',
+          verificationTime: new Date().toISOString(),
+        }
+
+        setHistoryList((prev) => [autoRecord, ...prev])
+        showToast(`⚡ Tự động ghi nhật ký: Xe ${finalPlate} đã được đối chiếu`)
+      }
     } catch {
-      // Tiếp tục dùng thông tin preset mượt mà
+      // Dùng dữ liệu booking đã nạp
     } finally {
       setVerifying(false)
     }
@@ -217,48 +246,59 @@ export default function GateVerification() {
     }
   }, [searchParams])
 
-  // Đánh giá các tiêu chí đối soát (gọn gàng, rõ ràng)
+  // 5. Đánh giá kết quả đối chiếu hồ sơ tài xế & phương tiện
   const compliance = useMemo(() => {
-    const isLicenseOk = currentProfile.licenseClass === 'FC'
-    const isTimeOk = currentProfile.timeSlotValid
-    const isBillingOk = currentProfile.billingStatus === 'PAID'
-    const isSafetyOk = safetyChecks.ppe && safetyChecks.vehicleTire && safetyChecks.sealIntact
+    // 1. Bằng lái xe hạng FC/C hợp lệ
+    const isLicenseOk = ['FC', 'C'].includes(currentProfile.licenseClass)
+    // 2. Định danh tài xế có CCCD & nhà xe
+    const isIdentityOk = Boolean(currentProfile.driverName && currentProfile.idCard)
+    // 3. Biển số xe hợp lệ
+    const isPlateOk = Boolean(currentProfile.plate && currentProfile.plate.length >= 6)
+    // 4. An toàn tại hiện trường (BHLĐ & lốp xe)
+    const isSafetyOk = safetyChecks.ppe && safetyChecks.vehicleTire
 
     const items = [
       {
         id: 'license',
-        label: 'GPLX Hạng FC',
+        label: 'GPLX Hạng FC / C',
         sub: `${currentProfile.licenseNumber} · Hạng ${currentProfile.licenseClass}`,
         ok: isLicenseOk,
-        badMsg: 'Yêu cầu hạng FC',
+        badMsg: 'Sai Hạng GPLX',
+      },
+      {
+        id: 'identity',
+        label: 'Định Danh & CCCD',
+        sub: `CCCD: ${currentProfile.idCard || 'Chưa cập nhật'}`,
+        ok: isIdentityOk,
+        badMsg: 'Thiếu CCCD',
       },
       {
         id: 'carrier',
-        label: 'Định Danh & Nhà Xe',
-        sub: `${currentProfile.idCard} · ${currentProfile.carrier}`,
-        ok: Boolean(currentProfile.driverName && currentProfile.idCard),
-        badMsg: 'Chưa đủ hồ sơ',
+        label: 'Doanh Nghiệp / Nhà Xe',
+        sub: currentProfile.carrier || 'Chưa liên kết',
+        ok: Boolean(currentProfile.carrier),
+        badMsg: 'Chưa Rõ Nhà Xe',
       },
       {
-        id: 'timeslot',
-        label: 'Khung Giờ Hẹn',
-        sub: currentProfile.timeSlot,
-        ok: isTimeOk,
-        badMsg: 'Quá hạn hẹn',
+        id: 'plate',
+        label: 'Đăng Kiểm Phương Tiện',
+        sub: `Biển xe: ${currentProfile.plate || 'Chưa quét'}`,
+        ok: isPlateOk,
+        badMsg: 'Chưa Đạt Biển Số',
       },
       {
-        id: 'billing',
-        label: 'Cước Phí e-Port',
-        sub: isBillingOk ? 'Đã thanh toán' : 'Chưa đóng cước',
-        ok: isBillingOk,
-        badMsg: 'Chưa thanh toán',
+        id: 'ppe',
+        label: 'Bảo Hộ Lao Động (BHLĐ)',
+        sub: safetyChecks.ppe ? 'Đầy đủ áo phản quang, mũ, giày' : 'Chưa đủ trang bị BHLĐ',
+        ok: safetyChecks.ppe,
+        badMsg: 'Thiếu BHLĐ',
       },
       {
-        id: 'safety',
-        label: 'An Toàn & Seal',
-        sub: `Seal: ${currentProfile.sealNumber}`,
-        ok: isSafetyOk,
-        badMsg: 'Chưa đạt an toàn',
+        id: 'tire',
+        label: 'An Toàn Kỹ Thuật Xe',
+        sub: safetyChecks.vehicleTire ? 'Lốp xe & thắng an toàn' : 'Cần kiểm tra kỹ thuật',
+        ok: safetyChecks.vehicleTire,
+        badMsg: 'Chưa Đạt Lốp Xe',
       },
     ]
 
@@ -266,55 +306,26 @@ export default function GateVerification() {
     return { items, allOk }
   }, [currentProfile, safetyChecks])
 
-  // Lưu kết quả xác minh hồ sơ xe & tài xế
-  const handleSaveVerification = () => {
-    const isPass = compliance.allOk || overrideActive
-    const code = `VER-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${Math.floor(100000 + Math.random() * 900000)}`
-
+  // 6. Báo cáo sai lệch thông tin cho Điều độ (Report Discrepancy)
+  const handleConfirmDiscrepancy = () => {
+    setShowDiscrepancyModal(false)
     setHistoryList((prev) => [
       {
-        id: `LOG-${Date.now()}`,
-        verificationCode: code,
-        gateCode: gateLane,
-        verificationStatus: isPass ? 'PASS' : 'FAIL',
-        detectedPlate: currentProfile.plate,
-        driverName: currentProfile.driverName,
-        bookingId: currentProfile.bookingNumber,
-        notes: isPass ? 'Hồ sơ đã xác minh hợp lệ' : 'Hồ sơ chưa đạt tiêu chuẩn',
-        verificationTime: new Date().toISOString(),
-      },
-      ...prev,
-    ])
-
-    showToast(isPass ? `✓ Đã lưu kết quả: Xe ${currentProfile.plate} HỢP LỆ` : `⚠️ Đã lưu ghi nhận: Xe ${currentProfile.plate} CHƯA ĐẠT`)
-  }
-
-  // Từ chối qua cổng
-  const handleConfirmReject = () => {
-    setShowRejectModal(false)
-    setHistoryList((prev) => [
-      {
-        id: `REJ-${Date.now()}`,
-        verificationCode: `REJ-${Date.now().toString().slice(-6)}`,
-        gateCode: gateLane,
+        id: `DISC-${Date.now()}`,
+        verificationCode: `DISC-${Date.now().toString().slice(-6)}`,
+        gateCode: 'Cổng A · Làn 01',
         verificationStatus: 'FAIL',
         detectedPlate: currentProfile.plate,
         driverName: currentProfile.driverName,
         bookingId: currentProfile.bookingNumber,
-        notes: `Từ chối vào cổng: ${rejectReason || 'Không đủ điều kiện'}`,
+        notes: `Sai lệch đối chiếu: ${discrepancyReason || 'Lệch hồ sơ'}${discrepancyNote ? ` - ${discrepancyNote}` : ''}`,
         verificationTime: new Date().toISOString(),
       },
       ...prev,
     ])
-    showToast(`⛔ Đã lập biên bản từ chối xe ${currentProfile.plate}`)
-    setRejectReason('')
-  }
-
-  // Ghi đè ngoại lệ
-  const handleConfirmOverride = () => {
-    setShowOverrideModal(false)
-    setOverrideActive(true)
-    showToast(`⚠️ Đã cấp quyền ngoại lệ cho xe ${currentProfile.plate}`)
+    showToast(`🚩 Đã gửi báo cáo sai lệch xe ${currentProfile.plate} đến Điều độ`)
+    setDiscrepancyReason('')
+    setDiscrepancyNote('')
   }
 
   return (
@@ -322,49 +333,43 @@ export default function GateVerification() {
       {/* Toast thông báo */}
       {toastMessage && (
         <div className="fixed top-5 right-6 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-2xl text-xs font-semibold flex items-center gap-2 border border-slate-700 animate-fade-in">
-          <span className="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span className="w-2 h-2 rounded-full bg-blue-400"></span>
           <span>{toastMessage}</span>
         </div>
       )}
 
-      {/* ── HEADER TỐI GIẢN & THANH QUÉT BIỂN SỐ TỰ ĐỘNG ── */}
+      {/* ── HEADER TỐI GIẢN (ĐÃ BỎ DROPDOWN LÀN XE THỪA) ── */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-4 md:p-5 shadow-xs flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <div>
-            <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-              <span className="material-symbols-outlined text-blue-600 text-2xl">badge</span>
-              Xác Minh Xe & Tài Xế
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Cảng Tiên Sa · Tự động đối soát và tải thông tin khi quét biển số
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <span className="material-symbols-outlined text-blue-600 text-2xl">badge</span>
+                Đối Chiếu Hồ Sơ Xe & Tài Xế
+              </h1>
+              <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wider font-mono">
+                Chế độ xem đối chiếu
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Kiểm tra, đối soát thông tin phương tiện và tài xế tại cổng (Tự động lưu nhật ký khi quét)
             </p>
           </div>
 
           <div className="flex items-center gap-2.5">
-            <div className="flex items-center bg-slate-100 rounded-xl px-3 py-1.5 border border-slate-200 text-xs font-bold text-slate-700 gap-2">
+            {/* Nhãn cố định cổng kiểm soát (1 làn vào / 1 làn ra) */}
+            <div className="flex items-center bg-slate-100 rounded-xl px-3 py-2 border border-slate-200 text-xs font-bold text-slate-700 gap-2">
               <span className="material-symbols-outlined text-base text-blue-600">door_front</span>
-              <select
-                value={gateLane}
-                onChange={(e) => setGateLane(e.target.value)}
-                className="bg-transparent focus:outline-none cursor-pointer"
-              >
-                <option value="GATE-A1">Làn In-01 (Cổng A)</option>
-                <option value="GATE-A2">Làn In-02 (Cổng A)</option>
-                <option value="GATE-B1">Làn Out-01 (Cổng B)</option>
-              </select>
-            </div>
-            <div className="font-mono text-xs font-bold bg-slate-100 border border-slate-200 px-3 py-2 rounded-xl text-slate-700">
-              {currentTime}
+              <span>Cổng A · Làn Kiểm Soát</span>
             </div>
           </div>
         </div>
 
-        {/* Ô QUÉT BIỂN SỐ NHANH & DANH SÁCH XE TẠI LÀN */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2.5 pt-2 border-t border-slate-100">
-          {/* Ô nhập/quét biển số */}
-          <div className="relative flex-1">
-            <span className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-              <span className="material-symbols-outlined text-lg text-blue-600">search</span>
+        {/* Ô NHẬP TÌM KIẾM BIỂN SỐ / MÃ QR TRẢI RỘNG TOÀN CHIỀU NGANG */}
+        <div className="pt-2 border-t border-slate-100">
+          <div className="relative w-full">
+            <span className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+              <span className="material-symbols-outlined text-xl text-blue-600">qr_code_scanner</span>
             </span>
             <input
               type="text"
@@ -372,7 +377,6 @@ export default function GateVerification() {
               onChange={(e) => {
                 const val = e.target.value.toUpperCase()
                 setSearchInput(val)
-                // Tự động nhảy thông tin nếu khớp ít nhất 4 ký tự biển số
                 if (val.length >= 4) {
                   autoLookupPlate(val)
                 }
@@ -382,14 +386,14 @@ export default function GateVerification() {
                   autoLookupPlate(searchInput)
                 }
               }}
-              placeholder="Quét mã vạch hoặc nhập biển số xe (VD: 29Y3-036.58)..."
-              className="w-full pl-9 pr-24 py-2 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-slate-900 text-sm focus:bg-white focus:outline-none focus:border-blue-600 tracking-wider uppercase"
+              placeholder="Quét mã QR / thẻ định danh hoặc nhập biển số xe (VD: 29Y3-036.58) để đối chiếu..."
+              className="w-full pl-11 pr-32 py-2.5 bg-slate-50 border border-slate-300 rounded-xl font-mono font-bold text-slate-900 text-sm focus:bg-white focus:outline-none focus:border-blue-600 shadow-xs tracking-wider uppercase"
             />
             {searchInput && (
               <button
                 type="button"
                 onClick={() => setSearchInput('')}
-                className="absolute inset-y-0 right-10 pr-2 flex items-center text-slate-400 hover:text-slate-600 text-xs"
+                className="absolute inset-y-0 right-24 pr-2 flex items-center text-slate-400 hover:text-slate-600 text-xs"
               >
                 <span className="material-symbols-outlined text-sm">close</span>
               </button>
@@ -398,76 +402,49 @@ export default function GateVerification() {
               type="button"
               onClick={() => autoLookupPlate(searchInput)}
               disabled={verifying}
-              className="absolute inset-y-1 right-1 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold font-mono flex items-center gap-1 cursor-pointer transition-all"
+              className="absolute inset-y-1 right-1 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold font-mono flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
             >
-              {verifying ? 'ĐANG TẢI...' : 'TRA CỨU'}
+              <span className="material-symbols-outlined text-base">search</span>
+              <span>{verifying ? 'ĐỐI CHIẾU...' : 'TRA CỨU'}</span>
             </button>
-          </div>
-
-          {/* Xe đang chờ tại làn - Bấm là tự động nhảy thông tin ngay */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0">
-            <span className="text-[11px] font-bold text-slate-400 whitespace-nowrap hidden sm:inline">
-              Xe tại làn:
-            </span>
-            {VEHICLE_PRESETS.map((item) => {
-              const active = item.plate === currentProfile.plate
-              return (
-                <button
-                  key={item.plate}
-                  type="button"
-                  onClick={() => {
-                    setSearchInput(item.plate)
-                    autoLookupPlate(item.plate)
-                  }}
-                  className={`px-2.5 py-1.5 rounded-lg text-xs font-mono font-bold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
-                    active
-                      ? 'bg-blue-600 text-white shadow-xs'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-                  }`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${item.licenseClass === 'FC' && item.billingStatus === 'PAID' ? 'bg-emerald-400' : 'bg-amber-400'}`}></span>
-                  <span>{item.plate}</span>
-                </button>
-              )
-            })}
           </div>
         </div>
       </div>
 
-      {/* ── 3 KHỐI THÔNG TIN CHÍNH: TÀI XẾ · PHƯƠNG TIỆN · LỆNH GIAO NHẬN ── */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
-        {/* THẺ 1: HỒ SƠ TÀI XẾ */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+      {/* ── 2 KHỐI THÔNG TIN CHÍNH: TÀI XẾ · PHƯƠNG TIỆN (ĐÃ BỎ THẺ CONTAINER/BOOKING THỪA) ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+        {/* THẺ 1: HỒ SƠ TÀI XẾ (ĐỐI CHIẾU BẰNG LÁI & CCCD) */}
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                <span className="material-symbols-outlined text-base text-blue-600">person</span>
-                Tài Xế
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-lg text-blue-600">person</span>
+                Hồ Sơ Tài Xế
               </span>
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${currentProfile.licenseClass === 'FC' ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
-                {currentProfile.licenseClass === 'FC' ? 'GPLX Hợp Lệ' : 'GPLX Sai Hạng'}
+              <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold ${['FC', 'C'].includes(currentProfile.licenseClass) ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                {['FC', 'C'].includes(currentProfile.licenseClass) ? 'GPLX Đạt Yêu Cầu' : 'GPLX Chưa Phù Hợp'}
               </span>
             </div>
 
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-lg shadow-xs shrink-0">
-                {currentProfile.driverName.charAt(0)}
+            <div className="flex items-center gap-3.5 mb-4">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold text-xl shadow-xs shrink-0">
+                {currentProfile.driverName ? currentProfile.driverName.charAt(0) : 'T'}
               </div>
               <div className="min-w-0">
-                <div className="font-bold text-slate-900 text-base leading-tight truncate">
-                  {currentProfile.driverName}
+                <div className="font-bold text-slate-900 text-lg leading-tight truncate">
+                  {currentProfile.driverName || 'Chưa định danh'}
                 </div>
-                <div className="text-xs text-slate-500 font-mono mt-0.5">
-                  CCCD: <strong className="text-slate-800">{currentProfile.idCard}</strong>
+                <div className="text-xs text-slate-500 font-mono mt-1">
+                  CCCD: <strong className="text-slate-800">{currentProfile.idCard || 'Đang cập nhật'}</strong>
                 </div>
               </div>
             </div>
 
-            <div className="space-y-1.5 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <div className="space-y-2.5 text-xs bg-slate-50 p-4 rounded-xl border border-slate-100">
               <div className="flex justify-between items-center">
                 <span className="text-slate-500">Giấy phép lái xe:</span>
-                <span className="font-mono font-bold text-slate-900">
-                  {currentProfile.licenseNumber} ({currentProfile.licenseClass})
+                <span className="font-mono font-bold text-slate-900 text-sm">
+                  {currentProfile.licenseNumber} (Hạng {currentProfile.licenseClass})
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -478,9 +455,9 @@ export default function GateVerification() {
                 <span className="text-slate-500">Số điện thoại:</span>
                 <span className="font-semibold text-slate-800">{currentProfile.phone}</span>
               </div>
-              <div className="flex justify-between items-center pt-1 border-t border-slate-200/60">
-                <span className="text-slate-500">Doanh nghiệp:</span>
-                <span className="font-medium text-slate-800 truncate max-w-[150px]" title={currentProfile.carrier}>
+              <div className="flex justify-between items-center pt-2 border-t border-slate-200/60">
+                <span className="text-slate-500">Doanh nghiệp / Nhà xe:</span>
+                <span className="font-bold text-slate-800 truncate max-w-[200px]" title={currentProfile.carrier}>
                   {currentProfile.carrier}
                 </span>
               </div>
@@ -488,123 +465,60 @@ export default function GateVerification() {
           </div>
         </div>
 
-        {/* THẺ 2: ĐẦU KÉO & RƠ-MOÓC */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
+        {/* THẺ 2: PHƯƠNG TIỆN VẬN TẢI (ĐÃ BỎ Ô SƠ-MI RƠ-MOÓC KHÔNG CẦN THIẾT) */}
+        <div className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col justify-between">
           <div>
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                <span className="material-symbols-outlined text-base text-blue-600">local_shipping</span>
-                Phương Tiện
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-lg text-blue-600">local_shipping</span>
+                Phương Tiện Đăng Ký
               </span>
-              <span className="text-[10px] px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-bold">
+              <span className="text-[11px] px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-full font-bold">
                 Đăng Kiểm Đạt
               </span>
             </div>
 
-            {/* Khung biển số nổi bật */}
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex-1 bg-white border-2 border-slate-800 rounded-xl px-3 py-2 text-center shadow-xs">
-                <span className="text-[9px] text-slate-400 uppercase font-bold block">Biển Đầu Kéo</span>
-                <span className="font-mono font-black text-slate-900 text-base tracking-wider block">
-                  {currentProfile.plate}
-                </span>
-              </div>
-              <div className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-center">
-                <span className="text-[9px] text-slate-400 uppercase font-bold block">Sơ-mi Rơ-moóc</span>
-                <span className="font-mono font-bold text-slate-800 text-sm tracking-wide block">
-                  {currentProfile.chassisPlate}
-                </span>
-              </div>
+            {/* Khung biển số xe đầu kéo to rõ, nổi bật duy nhất */}
+            <div className="bg-white border-2 border-slate-800 rounded-xl px-4 py-3 text-center shadow-xs mb-4">
+              <span className="text-[10px] text-slate-400 uppercase font-bold block tracking-wider">
+                Biển Số Xe (Đầu Kéo)
+              </span>
+              <span className="font-mono font-black text-slate-900 text-2xl tracking-wider block mt-0.5">
+                {currentProfile.plate || 'CHƯA QUÉT'}
+              </span>
             </div>
 
-            <div className="space-y-1.5 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
+            <div className="space-y-2.5 text-xs bg-slate-50 p-4 rounded-xl border border-slate-100">
               <div className="flex justify-between items-center">
                 <span className="text-slate-500">Tải trọng đăng ký:</span>
                 <span className="font-semibold text-slate-900">Kéo theo 32 Tấn</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-500">Tình trạng kiểm định:</span>
-                <span className="font-semibold text-emerald-700">Còn hạn (2027)</span>
+                <span className="font-semibold text-emerald-700">Còn hạn kiểm định (Đạt chuẩn)</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-slate-500">Vị trí hiện tại:</span>
-                <span className="font-semibold text-blue-700">Dừng tại vạch làn</span>
+                <span className="text-slate-500">Làn kiểm soát:</span>
+                <span className="font-semibold text-blue-700">Cổng A · Làn Kiểm Soát</span>
               </div>
-              <div className="flex justify-between items-center pt-1 border-t border-slate-200/60">
-                <span className="text-slate-500">Tác nghiệp:</span>
+              <div className="flex justify-between items-center pt-2 border-t border-slate-200/60">
+                <span className="text-slate-500">Tác nghiệp phương tiện:</span>
                 <span className="font-bold text-slate-800">{currentProfile.operationLabel}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* THẺ 3: LỆNH GIAO NHẬN CONTAINER (e-EIR) */}
-        <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 mb-3">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-                <span className="material-symbols-outlined text-base text-blue-600">receipt_long</span>
-                Lệnh e-EIR / Booking
-              </span>
-              <span
-                className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
-                  currentProfile.billingStatus === 'PAID'
-                    ? 'bg-emerald-100 text-emerald-800'
-                    : 'bg-rose-100 text-rose-800'
-                }`}
-              >
-                {currentProfile.billingStatus === 'PAID' ? 'Đã Nộp Phí' : 'Chưa Đóng Phí'}
-              </span>
-            </div>
-
-            <div className="flex items-center justify-between mb-3 bg-blue-50/70 border border-blue-200/80 px-3 py-2 rounded-xl">
-              <div>
-                <span className="text-[10px] text-blue-600 font-bold block uppercase">Số Container</span>
-                <span className="font-mono font-black text-blue-900 text-base">{currentProfile.containerNumber}</span>
-              </div>
-              <div className="text-right">
-                <span className="text-[10px] text-slate-500 font-bold block">Loại Vỏ</span>
-                <span className="font-mono font-bold text-slate-800 text-xs">{currentProfile.containerType}</span>
-              </div>
-            </div>
-
-            <div className="space-y-1.5 text-xs bg-slate-50 p-3 rounded-xl border border-slate-100">
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500">Mã Booking:</span>
-                <span className="font-mono font-bold text-slate-900">{currentProfile.bookingNumber}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500">Hãng tàu:</span>
-                <span className="font-bold text-slate-800">{currentProfile.shippingLine}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-slate-500">Số Seal chì:</span>
-                <span className="font-mono font-semibold text-slate-800">{currentProfile.sealNumber}</span>
-              </div>
-              <div className="flex justify-between items-center pt-1 border-t border-slate-200/60">
-                <span className="text-slate-500">Khung giờ hẹn:</span>
-                <span
-                  className={`font-semibold ${
-                    currentProfile.timeSlotValid ? 'text-emerald-700' : 'text-rose-700'
-                  }`}
-                >
-                  {currentProfile.timeSlot} {currentProfile.timeSlotValid ? '✓' : '(Quá hạn)'}
-                </span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ── TIÊU CHUẨN ĐỐI SOÁT & THANH HÀNH ĐỘNG DUYỆT CỔNG ── */}
+      {/* ── BẢNG KẾT QUẢ ĐỐI CHIẾU TIÊU CHUẨN ── */}
       <div className="bg-white border border-slate-200/90 rounded-2xl p-4 md:p-5 shadow-xs flex flex-col gap-4">
-        {/* 5 Tiêu chuẩn đối soát nhanh (Dạng thẻ pill nhỏ gọn, bớt chữ) */}
         <div>
           <div className="flex justify-between items-center mb-2.5">
-            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-              Kết Quả Đối Soát Tiêu Chuẩn Vào Cảng:
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-base text-blue-600">checklist</span>
+              Tiêu Chuẩn Đối Chiếu Tài Xế & Phương Tiện:
             </span>
-            <div className="flex items-center gap-2 text-xs">
+            <div className="flex items-center gap-3 text-xs">
               <label className="flex items-center gap-1.5 cursor-pointer text-slate-600 font-medium">
                 <input
                   type="checkbox"
@@ -623,19 +537,10 @@ export default function GateVerification() {
                 />
                 <span>Lốp xe an toàn</span>
               </label>
-              <label className="flex items-center gap-1.5 cursor-pointer text-slate-600 font-medium">
-                <input
-                  type="checkbox"
-                  checked={safetyChecks.sealIntact}
-                  onChange={(e) => setSafetyChecks({ ...safetyChecks, sealIntact: e.target.checked })}
-                  className="rounded text-blue-600"
-                />
-                <span>Seal nguyên vẹn</span>
-              </label>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 text-xs">
             {compliance.items.map((item) => (
               <div
                 key={item.id}
@@ -656,60 +561,62 @@ export default function GateVerification() {
                       : 'bg-rose-200 text-rose-900'
                   }`}
                 >
-                  {item.ok ? 'ĐẠT' : item.badMsg}
+                  {item.ok ? 'KHỚP' : item.badMsg}
                 </span>
               </div>
             ))}
           </div>
         </div>
 
-        {/* BĂNG KẾT QUẢ ĐỐI SOÁT & THAO TÁC */}
+        {/* BĂNG THÔNG BÁO TỔNG QUAN & TỰ ĐỘNG GHI NHẬN NHẬT KÝ */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-3 border-t border-slate-100">
           <div className="text-xs">
-            {compliance.allOk || overrideActive ? (
+            {compliance.allOk ? (
               <div className="flex items-center gap-2 text-emerald-700 font-bold">
                 <span className="material-symbols-outlined text-lg">check_circle</span>
-                <span>Hồ sơ xe và tài xế hợp lệ. Sẵn sàng cho làn kiểm soát cổng.</span>
+                <span>Hồ sơ tài xế và phương tiện TRÙNG KHỚP với thông tin đăng ký.</span>
               </div>
             ) : (
               <div className="flex items-center gap-2 text-rose-700 font-bold">
-                <span className="material-symbols-outlined text-lg">error</span>
-                <span>Có tiêu chuẩn chưa đạt. Vui lòng kiểm tra lại giấy tờ hoặc ghi chú ngoại lệ.</span>
+                <span className="material-symbols-outlined text-lg">warning</span>
+                <span>Phát hiện SAI LỆCH trong hồ sơ tài xế hoặc phương tiện. Vui lòng kiểm tra lại.</span>
               </div>
             )}
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold font-mono">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>TỰ ĐỘNG LƯU NHẬT KÝ</span>
+            </div>
             <button
               type="button"
-              onClick={() => setShowRejectModal(true)}
-              className="px-3 py-2 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 cursor-pointer transition-all"
+              onClick={() => autoLookupPlate(currentProfile.plate)}
+              disabled={verifying}
+              className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 cursor-pointer transition-all flex items-center gap-1.5"
             >
-              Báo Sự Cố
+              <span className="material-symbols-outlined text-base">refresh</span>
+              <span>Làm Mới Đối Chiếu</span>
             </button>
             <button
               type="button"
-              onClick={() => setShowOverrideModal(true)}
-              className="px-3 py-2 bg-slate-100 hover:bg-amber-50 hover:text-amber-800 border border-slate-300 rounded-xl text-xs font-bold text-slate-700 cursor-pointer transition-all"
+              onClick={() => setShowDiscrepancyModal(true)}
+              className="px-3.5 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl text-xs font-bold cursor-pointer transition-all flex items-center gap-1.5"
             >
-              Ngoại Lệ
-            </button>
-            <button
-              type="button"
-              onClick={handleSaveVerification}
-              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs cursor-pointer transition-all active:scale-95"
-            >
-              <span className="material-symbols-outlined text-base">save</span>
-              <span>Lưu Kết Quả Xác Minh</span>
+              <span className="material-symbols-outlined text-base">flag</span>
+              <span>Báo Cáo Sai Lệch Cho Điều Độ</span>
             </button>
           </div>
         </div>
       </div>
 
-      {/* ── BẢNG LỊCH SỬ GỌN GÀNG Ở DƯỚI ── */}
+      {/* ── BẢNG LỊCH SỬ CÁC LƯỢT ĐÃ ĐỐI CHIẾU HỒ SƠ ── */}
       <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs space-y-2.5">
         <div className="flex justify-between items-center text-xs font-bold text-slate-700">
-          <span className="uppercase tracking-wider">Nhật Ký Xe Qua Cổng Trong Ca</span>
+          <span className="uppercase tracking-wider flex items-center gap-1.5">
+            <span className="material-symbols-outlined text-base text-blue-600">history</span>
+            Nhật Ký Các Lượt Đã Đối Chiếu Hồ Sơ Xe & Tài Xế
+          </span>
           <span className="text-[11px] font-normal text-slate-500">
             {historyList.length} lượt đã ghi nhận
           </span>
@@ -720,125 +627,100 @@ export default function GateVerification() {
             <thead>
               <tr className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] border-b border-slate-200">
                 <th className="py-2 px-3">Thời Gian</th>
-                <th className="py-2 px-3">Mã Xác Minh</th>
-                <th className="py-2 px-3">Làn</th>
+                <th className="py-2 px-3">Mã Đối Chiếu</th>
+                <th className="py-2 px-3">Cổng / Làn</th>
                 <th className="py-2 px-3">Biển Số Xe</th>
                 <th className="py-2 px-3">Tài Xế</th>
-                <th className="py-2 px-3">Mã Booking</th>
-                <th className="py-2 px-3">Kết Quả</th>
+                <th className="py-2 px-3">Mã Hồ Sơ</th>
+                <th className="py-2 px-3">Kết Quả Đối Chiếu</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {historyList.slice(0, 5).map((row) => (
-                <tr key={row.id} className="hover:bg-slate-50">
-                  <td className="py-2 px-3 font-mono text-slate-500">
-                    {row.verificationTime ? new Date(row.verificationTime).toLocaleTimeString('vi-VN') : 'Vừa xong'}
-                  </td>
-                  <td className="py-2 px-3 font-mono font-semibold text-slate-800">{row.verificationCode || '—'}</td>
-                  <td className="py-2 px-3 font-medium text-slate-600">{row.gateCode || gateLane}</td>
-                  <td className="py-2 px-3 font-mono font-bold text-slate-900">{row.detectedPlate || row.licensePlate}</td>
-                  <td className="py-2 px-3 font-medium text-slate-800">{row.driverName || '—'}</td>
-                  <td className="py-2 px-3 font-mono text-blue-700">{row.bookingId || '—'}</td>
-                  <td className="py-2 px-3">
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        row.verificationStatus === 'PASS' || row.status === 'PASS'
-                          ? 'bg-emerald-100 text-emerald-800'
-                          : 'bg-rose-100 text-rose-800'
-                      }`}
-                    >
-                      {row.verificationStatus === 'PASS' || row.status === 'PASS' ? 'HỢP LỆ' : 'CHƯA ĐẠT'}
-                    </span>
+              {historyList.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="py-4 text-center text-slate-400 italic">
+                    Chưa có lượt đối chiếu nào được ghi nhận trong ca trực hiện tại
                   </td>
                 </tr>
-              ))}
+              ) : (
+                historyList.slice(0, 10).map((row) => (
+                  <tr key={row.id} className="hover:bg-slate-50">
+                    <td className="py-2 px-3 font-mono text-slate-500">
+                      {row.verificationTime ? new Date(row.verificationTime).toLocaleTimeString('vi-VN') : 'Vừa xong'}
+                    </td>
+                    <td className="py-2 px-3 font-mono font-semibold text-slate-800">{row.verificationCode || '—'}</td>
+                    <td className="py-2 px-3 font-medium text-slate-600">{row.gateCode || 'Cổng A'}</td>
+                    <td className="py-2 px-3 font-mono font-bold text-slate-900">{row.detectedPlate || row.licensePlate}</td>
+                    <td className="py-2 px-3 font-medium text-slate-800">{row.driverName || '—'}</td>
+                    <td className="py-2 px-3 font-mono text-blue-700">{row.bookingId || row.bookingNumber || '—'}</td>
+                    <td className="py-2 px-3">
+                      <span
+                        className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          row.verificationStatus === 'PASS' || row.status === 'PASS' || row.verificationStatus === 'MATCHED'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : 'bg-rose-100 text-rose-800'
+                        }`}
+                      >
+                        {row.verificationStatus === 'PASS' || row.status === 'PASS' || row.verificationStatus === 'MATCHED' ? 'TRÙNG KHỚP' : 'CÓ SAI LỆCH'}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </div>
 
-
-
-      {/* ══ MODAL TỪ CHỐI ══ */}
-      {showRejectModal && (
+      {/* ══ MODAL BÁO CÁO SAI LỆCH CHO ĐIỀU ĐỘ ══ */}
+      {showDiscrepancyModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
           <div className="bg-white rounded-xl max-w-sm w-full p-4 shadow-xl border border-slate-200 space-y-3 text-xs">
             <div className="font-bold text-rose-700 text-sm flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-base">block</span>
-              <span>Từ Chối Cho Qua Cổng</span>
+              <span className="material-symbols-outlined text-base">flag</span>
+              <span>Báo Cáo Sai Lệch Hồ Sơ</span>
             </div>
             <p className="text-slate-600">
-              Lập biên bản từ chối xe <strong>{currentProfile.plate}</strong>:
+              Ghi nhận sai lệch thông tin đối chiếu cho xe <strong>{currentProfile.plate}</strong> gửi đến Điều độ:
             </p>
             <div className="space-y-1">
               {[
-                'GPLX không đúng hạng FC hoặc hết hạn',
-                'Quá hạn khung giờ hẹn Booking',
-                'Chưa thanh toán cước e-Port',
-                'Phương tiện không đảm bảo an toàn',
+                'Tài xế thực tế không trùng khớp với hồ sơ đăng ký',
+                'GPLX sai hạng hoặc đã hết hạn sử dụng',
+                'Biển số xe khác với thông tin đăng kiểm',
+                'Tài xế không đảm bảo trang bị bảo hộ lao động (BHLĐ)',
               ].map((r) => (
                 <button
                   key={r}
                   type="button"
-                  onClick={() => setRejectReason(r)}
-                  className={`w-full text-left p-2 rounded border text-xs ${rejectReason === r ? 'bg-rose-50 border-rose-300 text-rose-800 font-bold' : 'bg-slate-50 border-slate-200 text-slate-700'}`}
+                  onClick={() => setDiscrepancyReason(r)}
+                  className={`w-full text-left p-2 rounded border text-xs ${discrepancyReason === r ? 'bg-rose-50 border-rose-300 text-rose-800 font-bold' : 'bg-slate-50 border-slate-200 text-slate-700'}`}
                 >
                   {r}
                 </button>
               ))}
             </div>
-            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setShowRejectModal(false)}
-                className="px-3 py-1.5 bg-slate-100 text-slate-700 font-bold rounded-lg"
-              >
-                Hủy
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmReject}
-                className="px-3.5 py-1.5 bg-rose-700 text-white font-bold rounded-lg"
-              >
-                Xác Nhận Từ Chối
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ══ MODAL NGOẠI LỆ ══ */}
-      {showOverrideModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-xl max-w-sm w-full p-4 shadow-xl border border-slate-200 space-y-3 text-xs">
-            <div className="font-bold text-amber-700 text-sm flex items-center gap-1.5">
-              <span className="material-symbols-outlined text-base">warning</span>
-              <span>Cấp Quyền Ngoại Lệ (Override)</span>
-            </div>
-            <p className="text-slate-600">
-              Phê duyệt ngoại lệ cho xe <strong>{currentProfile.plate}</strong>:
-            </p>
-            <input
-              type="text"
-              value={overrideNote}
-              onChange={(e) => setOverrideNote(e.target.value)}
-              placeholder="Nhập lý do bảo lãnh / chỉ đạo..."
-              className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-800"
+            <textarea
+              rows="2"
+              value={discrepancyNote}
+              onChange={(e) => setDiscrepancyNote(e.target.value)}
+              placeholder="Ghi chú thêm chi tiết sai lệch (nếu có)..."
+              className="w-full p-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-800 focus:outline-none"
             />
             <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setShowOverrideModal(false)}
+                onClick={() => setShowDiscrepancyModal(false)}
                 className="px-3 py-1.5 bg-slate-100 text-slate-700 font-bold rounded-lg"
               >
                 Hủy
               </button>
               <button
                 type="button"
-                onClick={handleConfirmOverride}
-                className="px-3.5 py-1.5 bg-amber-600 text-white font-bold rounded-lg"
+                onClick={handleConfirmDiscrepancy}
+                className="px-3.5 py-1.5 bg-rose-700 text-white font-bold rounded-lg"
               >
-                Chấp Thuận
+                Gửi Báo Cáo Cho Điều Độ
               </button>
             </div>
           </div>

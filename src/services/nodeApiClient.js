@@ -33,7 +33,15 @@ const request = async (method, path, { params, body } = {}) => {
   if (response.ok && response.headers.get('content-type')?.includes('spreadsheetml')) return response.blob()
   const payload = await response.json().catch(() => ({}))
   if (!response.ok || payload.success === false) {
-    const error = new Error(payload?.error?.message || payload?.message || `Yêu cầu không thành công (HTTP ${response.status}).`)
+    let msg = payload?.error?.message || payload?.message
+    if (!msg) {
+      if (response.status === 502) {
+        msg = 'Dịch vụ Smart Route (:4000) chưa được bật hoặc không thể kết nối (HTTP 502).'
+      } else {
+        msg = `Yêu cầu không thành công (HTTP ${response.status}).`
+      }
+    }
+    const error = new Error(msg)
     error.status = response.status
     error.code = payload?.error?.code
     error.details = payload?.error?.details
@@ -47,5 +55,6 @@ export default {
   post: (path, body) => request('POST', path, { body }),
   postForm: (path, formData) => request('POST', path, { body: formData }),
   put: (path, body) => request('PUT', path, { body }),
+  patch: (path, body) => request('PATCH', path, { body }),
   delete: (path) => request('DELETE', path),
 }

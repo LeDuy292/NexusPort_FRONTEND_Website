@@ -71,6 +71,7 @@ export default function GateHistory() {
       Pending: 'bg-amber-100 text-amber-900 border-amber-300',
     }
     const icon = { Passed: '✓', Rejected: '✕', Pending: '⋯' }
+    const label = { Passed: 'Hợp lệ', Rejected: 'Từ chối', Pending: 'Chờ duyệt' }
     return (
       <span
         className={`px-2.5 py-0.5 rounded-full border text-[10px] font-extrabold inline-flex items-center gap-1 ${
@@ -78,7 +79,7 @@ export default function GateHistory() {
         }`}
       >
         <span>{icon[result] || '?'}</span>
-        {result}
+        {label[result] || result}
       </span>
     )
   }
@@ -91,7 +92,7 @@ export default function GateHistory() {
           : 'bg-slate-100 text-slate-800 border-slate-300'
       }`}
     >
-      {action}
+      {action === 'CHECK-IN' ? 'VÀO CỔNG' : action === 'CHECK-OUT' ? 'RA CỔNG' : action}
     </span>
   )
 
@@ -110,11 +111,11 @@ export default function GateHistory() {
       <div className="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <span className="text-xs font-black bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">
-            GATE OFFICER
+            NHÂN VIÊN CỔNG
           </span>
-          <h2 className="font-heading text-3xl font-black text-slate-900 mt-1">Lịch Sử Kiểm Soát Cổng (Gate History)</h2>
+          <h2 className="font-heading text-3xl font-black text-slate-900 mt-1">Lịch Sử Kiểm Soát Cổng</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Toàn bộ lịch sử xác thực xe ra vào cổng cảng, hình ảnh chụp hiện trường và ảnh cắt biển số OCR lưu trữ từ Backend.
+            Toàn bộ lịch sử xác thực xe ra vào cổng cảng, hình ảnh chụp hiện trường và ảnh cắt biển số lưu trữ từ hệ thống.
           </p>
         </div>
         <button
@@ -129,10 +130,10 @@ export default function GateHistory() {
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         {[
           ['Tổng Lượt Quét', stats.total, 'text-slate-900', 'border-slate-200'],
-          ['Hợp Lệ (Passed)', stats.passed, 'text-emerald-700', 'border-emerald-300'],
-          ['Từ Chối (Rejected)', stats.rejected, 'text-rose-700', 'border-rose-300'],
+          ['Hợp Lệ', stats.passed, 'text-emerald-700', 'border-emerald-300'],
+          ['Từ Chối', stats.rejected, 'text-rose-700', 'border-rose-300'],
           ['Có Lưu Trữ Ảnh', stats.withImages, 'text-blue-700', 'border-blue-300'],
-          ['Check-in / Out', `${stats.checkin} / ${stats.checkout}`, 'text-slate-700', 'border-slate-200'],
+          ['Vào Cổng / Ra Cổng', `${stats.checkin} / ${stats.checkout}`, 'text-slate-700', 'border-slate-200'],
         ].map(([label, val, color, border]) => (
           <div key={label} className={`bg-white rounded-2xl border-2 ${border} p-4 shadow-sm`}>
             <div className="text-[10px] font-bold text-slate-500 uppercase">{label}</div>
@@ -151,15 +152,15 @@ export default function GateHistory() {
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Vehicle / container / driver / booking..."
+            placeholder="Biển số xe / container / tài xế / mã đăng ký..."
             className="w-full pl-9 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-orange-500"
           />
         </div>
         <div className="flex flex-wrap gap-2 text-xs font-bold">
           {[
-            ['Action', actionFilter, setActionFilter, ['All', 'CHECK-IN', 'CHECK-OUT']],
-            ['Result', resultFilter, setResultFilter, ['All', 'Passed', 'Rejected', 'Pending']],
-            ['Gate', gateFilter, setGateFilter, ['All', 'Cổng A', 'Cổng B', 'Gate A']],
+            ['Tác vụ', actionFilter, setActionFilter, ['All', 'CHECK-IN', 'CHECK-OUT']],
+            ['Kết quả', resultFilter, setResultFilter, ['All', 'Passed', 'Rejected', 'Pending']],
+            ['Làn cổng', gateFilter, setGateFilter, ['All', 'Cổng A', 'Cổng B', 'Gate A']],
           ].map(([label, val, setter, opts]) => (
             <select
               key={label}
@@ -168,7 +169,7 @@ export default function GateHistory() {
               className="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:outline-none focus:border-orange-500"
             >
               {opts.map((o) => (
-                <option key={o}>{o === 'All' ? `${label}: All` : o}</option>
+                <option key={o}>{o === 'All' ? `${label}: Tất cả` : o === 'CHECK-IN' ? 'Vào cổng' : o === 'CHECK-OUT' ? 'Ra cổng' : o === 'Passed' ? 'Hợp lệ' : o === 'Rejected' ? 'Từ chối' : o === 'Pending' ? 'Chờ duyệt' : o}</option>
               ))}
             </select>
           ))}
@@ -197,7 +198,7 @@ export default function GateHistory() {
                     'Làn Cổng',
                     'Hành Động',
                     'Kết Quả',
-                    'Mã Booking',
+                    'Mã Đăng Ký',
                     'Chi Tiết',
                   ].map((h) => (
                     <th
@@ -308,8 +309,8 @@ export default function GateHistory() {
                 ['Biển số nhận diện', selectedLog.plate],
                 ['Tài xế', selectedLog.driver],
                 ['Container', selectedLog.container],
-                ['Mã Booking', selectedLog.bookingId || '—'],
-                ['Độ chính xác OCR', selectedLog.plateConfidence || '98%'],
+                ['Mã Đăng Ký', selectedLog.bookingId || '—'],
+                ['Độ chính xác nhận diện', selectedLog.plateConfidence || '98%'],
               ].map(([k, v]) => (
                 <div key={k} className="bg-slate-50 p-3 rounded-xl border border-slate-200">
                   <div className="text-[10px] text-slate-500 uppercase">{k}</div>

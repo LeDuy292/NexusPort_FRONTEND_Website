@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import DriverHome from './DriverHome'
 import DriverAppointments from './DriverAppointments'
 import DriverQR from './DriverQR'
 import DriverSmartRoute from './DriverSmartRoute'
@@ -8,6 +10,7 @@ import DriverTripDashboard from './DriverTripDashboard'
 import useAuth from '../../hooks/useAuth'
 
 export default function DriverPortalContainer() {
+  const navigate = useNavigate()
   const { user } = useAuth()
   const displayName = user?.fullName || user?.username || 'Tài xế'
   const initials = displayName.split(/\s+/).slice(-2).map(word => word[0]).join('').toUpperCase()
@@ -19,6 +22,15 @@ export default function DriverPortalContainer() {
   const [yardNotifications, setYardNotifications] = useState([])
   const [showNotifications, setShowNotifications] = useState(false)
   const [pendingConfirmation, setPendingConfirmation] = useState(null)
+
+  const [driverUser, setDriverUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem('user') || sessionStorage.getItem('user')
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  })
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
@@ -55,6 +67,19 @@ export default function DriverPortalContainer() {
     setNavigationSelection(item?.containerId ? { containerId: item.containerId, bookingId: item.bookingId } : null)
     setActiveTab('trip')
     setSubView('navigation')
+  }
+  const handleLogout = async () => {
+    if (window.confirm('Bạn có chắc chắn muốn đăng xuất khỏi tài khoản tài xế không?')) {
+      try {
+        const apiBase = import.meta.env.VITE_API_URL || '/api'
+        await fetch(`${apiBase}/auth/logout`, { method: 'POST' }).catch(() => {})
+      } catch (_) {}
+      localStorage.removeItem('user')
+      sessionStorage.removeItem('user')
+      localStorage.removeItem('token')
+      sessionStorage.removeItem('token')
+      navigate('/login')
+    }
   }
 
   return (
@@ -96,6 +121,14 @@ export default function DriverPortalContainer() {
           <button onClick={() => setShowNotifications(current => !current)} className="relative p-2 text-slate hover:text-carbon transition-colors">
             <span className="material-symbols-outlined text-2xl">notifications</span>
             {yardNotifications.length > 0 && <span className="absolute top-1 right-1 min-w-4 h-4 px-1 bg-signal-orange text-white rounded-full ring-2 ring-white text-[9px] font-bold leading-4">{yardNotifications.length}</span>}
+          </button>
+
+          <button
+            onClick={handleLogout}
+            title="Đăng xuất"
+            className="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors flex items-center justify-center ml-1"
+          >
+            <span className="material-symbols-outlined text-2xl">logout</span>
           </button>
         </div>
       </header>

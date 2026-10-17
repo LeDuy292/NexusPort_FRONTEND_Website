@@ -33,7 +33,6 @@ export default function GateControl() {
   const scanActionRef = useRef(null)
   const lastScannedPlateRef = useRef('')
   const [aiCropImage, setAiCropImage] = useState(null)
-  const [verificationOverride, setVerificationOverride] = useState(false)
 
   // Trạng thái Barie & Xử lý Cổng
   // 'idle' | 'passed' | 'rejected' | 'checked-in' | 'incident-reported'
@@ -237,7 +236,8 @@ export default function GateControl() {
             vehiclePlate: plate,
             bookingNumber: bookingData.bookingCode,
             containerNumber: bookingData.containerId,
-            notes: 'Tự động mở cổng sau xác minh AI thành công.',
+            approvedBy: 'Auto-Gate AI',
+            notes: 'Tự động mở cổng sau xác minh thành công.',
             overviewImageUrl: finalOverviewImg,
             vehiclePlateImageUrl: finalPlateImg,
             })
@@ -254,7 +254,7 @@ export default function GateControl() {
           setActiveBooking(null)
           setProcessingStatus('rejected')
           setBarrierState('closed')
-          const reason = result.message || result.failureReason || `Biển số "${plate}" không có Booking hợp lệ trong hệ thống`
+          const reason = result.message || result.failureReason || `Biển số "${plate}" không có thông tin đăng ký hợp lệ trong hệ thống`
           setRejectionReason(reason)
           setIncidentNote(reason)
           showToast(`⛔ TỰ ĐỘNG TỪ CHỐI VÀO CỔNG — ${reason}`)
@@ -264,7 +264,7 @@ export default function GateControl() {
         setActiveBooking(null)
         setProcessingStatus('rejected')
         setBarrierState('closed')
-        const reason = verifyRes.error || `Biển số "${plate}" không khớp bất kỳ Booking nào trong hệ thống`
+        const reason = verifyRes.error || `Biển số "${plate}" không khớp bất kỳ thông tin đăng ký nào trong hệ thống`
         setRejectionReason(reason)
         setIncidentNote(reason)
         showToast(`⛔ TỰ ĐỘNG TỪ CHỐI VÀO CỔNG — ${reason}`)
@@ -339,14 +339,14 @@ export default function GateControl() {
             setConfidence(conf)
             if (cropImg) setAiCropImage(cropImg)
             lastScannedPlateRef.current = plate
-            showToast(`🎯 ANPR nhận diện xe thành công: "${plate}" (${conf.toFixed(1)}%)`)
+            showToast(`🎯 Nhận diện xe thành công: "${plate}" (${conf.toFixed(1)}%)`)
             await evaluateVerification(plate, conf, dataUrl, cropImg)
           }
         } else if (isManual) {
-          showToast('⚠️ AI không phát hiện biển số rõ ràng trong khung hình. Vui lòng căn chỉnh lại góc camera hoặc tăng độ sáng!')
+          showToast('⚠️ Không phát hiện biển số rõ ràng trong khung hình. Vui lòng căn chỉnh lại góc camera hoặc tăng độ sáng!')
         }
       } else if (isManual) {
-        showToast('⚠️ AI Service không thể xử lý khung hình: ' + (aiRes.error || 'Lỗi nhận dạng'))
+        showToast('⚠️ Hệ thống không thể xử lý khung hình: ' + (aiRes.error || 'Lỗi nhận dạng'))
       }
     } catch (err) {
       if (isManual) showToast('⚠️ Lỗi khi quét camera: ' + err.message)
@@ -381,15 +381,15 @@ export default function GateControl() {
   const plateMatch = Boolean(normDetected && normDetected === normBooking)
 
   const checklist = [
-    { id: 'plate', label: 'Biển số xe khớp với booking', ok: plateMatch },
-    { id: 'booking', label: 'Booking đã được Dispatcher phê duyệt', ok: ['Approved', 'Checked-in'].includes(activeBooking?.status) },
-    { id: 'driver', label: 'Giấy phép lái xe còn hiệu lực', ok: activeBooking?.licenseStatus === 'Valid' },
-    { id: 'container', label: 'Mã container khớp với booking', ok: Boolean(activeBooking?.containerId) },
-    { id: 'time', label: 'Thời gian ETA hợp lệ', ok: true },
-    { id: 'state', label: mode === 'checkout' ? 'Đã check-in trước đó' : 'Chưa hoàn tất check-in', ok: true },
+    { id: 'plate', label: 'Biển số xe khớp với thông tin đăng ký', ok: plateMatch },
+    { id: 'booking', label: 'Lệnh đã được Điều độ phê duyệt', ok: ['Approved', 'Checked-in'].includes(activeBooking?.status) },
+    { id: 'driver', label: 'Giấy phép lái xe còn hiệu lực sử dụng', ok: activeBooking?.licenseStatus === 'Valid' },
+    { id: 'container', label: 'Mã container khớp với đăng ký', ok: Boolean(activeBooking?.containerId) },
+    { id: 'time', label: 'Khung giờ tiếp cận hợp lệ', ok: true },
+    { id: 'state', label: mode === 'checkout' ? 'Đã hoàn tất thủ tục giao nhận tại bãi' : 'Chưa hoàn tất thủ tục vào cổng', ok: true },
   ]
 
-  const allValid = checklist.every((c) => c.ok) || verificationOverride
+  const allValid = checklist.every((c) => c.ok)
 
   // ── 7. TẠO SỰ CỐ GỬI CHO DISPATCHER ───────────────────────────────────
   const handleSubmitIncident = () => {
@@ -404,7 +404,7 @@ export default function GateControl() {
       detectedPlate: detectedPlate,
       expectedPlate: activeBooking?.licensePlate,
       driverName: activeBooking?.driverName,
-      gateCode: selectedGate?.code,
+      gateCode: mode === 'checkin' ? 'Cổng A · Làn Vào' : 'Cổng A · Làn Ra',
       description: incidentNote || rejectionReason,
       timestamp: new Date().toISOString(),
       evidenceImage: capturedImage,
@@ -422,7 +422,7 @@ export default function GateControl() {
 
     setShowIncidentModal(false)
     setProcessingStatus('incident-reported')
-    showToast(`📋 ĐÃ GỬI BÁO CÁO SỰ CỐ #${incidentCode} TỚI ĐIỀU ĐỘ VIÊN (DISPATCHER) THÀNH CÔNG!`)
+    showToast(`📋 Đã gửi báo cáo sự cố #${incidentCode} tới Điều độ viên thành công!`)
   }
 
   return (
@@ -442,46 +442,13 @@ export default function GateControl() {
       <div className="bg-white border border-slate-200 rounded-2xl p-5 md:p-6 shadow-sm flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-black bg-orange-100 text-orange-800 border border-orange-200 px-3 py-0.5 rounded-full uppercase">
-              NHÂN VIÊN CỔNG (GATE OFFICER)
-            </span>
-            <span
-              className={`text-xs font-black px-2.5 py-0.5 rounded-full flex items-center gap-1.5 ${
-                processingStatus === 'checked-in'
-                  ? 'bg-emerald-100 text-emerald-900'
-                  : processingStatus === 'rejected'
-                  ? 'bg-rose-100 text-rose-900'
-                  : processingStatus === 'passed'
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'bg-amber-100 text-amber-900'
-              }`}
-            >
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  processingStatus === 'checked-in' || processingStatus === 'passed'
-                    ? 'bg-emerald-500 animate-pulse'
-                    : processingStatus === 'rejected'
-                    ? 'bg-rose-600'
-                    : 'bg-amber-500'
-                }`}
-              ></span>
-              {processingStatus === 'checked-in'
-                ? (mode === 'checkout' ? 'ĐÃ XÁC NHẬN XE RA CỔNG' : 'ĐÃ GHI NHẬN GATE IN')
-                : processingStatus === 'passed'
-                ? 'ĐỐI SOÁT HỢP LỆ — SẴN SÀNG MỞ CỔNG'
-                : processingStatus === 'rejected'
-                ? 'TỰ ĐỘNG TỪ CHỐI VÀO CỔNG'
-                : processingStatus === 'incident-reported'
-                ? 'ĐÃ BÁO SỰ CỐ ĐIỀU ĐỘ (DISPATCHER)'
-                : 'CHỜ XE TIẾP CẬN CỔNG'}
+            <span className="text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200 px-3 py-0.5 rounded-full">
+              Nhân viên cổng
             </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
-            Kiểm Soát Cổng — AI Camera & Barie Tự Động
+            Cổng Kiểm Soát — Camera & Barie Tự Động
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Nhận diện biển số qua Camera máy · Tự động từ chối nếu sai phạm · Xác nhận mở cổng và báo sự cố Dispatcher.
-          </p>
         </div>
 
         {/* Nút điều hướng Mode & Đồng hồ */}
@@ -500,7 +467,7 @@ export default function GateControl() {
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              CỔNG VÀO (GATE-IN)
+              Cổng Vào
             </button>
             <button
               disabled={verificationBusy || isAiScanning || gateOutBusy}
@@ -515,12 +482,9 @@ export default function GateControl() {
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              CỔNG RA (GATE-OUT)
+              Cổng Ra
             </button>
           </div>
-          <span className="font-mono text-sm font-bold text-slate-700 bg-slate-100 px-3 py-2 rounded-xl border border-slate-200">
-            {currentTime}
-          </span>
         </div>
       </div>
 
@@ -550,12 +514,8 @@ export default function GateControl() {
                 }`}
               ></span>
               <div>
-                <span className="text-xs font-black text-slate-800 uppercase tracking-wider font-mono block">
-                  CAM-01 · {selectedGate?.code || 'CHƯA CHỌN CỔNG'} — LÀN 01 {cameraActive ? '(CAMERA LÀN ĐANG HOẠT ĐỘNG)' : '(CHƯA BẬT CAMERA)'}
-                </span>
-                <span className="text-[10px] text-emerald-600 font-black font-mono flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  CHẾ ĐỘ TỰ ĐỘNG ANPR (AUTO LIVE SCANNING)
+                <span className="text-xs font-bold text-slate-800 tracking-wide font-mono block">
+                  CAM-01 · Cổng A — {mode === 'checkin' ? 'Làn Vào' : 'Làn Ra'} {cameraActive ? '(Camera đang hoạt động)' : '(Chưa bật camera)'}
                 </span>
               </div>
             </div>
@@ -568,17 +528,17 @@ export default function GateControl() {
                     type="button"
                     onClick={() => performAutoScan(true)}
                     disabled={isAiScanning}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-md flex items-center gap-1.5 transition-all cursor-pointer font-mono active:scale-95"
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5 transition-all cursor-pointer font-mono active:scale-95"
                     title="Chụp ngay khung hình hiện tại và phân tích nhận diện biển số"
                   >
                     <span className="material-symbols-outlined text-base">photo_camera</span>
-                    {isAiScanning ? 'ĐANG PHÂN TÍCH...' : 'CHỤP & QUÉT NGAY'}
+                    {isAiScanning ? 'Đang phân tích...' : 'Chụp & quét ngay'}
                   </button>
 
-                  <div className="px-3.5 py-2 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-black flex items-center gap-2 font-mono shadow-xs">
+                  <div className="px-3.5 py-2 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2 font-mono shadow-xs">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
                     <span className="material-symbols-outlined text-sm text-emerald-600">radar</span>
-                    {isAiScanning ? 'AI ĐANG QUÉT...' : 'TỰ ĐỘNG QUÉT LIÊN TỤC'}
+                    {isAiScanning ? 'Đang phân tích...' : 'Tự động quét liên tục'}
                   </div>
                 </>
               )}
@@ -587,10 +547,10 @@ export default function GateControl() {
                 <button
                   onClick={startCamera}
                   disabled={cameraLoading}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-md flex items-center gap-1.5 transition-all cursor-pointer font-mono active:scale-95"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5 transition-all cursor-pointer font-mono active:scale-95"
                 >
                   <span className="material-symbols-outlined text-base">videocam</span>
-                  {cameraLoading ? 'ĐANG MỞ CAMERA...' : 'BẬT CAMERA QUAN SÁT'}
+                  {cameraLoading ? 'Đang mở camera...' : 'Bật camera quan sát'}
                 </button>
               ) : (
                 <button
@@ -598,7 +558,7 @@ export default function GateControl() {
                   className="px-3.5 py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all cursor-pointer font-mono"
                 >
                   <span className="material-symbols-outlined text-base">videocam_off</span>
-                  TẮT CAMERA
+                  Tắt camera
                 </button>
               )}
             </div>
@@ -623,19 +583,19 @@ export default function GateControl() {
                 <div className="w-16 h-16 rounded-2xl bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-400 mb-3 shadow-xl shadow-blue-500/10">
                   <span className="material-symbols-outlined text-3xl">videocam</span>
                 </div>
-                <div className="text-slate-300 text-xs font-mono font-black tracking-wider uppercase mb-1.5 px-3.5 py-1 bg-slate-800 border border-slate-700 rounded-full">
-                  CAMERA LÀN CỔNG CHƯA BẬT
+                <div className="text-slate-300 text-xs font-mono font-bold tracking-wider mb-1.5 px-3.5 py-1 bg-slate-800 border border-slate-700 rounded-full">
+                  Camera làn cổng chưa bật
                 </div>
                 <p className="text-slate-400 text-xs max-w-sm mt-2 mb-4 leading-relaxed font-sans">
-                  Hệ thống camera ANPR thông minh sẽ tự động quét liên tục luồng video, nhận diện biển số xe khi xe tiến vào vạch dừng và kích hoạt đối soát tự động.
+                  Hệ thống camera thông minh sẽ tự động quét liên tục luồng hình ảnh, nhận diện biển số xe khi xe tiến vào vạch dừng và kích hoạt đối soát tự động.
                 </p>
                 <button
                   onClick={startCamera}
                   disabled={cameraLoading}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black shadow-xl shadow-blue-600/30 flex items-center gap-2 transition-all active:scale-95 cursor-pointer font-mono"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-xl shadow-blue-600/30 flex items-center gap-2 transition-all active:scale-95 cursor-pointer font-mono"
                 >
                   <span className="material-symbols-outlined text-base">videocam</span>
-                  {cameraLoading ? 'ĐANG KẾT NỐI...' : 'BẬT CAMERA QUAN SÁT'}
+                  {cameraLoading ? 'Đang kết nối...' : 'Bật camera quan sát'}
                 </button>
               </div>
             )}
@@ -643,7 +603,7 @@ export default function GateControl() {
             {/* Overlay kính mờ & khung ngắm */}
             <div className="absolute inset-0 bg-black/25 pointer-events-none"></div>
 
-            {/* Tia quét Laser ANPR tự động chuyển động khi bật camera */}
+            {/* Tia quét Laser tự động chuyển động khi bật camera */}
             {cameraActive && (
               <div className="absolute inset-x-0 h-1 bg-gradient-to-r from-transparent via-emerald-400 to-transparent shadow-[0_0_15px_#10b981] pointer-events-none animate-pulse"></div>
             )}
@@ -651,7 +611,7 @@ export default function GateControl() {
             {/* HUD Bounding Box Xe */}
             <div className="absolute top-[12%] left-[10%] right-[10%] h-[55%] border-2 border-slate-400/60 rounded pointer-events-none overflow-hidden">
               <div className="absolute -top-6 left-0 bg-slate-700 text-white text-[10px] font-bold px-2 py-0.5 font-mono flex items-center gap-1">
-                KHUNG QUAN SÁT XE TẠI LÀN
+                Khung quan sát phương tiện
               </div>
               <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-emerald-400"></div>
               <div className="absolute -top-1 -right-1 w-3 h-3 border-t-2 border-r-2 border-emerald-400"></div>
@@ -661,11 +621,11 @@ export default function GateControl() {
 
             {/* HUD Bounding Box Biển số */}
             <div className="absolute bottom-[20%] left-[28%] right-[28%] h-[12%] border-2 border-blue-400/90 rounded bg-blue-500/10 pointer-events-none flex items-center justify-center">
-              <div className="absolute -top-5 left-0 bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 font-mono">
-                VÙNG BIỂN SỐ XE
+              <div className="absolute -top-5 left-0 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 font-mono">
+                Vùng biển số xe
               </div>
               {detectedPlate && (
-                <span className="text-white font-mono font-black text-sm tracking-widest drop-shadow-md">
+                <span className="text-white font-mono font-bold text-sm tracking-widest drop-shadow-md">
                   {detectedPlate}
                 </span>
               )}
@@ -674,7 +634,7 @@ export default function GateControl() {
             {/* Trạng thái trên góc */}
             <div className="absolute top-3 left-3 bg-black/75 border border-slate-600 text-slate-300 text-[10px] font-mono px-2.5 py-1 rounded-lg flex items-center gap-1.5 backdrop-blur-sm">
               <span className={`w-2 h-2 rounded-full ${cameraActive ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
-              CAMERA LIVE · {confidence > 0 ? `ANPR ĐỘ CHÍNH XÁC: ${confidence.toFixed(1)}%` : 'ANPR ĐANG QUÉT TỰ ĐỘNG'}
+              Trực tiếp · {confidence > 0 ? `Độ chính xác: ${confidence.toFixed(1)}%` : 'Đang quét tự động'}
             </div>
 
             {/* Timestamp trên góc */}
@@ -687,7 +647,7 @@ export default function GateControl() {
               <div className="absolute bottom-3 right-3 z-10 pointer-events-none">
                 <div className="px-3.5 py-1.5 bg-black/80 backdrop-blur-md border border-emerald-600/60 rounded-xl text-xs font-mono font-bold text-emerald-400 flex items-center gap-2 shadow-2xl">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                  <span>{isAiScanning ? '⚡ AI ĐANG PHÂN TÍCH KHUNG HÌNH...' : '🟢 ANPR TỰ ĐỘNG QUÉT LIÊN TỤC (LIVE STREAM)'}</span>
+                  <span>{isAiScanning ? '⚡ Đang phân tích khung hình...' : '🟢 Tự động quét trực tiếp'}</span>
                 </div>
               </div>
             )}
@@ -707,144 +667,191 @@ export default function GateControl() {
             </div>
           )}
 
-          {/* KẾT QUẢ NHẬN DẠNG ANPR & TEST NHANH */}
+          {/* KẾT QUẢ NHẬN DIỆN PHƯƠNG TIỆN */}
           <div
-            className={`rounded-2xl border-2 p-4 space-y-3 transition-all ${
+            className={`rounded-2xl border-2 p-4 transition-all shadow-xs ${
               plateMatch
-                ? 'bg-emerald-50 border-emerald-400'
+                ? 'bg-emerald-50/70 border-emerald-400'
                 : detectedPlate
-                ? 'bg-rose-50 border-rose-400'
-                : 'bg-white border-slate-200'
+                ? 'bg-rose-50/70 border-rose-400'
+                : 'bg-white border-slate-200/90'
             }`}
           >
-            <div className="flex justify-between items-center">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                KẾT QUẢ NHẬN DẠNG ANPR TỪ CAMERA
+            {/* Header Thẻ */}
+            <div className="flex justify-between items-center mb-3">
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-base text-blue-600">directions_car</span>
+                Kết Quả Nhận Diện Biển Số
               </span>
-              <span
-                className={`text-[10px] font-black px-2.5 py-0.5 rounded-full border font-mono ${
-                  confidence > 90
-                    ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                    : 'bg-amber-100 text-amber-900 border-amber-300'
-                }`}
-              >
-                Độ chính xác: {confidence.toFixed(1)}%
-              </span>
-            </div>
-
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="flex-1">
-                <div className="text-[10px] text-slate-500 font-mono">BIỂN SỐ XE NHẬN DIỆN</div>
-                <div className="font-mono text-2xl font-black text-slate-900 tracking-widest">
-                  {detectedPlate || '— CHƯA QUÉT —'}
-                </div>
-              </div>
-
-              {/* Ô hiển thị biển số nổi bật */}
-              <div
-                className={`h-12 px-6 rounded-xl flex items-center justify-center font-mono font-black text-xl tracking-widest border-2 ${
-                  plateMatch
-                    ? 'bg-emerald-100 text-emerald-900 border-emerald-400 shadow-inner'
-                    : detectedPlate
-                    ? 'bg-rose-100 text-rose-900 border-rose-400 shadow-inner'
-                    : 'bg-slate-100 text-slate-500 border-slate-300'
-                }`}
-              >
-                {detectedPlate || 'CHỜ BIỂN SỐ'}
-              </div>
-
-              {/* Huy hiệu chế độ tự động */}
-              {cameraActive && (
-                <div className="px-3 py-2 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-mono font-black flex items-center gap-1.5 shadow-xs">
+              {detectedPlate ? (
+                <span
+                  className={`text-[11px] font-bold px-3 py-1 rounded-full border font-mono ${
+                    confidence > 85
+                      ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                      : 'bg-amber-100 text-amber-900 border-amber-300'
+                  }`}
+                >
+                  Độ chính xác: {confidence.toFixed(1)}%
+                </span>
+              ) : (
+                <span className="text-[11px] font-bold px-3 py-1 rounded-full border font-mono bg-blue-50 text-blue-700 border-blue-200/80 flex items-center gap-1.5 shadow-2xs">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  AUTO ANPR
-                </div>
+                  Camera đang quét trực tiếp
+                </span>
               )}
             </div>
 
-            {/* Thông báo kết quả đối chiếu */}
-            {detectedPlate && (
-              <div
-                className={`text-xs font-black flex items-center gap-2 ${
-                  processingStatus === 'passed' ? 'text-emerald-700' : 'text-rose-700'
-                }`}
-              >
-                <span className="text-base">{processingStatus === 'passed' ? '✓' : '✗'}</span>
-                <span>
-                  {processingStatus === 'passed'
-                    ? `Biển số ${detectedPlate} ĐÃ ĐƯỢC XÁC THỰC HỢP LỆ VỚI GATE BOOKING`
-                    : `Biển số ${detectedPlate} — TỰ ĐỘNG TỪ CHỐI! (${rejectionReason || 'Không tìm thấy Booking'})`}
-                </span>
-              </div>
-            )}
+            {/* Khung Nội Dung: Biển số & Trạng thái */}
+            <div className="bg-slate-50/90 rounded-xl p-3.5 border border-slate-200/80">
+              {detectedPlate ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                  {/* Cột Trái: Mô phỏng biển số xe thực tế */}
+                  <div className="flex flex-col items-center sm:items-start">
+                    <div className="relative bg-white border-2 border-slate-900 rounded-xl px-7 py-2.5 shadow-sm flex items-center justify-center font-mono font-black text-2xl sm:text-3xl tracking-widest text-slate-900 ring-4 ring-slate-900/5">
+                      <span className="absolute left-2.5 w-1.5 h-1.5 rounded-full bg-slate-400 ring-1 ring-slate-300"></span>
+                      <span>{detectedPlate}</span>
+                      <span className="absolute right-2.5 w-1.5 h-1.5 rounded-full bg-slate-400 ring-1 ring-slate-300"></span>
+                    </div>
+                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-1.5">Biển số nhận diện thành công</span>
+                  </div>
 
+                  {/* Cột Phải: Trạng thái đối soát */}
+                  <div className="flex flex-col sm:items-end justify-center">
+                    <div
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-2 border shadow-2xs ${
+                        processingStatus === 'passed'
+                          ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                          : 'bg-rose-100 text-rose-900 border-rose-300'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-base">
+                        {processingStatus === 'passed' ? 'verified' : 'cancel'}
+                      </span>
+                      <span>{processingStatus === 'passed' ? 'Hợp lệ với lệnh điều độ' : 'Không khớp thông tin đăng ký'}</span>
+                    </div>
+                    <span className={`text-[11px] mt-1.5 font-medium ${processingStatus === 'passed' ? 'text-emerald-700' : 'text-rose-600'}`}>
+                      {processingStatus === 'passed'
+                        ? 'Hệ thống tự động kích hoạt mở barie'
+                        : rejectionReason || 'Vui lòng kiểm tra lại thông tin xe'}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
+                  {/* Cột Trái: Khung chờ biển số với hiệu ứng */}
+                  <div className="flex flex-col items-center justify-center p-3 bg-white rounded-xl border border-dashed border-slate-300">
+                    <div className="relative bg-slate-50 border-2 border-slate-300/80 rounded-lg px-6 py-2 shadow-2xs flex items-center justify-center font-mono font-black text-xl tracking-widest text-slate-300 select-none">
+                      <span className="absolute left-2 w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                      <span>••• • - •••.••</span>
+                      <span className="absolute right-2 w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-2 text-xs font-medium text-slate-500">
+                      <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
+                      <span>Chờ xe dừng tại vạch kiểm soát...</span>
+                    </div>
+                  </div>
 
-
+                  {/* Cột Phải: Các bước quy trình tự động */}
+                  <div className="flex flex-col justify-center space-y-2 border-t sm:border-t-0 sm:border-l border-slate-200/90 pt-3 sm:pt-0 sm:pl-4">
+                    <div className="flex items-center gap-2.5 text-xs text-slate-600">
+                      <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold shrink-0">1</span>
+                      <span>Phương tiện dừng trước <b>vạch kiểm soát</b></span>
+                    </div>
+                    <div className="flex items-center gap-2.5 text-xs text-slate-600">
+                      <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold shrink-0">2</span>
+                      <span>Camera AI tự động <b>quét & nhận diện biển số</b></span>
+                    </div>
+                    <div className="flex items-center gap-2.5 text-xs text-slate-600">
+                      <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold shrink-0">3</span>
+                      <span>Hệ thống tự động <b>đối soát & mở barie</b></span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* ẢNH CHỤP HIỆN TRƯỜNG & CONTAINER */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white rounded-xl p-3 space-y-1.5 border border-slate-200 shadow-sm">
+          {/* ẢNH CHỤP HIỆN TRƯỜNG & BIỂN SỐ */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* THẺ 1: ẢNH HIỆN TRƯỜNG */}
+            <div className="bg-white rounded-2xl p-3.5 space-y-2 border border-slate-200/90 shadow-xs flex flex-col justify-between">
               <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black text-slate-500 uppercase">ẢNH CHỤP HIỆN TRƯỜNG</span>
+                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm text-blue-600">photo_camera</span>
+                  Ảnh Hiện Trường
+                </span>
                 {capturedImage && (
                   <button
                     onClick={() => setPreviewImageModal(capturedImage)}
-                    className="text-[9px] font-bold text-emerald-600 font-mono hover:underline flex items-center gap-0.5 cursor-pointer"
+                    className="text-[10px] font-bold text-blue-600 font-mono hover:underline flex items-center gap-0.5 cursor-pointer"
                   >
-                    <span className="material-symbols-outlined text-[11px]">zoom_in</span> Xem lớn
+                    <span className="material-symbols-outlined text-xs">zoom_in</span> Xem lớn
                   </button>
                 )}
               </div>
               <div
-                className="aspect-video bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer group relative border border-slate-300"
+                className="aspect-video bg-slate-100 rounded-xl overflow-hidden flex flex-col items-center justify-center cursor-pointer group relative border border-slate-200"
                 onClick={() => capturedImage && setPreviewImageModal(capturedImage)}
               >
                 {capturedImage ? (
                   <>
-                    <img src={capturedImage} alt="Captured" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[11px] font-mono font-bold">
-                      🔍 Bấm phóng to
+                    <img src={capturedImage} alt="Hiện trường" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-bold gap-1">
+                      <span className="material-symbols-outlined text-base">zoom_in</span> Bấm phóng to
                     </div>
                   </>
                 ) : (
-                  <span className="material-symbols-outlined text-slate-600 text-2xl">image</span>
+                  <div className="flex flex-col items-center gap-1.5 text-slate-400 p-2 text-center">
+                    <div className="w-9 h-9 rounded-full bg-white shadow-xs border border-slate-200/80 flex items-center justify-center text-slate-400">
+                      <span className="material-symbols-outlined text-lg">photo_camera</span>
+                    </div>
+                    <span className="text-[11px] font-medium">Chờ lưu ảnh toàn cảnh</span>
+                  </div>
                 )}
               </div>
-              <div className="w-full text-center text-[10px] font-bold text-emerald-600 font-mono py-1">
-                {isAiScanning ? '● Đang phân tích AI...' : '● Tự động quét theo chu kỳ'}
+              <div className="text-center text-[10px] font-medium text-slate-500 font-mono pt-0.5">
+                {capturedImage ? '✓ Đã chụp hiện trường' : 'Tự động chụp khi xe dừng'}
               </div>
             </div>
 
-            <div className="bg-white rounded-xl p-3 space-y-1.5 border border-slate-200 shadow-sm">
+            {/* THẺ 2: ẢNH CẮT BIỂN SỐ */}
+            <div className="bg-white rounded-2xl p-3.5 space-y-2 border border-slate-200/90 shadow-xs flex flex-col justify-between">
               <div className="flex justify-between items-center">
-                <span className="text-[10px] font-black text-slate-500 uppercase">CẮT BIỂN SỐ (OCR CROP)</span>
+                <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1">
+                  <span className="material-symbols-outlined text-sm text-blue-600">crop</span>
+                  Ảnh Cắt Biển Số
+                </span>
                 {aiCropImage && (
                   <button
                     onClick={() => setPreviewImageModal(aiCropImage)}
-                    className="text-[9px] font-bold text-blue-600 font-mono hover:underline flex items-center gap-0.5 cursor-pointer"
+                    className="text-[10px] font-bold text-blue-600 font-mono hover:underline flex items-center gap-0.5 cursor-pointer"
                   >
-                    <span className="material-symbols-outlined text-[11px]">zoom_in</span> Xem lớn
+                    <span className="material-symbols-outlined text-xs">zoom_in</span> Xem lớn
                   </button>
                 )}
               </div>
               <div
-                className="aspect-video bg-slate-900 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer group relative border border-slate-300"
+                className="aspect-video bg-slate-100 rounded-xl overflow-hidden flex flex-col items-center justify-center cursor-pointer group relative border border-slate-200"
                 onClick={() => aiCropImage && setPreviewImageModal(aiCropImage)}
               >
                 {aiCropImage ? (
                   <>
-                    <img src={aiCropImage} alt="Plate Crop" className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform" />
-                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-[11px] font-mono font-bold">
-                      🔍 Bấm phóng to
+                    <img src={aiCropImage} alt="Ảnh cắt biển số" className="w-full h-full object-contain p-2 group-hover:scale-105 transition-transform bg-slate-900" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white text-xs font-bold gap-1">
+                      <span className="material-symbols-outlined text-base">zoom_in</span> Bấm phóng to
                     </div>
                   </>
                 ) : (
-                  <span className="material-symbols-outlined text-slate-600 text-2xl">crop</span>
+                  <div className="flex flex-col items-center gap-1.5 text-slate-400 p-2 text-center">
+                    <div className="w-9 h-9 rounded-full bg-white shadow-xs border border-slate-200/80 flex items-center justify-center text-slate-400">
+                      <span className="material-symbols-outlined text-lg">crop</span>
+                    </div>
+                    <span className="text-[11px] font-medium">Chờ trích xuất biển số</span>
+                  </div>
                 )}
               </div>
-              <div className="text-center text-[10px] text-slate-500 font-mono">
-                {detectedPlate ? `Biển số: ${detectedPlate}` : '[ Chưa có ảnh cắt ]'}
+              <div className="text-center text-[10px] font-medium text-slate-500 font-mono pt-0.5">
+                {aiCropImage ? (detectedPlate ? `Biển số: ${detectedPlate}` : '✓ Đã trích xuất') : 'Tự động cắt khi nhận diện'}
               </div>
             </div>
           </div>
@@ -875,18 +882,18 @@ export default function GateControl() {
                   <span className="material-symbols-outlined text-xl">traffic</span>
                 </div>
                 <div>
-                  <h3 className="text-sm font-black tracking-wider uppercase text-slate-900 font-mono flex items-center gap-1.5">
-                    TRẠNG THÁI BARIE {selectedGate?.code || 'CHƯA CHỌN CỔNG'}
+                  <h3 className="text-sm font-bold tracking-wide uppercase text-slate-900 font-mono flex items-center gap-1.5">
+                    Trạng thái Barie Cổng A
                   </h3>
-                  <span className="text-[10px] text-slate-500 font-mono font-bold block">
-                    LÀN 01 · TỰ ĐỘNG HÓA BARRIER GATE
+                  <span className="text-[10px] text-slate-500 font-mono font-medium block">
+                    {mode === 'checkin' ? 'Làn Vào' : 'Làn Ra'} · Hệ thống barie tự động
                   </span>
                 </div>
               </div>
 
               {/* Badge trạng thái Barie: Nổi bật, cực kỳ rõ ràng */}
               <div
-                className="px-3.5 py-1.5 rounded-full text-xs font-black font-mono tracking-wider flex items-center gap-2 shadow-xs transition-all"
+                className="px-3.5 py-1.5 rounded-full text-xs font-bold font-mono tracking-wider flex items-center gap-2 shadow-xs transition-all"
                 style={{
                   backgroundColor: barrierState === 'opened' ? '#f0fdf4' : '#fef2f2',
                   border: `2px solid ${barrierState === 'opened' ? '#22c55e' : '#ef4444'}`,
@@ -900,7 +907,7 @@ export default function GateControl() {
                   }}
                 ></span>
                 <span>
-                  {barrierState === 'opened' ? 'BARIE ĐÃ MỞ (OPEN)' : 'BARIE ĐANG ĐÓNG (LOCKED)'}
+                  {barrierState === 'opened' ? 'Barie Đã Mở' : 'Barie Đang Đóng'}
                 </span>
               </div>
             </div>
@@ -916,10 +923,10 @@ export default function GateControl() {
             >
               {/* Vạch sơn mặt đường & vạch dừng */}
               <div className="absolute inset-x-0 bottom-0 h-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between px-6">
-                <span className="text-[8px] font-mono font-black text-amber-400 tracking-widest">
-                  ◄◄ LÀN XE 01 · GATE IN
+                <span className="text-[8px] font-mono font-bold text-amber-400 tracking-widest">
+                  ◄◄ {mode === 'checkin' ? 'CỔNG VÀO · LÀN XE' : 'CỔNG RA · LÀN XE'}
                 </span>
-                <span className="text-[8px] font-mono font-black text-slate-400 tracking-wider">
+                <span className="text-[8px] font-mono font-bold text-slate-400 tracking-wider">
                   VẠCH DỪNG QUY ĐỊNH
                 </span>
               </div>
@@ -943,7 +950,7 @@ export default function GateControl() {
                   <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
                 </div>
                 <div className="text-[8px] font-mono font-black text-slate-950 px-1 py-0.5 bg-yellow-300 rounded leading-none">
-                  NEXUS
+                  CẢNG
                 </div>
               </div>
 
@@ -999,7 +1006,7 @@ export default function GateControl() {
 
             {/* Banner trạng thái Barie - Nền sáng tương phản cao, chữ đậm cực nét */}
             <div
-              className="py-3 px-4 rounded-xl text-center font-mono font-black text-xs flex items-center justify-center gap-2 shadow-xs transition-all"
+              className="py-3 px-4 rounded-xl text-center font-mono font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-all"
               style={{
                 backgroundColor:
                   barrierState === 'opened'
@@ -1031,10 +1038,10 @@ export default function GateControl() {
               </span>
               <span className="tracking-wide">
                 {barrierState === 'opened'
-                  ? 'CỔNG ĐANG MỞ — PHƯƠNG TIỆN ĐƯỢC PHÉP TIẾN VÀO CẢNG'
+                  ? 'Cổng đang mở — Phương tiện được phép lưu thông qua cổng'
                   : processingStatus === 'rejected'
-                  ? 'CỔNG TỰ ĐỘNG KHÓA — XE BỊ TỪ CHỐI DO KHÔNG KHỚP BOOKING'
-                  : 'CỔNG ĐANG ĐÓNG — CHỜ HỆ THỐNG XÁC MINH PHƯƠNG TIỆN HỢP LỆ'}
+                  ? 'Cổng tự động khóa — Xe bị từ chối do không khớp đăng ký'
+                  : 'Cổng đang đóng — Chờ hệ thống xác minh phương tiện'}
               </span>
             </div>
 
@@ -1049,11 +1056,11 @@ export default function GateControl() {
                     setBarrierState('opened')
                     showToast(`Đã mở barie ${selectedGate?.code}.`)
                   }}
-                  disabled={barrierState === 'opened' || !selectedGate || !['passed', 'checked-in'].includes(processingStatus) || verificationBusy || gateOutBusy}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black font-mono flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                  disabled={barrierState === 'opened'}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold font-mono flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-sm">lock_open</span>
-                  MỞ BARIE
+                  Mở barie
                 </button>
                 <button
                   onClick={() => {
@@ -1061,10 +1068,10 @@ export default function GateControl() {
                     showToast(`Đã đóng barie ${selectedGate?.code}.`)
                   }}
                   disabled={barrierState === 'closed'}
-                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-black font-mono flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold font-mono flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-sm">lock</span>
-                  HẠ BARIE
+                  Hạ barie
                 </button>
               </div>
             </div>
@@ -1075,41 +1082,41 @@ export default function GateControl() {
             <div className="bg-white border-2 border-emerald-400 rounded-2xl p-5 shadow-lg space-y-4 animate-in zoom-in-95">
               <div className="flex justify-between items-start border-b border-slate-200 pb-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-black">
+                  <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center font-bold">
                     <span className="material-symbols-outlined text-xl">fact_check</span>
                   </div>
                   <div>
-                    <div className="flex items-center gap-1.5 text-emerald-700 text-[10px] font-black uppercase tracking-wider">
+                    <div className="flex items-center gap-1.5 text-emerald-700 text-[10px] font-bold uppercase tracking-wider">
                       <span className="material-symbols-outlined text-sm">verified</span>
-                      XÁC MINH CỔNG HỢP LỆ (PASS)
+                      Xác minh cổng hợp lệ
                     </div>
-                    <h4 className="font-heading font-black text-sm text-slate-900">
-                      MÃ BOOKING: {activeBooking.bookingCode}
+                    <h4 className="font-heading font-bold text-sm text-slate-900">
+                      Mã đăng ký: {activeBooking.bookingCode}
                     </h4>
                   </div>
                 </div>
-                <span className="px-3 py-1 rounded-full text-[10px] font-black border bg-emerald-100 text-emerald-900 border-emerald-300 flex items-center gap-1.5">
+                <span className="px-3 py-1 rounded-full text-[10px] font-bold border bg-emerald-100 text-emerald-900 border-emerald-300 flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-                  {activeBooking.status}
+                  {activeBooking.status === 'Approved' ? 'Đã duyệt' : activeBooking.status === 'Checked-in' ? 'Đã vào cổng' : activeBooking.status || 'Hợp lệ'}
                 </span>
               </div>
 
               {/* THÔNG TIN CƠ BẢN ĐỂ KIỂM SOÁT CỔNG */}
               <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs font-mono">
                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Mã Booking:</span>
-                  <div className="font-black text-blue-700 text-sm">{activeBooking.bookingCode}</div>
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Mã đăng ký:</span>
+                  <div className="font-bold text-blue-700 text-sm">{activeBooking.bookingCode}</div>
                 </div>
                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Biển số theo Booking:</span>
-                  <div className="font-black text-blue-700 text-sm">{activeBooking.licensePlate}</div>
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Biển số đăng ký:</span>
+                  <div className="font-bold text-blue-700 text-sm">{activeBooking.licensePlate}</div>
                 </div>
                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                   <span className="text-slate-500 text-[10px] block uppercase font-bold">Doanh nghiệp vận tải:</span>
                   <div className="font-bold text-slate-800 truncate">{activeBooking.company}</div>
                 </div>
                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Tài xế theo Booking:</span>
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Tài xế đăng ký:</span>
                   <div className="font-bold text-slate-800">{activeBooking.driverName}</div>
                 </div>
                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
@@ -1117,15 +1124,15 @@ export default function GateControl() {
                   <div className="font-bold text-slate-800">{activeBooking.containerId}</div>
                 </div>
                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Loại cont / Tác nghiệp:</span>
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Loại container / Tác nghiệp:</span>
                   <div className="font-bold text-slate-800 truncate">{activeBooking.containerType} · {activeBooking.operation}</div>
                 </div>
                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Cổng / Giờ ETA:</span>
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Cổng / Giờ dự kiến:</span>
                   <div className="font-bold text-orange-600">{activeBooking.gate} · {activeBooking.etaDisplay}</div>
                 </div>
                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Số chì (Seal No):</span>
+                  <span className="text-slate-500 text-[10px] block uppercase font-bold">Số chì niêm phong:</span>
                   <div className="font-bold text-slate-800">{activeBooking.sealNumber}</div>
                 </div>
               </div>
@@ -1133,7 +1140,7 @@ export default function GateControl() {
               {/* NÚT ĐIỀU HƯỚNG SANG TRANG XÁC MINH XE & TÀI XẾ */}
               <Link
                 to={`/gate/verification?plate=${encodeURIComponent(activeBooking.licensePlate || detectedPlate)}&booking=${encodeURIComponent(activeBooking.bookingCode || '')}`}
-                className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black font-mono flex items-center justify-between shadow-md transition-all cursor-pointer group"
+                className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold font-mono flex items-center justify-between shadow-md transition-all cursor-pointer group"
               >
                 <div className="flex items-center gap-2.5">
                   <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center">
@@ -1141,7 +1148,7 @@ export default function GateControl() {
                   </div>
                   <div className="text-left">
                     <div className="text-[10px] text-blue-200 uppercase tracking-wider font-bold">Chi tiết đối soát hồ sơ</div>
-                    <div className="text-xs font-black">XEM THÔNG TIN TÀI XẾ TẠI TRANG XÁC MINH ➔</div>
+                    <div className="text-xs font-bold">Xem thông tin tài xế tại trang xác minh ➔</div>
                   </div>
                 </div>
                 <span className="material-symbols-outlined text-lg group-hover:translate-x-1 transition-transform">arrow_forward</span>
@@ -1153,21 +1160,21 @@ export default function GateControl() {
               <div className="flex items-center gap-2 text-rose-700 border-b border-rose-100 pb-3">
                 <span className="material-symbols-outlined text-2xl">gpp_bad</span>
                 <div>
-                  <span className="text-[10px] font-black uppercase tracking-wider block text-rose-500">KẾT QUẢ ĐỐI SOÁT CỔNG</span>
-                  <h4 className="text-sm font-black text-rose-950 uppercase">TỰ ĐỘNG TỪ CHỐI — KHÔNG HỢP LỆ</h4>
+                  <span className="text-[10px] font-bold uppercase tracking-wider block text-rose-500">Kết quả đối soát cổng</span>
+                  <h4 className="text-sm font-bold text-rose-950 uppercase">Tự động từ chối — Không hợp lệ</h4>
                 </div>
               </div>
               <div className="bg-rose-50 border border-rose-200 rounded-xl p-3.5 space-y-1 text-xs">
                 <div className="font-bold text-rose-900 flex items-center justify-between">
                   <span>Biển số phát hiện:</span>
-                  <span className="font-mono text-rose-700 text-sm font-black">{detectedPlate || 'Chưa rõ'}</span>
+                  <span className="font-mono text-rose-700 text-sm font-bold">{detectedPlate || 'Chưa rõ'}</span>
                 </div>
                 <div className="text-[11px] text-rose-800 leading-relaxed pt-1 border-t border-rose-200/60">
-                  {rejectionReason || 'Không tìm thấy Gate Booking hợp lệ trong hệ thống tương ứng với thông tin phương tiện.'}
+                  {rejectionReason || 'Không tìm thấy thông tin đăng ký hợp lệ trong hệ thống tương ứng với thông tin phương tiện.'}
                 </div>
               </div>
               <div className="text-[10px] text-slate-500 flex items-center justify-between font-mono">
-                <span>Trạng thái Barie: <strong className="text-rose-600">ĐANG KHÓA</strong></span>
+                <span>Trạng thái Barie: <strong className="text-rose-600">Đang khóa</strong></span>
                 <span className="text-amber-700 font-bold">Cần lập biên bản sự cố</span>
               </div>
             </div>
@@ -1178,65 +1185,63 @@ export default function GateControl() {
                 <span className="material-symbols-outlined text-2xl">radar</span>
               </div>
               <div>
-                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider">
-                  CHỜ PHƯƠNG TIỆN TIẾN VÀO VÙNG QUÉT
+                <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                  Chờ phương tiện tiến vào vùng quét
                 </h4>
                 <p className="text-[11px] text-slate-500 mt-1 max-w-xs mx-auto leading-relaxed">
-                  Camera AI đang tự động nhận diện biển số xe. Thông tin Gate Booking và chứng từ điều độ sẽ tự động hiển thị tại đây khi hệ thống đối soát hợp lệ.
+                  Camera đang tự động nhận diện biển số xe. Thông tin đăng ký và chứng từ điều độ sẽ tự động hiển thị tại đây khi hệ thống đối soát hợp lệ.
                 </p>
               </div>
               <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-[10px] font-mono font-bold">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                Làn 01 · Camera ANPR sẵn sàng
+                {mode === 'checkin' ? 'Làn Vào' : 'Làn Ra'} · Camera sẵn sàng
               </div>
             </div>
           )}
 
-          {/* DANH SÁCH KIỂM TRA (CHECKLIST) */}
+          {/* DANH SÁCH KIỂM TRA ĐIỀU KIỆN */}
           <div
-            className={`rounded-2xl border-2 p-4 space-y-3 transition-all ${
+            className={`rounded-2xl border-2 p-4 space-y-3 transition-all shadow-xs ${
               allValid
-                ? 'bg-emerald-50 border-emerald-400'
+                ? 'bg-emerald-50/60 border-emerald-400'
                 : processingStatus === 'rejected'
-                ? 'bg-rose-50 border-rose-300'
-                : 'bg-white border-slate-200'
+                ? 'bg-rose-50/60 border-rose-300'
+                : 'bg-white border-slate-200/80'
             }`}
           >
             <div className="flex justify-between items-center">
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
-                DANH SÁCH KIỂM TRA ĐIỀU KIỆN
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-base text-blue-600">checklist</span>
+                Danh Sách Kiểm Tra Điều Kiện
               </span>
-              {!allValid && (
-                <button
-                  onClick={() => setVerificationOverride(!verificationOverride)}
-                  className="text-[10px] font-bold text-orange-700 underline hover:text-orange-900 cursor-pointer"
-                >
-                  {verificationOverride ? 'Tắt ghi đè' : 'Ghi đè thủ công'}
-                </button>
-              )}
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                allValid ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-500'
+              }`}>
+                {checklist.filter(c => c.ok).length}/{checklist.length} đạt chuẩn
+              </span>
             </div>
 
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               {checklist.map((c) => (
-                <div key={c.id} className="flex items-center gap-2 text-xs">
+                <div key={c.id} className="flex items-center gap-2.5 p-1.5 rounded-lg text-xs hover:bg-slate-50/50 transition-colors">
                   <span
-                    className={`font-black text-base ${
+                    className={`material-symbols-outlined text-base shrink-0 ${
                       c.ok
                         ? 'text-emerald-600'
                         : processingStatus === 'rejected'
                         ? 'text-rose-600'
-                        : 'text-slate-400'
+                        : 'text-slate-300'
                     }`}
                   >
-                    {c.ok ? '✓' : processingStatus === 'rejected' ? '✗' : '○'}
+                    {c.ok ? 'check_circle' : processingStatus === 'rejected' ? 'cancel' : 'radio_button_unchecked'}
                   </span>
                   <span
                     className={
                       c.ok
-                        ? 'text-emerald-950 font-medium'
+                        ? 'text-emerald-950 font-semibold'
                         : processingStatus === 'rejected'
                         ? 'text-rose-950 font-bold'
-                        : 'text-slate-500'
+                        : 'text-slate-600'
                     }
                   >
                     {c.label}
@@ -1245,32 +1250,35 @@ export default function GateControl() {
               ))}
             </div>
 
-            {verificationOverride && (
-              <div className="text-[10px] text-amber-900 bg-amber-100 border border-amber-300 rounded-lg px-2.5 py-1 font-bold">
-                ⚠️ Ghi đè thủ công đang bật — Gate Officer chịu trách nhiệm phê duyệt ngoại lệ.
-              </div>
-            )}
-
-            {/* BANNER THÀNH CÔNG, THẤT BẠI HOẶC CHỜ */}
+            {/* BANNER KẾT QUẢ ĐỐI SOÁT */}
             <div
-              className={`text-center font-black text-sm py-2.5 rounded-xl border-2 ${
+              className={`text-center font-bold text-xs py-2 px-3 rounded-xl border flex items-center justify-center gap-2 ${
                 processingStatus === 'passed' || processingStatus === 'checked-in'
-                  ? 'bg-emerald-100 text-emerald-900 border-emerald-400 shadow-sm'
+                  ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
                   : processingStatus === 'rejected'
-                  ? 'bg-rose-100 text-rose-900 border-rose-300 shadow-sm'
-                  : 'bg-slate-100 text-slate-600 border-slate-300 shadow-sm'
+                  ? 'bg-rose-100 text-rose-900 border-rose-300'
+                  : 'bg-slate-50 text-slate-600 border-slate-200'
               }`}
             >
-              {processingStatus === 'passed' || processingStatus === 'checked-in'
-                ? (mode === 'checkin' ? '🟢 XÁC MINH THÀNH CÔNG — SẴN SÀNG MỞ CỔNG' : '🟢 SẴN SÀNG MỞ CỔNG CHO XE RA')
-                : processingStatus === 'rejected'
-                ? '🔴 XÁC MINH THẤT BẠI — TỰ ĐỘNG TỪ CHỐI VÀO CỔNG'
-                : '🟡 CHỜ PHƯƠNG TIỆN — CAMERA ĐANG QUÉT TỰ ĐỘNG'}
+              <span className="material-symbols-outlined text-sm">
+                {processingStatus === 'passed' || processingStatus === 'checked-in'
+                  ? 'check_circle'
+                  : processingStatus === 'rejected'
+                  ? 'warning'
+                  : 'hourglass_empty'}
+              </span>
+              <span>
+                {processingStatus === 'passed' || processingStatus === 'checked-in'
+                  ? (mode === 'checkin' ? 'Xác minh thành công — Barie tự động nâng cần' : 'Sẵn sàng mở cổng cho xe xuất cảng')
+                  : processingStatus === 'rejected'
+                  ? 'Xác minh thất bại — Cổng đã tự động khóa'
+                  : 'Chờ phương tiện — Camera quét tự động khi xe dừng'}
+              </span>
             </div>
 
             {rejectionReason && !allValid && (
-              <div className="p-2.5 bg-rose-100/80 border border-rose-300 rounded-lg text-rose-900 text-xs font-bold flex items-start gap-1.5">
-                <span className="material-symbols-outlined text-sm text-rose-700 mt-0.5">error</span>
+              <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-rose-800 text-xs font-semibold flex items-start gap-1.5">
+                <span className="material-symbols-outlined text-sm text-rose-600 mt-0.5">error</span>
                 <span>{rejectionReason}</span>
               </div>
             )}
@@ -1280,9 +1288,9 @@ export default function GateControl() {
           {processingStatus === 'checked-in' ? (
             // KHI ĐÃ MỞ CỔNG TỰ ĐỘNG THÀNH CÔNG
             <div className="flex flex-col gap-2.5">
-              <div className="h-14 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl font-black text-base shadow-xl flex items-center justify-center gap-2">
+              <div className="h-14 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl font-bold text-base shadow-xl flex items-center justify-center gap-2">
                 <span className="material-symbols-outlined text-2xl">check_circle</span>
-                {mode === 'checkin' ? '🎉 CỔNG ĐÃ TỰ ĐỘNG MỞ — XE ĐƯỢC VÀO CẢNG' : '🎉 CỔNG ĐÃ TỰ ĐỘNG MỞ — XE ĐƯỢC RA NGOÀI'}
+                {mode === 'checkin' ? '🎉 Cổng đã tự động mở — Xe được phép vào cảng' : '🎉 Cổng đã tự động mở — Xe được phép ra ngoài'}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <button
@@ -1305,7 +1313,7 @@ export default function GateControl() {
                   className="h-10 border border-amber-400 text-amber-800 hover:bg-amber-50 rounded-xl font-bold text-xs flex items-center justify-center gap-1 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-base">report</span>
-                  Báo sự cố Dispatcher
+                  Báo sự cố Điều độ
                 </button>
               </div>
             </div>
@@ -1315,9 +1323,9 @@ export default function GateControl() {
               <div className="p-3 bg-rose-50 border-2 border-rose-300 rounded-xl text-rose-900 text-xs font-bold flex items-center gap-2">
                 <span className="material-symbols-outlined text-xl text-rose-600">block</span>
                 <div>
-                  <div>ĐÃ TỰ ĐỘNG TỪ CHỐI VÀO CỔNG</div>
+                  <div>Đã tự động từ chối vào cổng</div>
                   <div className="text-[11px] font-normal text-rose-700">
-                    Xe không đủ điều kiện an toàn. Cổng đã tự động khóa. Vui lòng tạo sự cố để gửi cho Dispatcher.
+                    Xe không đủ điều kiện an toàn. Cổng đã tự động khóa. Vui lòng tạo sự cố để gửi cho Điều độ.
                   </div>
                 </div>
               </div>
@@ -1325,10 +1333,10 @@ export default function GateControl() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   onClick={() => setShowIncidentModal(true)}
-                  className="h-13 py-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-xl font-black text-sm shadow-lg flex items-center justify-center gap-2 active:scale-98 transition-all cursor-pointer"
+                  className="h-13 py-3 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white rounded-xl font-bold text-sm shadow-lg flex items-center justify-center gap-2 active:scale-98 transition-all cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-xl">report</span>
-                  TẠO SỰ CỐ GỬI DISPATCHER
+                  Tạo sự cố gửi Điều độ
                 </button>
 
                 <button
@@ -1344,17 +1352,11 @@ export default function GateControl() {
                   className="h-13 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl font-bold text-sm shadow-md flex items-center justify-center gap-2 active:scale-98 transition-all cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-xl">refresh</span>
-                  QUÉT LẠI CAMERA
+                  Quét lại camera
                 </button>
               </div>
             </div>
-          ) : (
-            // KHI CHỜ (IDLE): CHỜ QUÉT
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-center text-slate-500 font-bold text-xs space-y-1">
-              <span className="material-symbols-outlined text-xl text-slate-400 block mx-auto">hourglass_empty</span>
-              <div>Chờ Camera AI tự động bắt biển số xe tại vị trí vạch dừng</div>
-            </div>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -1366,7 +1368,7 @@ export default function GateControl() {
           <div className="bg-white rounded-3xl p-6 md:p-8 max-w-md w-full space-y-5 shadow-2xl border border-slate-200 animate-in zoom-in-95">
             <div className="flex items-center gap-3 border-b border-slate-200 pb-3">
               <span className="material-symbols-outlined text-3xl text-rose-600">block</span>
-              <h3 className="text-xl font-black text-slate-900">TỪ CHỐI VÀO CỔNG</h3>
+              <h3 className="text-xl font-bold text-slate-900">Từ chối vào cổng</h3>
             </div>
             <p className="text-xs text-slate-600">
               Xác nhận từ chối xe <strong>{detectedPlate || activeBooking?.licensePlate}</strong> vào cảng. Cổng sẽ tiếp tục đóng và lưu sự cố kiểm soát.
@@ -1385,7 +1387,7 @@ export default function GateControl() {
                   setBarrierState('closed')
                   showToast(`🚫 Đã từ chối xe ${detectedPlate || activeBooking?.licensePlate} vào cảng.`)
                 }}
-                className="flex-1 h-11 bg-rose-600 text-white rounded-xl font-black text-sm hover:bg-rose-700"
+                className="flex-1 h-11 bg-rose-600 text-white rounded-xl font-bold text-sm hover:bg-rose-700"
               >
                 Xác nhận từ chối
               </button>
@@ -1404,7 +1406,7 @@ export default function GateControl() {
                   <span className="material-symbols-outlined text-2xl">report</span>
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-slate-900">BÁO CÁO SỰ CỐ GỬI DISPATCHER</h3>
+                  <h3 className="text-lg font-bold text-slate-900">Báo cáo sự cố gửi Điều độ</h3>
                   <p className="text-[11px] text-slate-500">Thông báo trực tiếp đến Bộ phận Điều độ Cảng</p>
                 </div>
               </div>
@@ -1420,14 +1422,14 @@ export default function GateControl() {
             <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2 text-xs font-mono">
               <div className="flex justify-between">
                 <span className="text-slate-500">Vị trí xảy ra:</span>
-                <strong className="text-slate-900">{selectedGate?.code || 'Chưa chọn cổng'} · Làn 01</strong>
+                <strong className="text-slate-900">Cổng A · {mode === 'checkin' ? 'Làn Vào' : 'Làn Ra'}</strong>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500">Biển số phát hiện:</span>
                 <strong className="text-rose-600">{detectedPlate || 'Chưa nhận diện'}</strong>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500">Booking liên quan:</span>
+                <span className="text-slate-500">Hồ sơ đăng ký liên quan:</span>
                 <strong className="text-slate-900">{activeBooking?.bookingCode} (Xe: {activeBooking?.licensePlate})</strong>
               </div>
               {capturedImage && (
@@ -1451,14 +1453,14 @@ export default function GateControl() {
                   onChange={(e) => setIncidentType(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-amber-500"
                 >
-                  <option value="Sai biển số xe so với booking">Sai biển số xe so với booking</option>
-                  <option value="Xe không có booking trong hệ thống">Xe không có booking trong hệ thống</option>
-                  <option value="Booking chưa được phê duyệt hoặc hết hạn">Booking chưa được phê duyệt hoặc hết hạn</option>
+                  <option value="Sai biển số xe so với đăng ký">Sai biển số xe so với đăng ký</option>
+                  <option value="Xe không có đăng ký trong hệ thống">Xe không có đăng ký trong hệ thống</option>
+                  <option value="Đăng ký chưa được phê duyệt hoặc hết hạn">Đăng ký chưa được phê duyệt hoặc hết hạn</option>
                   <option value="Giấy phép lái xe tài xế hết hạn / vi phạm">Giấy phép lái xe tài xế hết hạn / vi phạm</option>
                   <option value="Mã container không khớp thông tin đăng ký">Mã container không khớp thông tin đăng ký</option>
-                  <option value="Số seal niêm phong bị rách / không khớp">Số seal niêm phong bị rách / không khớp</option>
+                  <option value="Số chì niêm phong bị rách / không khớp">Số chì niêm phong bị rách / không khớp</option>
                   <option value="Xe tải hỏng hóc gây ùn tắc tại cổng">Xe tải hỏng hóc gây ùn tắc tại cổng</option>
-                  <option value="Lỗi thiết bị nhận diện AI / RFID">Lỗi thiết bị nhận diện AI / RFID</option>
+                  <option value="Lỗi thiết bị nhận diện camera / cảm biến">Lỗi thiết bị nhận diện camera / cảm biến</option>
                   <option value="Khác">Lý do khác</option>
                 </select>
               </div>
@@ -1496,7 +1498,7 @@ export default function GateControl() {
                   rows="3"
                   value={incidentNote}
                   onChange={(e) => setIncidentNote(e.target.value)}
-                  placeholder="Mô tả hiện trường, phản ánh của tài xế hoặc chỉ đạo điều phối mong muốn từ Dispatcher..."
+                  placeholder="Mô tả hiện trường, phản ánh của tài xế hoặc chỉ đạo điều phối mong muốn từ Điều độ..."
                   className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-amber-500 font-normal"
                 />
               </div>
@@ -1515,7 +1517,7 @@ export default function GateControl() {
                 className="flex-1 h-11 rounded-xl font-black text-sm shadow-md bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white flex items-center justify-center gap-1.5"
               >
                 <span className="material-symbols-outlined text-lg">send</span>
-                Gửi Dispatcher
+                Gửi Điều độ
               </button>
             </div>
           </div>
@@ -1535,8 +1537,8 @@ export default function GateControl() {
             <div className="flex justify-between items-center w-full pb-3 border-b border-slate-800 text-white">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-emerald-400">photo_library</span>
-                <span className="text-xs font-mono font-bold text-slate-200 uppercase">
-                  BẰNG CHỨNG HÌNH ẢNH CỔNG
+                <span className="text-xs font-mono font-bold text-slate-200">
+                  Bằng chứng hình ảnh cổng
                 </span>
               </div>
               <button
