@@ -38,13 +38,10 @@ export default function DriverPortalContainer() {
     return connectDriverRealtime((event) => {
       setYardNotifications(current => [{ ...event, receivedAt: new Date().toISOString() }, ...current].slice(0, 20))
       setToastMessage(`✅ Container ${event.containerId} · ${event.operationStatus}`)
-      setPendingConfirmation({
-        containerId: event.containerId,
-        containerNumber: event.containerNumber || event.containerId,
-        operationStatus: event.operationStatus,
-        bookingId: event.bookingId,
-        source: 'realtime'
-      })
+      driverContainerConfirmationService.getAssignedOperations().then(operations => {
+        const matching = (Array.isArray(operations) ? operations : []).find(item => item.containerId === event.containerId)
+        if (matching) setPendingConfirmation(matching)
+      }).catch(() => setToastMessage('Không tải được booking cần xác nhận. Vui lòng thử lại.'))
       setTripStep(current => Math.max(current, 4))
       setTimeout(() => setToastMessage(''), 5000)
     }, () => {
@@ -56,7 +53,7 @@ export default function DriverPortalContainer() {
     if (!pendingConfirmation?.containerId || isConfirming) return
     setIsConfirming(true)
     try {
-      const result = await driverContainerConfirmationService.confirmContainer(pendingConfirmation.containerId, 'OK')
+      const result = await driverContainerConfirmationService.confirmContainer(pendingConfirmation.bookingId, pendingConfirmation.containerId, 'OK')
       setPendingConfirmation(current => ({ ...current, ...result, operationStatus: result.containerStatus }))
       setTripStep(current => Math.max(current, 4))
       setToastMessage(`✅ Container ${result.containerNumber} đã sẵn sàng Gate-Out`)

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { containerService } from "../../services/containerService";
+import { declarationBookingSummary } from "../../utils/declarationBookingSummary";
 import ContainerImportPanel from "../../components/Containers/ContainerImportPanel";
 
 const emptyForm = {
@@ -21,10 +22,14 @@ const inputClass =
   "w-full rounded-xl border border-chalk bg-fog px-3.5 py-2.5 text-xs font-semibold text-carbon outline-none focus:border-signal-orange focus:bg-white";
 
 export default function CargoDeclaration() {
+  const navigate = useNavigate();
+  const [identity, setIdentity] = useState(null);
+  const [sharedIdentity, setSharedIdentity] = useState(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
   const [declarations, setDeclarations] = useState([]);
   const [types, setTypes] = useState([]);
   const [cargoTypes, setCargoTypes] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [search, setSearch] = useState("");
@@ -36,35 +41,77 @@ export default function CargoDeclaration() {
   const [importResult, setImportResult] = useState(null);
   const [form, setForm] = useState(emptyForm);
   const load = useCallback(async () => {
+    if (!search.trim() || search.trim().length < 4) return;
     setLoading(true);
     setError("");
     try {
-      const [items, equipment, cargo] = await Promise.all([
-        containerService.getTransportDeclarations(),
-        containerService.getContainerTypes(),
-        containerService.getCargoTypes(),
+      const number = search.trim().toUpperCase();
+      const [rows, shared] = await Promise.all([
+        containerService.getTransportDeclarations(number),
+        /^[A-Z]{4}\d{7}$/.test(number)
+          ? containerService.lookup(number)
+          : Promise.resolve(null),
       ]);
-      setDeclarations(items);
-      setTypes(equipment);
-      setCargoTypes(cargo);
+      setDeclarations(rows);
+      setSharedIdentity(shared);
     } catch (e) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
+  }, [search]);
+  useEffect(() => {
+    Promise.all([
+      containerService.getContainerTypes(),
+      containerService.getCargoTypes(),
+    ])
+      .then(([equipment, cargo]) => {
+        setTypes(equipment);
+        setCargoTypes(cargo);
+      })
+      .catch((e) => setError(e.message));
   }, []);
   useEffect(() => {
-    load();
-  }, [load]);
+    const number = form.containerNumber.trim().toUpperCase();
+    setIdentity(null);
+    if (!/^[A-Z]{4}\d{7}$/.test(number)) {
+      setLookupLoading(false);
+      return undefined;
+    }
+    let current = true;
+    setLookupLoading(true);
+    const timer = setTimeout(
+      () =>
+        containerService
+          .lookup(number)
+          .then((item) => {
+            if (!current) return;
+            setIdentity(item);
+            if (item)
+              setForm((previous) => ({
+                ...previous,
+                containerTypeCode: item.containerTypeCode,
+              }));
+          })
+          .catch((e) => {
+            if (current) setError(e.message);
+          })
+          .finally(() => {
+            if (current) setLookupLoading(false);
+          }),
+      250,
+    );
+    return () => {
+      current = false;
+      clearTimeout(timer);
+    };
+  }, [form.containerNumber]);
   const filtered = useMemo(
     () =>
       declarations.filter(
         (item) =>
           (!typeFilter || item.containerTypeCode === typeFilter) &&
-          [
-            item.containerNumber,
-            item.customerName,
-          ].some((v) =>
+          [item.containerNumber, item.customerName].some((v) =>
             String(v || "")
               .toLowerCase()
               .includes(search.trim().toLowerCase()),
@@ -107,6 +154,7 @@ export default function CargoDeclaration() {
     setImportResult(null);
     setFile(null);
     setForm(emptyForm);
+    setIdentity(null);
     setModal(kind);
   };
   const save = async (event) => {
@@ -126,7 +174,17 @@ export default function CargoDeclaration() {
           : "Đã lưu khai báo Container. Bạn có thể đặt lịch vào hoặc ra bãi tại Booking.",
       );
       setModal(null);
-      await load();
+      const direction = event.nativeEvent.submitter?.value;
+      if (["Pickup", "Dropoff"].includes(direction))
+        navigate("/booking", {
+          state: {
+            declarationId: result.declarationId,
+            containerId: result.containerId,
+            containerNumber: form.containerNumber,
+            bookingType: direction,
+          },
+        });
+      else await load();
     } catch (e) {
       setError(
         e.details ? Object.values(e.details).flat().join(" ") : e.message,
@@ -235,14 +293,19 @@ export default function CargoDeclaration() {
           </button>
         </div>
       )}
-      <div className="flex flex-wrap gap-4 rounded-xl border border-chalk bg-white p-4">
-        <div className="text-sm font-bold">
-          {declarations.length} lượt khai báo ·{" "}
-          {new Set(declarations.map((i) => i.containerId)).size} Container
-        </div>
+      <h2 className="text-lg font-bold text-carbon">
+        Danh sách khai báo hàng hóa
+      </h2>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          load();
+        }}
+        className="flex flex-wrap gap-4 rounded-xl border border-chalk bg-white p-4"
+      >
         <input
           aria-label="Tìm khai báo"
-          placeholder="Tìm Container, khách hàng..."
+          placeholder="Nhập số Container để tìm khai báo hàng hóa"
           className={`${inputClass} max-w-sm`}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
@@ -260,7 +323,37 @@ export default function CargoDeclaration() {
             </option>
           ))}
         </select>
-      </div>
+        <button className="rounded-xl bg-carbon px-4 py-2 text-sm font-bold text-white">
+          Tìm khai báo
+        </button>
+      </form>
+      {sharedIdentity && (
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-chalk bg-white p-5">
+          <div>
+            <p className="text-xs font-bold text-slate">
+              Container dùng chung · Chỉ hiển thị số và loại
+            </p>
+            <b className="mt-1 block font-mono">
+              {sharedIdentity.containerNumber} ·{" "}
+              {sharedIdentity.containerTypeCode}
+            </b>
+          </div>
+          <button
+            onClick={() =>
+              navigate("/booking", {
+                state: {
+                  containerNumber: sharedIdentity.containerNumber,
+                  containerId: sharedIdentity.id,
+                  bookingType: "Pickup",
+                },
+              })
+            }
+            className="rounded-xl bg-signal-orange px-4 py-2.5 text-sm font-bold text-white"
+          >
+            Đặt Pickup bằng mã lượt bãi
+          </button>
+        </div>
+      )}
       <div className="overflow-x-auto rounded-2xl border border-chalk bg-white">
         <table className="w-full text-left text-xs">
           <thead className="bg-fog text-slate">
@@ -271,6 +364,7 @@ export default function CargoDeclaration() {
                 "Hàng hóa",
                 "Điện yêu cầu",
                 "Khách hàng",
+                "Loại booking",
                 "Ngày khai báo",
                 "Thao tác",
               ].map((h) => (
@@ -283,19 +377,20 @@ export default function CargoDeclaration() {
           <tbody className="divide-y divide-chalk">
             {loading ? (
               <tr>
-                <td colSpan={7} className="p-10 text-center">
+                <td colSpan={8} className="p-10 text-center">
                   Đang tải khai báo...
                 </td>
               </tr>
             ) : !filtered.length ? (
               <tr>
-                <td colSpan={7} className="p-10 text-center">
-                  Chưa có khai báo phù hợp.
+                <td colSpan={8} className="p-10 text-center">
+                  Nhập số Container để tìm khai báo hàng hóa.
                 </td>
               </tr>
             ) : (
-              filtered.map((item) => (
-                <tr key={item.id} className="hover:bg-fog">
+              filtered.map((item) => {
+                const { directBookings, pickupBooking } = declarationBookingSummary(item);
+                return <tr key={item.id} className="hover:bg-fog">
                   <td className="px-5 py-4 font-mono font-bold">
                     {item.containerNumber}
                   </td>
@@ -319,17 +414,59 @@ export default function CargoDeclaration() {
                       : `${item.requiredPowerKw} kW`}
                   </td>
                   <td className="px-5 py-4">{item.customerName || "—"}</td>
+                  <td className="px-5 py-4">
+                    {directBookings.length ? (
+                      <div className="flex flex-wrap gap-2">{directBookings.map(booking => {
+                        const isPickup = booking.bookingType === 'pickup';
+                        return <button key={booking.id} title={booking.bookingCode}
+                          onClick={() => navigate(`/booking?bookingId=${encodeURIComponent(booking.id)}`)}
+                          className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${isPickup ? 'bg-blue-50 text-blue-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                          <span className="material-symbols-outlined text-[14px]">{isPickup ? 'arrow_upward' : 'arrow_downward'}</span>
+                          {isPickup ? 'Pickup' : 'Dropoff'}
+                        </button>;
+                      })}</div>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700">
+                        <span className="material-symbols-outlined text-[14px]">schedule</span>
+                        {item.isBooked ? 'Đã đặt lịch' : 'Chưa đặt lịch'}
+                      </span>
+                    )}
+                  </td>
                   <td className="px-5 py-4">{date(item.createdAt)}</td>
                   <td className="px-5 py-4">
-                    <button
-                      onClick={() => setSelected(item)}
-                      className="rounded-full bg-carbon px-4 py-2 font-bold text-white"
-                    >
-                      Xem
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {!item.isBooked && !pickupBooking && (
+                        <button
+                          onClick={() =>
+                            navigate("/booking", {
+                              state: {
+                                containerNumber: item.containerNumber,
+                                declarationId: item.id,
+                                containerId: item.containerId,
+                                bookingType: "Dropoff",
+                              },
+                            })
+                          }
+                          className="rounded-full border border-signal-orange px-3 py-1.5 text-xs font-bold text-signal-orange hover:bg-signal-orange hover:text-white transition-colors"
+                        >
+                          Đặt Dropoff
+                        </button>
+                      )}
+                      {!pickupBooking && <button
+                        onClick={() => navigate('/booking', { state: { containerNumber: item.containerNumber, containerId: item.containerId, bookingType: 'Pickup' } })}
+                        className="rounded-full border border-chalk px-3 py-1.5 text-xs font-bold hover:border-signal-orange">
+                        Đặt Pickup
+                      </button>}
+                      <button
+                        onClick={() => setSelected(item)}
+                        className="rounded-full bg-carbon px-4 py-2 font-bold text-white"
+                      >
+                        Xem
+                      </button>
+                    </div>
                   </td>
-                </tr>
-              ))
+                </tr>;
+              })
             )}
           </tbody>
         </table>
@@ -389,6 +526,7 @@ export default function CargoDeclaration() {
                       <label className="space-y-1.5 text-xs font-bold text-slate">
                         <span>Loại Container *</span>
                         <select
+                          disabled={Boolean(identity) || lookupLoading}
                           required
                           className={inputClass}
                           value={form.containerTypeCode}
@@ -404,6 +542,17 @@ export default function CargoDeclaration() {
                           ))}
                         </select>
                       </label>
+                      {identity && (
+                        <p className="text-xs text-emerald-700 md:col-span-2">
+                          Đã nhận diện Container. Loại được lấy từ hồ sơ dùng
+                          chung.
+                        </p>
+                      )}
+                      {lookupLoading && (
+                        <p className="text-xs text-slate">
+                          Đang kiểm tra hồ sơ Container…
+                        </p>
+                      )}
                       {field("Số seal (nếu có)", "sealNumber", {
                         maxLength: 100,
                       })}
@@ -472,7 +621,7 @@ export default function CargoDeclaration() {
                     </section>
                   )}
                 </div>
-                <footer className="flex justify-end gap-3 border-t border-chalk p-5">
+                <footer className="flex flex-wrap justify-end gap-3 border-t border-chalk p-5">
                   <button
                     type="button"
                     disabled={submitting}
@@ -484,12 +633,29 @@ export default function CargoDeclaration() {
                   <button
                     disabled={
                       submitting ||
+                      lookupLoading ||
                       !types.length ||
                       !cargoTypes.length
                     }
                     className="rounded-xl bg-signal-orange px-5 py-3 text-xs font-extrabold text-white disabled:opacity-50"
                   >
                     {submitting ? "Đang lưu..." : "Lưu khai báo"}
+                  </button>
+                  <button
+                    type="submit"
+                    value="Dropoff"
+                    disabled={submitting || lookupLoading}
+                    className="rounded-xl bg-carbon px-4 py-3 text-xs font-bold text-white disabled:opacity-50"
+                  >
+                    Lưu và đặt lịch đưa vào bãi
+                  </button>
+                  <button
+                    type="submit"
+                    value="Pickup"
+                    disabled={submitting || lookupLoading}
+                    className="rounded-xl border border-carbon px-4 py-3 text-xs font-bold disabled:opacity-50"
+                  >
+                    Lưu và đặt lịch lấy ra
                   </button>
                 </footer>
               </form>
@@ -517,7 +683,7 @@ export default function CargoDeclaration() {
             role="dialog"
             aria-modal="true"
             aria-label="Chi tiết khai báo"
-            className="w-full max-w-2xl rounded-2xl bg-white p-6"
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6"
           >
             <div className="flex justify-between">
               <h2 className="text-xl font-bold">Chi tiết khai báo</h2>
@@ -537,6 +703,23 @@ export default function CargoDeclaration() {
                 </div>
               ))}
             </dl>
+            {!!selected.bookings?.length && (
+              <section className="mt-6 border-t border-chalk pt-5">
+                <h3 className="text-sm font-bold">Booking của lần giao nhận này</h3>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selected.bookings.map((booking) => (
+                    <button
+                      key={booking.id}
+                      onClick={() => navigate(`/booking?bookingId=${encodeURIComponent(booking.id)}`)}
+                      className="inline-flex items-center gap-2 rounded-xl border border-chalk px-4 py-2.5 text-xs font-bold hover:border-signal-orange hover:text-signal-orange"
+                    >
+                      <span className="material-symbols-outlined text-base">open_in_new</span>
+                      Xem {booking.bookingType === 'dropoff' ? 'Dropoff' : 'Pickup'} · {booking.bookingCode}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
         </div>
       )}
