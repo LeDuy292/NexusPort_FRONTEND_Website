@@ -10,7 +10,7 @@ const sidebarItems = [
     path: '/containers',
     label: 'Quản Lý Container',
     icon: 'inventory_2',
-    roles: [ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.ADMINISTRATOR],
+    roles: [ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
   },
   // ── DISPATCHER ────────────────────────────────────────────────
   // 1. Tổng quan trước
@@ -20,25 +20,7 @@ const sidebarItems = [
     icon: 'dashboard',
     roles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
-  // 2. Luồng vận hành chính: Container → Điều phối → Cổng & Tàu
-  {
-    path: '/vessel-schedule',
-    label: 'Lịch Tàu Cập Cảng',
-    icon: 'directions_boat',
-    roles: [ROLES.DISPATCHER],
-  },
-  {
-    path: '/berth-assignment',
-    label: 'Phân Bổ Cầu Bến',
-    icon: 'anchor',
-    roles: [ROLES.DISPATCHER],
-  },
-  {
-    path: '/vessel-operation-plan',
-    label: 'Kế Hoạch Xếp Dỡ Tàu',
-    icon: 'assignment',
-    roles: [ROLES.DISPATCHER],
-  },
+  // 2. Luồng vận hành chính: Container → Điều phối → Cổng
   {
     path: '/container-flow',
     label: 'Luồng Container',
@@ -49,7 +31,6 @@ const sidebarItems = [
     path: '/dispatcher/gate-bookings',
     label: 'Yêu Cầu Booking Cổng',
     icon: 'calendar_month',
-    badge: 8,
     roles: [ROLES.DISPATCHER],
   },
   {
@@ -57,19 +38,6 @@ const sidebarItems = [
     label: 'Lệnh Điều Phối Xe',
     icon: 'alt_route',
     roles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
-  },
-  // 3. Quản lý nguồn lực: Xe & Tài xế
-  {
-    path: '/fleet',
-    label: 'Quản Lý Đội Xe',
-    icon: 'local_shipping',
-    roles: [ROLES.DISPATCHER],
-  },
-  {
-    path: '/dispatcher/drivers',
-    label: 'Quản Lý Tài Xế',
-    icon: 'badge',
-    roles: [ROLES.DISPATCHER],
   },
   // 4. Giám sát thực địa: Bãi & Giao thông & Camera
   {
@@ -111,12 +79,6 @@ const sidebarItems = [
     roles: [ROLES.YARD_OPERATOR],
   },
   {
-    path: '/yard-staff/inventory-inspection',
-    label: 'Kiểm Kê & Kiểm Thử Vỏ',
-    icon: 'fact_check',
-    roles: [ROLES.YARD_OPERATOR],
-  },
-  {
     path: '/yard-staff/movement-operations',
     label: 'Lệnh Di Chuyển Container',
     icon: 'swap_horiz',
@@ -132,6 +94,18 @@ const sidebarItems = [
     path: '/yard-staff/container-detail',
     label: 'Chi Tiết Container',
     icon: 'inventory_2',
+    roles: [ROLES.YARD_OPERATOR],
+  },
+  {
+    path: '/yard/reefer',
+    label: 'Cấp Điện Container Lạnh',
+    icon: 'ac_unit',
+    roles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/damage-report',
+    label: 'Báo Cáo Hư Hỏng',
+    icon: 'report_problem',
     roles: [ROLES.YARD_OPERATOR],
   },
 
@@ -156,14 +130,8 @@ const sidebarItems = [
   },
   {
     path: '/gate/verification',
-    label: 'Xác Minh Xe & Tài Xế',
+    label: 'Đối Chiếu Xe & Tài Xế',
     icon: 'fact_check',
-    roles: [ROLES.GATE_OFFICER],
-  },
-  {
-    path: '/gate/container',
-    label: 'Xác Minh Container',
-    icon: 'inventory_2',
     roles: [ROLES.GATE_OFFICER],
   },
   {
@@ -197,14 +165,6 @@ const sidebarItems = [
     label: 'Báo Cáo Sự Cố Cầu Bến',
     icon: 'report',
     roles: [ROLES.BERTH_STAFF],
-  },
-
-  // ── MỤC BÁO CÁO & SỰ CỐ DÙNG CHUNG (ĐẶT Ở DƯỚI CÙNG) ──────────
-  {
-    path: '/damage-report',
-    label: 'Báo Cáo Hư Hỏng',
-    icon: 'report_problem',
-    roles: [ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER],
   },
 
 

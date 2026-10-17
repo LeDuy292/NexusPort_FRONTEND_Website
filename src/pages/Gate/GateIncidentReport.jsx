@@ -64,7 +64,7 @@ export default function GateIncidentReport() {
       ...form,
     }
     setSubmittedIncident(incident)
-    showToast(`🚨 ĐÃ GỬI SỰ CỐ ${incident.id} — Dispatcher tiếp nhận xử lý ngay!`)
+    showToast(`🚨 ĐÃ GỬI SỰ CỐ ${incident.id} — Điều độ tiếp nhận xử lý ngay!`)
   }
 
   const handleReset = () => {
@@ -91,7 +91,7 @@ export default function GateIncidentReport() {
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
           <div>
             <h2 className="font-heading text-3xl font-black text-slate-900">🚨 Báo Cáo Sự Cố Tại Cổng</h2>
-            <p className="text-xs text-slate-600 mt-0.5">Ghi nhận sự cố xảy ra tại cổng kiểm soát và gửi ngay tới Dispatcher. <strong>Chỉ để báo cáo</strong> — không xem danh sách.</p>
+            <p className="text-xs text-slate-600 mt-0.5">Ghi nhận sự cố xảy ra tại cổng kiểm soát và gửi ngay tới Điều độ. <strong>Chỉ để báo cáo</strong> — không xem danh sách.</p>
           </div>
           <div className="flex items-center gap-2 bg-red-50 border border-red-300 px-3.5 py-2 rounded-xl text-xs font-mono font-bold text-red-700">
             🕐 {timeString}
@@ -105,7 +105,7 @@ export default function GateIncidentReport() {
           <div className="bg-emerald-50 border-2 border-emerald-500 rounded-2xl p-8 text-center space-y-4">
             <div className="text-6xl">✅</div>
             <h3 className="font-heading text-2xl font-black text-emerald-950">BÁO CÁO ĐÃ ĐƯỢC GỬI THÀNH CÔNG</h3>
-            <p className="text-sm text-emerald-900 font-sans font-bold">Dispatcher đang tiếp nhận và xử lý sự cố tại {submittedIncident.gate}. Vui lòng duy trì trật tự tại hiện trường.</p>
+            <p className="text-sm text-emerald-900 font-sans font-bold">Điều độ đang tiếp nhận và xử lý sự cố tại {submittedIncident.gate}. Vui lòng duy trì trật tự tại hiện trường.</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-4 text-xs font-mono font-bold">
               {[
                 ['Mã Sự Cố', submittedIncident.id],
@@ -133,7 +133,7 @@ export default function GateIncidentReport() {
             <span className="material-symbols-outlined text-red-600 text-2xl flex-shrink-0">report_problem</span>
             <div>
               <div className="font-black text-red-950 text-sm">CHỈ BÁO CÁO — Không thể xem danh sách sự cố</div>
-              <div className="text-xs text-red-900 font-bold mt-0.5">Sau khi gửi, Dispatcher sẽ tiếp nhận và phân công xử lý. Điền đầy đủ để hỗ trợ điều tra nhanh.</div>
+              <div className="text-xs text-red-900 font-bold mt-0.5">Sau khi gửi, Điều độ sẽ tiếp nhận và phân công xử lý. Điền đầy đủ để hỗ trợ điều tra nhanh.</div>
             </div>
           </div>
 
@@ -167,7 +167,7 @@ export default function GateIncidentReport() {
               </div>
 
               <div>
-                <label className="block text-[10px] uppercase text-slate-600 font-extrabold mb-1.5">Mã Booking (nếu có)</label>
+                <label className="block text-[10px] uppercase text-slate-600 font-extrabold mb-1.5">Mã Đăng Ký (nếu có)</label>
                 <input type="text" value={form.bookingId} onChange={e => setForm(p => ({ ...p, bookingId: e.target.value.toUpperCase() }))}
                   placeholder="VD: BK-20260812-001"
                   className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-300 rounded-xl font-mono font-bold text-sm text-slate-900 focus:outline-none uppercase placeholder:normal-case placeholder:font-sans" />

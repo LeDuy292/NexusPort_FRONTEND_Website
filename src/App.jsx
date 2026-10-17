@@ -11,9 +11,6 @@ import DamageReport from './pages/Containers/DamageReport'
 import ContainerManagement from './pages/Containers/ContainerManagement'
 import CarrierProfile from './pages/Ships/CarrierProfile'
 import EquipmentDispatch from './pages/Dispatch/EquipmentDispatch'
-import VesselSchedule from './pages/Ships/VesselSchedule'
-import BerthAssignment from './pages/Ships/BerthAssignment'
-import VesselOperationPlan from './pages/Ships/VesselOperationPlan'
 
 // Import các trang mới tạo
 import Login from './pages/Auth/Login'
@@ -30,7 +27,6 @@ import GateControl from './pages/Gate/GateControl'
 import GateDashboard from './pages/Gate/GateDashboard'
 import GateBookings from './pages/Gate/GateBookings'
 import GateVerification from './pages/Gate/GateVerification'
-import ContainerVerification from './pages/Gate/ContainerVerification'
 import GateIncidents from './pages/Gate/GateIncidents'
 import GateHistory from './pages/Gate/GateHistory'
 import GateCameras from './pages/Gate/GateCameras'
@@ -40,11 +36,11 @@ import DriverManagement from './pages/Carrier/DriverManagement'
 import YardOperations from './pages/Yard/YardOperations'
 import YardOperationsDashboard from './pages/Yard/YardOperationsDashboard'
 import YardMapContainerManagement from './pages/Yard/YardMapContainerManagement'
-import ContainerInventoryInspection from './pages/Yard/ContainerInventoryInspection'
 import YardMovementOperations from './pages/Yard/YardMovementOperations'
 import ContainerGateOutPreparation from './pages/Yard/ContainerGateOutPreparation'
 import ContainerDetail from './pages/Yard/ContainerDetail'
 import YardReceiving from './pages/Yard/YardReceiving'
+import ReeferManagement from './pages/Yard/ReeferManagement'
 import DriverPortalContainer from './pages/Driver/DriverPortalContainer'
 import BerthOperationsDashboard from './pages/BerthStaff/BerthOperationsDashboard'
 import VesselOperationControl from './pages/BerthStaff/VesselOperationControl'
@@ -134,7 +130,7 @@ function App() {
 
         {/* Toàn bộ các trang quản trị dùng chung cấu trúc Sidebar thông qua MainLayout */}
         <Route element={<MainLayout />}>
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
             <Route path="/containers" element={<ContainerRoute />} />
             <Route path="/container-intake" element={<Navigate to="/containers" replace />} />
           </Route>
@@ -157,9 +153,6 @@ function App() {
 
           {/* 2. Nhóm Điều độ (Dispatcher) */}
           <Route element={<RoleRoute allowedRoles={[ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
-            <Route path="/vessel-schedule" element={<VesselSchedule />} />
-            <Route path="/berth-assignment" element={<BerthAssignment />} />
-            <Route path="/vessel-operation-plan" element={<VesselOperationPlan />} />
             <Route path="/dispatcher/gate-bookings" element={<GateBookingRequests />} />
             <Route path="/dispatch" element={<VehicleDispatch />} />
             <Route path="/fleet" element={<VehicleManagement />} />
@@ -183,11 +176,12 @@ function App() {
             <Route path="/yard-staff/map" element={<YardMap />} />
             <Route path="/yard-ops" element={<YardOperations />} />
             <Route path="/yard/receiving" element={<YardReceiving />} />
-            <Route path="/yard-staff/inventory-inspection" element={<ContainerInventoryInspection />} />
             <Route path="/yard-staff/movement-operations" element={<YardMovementOperations />} />
             <Route path="/yard-staff/gate-out-preparation" element={<ContainerGateOutPreparation />} />
             <Route path="/yard-staff/container-detail" element={<ContainerDetail />} />
             <Route path="/yard-staff/receiving" element={<YardReceiving />} />
+            <Route path="/yard/reefer" element={<ReeferManagement />} />
+            <Route path="/reefer" element={<ReeferManagement />} />
           </Route>
 
           {/* Nhóm Nhân viên Cổng (Gate Officer) */}
@@ -196,7 +190,6 @@ function App() {
             <Route path="/gate/dashboard" element={<GateDashboard />} />
             <Route path="/gate/bookings" element={<GateBookings />} />
             <Route path="/gate/verification" element={<GateVerification />} />
-            <Route path="/gate/container" element={<ContainerVerification />} />
             <Route path="/gate/incidents" element={<GateIncidents />} />
             <Route path="/gate/history" element={<GateHistory />} />
             <Route path="/gate/camera" element={<GateCameras />} />
@@ -216,8 +209,8 @@ function App() {
             <Route path="/driver-home" element={<DriverPortalContainer />} />
           </Route>
 
-          {/* Báo cáo hư hỏng (Cần cho cả Yard Operator, Gate Officer, Dispatcher, Admin) */}
-          <Route element={<RoleRoute allowedRoles={[ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
+          {/* Báo cáo hư hỏng (Dành cho Yard Operator & Quản trị viên) */}
+          <Route element={<RoleRoute allowedRoles={[ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR]} />}>
             <Route path="/damage-report" element={<DamageReport />} />
           </Route>
 

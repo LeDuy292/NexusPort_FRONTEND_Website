@@ -361,7 +361,7 @@ export default function GateBookings() {
             <table className="w-full text-left text-xs border-collapse">
               <thead>
                 <tr className="bg-slate-100 border-b border-slate-200 text-slate-600 font-bold uppercase text-[11px]">
-                  <th className="py-3.5 px-4">Mã Booking</th>
+                  <th className="py-3.5 px-4">Mã Đăng Ký</th>
                   <th className="py-3.5 px-4">Biển Số Xe</th>
                   <th className="py-3.5 px-4">Mã Container</th>
                   <th className="py-3.5 px-4">Tài Xế & SĐT</th>
@@ -524,7 +524,7 @@ export default function GateBookings() {
               <div className="font-bold text-emerald-900 mb-1">Điều kiện vào cổng (Đối soát hệ thống):</div>
               <div className="flex items-center gap-2 text-emerald-800">
                 <span>✓</span>
-                <span>Lịch booking đã được Dispatcher phê duyệt hợp lệ</span>
+                <span>Lịch đăng ký đã được Điều độ phê duyệt hợp lệ</span>
               </div>
               <div className="flex items-center gap-2 text-emerald-800">
                 <span>✓</span>
