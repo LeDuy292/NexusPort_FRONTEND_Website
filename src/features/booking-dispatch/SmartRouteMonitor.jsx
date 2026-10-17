@@ -29,10 +29,13 @@ export default function SmartRouteMonitor() {
       if (!active) return
       if (pending) { retry = true; return }
       pending = true
+      setLoading(true)
       try {
         const next = await driverSmartRouteService.monitor()
         if (active) { setData(next); setError('') }
-      } catch (err) { if (active) setError(err.message || 'Không tải được trạng thái xe.') }
+      } catch (err) {
+        if (active) setError(`${err.message || 'Không tải được trạng thái xe.'}${err.status ? ` (HTTP ${err.status})` : ''}`)
+      }
       finally { pending = false; if (active) { setLoading(false); if (retry) { retry = false; void reload() } } }
     }
     reloadRef.current = reload
@@ -78,13 +81,13 @@ export default function SmartRouteMonitor() {
   }
   const trucks = new Set(routes.filter(route => route.journey?.phase !== 'exited').map(route => route.bookingId)).size
   return <section className="yard-route-monitor" aria-label="Theo dõi xe và tuyến đường trong bãi">
-    <header className="yard-monitor-header"><div><p>SMART YARD · SAU GATE IN</p><h2>Theo dõi xe trong bãi <span>{trucks} chuyến đang hoạt động</span></h2><small>Gate In → điểm giao nhận → xác nhận container → Gate Out</small></div>
-      <button type="button" disabled={busy} onClick={() => void reloadRef.current()}>↻ Cập nhật</button>
+    <header className="yard-monitor-header"><div><p>SMART YARD · SAU GATE IN</p><h2>Theo dõi xe trong bãi <span>{data ? `${trucks} chuyến đang hoạt động` : 'Chưa nhận được trạng thái xe'}</span></h2><small>Gate In → điểm giao nhận → xác nhận container → Gate Out</small></div>
+      <button type="button" disabled={busy || loading} onClick={() => void reloadRef.current()}>{loading ? 'Đang cập nhật…' : '↻ Cập nhật'}</button>
     </header>
-    {error && <p className="smart-route-alert error" role="alert">Không xác nhận được dữ liệu mới: {error}. Trạng thái đang hiển thị là lần kiểm tra trước.</p>}
+    {error && <p className="smart-route-alert error" role="alert">Không tải được trạng thái xe trong bãi: {error}. {data ? 'Đang hiển thị dữ liệu của lần cập nhật thành công gần nhất.' : 'Chưa nhận được dữ liệu trạng thái xe.'} Bấm Cập nhật để thử lại.</p>}
     <div className="yard-monitor-toolbar"><label>Trạng thái xe <select value={phase} onChange={event => { setPhase(event.target.value); setSelectedId('') }}><option value="all">Tất cả</option>{Object.entries(routePhaseLabel).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><small>Cập nhật mỗi 15 giây · {checkedTime(data?.generatedAt)}</small></div>
     {loading && !data && <p className="smart-route-empty">Đang tải trạng thái xe từ giao dịch cổng…</p>}
-    {!loading && !visible.length && <p className="smart-route-empty">Chưa có xe trong nhóm này. Xe xuất hiện sau khi Gate Officer xác nhận Gate In.</p>}
+    {!loading && !error && !visible.length && <p className="smart-route-empty">Chưa có xe trong nhóm này. Xe xuất hiện sau khi Gate Officer xác nhận Gate In.</p>}
     {visible.length > 0 && <div className="yard-monitor-workspace">
       <div className="yard-monitor-vehicles">{visible.map(route => <button type="button" key={identity(route)} className={`yard-monitor-vehicle ${identity(route) === identity(selected) ? 'selected' : ''}`} onClick={() => { setSelectedId(identity(route)); setConditionTarget(''); setFeedback('') }}>
         <div><strong>{route.truckPlate || 'Chưa có biển số'}</strong><span>{route.driverName || 'Tài xế được phân công'}</span></div><span className={`yard-monitor-phase ${route.journey?.phase}`}>{routePhaseLabel[route.journey?.phase] || route.gateStatus}</span>

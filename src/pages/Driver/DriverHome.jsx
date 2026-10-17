@@ -4,6 +4,16 @@ export default function DriverHome({ driverMode = 'pickup', tripStep = 1, setTri
   const [showQrModal, setShowQrModal] = useState(false)
   const [toastMessage, setToastMessage] = useState('')
 
+  const driverUser = useMemo(() => {
+    try {
+      const raw = localStorage.getItem('user') || sessionStorage.getItem('user')
+      return raw ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  }, [])
+  const driverDisplayName = driverUser?.fullName || driverUser?.username || 'Tài xế'
+
   // State thông tin chuyến xe hiện tại theo driverMode
   const currentTrip = useMemo(() => {
     if (driverMode === 'delivery') {
@@ -124,7 +134,7 @@ export default function DriverHome({ driverMode = 'pickup', tripStep = 1, setTri
             </span>
             <h3 className="text-xl font-extrabold text-carbon mt-2">Xác nhận xe đầu kéo chỉ định</h3>
             <p className="text-xs text-slate mt-1 leading-relaxed">
-              Tài xế Nguyễn Văn A được chỉ định chạy xe kéo biển số <strong className="font-mono text-carbon text-sm">43C-123.45</strong>. Vui lòng nhận đúng phương tiện kéo được giao và xác nhận.
+              Tài xế <strong className="text-carbon">{driverDisplayName}</strong> được chỉ định chạy xe kéo biển số <strong className="font-mono text-carbon text-sm">{currentTrip.vehiclePlate}</strong>. Vui lòng nhận đúng phương tiện kéo được giao và xác nhận.
             </p>
           </div>
 
@@ -324,7 +334,7 @@ export default function DriverHome({ driverMode = 'pickup', tripStep = 1, setTri
             </span>
             <h3 className="text-2xl font-extrabold text-carbon mt-2">Chuyến xe hoàn tất!</h3>
             <p className="text-xs text-slate mt-1">
-              Hệ thống ghi nhận giao dịch của tài xế <strong className="text-carbon">Nguyễn Văn A</strong> trên xe đầu kéo <strong className="font-mono text-carbon">43C-123.45</strong> đã hoàn tất thành công.
+              Hệ thống ghi nhận giao dịch của tài xế <strong className="text-carbon">{driverDisplayName}</strong> trên xe đầu kéo <strong className="font-mono text-carbon">{currentTrip.vehiclePlate}</strong> đã hoàn tất thành công.
             </p>
           </div>
 
