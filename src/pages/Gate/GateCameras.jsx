@@ -1,16 +1,24 @@
 import React, { useState, useEffect } from 'react'
-import { gateStatusData } from '../../data/gateOfficerData'
-
-const CAMERAS = [
-  { id: 'CAM-01', gate: 'Cổng A', status: 'Online', anpr: true, lastPlate: '43C-123.45', lastConfidence: 99.2, lastTime: '17:24:11', vehiclesProcessed: 18 },
-  { id: 'CAM-02', gate: 'Cổng B', status: 'Online', anpr: true, lastPlate: '43C-556.78', lastConfidence: 97.8, lastTime: '17:21:44', vehiclesProcessed: 11 },
-  { id: 'CAM-03', gate: 'Cổng C', status: 'Offline', anpr: false, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
-]
+import gateService from '../../services/gateService'
 
 export default function GateCameras() {
   const [currentTime, setCurrentTime] = useState('')
   const [fullscreen, setFullscreen] = useState(null)
-  const [confidences, setConfidences] = useState({ 'CAM-01': 99.2, 'CAM-02': 97.8, 'CAM-03': 0 })
+  const [cameras, setCameras] = useState([
+    { id: 'CAM-01', gate: 'Cổng A (Nhận diện tự động)', status: 'Checking...', anpr: true, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
+    { id: 'CAM-02', gate: 'Cổng B (Làn ra)', status: 'Online', anpr: true, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
+    { id: 'CAM-03', gate: 'Cổng C (Dự phòng)', status: 'Offline', anpr: false, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
+  ])
+  const [confidences, setConfidences] = useState({ 'CAM-01': 0, 'CAM-02': 0, 'CAM-03': 0 })
+
+  useEffect(() => {
+    gateService.checkAiHealth().then((res) => {
+      setCameras(prev => prev.map(c => c.id === 'CAM-01' ? { ...c, status: res.isOnline ? 'Online' : 'Offline' } : c))
+      if (res.isOnline) {
+        setConfidences(prev => ({ ...prev, 'CAM-01': 98.5 }))
+      }
+    })
+  }, [])
 
   useEffect(() => {
     const tick = () => setCurrentTime(new Date().toLocaleTimeString('vi-VN'))
@@ -19,7 +27,7 @@ export default function GateCameras() {
     return () => clearInterval(t)
   }, [])
 
-  // Simulate ANPR confidence fluctuation
+  // Simulate confidence fluctuation
   useEffect(() => {
     const pulse = setInterval(() => {
       setConfidences(prev => ({
@@ -39,19 +47,19 @@ export default function GateCameras() {
         <div>
           <span className="text-xs font-extrabold bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">Nhân viên cổng</span>
           <h2 className="font-heading text-3xl font-extrabold text-carbon mt-1">Giám Sát Camera Cổng</h2>
-          <p className="text-xs text-slate mt-0.5">Hệ thống camera ANPR theo dõi xe ra/vào tại tất cả cổng cảng theo thời gian thực.</p>
+          <p className="text-xs text-slate mt-0.5">Hệ thống camera nhận diện biển số theo dõi xe ra/vào tại tất cả cổng cảng theo thời gian thực.</p>
         </div>
         <div className="text-right">
           <div className="font-mono text-xl font-extrabold text-carbon">{currentTime}</div>
           <div className="text-xs text-slate font-mono">
-            {CAMERAS.filter(c => c.status === 'Online').length}/{CAMERAS.length} camera hoạt động
+            {cameras.filter(c => c.status === 'Online').length}/{cameras.length} camera hoạt động
           </div>
         </div>
       </div>
 
       {/* Camera Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        {CAMERAS.map(cam => (
+        {cameras.map(cam => (
           <div key={cam.id} className={`bg-white rounded-2xl border-2 shadow-sm overflow-hidden flex flex-col ${cam.status === 'Online' ? 'border-green-300' : 'border-slate-300 opacity-75'}`}>
 
             {/* Camera Header */}
@@ -116,7 +124,7 @@ export default function GateCameras() {
             <div className="p-4 space-y-2">
               <div className="grid grid-cols-2 gap-2 text-xs font-mono">
                 <div className="bg-fog p-2.5 rounded-xl border border-chalk">
-                  <div className="text-[9px] text-slate uppercase mb-0.5">Hệ thống ANPR</div>
+                  <div className="text-[9px] text-slate uppercase mb-0.5">Hệ thống nhận diện</div>
                   <div className={`font-extrabold text-[11px] flex items-center gap-1 ${cam.anpr ? 'text-green-700' : 'text-slate-500'}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${cam.anpr ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></span>
                     {cam.anpr ? 'Đang chạy' : 'Dừng'}
@@ -139,7 +147,7 @@ export default function GateCameras() {
                 {cam.lastConfidence > 0 && (
                   <div className="mt-1">
                     <div className="flex justify-between text-[9px] font-mono text-slate mb-0.5">
-                      <span>Độ chính xác ANPR</span>
+                      <span>Độ chính xác nhận diện</span>
                       <span>{confidences[cam.id].toFixed(1)}%</span>
                     </div>
                     <div className="w-full h-1.5 bg-chalk rounded-full overflow-hidden">
@@ -175,7 +183,7 @@ export default function GateCameras() {
                 {fullscreen.gate} · {fullscreen.id}
               </span>
               <span className="px-2.5 py-0.5 bg-green-900 text-green-300 border border-green-700 rounded-full text-[10px] font-extrabold flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>ANPR ĐANG CHẠY
+                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>NHẬN DIỆN TỰ ĐỘNG ĐANG CHẠY
               </span>
             </div>
             <div className="flex items-center gap-4">

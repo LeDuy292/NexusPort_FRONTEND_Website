@@ -8,7 +8,8 @@ export const ROLES = {
   DISPATCHER: 'Dispatcher',
   YARD_OPERATOR: 'Yard Operator',
   BERTH_STAFF: 'Berth Staff',
-  ADMINISTRATOR: 'Administrator'
+  ADMINISTRATOR: 'Administrator',
+  CARRIER_STAFF: 'Carrier Staff'
 }
 
 export const routeConfig = [
@@ -29,14 +30,18 @@ export const routeConfig = [
   },
   {
     path: '/containers',
-    allowedRoles: [ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
   },
   {
     path: '/booking',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/yard',
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/yard/map',
     allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {
@@ -48,6 +53,22 @@ export const routeConfig = [
     allowedRoles: [ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
   },
   {
+    path: '/yard/receiving',
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/yard-staff/receiving',
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/yard/reefer',
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/reefer',
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
     path: '/berth',
     allowedRoles: [ROLES.BERTH_STAFF, ROLES.ADMINISTRATOR],
   },
@@ -57,11 +78,11 @@ export const routeConfig = [
   },
   {
     path: '/cargo',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/transport/cargo-declarations',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/gate',
@@ -80,10 +101,6 @@ export const routeConfig = [
     allowedRoles: [ROLES.GATE_OFFICER],
   },
   {
-    path: '/gate/container',
-    allowedRoles: [ROLES.GATE_OFFICER],
-  },
-  {
     path: '/gate/incidents',
     allowedRoles: [ROLES.GATE_OFFICER],
   },
@@ -97,15 +114,11 @@ export const routeConfig = [
   },
   {
     path: '/damage-report',
-    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER, ROLES.ADMINISTRATOR],
-  },
-  {
-    path: '/yard-staff/inventory-inspection',
     allowedRoles: [ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
   },
   {
     path: '/yard-staff/movement-operations',
-    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {
     path: '/yard-staff/gate-out-preparation',
@@ -129,15 +142,15 @@ export const routeConfig = [
   },
   {
     path: '/carrier-profile',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/carrier-portal',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/billing',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/users',
@@ -153,10 +166,11 @@ export const routeConfig = [
   },
   {
     path: '/drivers',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
   },
   {
     path: '/dispatch',
+    title: 'Lệnh điều phối xe',
     allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {
@@ -185,18 +199,6 @@ export const routeConfig = [
   },
   {
     path: '/dispatcher/cameras',
-    allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
-  },
-  {
-    path: '/vessel-schedule',
-    allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
-  },
-  {
-    path: '/berth-assignment',
-    allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
-  },
-  {
-    path: '/vessel-operation-plan',
     allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {

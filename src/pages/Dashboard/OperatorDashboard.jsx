@@ -137,7 +137,7 @@ export default function OperatorDashboard() {
         {/* Vehicle Flow Gate A (5 cols = ~40%) */}
         <div className="lg:col-span-5 bg-paper border border-chalk rounded-lg p-6 shadow-sm flex flex-col justify-between">
           <h3 className="font-heading text-lg font-bold text-primary mb-6">Lưu lượng xe (Cổng A)</h3>
-          
+
           <div className="space-y-6 flex-1 flex flex-col justify-center">
             {/* Flow In */}
             <div>

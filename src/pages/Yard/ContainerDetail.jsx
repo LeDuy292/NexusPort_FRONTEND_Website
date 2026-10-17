@@ -156,10 +156,10 @@ const CONTAINER_LIST = [
 
 // Status badge config
 const STATUS_CFG = {
-  'TRONG BÃI':         { cls: 'bg-blue-100 text-blue-950 border-blue-400',     icon: '🔵' },
-  'SẴN SÀNG XUẤT CỔNG':{ cls: 'bg-emerald-100 text-emerald-950 border-emerald-400', icon: '🟢' },
-  'ĐANG DI CHUYỂN':    { cls: 'bg-purple-100 text-purple-950 border-purple-400', icon: '⚡' },
-  'HƯ HỎNG':           { cls: 'bg-red-200 text-red-950 border-red-500',         icon: '🔴' },
+  'TRONG BÃI': { cls: 'bg-blue-100 text-blue-950 border-blue-400', icon: '🔵' },
+  'SẴN SÀNG XUẤT CỔNG': { cls: 'bg-emerald-100 text-emerald-950 border-emerald-400', icon: '🟢' },
+  'ĐANG DI CHUYỂN': { cls: 'bg-purple-100 text-purple-950 border-purple-400', icon: '⚡' },
+  'HƯ HỎNG': { cls: 'bg-red-200 text-red-950 border-red-500', icon: '🔴' },
 }
 
 // ─── DETAIL VIEW ─────────────────────────────────────────────────────────────
@@ -306,12 +306,11 @@ function DetailView({ container, onBack, showToast }) {
           <div className="bg-slate-900 p-3 rounded-xl border border-slate-800 space-y-1.5">
             <div className="text-[10px] text-amber-400 font-mono font-bold">SƠ ĐỒ 2D HIGHLIGHT VỊ TRÍ:</div>
             <div className="grid grid-cols-4 gap-1 font-mono text-[10px] text-center">
-              {['A-01','A-02','A-03','A-04'].map(c => (
-                <div key={c} className={`p-2 rounded border-2 font-black ${
-                  c.includes(currentData.bay) && currentData.block === 'A'
+              {['A-01', 'A-02', 'A-03', 'A-04'].map(c => (
+                <div key={c} className={`p-2 rounded border-2 font-black ${c.includes(currentData.bay) && currentData.block === 'A'
                     ? 'bg-orange-500 text-white border-amber-400 animate-pulse'
                     : 'bg-slate-800 text-slate-500 border-slate-700'
-                }`}>{c}</div>
+                  }`}>{c}</div>
               ))}
             </div>
           </div>

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'
+import AddressAutocomplete from '../../components/AddressAutocomplete'
 
 // Mock initial transport companies data
 const INITIAL_COMPANIES = [
@@ -28,6 +29,8 @@ export default function TransportCompanyManagement() {
     address: ''
   })
 
+  // (Address autocomplete handled by AddressAutocomplete component)
+
   // KPI Calculations
   const kpis = useMemo(() => {
     return {
@@ -41,9 +44,9 @@ export default function TransportCompanyManagement() {
   // Filtered Companies
   const filteredCompanies = useMemo(() => {
     return companies.filter(c => {
-      const matchSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          c.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          c.representative.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.representative.toLowerCase().includes(searchTerm.toLowerCase())
       const matchStatus = statusFilter === 'Tất cả' || c.status === statusFilter
       return matchSearch && matchStatus
     })
@@ -106,7 +109,7 @@ export default function TransportCompanyManagement() {
 
   return (
     <div className="p-6 space-y-6">
-      
+
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-4 right-4 bg-carbon text-white px-5 py-3 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-2 z-50 border border-signal-orange animate-bounce">
@@ -140,7 +143,7 @@ export default function TransportCompanyManagement() {
 
       {/* KPI STATS CARD GRID */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        
+
         {/* KPI: Total */}
         <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-2 relative overflow-hidden">
           <span className="text-[10px] font-bold text-slate uppercase tracking-wider block">TỔNG ĐƠN VỊ VẬN TẢI</span>
@@ -188,10 +191,10 @@ export default function TransportCompanyManagement() {
 
       {/* FILTER & TABLE SECTION */}
       <div className="bg-white border border-chalk rounded-2xl shadow-sm overflow-hidden">
-        
+
         {/* Filters Top Bar */}
         <div className="p-5 border-b border-chalk flex flex-col md:flex-row md:items-center justify-between gap-4">
-          
+
           {/* Search Box */}
           <div className="relative flex-1 max-w-sm">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate text-sm">search</span>
@@ -259,13 +262,12 @@ export default function TransportCompanyManagement() {
                   <td className="px-6 py-4 text-center font-bold text-carbon font-mono">{company.driversCount}</td>
                   <td className="px-6 py-4 text-center font-bold text-signal-orange font-mono">{company.monthlyBookings}</td>
                   <td className="px-6 py-4">
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${
-                      company.status === 'Hoạt động'
-                        ? 'bg-green-50 text-green-700 border-green-200'
-                        : company.status === 'Chờ duyệt'
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold border ${company.status === 'Hoạt động'
+                      ? 'bg-green-50 text-green-700 border-green-200'
+                      : company.status === 'Chờ duyệt'
                         ? 'bg-orange-50 text-orange-700 border-orange-200 animate-pulse'
                         : 'bg-red-50 text-red-700 border-red-200'
-                    }`}>
+                      }`}>
                       {company.status}
                     </span>
                   </td>
@@ -324,7 +326,7 @@ export default function TransportCompanyManagement() {
             className="w-full max-w-2xl bg-white max-h-[90vh] rounded-3xl flex flex-col shadow-2xl relative animate-in zoom-in-95 duration-200 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-            
+
             {/* Drawer Header */}
             <div className="p-6 border-b border-chalk flex justify-between items-center bg-fog">
               <div>
@@ -341,7 +343,7 @@ export default function TransportCompanyManagement() {
 
             {/* Drawer Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              
+
               {/* Profile Card Summary */}
               <div className="flex items-center gap-4 bg-fog p-4 rounded-xl border border-chalk">
                 <div className="w-12 h-12 rounded-xl bg-carbon text-white flex items-center justify-center text-xl font-bold font-mono">
@@ -350,9 +352,8 @@ export default function TransportCompanyManagement() {
                 <div>
                   <div className="text-xs text-slate font-mono">ID: {selectedCompany.id}</div>
                   <div className="text-sm font-bold text-carbon">Đại diện: {selectedCompany.representative}</div>
-                  <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold border mt-1 ${
-                    selectedCompany.status === 'Hoạt động' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
-                  }`}>
+                  <span className={`inline-block px-2 py-0.5 rounded text-[9px] font-bold border mt-1 ${selectedCompany.status === 'Hoạt động' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'
+                    }`}>
                     {selectedCompany.status}
                   </span>
                 </div>
@@ -595,12 +596,11 @@ export default function TransportCompanyManagement() {
                 </div>
                 <div className="space-y-1 col-span-2">
                   <label className="text-slate font-bold">Địa chỉ trụ sở chính</label>
-                  <textarea
-                    rows="2"
+                  <AddressAutocomplete
                     value={newCompany.address}
-                    onChange={(e) => setNewCompany({ ...newCompany, address: e.target.value })}
-                    placeholder="Nhập địa chỉ trụ sở chính đăng ký..."
-                    className="w-full bg-fog border border-chalk rounded-lg p-2.5 focus:outline-none focus:border-signal-orange resize-none"
+                    onChange={(val) => setNewCompany({ ...newCompany, address: val })}
+                    placeholder="Tìm kiếm địa chỉ tại Việt Nam..."
+                    inputClassName="w-full bg-fog border border-chalk rounded-lg p-2.5 focus:outline-none focus:border-signal-orange"
                   />
                 </div>
               </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
+import DriverAssignmentFields from './components/DriverAssignmentFields'
 import {
   getUsers,
   createUser,
@@ -111,6 +112,8 @@ function UserDrawer({ mode, user, onClose, onSaved }) {
     role:      user?.role      || 'Dispatcher',
     fullName:  user?.fullName  || '',
     isActive:  user?.isActive  !== undefined ? user.isActive : true,
+    carrierId: user?.carrierId || '',
+    driverId: user?.driverId || '',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
@@ -123,6 +126,10 @@ function UserDrawer({ mode, user, onClose, onSaved }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (form.role === 'Driver' && (!form.carrierId || !form.driverId)) {
+      setError('Chọn công ty vận tải và hồ sơ tài xế trước khi cấp tài khoản Driver.')
+      return
+    }
     setLoading(true)
     setError('')
     try {
@@ -132,6 +139,7 @@ function UserDrawer({ mode, user, onClose, onSaved }) {
           username: form.username,
           email:    form.email,
           fullName: form.fullName,
+          ...(form.role === 'Driver' ? { carrierId: form.carrierId, driverId: form.driverId } : {}),
         })
       } else {
         result = await createUser({
@@ -141,6 +149,7 @@ function UserDrawer({ mode, user, onClose, onSaved }) {
           role:     form.role,
           fullName: form.fullName,
           isActive: form.isActive,
+          ...(form.role === 'Driver' ? { carrierId: form.carrierId, driverId: form.driverId } : {}),
         })
       }
       onSaved(result.data.user, isEdit ? 'Cập nhật thông tin thành công.' : 'Tạo tài khoản thành công.')
@@ -258,6 +267,10 @@ function UserDrawer({ mode, user, onClose, onSaved }) {
           )}
 
           {/* isActive toggle — only for create */}
+          {form.role === 'Driver' && <DriverAssignmentFields
+            userId={user?.id} carrierId={form.carrierId} driverId={form.driverId}
+            onChange={assignment => setForm(current => ({ ...current, ...assignment }))}
+          />}
           {!isEdit && (
             <div className="flex items-center justify-between p-4 bg-fog rounded-xl border border-chalk">
               <div>
@@ -301,15 +314,20 @@ function UserDrawer({ mode, user, onClose, onSaved }) {
 // ─── Assign Role Modal ────────────────────────────────────────────────────────
 function AssignRoleModal({ user, onClose, onSaved }) {
   const [selectedRole, setSelectedRole] = useState(user.role)
+  const [assignment, setAssignment] = useState({ carrierId: user.carrierId || '', driverId: user.driverId || '' })
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
 
   const handleSubmit = async () => {
-    if (selectedRole === user.role) { onClose(); return }
+    if (selectedRole === user.role && selectedRole !== 'Driver') { onClose(); return }
+    if (selectedRole === 'Driver' && (!assignment.carrierId || !assignment.driverId)) {
+      setError('Chọn công ty vận tải và hồ sơ tài xế.')
+      return
+    }
     setLoading(true)
     setError('')
     try {
-      const result = await assignRole(user.id, selectedRole)
+      const result = await assignRole(user.id, selectedRole, selectedRole === 'Driver' ? assignment : {})
       onSaved(result.data.user, `Đã gán role "${selectedRole}" thành công.`)
     } catch (err) {
       setError(err.response?.data?.message || 'Đã có lỗi xảy ra.')
@@ -320,7 +338,7 @@ function AssignRoleModal({ user, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[90] flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-5">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-5 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
           <div>
             <h3 className="font-bold text-carbon text-lg">Gán vai trò</h3>
@@ -359,6 +377,7 @@ function AssignRoleModal({ user, onClose, onSaved }) {
           ))}
         </div>
 
+        {selectedRole === 'Driver' && <DriverAssignmentFields userId={user.id} {...assignment} onChange={setAssignment} />}
         <div className="flex justify-end gap-3 pt-2">
           <button onClick={onClose} className="px-5 py-2 rounded-full border border-chalk text-slate text-sm font-semibold hover:bg-fog">
             Hủy

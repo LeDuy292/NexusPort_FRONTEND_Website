@@ -62,7 +62,7 @@ export default function GateIncidents() {
     setIncidents(prev => [newInc, ...prev])
     setShowCreateModal(false)
     setCreateForm({ bookingId: '', vehicleId: '', licensePlate: '', driverName: '', containerId: '', gate: 'Gate A', type: '', severity: 'Medium', description: '' })
-    showToast(`📋 Đã tạo Incident ${newInc.id} và gửi đến Dispatcher.`)
+    showToast(`📋 Đã tạo sự cố ${newInc.id} và gửi đến Điều độ.`)
   }
 
   return (
@@ -77,25 +77,25 @@ export default function GateIncidents() {
       {/* Header */}
       <div className="flex justify-between items-center bg-white border border-chalk rounded-2xl p-5 shadow-sm">
         <div>
-          <span className="text-xs font-extrabold bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">GATE OFFICER</span>
-          <h2 className="font-heading text-3xl font-extrabold text-carbon mt-1">Gate Incidents</h2>
+          <span className="text-xs font-extrabold bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">NHÂN VIÊN CỔNG</span>
+          <h2 className="font-heading text-3xl font-extrabold text-carbon mt-1">Sự Cố Tại Cổng</h2>
           <p className="text-xs text-slate mt-0.5">Ghi nhận và xử lý các trường hợp bất thường tại cổng cảng.</p>
         </div>
         <button onClick={() => setShowCreateModal(true)}
           className="h-11 px-5 bg-signal-orange text-white rounded-xl font-extrabold text-xs hover:opacity-95 shadow-lg flex items-center gap-2">
           <span className="material-symbols-outlined text-lg">add_circle</span>
-          + Tạo Incident
+          + Báo Cáo Sự Cố
         </button>
       </div>
 
       {/* KPI Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         {[
-          ['Tổng', kpi.total, 'text-carbon', 'border-chalk'],
-          ['Pending', kpi.pending, 'text-amber-600', 'border-amber-300'],
-          ['Under Review', kpi.underReview, 'text-blue-600', 'border-blue-300'],
-          ['Resolved', kpi.resolved, 'text-green-600', 'border-green-300'],
-          ['Critical', kpi.critical, 'text-red-700', 'border-red-300'],
+          ['Tổng Số', kpi.total, 'text-carbon', 'border-chalk'],
+          ['Chờ Xử Lý', kpi.pending, 'text-amber-600', 'border-amber-300'],
+          ['Đang Xem Xét', kpi.underReview, 'text-blue-600', 'border-blue-300'],
+          ['Đã Giải Quyết', kpi.resolved, 'text-green-600', 'border-green-300'],
+          ['Khẩn Cấp', kpi.critical, 'text-red-700', 'border-red-300'],
         ].map(([label, val, color, border]) => (
           <div key={label} className={`bg-white rounded-2xl border-2 ${border} p-4 shadow-sm`}>
             <div className="text-[10px] font-bold text-slate uppercase">{label}</div>
@@ -107,13 +107,13 @@ export default function GateIncidents() {
       {/* Filters */}
       <div className="bg-white border border-chalk rounded-2xl p-4 shadow-sm flex flex-wrap gap-3 items-center text-xs font-bold">
         {[
-          ['Status', statusFilter, setStatusFilter, ['All', 'Pending', 'Under Review', 'Resolved', 'Rejected']],
-          ['Severity', severityFilter, setSeverityFilter, ['All', 'Low', 'Medium', 'High', 'Critical']],
-          ['Gate', gateFilter, setGateFilter, ['All', 'Gate A', 'Gate B', 'Gate C']],
+          ['Trạng thái', statusFilter, setStatusFilter, ['All', 'Pending', 'Under Review', 'Resolved', 'Rejected']],
+          ['Mức độ', severityFilter, setSeverityFilter, ['All', 'Low', 'Medium', 'High', 'Critical']],
+          ['Làn cổng', gateFilter, setGateFilter, ['All', 'Gate A', 'Gate B', 'Gate C']],
         ].map(([label, val, setter, opts]) => (
           <select key={label} value={val} onChange={e => setter(e.target.value)}
             className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange">
-            {opts.map(o => <option key={o} value={o}>{o === 'All' ? `${label}: All` : o}</option>)}
+            {opts.map(o => <option key={o} value={o}>{o === 'All' ? `${label}: Tất cả` : o === 'Pending' ? 'Chờ xử lý' : o === 'Under Review' ? 'Đang xem xét' : o === 'Resolved' ? 'Đã giải quyết' : o === 'Rejected' ? 'Từ chối' : o === 'Low' ? 'Thấp' : o === 'Medium' ? 'Trung bình' : o === 'High' ? 'Cao' : o === 'Critical' ? 'Khẩn cấp' : o}</option>)}
           </select>
         ))}
       </div>
@@ -124,14 +124,14 @@ export default function GateIncidents() {
           <table className="w-full text-left text-xs border-collapse">
             <thead>
               <tr className="bg-fog border-b border-chalk text-slate font-bold uppercase text-[10px] tracking-wider">
-                {['Incident ID', 'Time', 'Vehicle', 'Driver', 'Container', 'Type', 'Gate', 'Severity', 'Status', 'Action'].map(h => (
-                  <th key={h} className={`py-3.5 px-4 ${h === 'Action' ? 'text-right' : ''}`}>{h}</th>
+                {['Mã Sự Cố', 'Thời Gian', 'Phương Tiện', 'Tài Xế', 'Container', 'Loại Sự Cố', 'Cổng', 'Mức Độ', 'Trạng Thái', 'Thao Tác'].map(h => (
+                  <th key={h} className={`py-3.5 px-4 ${h === 'Thao Tác' ? 'text-right' : ''}`}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-chalk">
               {filtered.length === 0 ? (
-                <tr><td colSpan="10" className="py-12 text-center text-slate font-bold">Không có incident nào.</td></tr>
+                <tr><td colSpan="10" className="py-12 text-center text-slate font-bold">Không có sự cố nào.</td></tr>
               ) : filtered.map(inc => (
                 <tr key={inc.id} className="hover:bg-fog/70">
                   <td onClick={() => setSelectedIncident(inc)} className="py-3 px-4 font-mono font-extrabold text-signal-orange cursor-pointer hover:underline">{inc.id}</td>
@@ -155,7 +155,7 @@ export default function GateIncidents() {
                   <td className="py-3 px-4 text-right">
                     <button onClick={() => setSelectedIncident(inc)}
                       className="px-3 py-1.5 bg-carbon text-white rounded-lg font-extrabold text-[11px] hover:bg-black flex items-center gap-1 ml-auto">
-                      <span className="material-symbols-outlined text-xs">visibility</span>View
+                      <span className="material-symbols-outlined text-xs">visibility</span>Chi Tiết
                     </button>
                   </td>
                 </tr>
@@ -171,7 +171,7 @@ export default function GateIncidents() {
           <div className="bg-white w-full max-w-lg max-h-[92vh] rounded-3xl p-6 md:p-8 space-y-4 shadow-2xl overflow-y-auto animate-in zoom-in-95">
             <div className="flex justify-between items-start border-b border-chalk pb-3">
               <div>
-                <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">GATE INCIDENT DETAIL</span>
+                <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">CHI TIẾT SỰ CỐ TẠI CỔNG</span>
                 <h3 className="font-heading text-xl font-extrabold text-carbon font-mono">{selectedIncident.id}</h3>
                 <div className="flex gap-2 mt-1">
                   <span className={`px-2.5 py-0.5 rounded-full border text-[10px] font-extrabold ${SEVERITY_STYLE[selectedIncident.severity]}`}>{selectedIncident.severity}</span>
@@ -184,10 +184,10 @@ export default function GateIncidents() {
             </div>
             <div className="grid grid-cols-2 gap-3 text-xs font-mono">
               {[
-                ['Thời gian', selectedIncident.timeDisplay], ['Gate', selectedIncident.gate],
-                ['Loại Incident', selectedIncident.type], ['Booking ID', selectedIncident.bookingId || '—'],
-                ['Vehicle', selectedIncident.vehicleId], ['Biển số', selectedIncident.licensePlate],
-                ['Driver', selectedIncident.driverName], ['Container', selectedIncident.containerId || '—'],
+                ['Thời gian', selectedIncident.timeDisplay], ['Làn cổng', selectedIncident.gate],
+                ['Loại sự cố', selectedIncident.type], ['Mã đăng ký', selectedIncident.bookingId || '—'],
+                ['Phương tiện', selectedIncident.vehicleId], ['Biển số', selectedIncident.licensePlate],
+                ['Tài xế', selectedIncident.driverName], ['Container', selectedIncident.containerId || '—'],
                 ['Báo cáo bởi', selectedIncident.reportedBy], ['Giải quyết bởi', selectedIncident.resolvedBy || '—'],
               ].map(([k, v]) => (
                 <div key={k} className="bg-fog p-3 rounded-xl border border-chalk">
@@ -217,11 +217,11 @@ export default function GateIncidents() {
             </div>
             <form onSubmit={handleSubmitIncident} className="space-y-4 text-xs font-bold">
               <div className="grid grid-cols-2 gap-3">
-                {[['Booking ID', 'bookingId', 'GB-20260811-XXX'],
-                  ['Vehicle ID', 'vehicleId', 'TRK-XXX'],
+                {[['Mã Đăng Ký', 'bookingId', 'GB-20260811-XXX'],
+                  ['Mã Phương Tiện', 'vehicleId', 'TRK-XXX'],
                   ['Biển số xe', 'licensePlate', '43C-XXX.XX'],
-                  ['Driver Name', 'driverName', 'Nguyễn Văn A'],
-                  ['Container ID', 'containerId', 'MSCU1234567'],
+                  ['Tên Tài Xế', 'driverName', 'Nguyễn Văn A'],
+                  ['Mã Container', 'containerId', 'MSCU1234567'],
                 ].map(([label, field, ph]) => (
                   <div key={field}>
                     <label className="block text-slate uppercase text-[10px] mb-1">{label}</label>
@@ -231,22 +231,22 @@ export default function GateIncidents() {
                   </div>
                 ))}
                 <div>
-                  <label className="block text-slate uppercase text-[10px] mb-1">Gate</label>
+                  <label className="block text-slate uppercase text-[10px] mb-1">Làn cổng</label>
                   <select value={createForm.gate} onChange={e => setCreateForm(p => ({ ...p, gate: e.target.value }))}
                     className="w-full px-3.5 py-2 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange">
-                    {['Gate A', 'Gate B', 'Gate C'].map(g => <option key={g}>{g}</option>)}
+                    {['Cổng A', 'Cổng B', 'Cổng C'].map(g => <option key={g}>{g}</option>)}
                   </select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-slate uppercase text-[10px] mb-1">Loại Incident *</label>
+                  <label className="block text-slate uppercase text-[10px] mb-1">Loại Sự Cố *</label>
                   <select required value={createForm.type} onChange={e => setCreateForm(p => ({ ...p, type: e.target.value }))}
                     className="w-full px-3.5 py-2.5 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange">
-                    <option value="">-- Chọn loại --</option>
-                    {['Vehicle Mismatch', 'Driver Mismatch', 'Container Mismatch', 'Invalid Booking', 'Expired Booking',
-                      'Outside Time Window', 'Invalid License', 'Seal Mismatch', 'Unauthorized Vehicle', 'Other'].map(t => (
+                    <option value="">-- Chọn loại sự cố --</option>
+                    {['Sai lệch biển số xe', 'Sai lệch tài xế', 'Sai lệch container', 'Đăng ký không hợp lệ', 'Hết hạn đăng ký',
+                      'Ngoài khung giờ tiếp cận', 'Bằng lái không hợp lệ', 'Số chì niêm phong không khớp', 'Xe chưa đăng ký', 'Khác'].map(t => (
                       <option key={t}>{t}</option>
                     ))}
                   </select>
@@ -255,7 +255,7 @@ export default function GateIncidents() {
                   <label className="block text-slate uppercase text-[10px] mb-1">Mức Độ Nghiêm Trọng</label>
                   <select value={createForm.severity} onChange={e => setCreateForm(p => ({ ...p, severity: e.target.value }))}
                     className="w-full px-3.5 py-2.5 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange">
-                    {['Low', 'Medium', 'High', 'Critical'].map(s => <option key={s}>{s}</option>)}
+                    {[['Low', 'Thấp'], ['Medium', 'Trung bình'], ['High', 'Cao'], ['Critical', 'Khẩn cấp']].map(([s, l]) => <option key={s} value={s}>{l}</option>)}
                   </select>
                 </div>
               </div>
@@ -272,7 +272,7 @@ export default function GateIncidents() {
                   className="flex-1 h-11 border border-chalk text-slate rounded-xl font-bold hover:bg-fog">Hủy</button>
                 <button type="submit"
                   className={`flex-1 h-11 rounded-xl font-extrabold text-sm ${createForm.type ? 'bg-signal-orange text-white hover:opacity-95 shadow-md' : 'bg-slate-200 text-slate-400 cursor-not-allowed'}`}>
-                  Submit Incident
+                  Gửi Báo Cáo Sự Cố
                 </button>
               </div>
             </form>

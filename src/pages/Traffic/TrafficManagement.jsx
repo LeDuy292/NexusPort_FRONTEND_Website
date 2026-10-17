@@ -84,7 +84,7 @@ export default function TrafficManagement() {
 
   return (
     <div className="p-8 w-full font-sans flex flex-col gap-6 relative">
-      
+
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-20 right-8 bg-carbon text-white px-6 py-3.5 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-3 z-50 animate-bounce border border-signal-orange">
@@ -137,7 +137,7 @@ export default function TrafficManagement() {
 
       {/* KPI BAR (5 CARDS) */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
-        
+
         <div className="bg-white border border-chalk rounded-xl p-4 shadow-sm space-y-1">
           <span className="text-slate text-[10px] uppercase font-bold tracking-wider">Tổng số xe trong cảng</span>
           <div className="text-3xl font-extrabold text-carbon font-mono">{kpis.vehiclesInside}</div>
@@ -172,7 +172,7 @@ export default function TrafficManagement() {
 
       {/* DISPATCH RECOMMENDATION ENGINE CARD (GỢI Ý AI GIẢI TỎA ÚN TẮC - LIGHT THEME) */}
       <div className="bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 text-slate-900 rounded-2xl p-6 shadow-md border-2 border-orange-300 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-        
+
         <div className="space-y-2 max-w-2xl">
           <div className="flex items-center gap-2 text-orange-700 font-extrabold text-xs uppercase tracking-wider font-mono">
             <span className="material-symbols-outlined text-signal-orange text-base animate-spin" style={{ animationDuration: '6s' }}>psychology</span>
@@ -200,7 +200,7 @@ export default function TrafficManagement() {
 
       {/* GATE TRAFFIC STATUS CARDS (CỔNG VÀO & CỔNG RA) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
+
         {/* GATE IN CARD */}
         <div className="bg-white border-2 border-green-400 rounded-2xl p-6 shadow-sm space-y-4">
           <div className="flex justify-between items-center border-b border-chalk pb-3">
@@ -261,10 +261,10 @@ export default function TrafficManagement() {
 
       {/* MIDDLE SECTION: TRAFFIC OVERVIEW CHART (24H) & CONGESTION MINI MAP */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        
+
         {/* TRAFFIC OVERVIEW CHART (7 cols ~58%) */}
         <div className="lg:col-span-7 bg-white border border-chalk rounded-2xl p-6 shadow-sm space-y-4">
-          
+
           <div className="flex justify-between items-center border-b border-chalk pb-3">
             <div>
               <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider">BIỂU ĐỒ NĂNG LƯỢNG GIAO THÔNG</span>
@@ -278,7 +278,7 @@ export default function TrafficManagement() {
             <div className="h-44 flex items-end justify-between gap-2 pt-6">
               {trafficChartData.map((d, idx) => (
                 <div key={idx} className="flex-1 flex flex-col items-center gap-1 group relative">
-                  
+
                   {/* Tooltip Hover */}
                   <div className="absolute -top-8 bg-carbon text-white text-[9px] py-0.5 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none font-bold whitespace-nowrap shadow-lg">
                     {d.hour}: {d.count} xe
@@ -286,9 +286,8 @@ export default function TrafficManagement() {
 
                   {/* Bar height */}
                   <div
-                    className={`w-full rounded-t-lg transition-all group-hover:brightness-110 ${
-                      d.status === 'critical' ? 'bg-red-600' : d.status === 'moderate' ? 'bg-amber-500' : 'bg-green-500'
-                    }`}
+                    className={`w-full rounded-t-lg transition-all group-hover:brightness-110 ${d.status === 'critical' ? 'bg-red-600' : d.status === 'moderate' ? 'bg-amber-500' : 'bg-green-500'
+                      }`}
                     style={{ height: `${(d.count / 50) * 100}%` }}
                   ></div>
 
@@ -308,7 +307,7 @@ export default function TrafficManagement() {
 
         {/* CONGESTION MINI MAP & AREA TRAFFIC (5 cols ~42%) */}
         <div className="lg:col-span-5 bg-white border border-chalk rounded-2xl p-6 shadow-sm space-y-4">
-          
+
           <div className="flex justify-between items-center border-b border-chalk pb-3">
             <div>
               <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider">CONGESTION MINI MAP</span>
@@ -322,13 +321,12 @@ export default function TrafficManagement() {
               <div
                 key={area.id}
                 onClick={() => setSelectedCongestedArea(area)}
-                className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex justify-between items-center ${
-                  area.type === 'Critical'
+                className={`p-3.5 rounded-xl border-2 cursor-pointer transition-all flex justify-between items-center ${area.type === 'Critical'
                     ? 'border-red-500 bg-red-50/80 shadow-md animate-pulse'
                     : area.type === 'Moderate'
-                    ? 'border-amber-400 bg-amber-50/60'
-                    : 'border-chalk bg-fog/50 hover:border-slate'
-                }`}
+                      ? 'border-amber-400 bg-amber-50/60'
+                      : 'border-chalk bg-fog/50 hover:border-slate'
+                  }`}
               >
                 <div>
                   <div className="flex items-center gap-2 font-bold text-carbon">
@@ -354,7 +352,7 @@ export default function TrafficManagement() {
 
       {/* BOTTOM ROW: QUEUE MONITOR TABLE & REALTIME ALERTS */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
+
         {/* QUEUE MONITOR TABLE (7 cols) */}
         <div className="lg:col-span-7 bg-white border border-chalk rounded-2xl p-6 shadow-sm space-y-4">
           <h3 className="font-heading text-lg font-extrabold text-carbon border-b border-chalk pb-3">
@@ -423,7 +421,7 @@ export default function TrafficManagement() {
       {selectedCongestedArea && (
         <div className="fixed inset-0 bg-carbon/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
           <div className="bg-white rounded-3xl p-8 max-w-md w-full space-y-6 shadow-2xl animate-in zoom-in-95 duration-200">
-            
+
             <div className="flex justify-between items-start border-b border-chalk pb-4">
               <div>
                 <span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider block">CHI TIẾT NGHẼN GIAO THÔNG</span>
