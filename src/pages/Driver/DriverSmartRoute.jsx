@@ -69,7 +69,15 @@ export default function DriverSmartRoute({ containerId, containerNumber, booking
         previousRevision.current = revision
         setRoute(detail); setOnline(true); setError('')
       } catch (err) {
-        if (active) setError(err.message || 'Không thể tải lộ trình. Vui lòng thử lại.')
+        if (!active) return
+        // 401/403: tài xế chưa được phân công hoặc tài khoản chưa liên kết với driver
+        // Đây không phải lỗi hệ thống — chỉ hiển thị trạng thái "chưa có Gate In"
+        const status = err?.status
+        if (status === 401 || status === 403) {
+          setRoute(null); setError('')
+        } else if (active) {
+          setError(err.message || 'Không thể tải lộ trình. Vui lòng thử lại.')
+        }
       } finally {
         pending = false
         if (active) {

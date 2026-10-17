@@ -25,6 +25,26 @@ const request = async (method, path, body = null) => {
   const res = await fetch(url, options)
   const data = await res.json().catch(() => ({}))
 
+  if (res.status === 401) {
+    try {
+      localStorage.removeItem('user')
+      localStorage.removeItem('token')
+      sessionStorage.removeItem('user')
+      sessionStorage.removeItem('token')
+    } catch (_) {}
+    if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+      if (data?.code === 'SESSION_KICKED') {
+        window.location.href = '/login?kicked=true'
+      } else {
+        window.location.href = '/login'
+      }
+    }
+    const error = new Error(data?.message || 'Phiên làm việc đã hết hạn hoặc bị kết thúc.')
+    error.status = 401
+    error.data = data
+    throw error
+  }
+
   if (!res.ok || data.success === false) {
     const msg = data.message || `Yêu cầu không thành công (HTTP ${res.status})`
     const error = new Error(msg)

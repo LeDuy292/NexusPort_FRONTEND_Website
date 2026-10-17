@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import useAuth from '../../hooks/useAuth'
 
 export default function Login() {
   const navigate = useNavigate()
-  const { login, loginWithToken } = useAuth()
+  const location = useLocation()
+  const { loginWithToken } = useAuth()
 
-  // State
+  // Kiểm tra cờ kicked từ query params
+  const isKicked = new URLSearchParams(location.search).get('kicked') === 'true'
+
+  // State form chính
   const [step, setStep] = useState(1)
   const [selectedRole, setSelectedRole] = useState(null)
   const [username, setUsername] = useState('')
@@ -15,6 +19,13 @@ export default function Login() {
   const [rememberMe, setRememberMe] = useState(false)
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState(null)
+
+  // State lỗi validation
+  const [errors, setErrors] = useState({
+    username: '',
+    password: '',
+    general: '',
+  })
 
   // State Quên mật khẩu Modal
   const [showForgotModal, setShowForgotModal] = useState(false)
@@ -25,6 +36,12 @@ export default function Login() {
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [forgotLoading, setForgotLoading] = useState(false)
+  const [forgotErrors, setForgotErrors] = useState({
+    email: '',
+    otp: '',
+    newPassword: '',
+    confirmPassword: '',
+  })
 
   // Điền sẵn username nếu đã tích "Ghi nhớ đăng nhập" từ trước
   useEffect(() => {
@@ -110,24 +127,52 @@ export default function Login() {
 
   const showToastMessage = (msg, icon = 'check_circle', type = 'success') => {
     setToast({ msg, icon, type })
-    setTimeout(() => setToast(null), 3000)
+    setTimeout(() => setToast(null), 3500)
   }
 
   const handleSelectRole = (roleObj) => {
     setSelectedRole(roleObj)
+    setErrors({ username: '', password: '', general: '' })
     setTimeout(() => {
       setStep(2)
-    }, 200)
+    }, 150)
+  }
+
+  // Validate form đăng nhập phía client
+  const validateLoginForm = () => {
+    const newErrors = { username: '', password: '', general: '' }
+    let isValid = true
+
+    const trimmedUser = username.trim()
+    if (!trimmedUser) {
+      newErrors.username = 'Vui lòng nhập tên đăng nhập hoặc email.'
+      isValid = false
+    } else if (trimmedUser.length < 3) {
+      newErrors.username = 'Tên đăng nhập hoặc email phải có ít nhất 3 ký tự.'
+      isValid = false
+    }
+
+    if (!password) {
+      newErrors.password = 'Vui lòng nhập mật khẩu.'
+      isValid = false
+    } else if (password.length < 6) {
+      newErrors.password = 'Mật khẩu phải có ít nhất 6 ký tự.'
+      isValid = false
+    }
+
+    setErrors(newErrors)
+    return isValid
   }
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault()
-    if (!username.trim() || !password.trim()) {
-      showToastMessage('Vui lòng nhập đầy đủ thông tin!', 'warning', 'error')
+    if (!validateLoginForm()) {
+      showToastMessage('Vui lòng kiểm tra lại thông tin nhập!', 'warning', 'error')
       return
     }
 
     setLoading(true)
+    setErrors({ username: '', password: '', general: '' })
 
     try {
       const apiBase = import.meta.env.VITE_API_URL || '/api'
@@ -139,15 +184,28 @@ export default function Login() {
         body: JSON.stringify({
           username: username.trim(),
           password: password.trim(),
-          rememberMe
+          rememberMe,
+          expectedRole: selectedRole?.roleName || undefined,
         })
       })
 
       const result = await response.json()
 
       if (!response.ok || !result.success) {
-        showToastMessage(result.message || 'Đăng nhập thất bại!', 'error', 'error')
         setLoading(false)
+        const fieldErrs = {
+          username: '',
+          password: '',
+          general: result.message || 'Đăng nhập không thành công.',
+        }
+        if (result.errors && Array.isArray(result.errors)) {
+          result.errors.forEach((err) => {
+            if (err.field === 'username') fieldErrs.username = err.message
+            if (err.field === 'password') fieldErrs.password = err.message
+          })
+        }
+        setErrors(fieldErrs)
+        showToastMessage(result.message || 'Đăng nhập thất bại!', 'error', 'error')
         return
       }
 
@@ -163,6 +221,8 @@ export default function Login() {
       }
       if (rememberMe) {
         localStorage.setItem('rememberedUsername', user.username)
+      } else {
+        localStorage.removeItem('rememberedUsername')
       }
       if (loginWithToken) {
         loginWithToken(user, token, rememberMe)
@@ -179,7 +239,7 @@ export default function Login() {
         redirectPath = '/gate'
       } else if (normalizedRole === 'berth staff' || normalizedRole === 'berth') {
         redirectPath = '/berth-staff/dashboard'
-      } else if (normalizedRole === 'transport company' || normalizedRole === 'carrier') {
+      } else if (normalizedRole === 'transport company' || normalizedRole === 'carrier' || normalizedRole === 'carrier staff') {
         redirectPath = '/carrier-portal'
       } else if (normalizedRole === 'driver') {
         redirectPath = '/driver-portal'
@@ -190,10 +250,11 @@ export default function Login() {
       setTimeout(() => {
         setLoading(false)
         navigate(redirectPath, { replace: true })
-      }, 400)
+      }, 350)
 
     } catch (err) {
       console.error('Login error:', err)
+      setErrors((prev) => ({ ...prev, general: 'Không thể kết nối đến máy chủ backend!' }))
       showToastMessage('Không thể kết nối đến máy chủ backend!', 'error', 'error')
       setLoading(false)
     }
@@ -203,10 +264,11 @@ export default function Login() {
   const handleRequestOtp = async (e) => {
     if (e) e.preventDefault()
     if (!forgotEmail.trim()) {
-      showToastMessage('Vui lòng nhập Email hoặc Tên đăng nhập!', 'warning', 'error')
+      setForgotErrors((prev) => ({ ...prev, email: 'Vui lòng nhập Email hoặc Tên đăng nhập.' }))
       return
     }
 
+    setForgotErrors({ email: '', otp: '', newPassword: '', confirmPassword: '' })
     setForgotLoading(true)
     try {
       const apiBase = import.meta.env.VITE_API_URL || '/api'
@@ -218,6 +280,7 @@ export default function Login() {
 
       const data = await res.json()
       if (!res.ok || !data.success) {
+        setForgotErrors((prev) => ({ ...prev, email: data.message || 'Yêu cầu thất bại!' }))
         showToastMessage(data.message || 'Yêu cầu thất bại!', 'error', 'error')
         setForgotLoading(false)
         return
@@ -237,20 +300,35 @@ export default function Login() {
   // Xử lý xác nhận OTP và đặt lại mật khẩu mới
   const handleResetPassword = async (e) => {
     if (e) e.preventDefault()
-    if (!forgotOtp.trim() || !newPassword.trim() || !confirmPassword.trim()) {
-      showToastMessage('Vui lòng điền đầy đủ các trường!', 'warning', 'error')
-      return
+    const errs = { email: '', otp: '', newPassword: '', confirmPassword: '' }
+    let valid = true
+
+    if (!forgotOtp.trim()) {
+      errs.otp = 'Vui lòng nhập mã xác thực OTP.'
+      valid = false
+    } else if (forgotOtp.trim().length !== 6) {
+      errs.otp = 'Mã OTP bao gồm chính xác 6 chữ số.'
+      valid = false
     }
 
-    if (newPassword !== confirmPassword) {
-      showToastMessage('Mật khẩu xác nhận không khớp!', 'warning', 'error')
-      return
+    if (!newPassword.trim()) {
+      errs.newPassword = 'Vui lòng nhập mật khẩu mới.'
+      valid = false
+    } else if (newPassword.trim().length < 6) {
+      errs.newPassword = 'Mật khẩu mới phải có ít nhất 6 ký tự.'
+      valid = false
     }
 
-    if (newPassword.length < 6) {
-      showToastMessage('Mật khẩu mới phải có ít nhất 6 ký tự!', 'warning', 'error')
-      return
+    if (!confirmPassword.trim()) {
+      errs.confirmPassword = 'Vui lòng xác nhận mật khẩu mới.'
+      valid = false
+    } else if (newPassword !== confirmPassword) {
+      errs.confirmPassword = 'Mật khẩu xác nhận không khớp!'
+      valid = false
     }
+
+    setForgotErrors(errs)
+    if (!valid) return
 
     setForgotLoading(true)
     try {
@@ -358,25 +436,24 @@ export default function Login() {
               </div>
               <div className="bg-white/5 border border-white/10 backdrop-blur-md rounded-xl p-4">
                 <div className="text-[24px] font-bold text-white tracking-[-0.5px]">99.8%</div>
-                <div className="text-[11px] text-white/35 mt-0.5 font-medium">Uptime SLA</div>
+                <div className="text-[11px] text-white/35 mt-0.5 font-medium">Độ chính xác AI</div>
               </div>
               <div className="bg-white/5 border border-white/10 backdrop-blur-md rounded-xl p-4">
-                <div className="text-[24px] font-bold text-white tracking-[-0.5px]">5</div>
-                <div className="text-[11px] text-white/35 mt-0.5 font-medium">Phân hệ</div>
+                <div className="text-[24px] font-bold text-white tracking-[-0.5px]">24/7</div>
+                <div className="text-[11px] text-white/35 mt-0.5 font-medium">Vận hành liên tục</div>
               </div>
             </div>
-
-            <p className="mt-8 text-[11px] text-white/20 font-medium">
-              © 2026 NexusPort Inc. · Phiên bản 3.2.1
-            </p>
+            <div className="mt-8 text-[12px] text-white/25">
+              © 2026 NexusPort. Cảng Tiên Sa, Đà Nẵng, Việt Nam.
+            </div>
           </div>
         </div>
 
-        {/* RIGHT LOGIN FORM */}
-        <div className="flex-1 flex items-center justify-center p-6 lg:p-12">
-          <div className="w-full max-w-[480px]">
+        {/* RIGHT CARD CONTAINER */}
+        <div className="flex-1 flex items-center justify-center p-6 sm:p-12">
+          <div className="w-full max-w-[440px]">
             
-            {/* Mobile Logo */}
+            {/* Mobile Header */}
             <div className="flex items-center gap-2 mb-10 lg:hidden">
               <div className="w-8 h-8 bg-[#ff682c] rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-white text-[18px]">anchor</span>
@@ -387,9 +464,22 @@ export default function Login() {
             {/* Glass Card */}
             <div className="bg-white/[0.03] border border-white/10 backdrop-blur-2xl rounded-2xl p-8 shadow-2xl transition-all">
               
+              {/* Banner cảnh báo nếu phiên bị kick */}
+              {isKicked && (
+                <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-3 animate-fadeIn">
+                  <span className="material-symbols-outlined text-amber-400 text-xl flex-shrink-0 mt-0.5">warning</span>
+                  <div className="flex-1">
+                    <div className="font-bold text-amber-200 text-[13px]">Phiên đăng nhập đã kết thúc</div>
+                    <div className="text-amber-300/80 mt-1 leading-relaxed">
+                      Tài khoản của bạn vừa được đăng nhập trên một thiết bị hoặc trình duyệt khác. Để bảo vệ an toàn tài khoản, phiên làm việc trước đó đã tự động đăng xuất.
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Step indicator */}
               <div className="flex items-center gap-2 mb-8">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 cursor-pointer" onClick={() => step === 2 && setStep(1)}>
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${step === 1 ? 'bg-[#ff682c] text-white' : 'bg-white/10 text-white/40'}`}>
                     {step === 1 ? '1' : <span className="material-symbols-outlined text-[14px]">check</span>}
                   </div>
@@ -408,7 +498,7 @@ export default function Login() {
                 </div>
               </div>
 
-              {/* STEP 1 */}
+              {/* STEP 1: CHỌN VAI TRÒ */}
               {step === 1 && (
                 <div className="animate-fadeIn">
                   <div className="mb-6">
@@ -455,13 +545,18 @@ export default function Login() {
                 </div>
               )}
 
-              {/* STEP 2 */}
+              {/* STEP 2: NHẬP THÔNG TIN TÀI KHOẢN VÀ MẬT KHẨU */}
               {step === 2 && (
                 <div className="animate-fadeIn">
                   <div className="flex items-center gap-3 mb-6">
                     <button
-                      onClick={() => setStep(1)}
+                      type="button"
+                      onClick={() => {
+                        setStep(1)
+                        setErrors({ username: '', password: '', general: '' })
+                      }}
                       className="w-8 h-8 rounded-full border border-white/12 flex items-center justify-center text-white/50 hover:text-white hover:border-white/25 transition-all"
+                      title="Chọn lại vai trò"
                     >
                       <span className="material-symbols-outlined text-[16px]">arrow_back</span>
                     </button>
@@ -480,49 +575,92 @@ export default function Login() {
                     <p className="text-white/40 text-[13px] mt-1.5 font-medium">Nhập thông tin xác thực của bạn</p>
                   </div>
 
-                  <form onSubmit={handleSubmit} className="space-y-4">
+                  {/* Lỗi tổng quát (Role mismatch / Account disabled / Connection) */}
+                  {errors.general && (
+                    <div className="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex items-start gap-2.5 mb-5 font-medium leading-relaxed animate-fadeIn">
+                      <span className="material-symbols-outlined text-red-400 text-base flex-shrink-0 mt-0.5">error</span>
+                      <span>{errors.general}</span>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+                    {/* TRƯỜNG USERNAME / EMAIL */}
                     <div>
                       <label className="block text-[12px] font-semibold text-white/45 uppercase tracking-[0.08em] mb-2">
-                        Tên đăng nhập / Email
+                        Tên đăng nhập / Email <span className="text-[#ff682c]">*</span>
                       </label>
                       <div className="relative">
-                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-white/25 text-[18px]">person</span>
+                        <span className={`material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[18px] transition-colors ${errors.username ? 'text-red-400' : 'text-white/25'}`}>
+                          person
+                        </span>
                         <input
                           type="text"
                           value={username}
-                          onChange={(e) => setUsername(e.target.value)}
+                          onChange={(e) => {
+                            setUsername(e.target.value)
+                            if (errors.username) setErrors((prev) => ({ ...prev, username: '' }))
+                            if (errors.general) setErrors((prev) => ({ ...prev, general: '' }))
+                          }}
                           placeholder="nguyen.van.a@nexusport.vn"
-                          className="w-full bg-white/5 border border-white/12 rounded-lg py-3 pl-11 pr-4 text-white text-[14px] font-medium outline-none focus:border-[#ff682c]/60 focus:bg-white/[0.07] focus:ring-2 focus:ring-[#ff682c]/10 transition-all placeholder:text-white/30"
+                          className={`w-full rounded-lg py-3 pl-11 pr-4 text-white text-[14px] font-medium outline-none transition-all placeholder:text-white/30 ${
+                            errors.username
+                              ? 'bg-red-500/[0.06] border border-red-500/70 focus:border-red-400 focus:ring-2 focus:ring-red-500/20'
+                              : 'bg-white/5 border border-white/12 focus:border-[#ff682c]/60 focus:bg-white/[0.07] focus:ring-2 focus:ring-[#ff682c]/10'
+                          }`}
                         />
                       </div>
+                      {errors.username && (
+                        <p className="mt-1.5 text-[12px] text-red-400 flex items-center gap-1 font-medium animate-fadeIn">
+                          <span className="material-symbols-outlined text-[14px]">error</span>
+                          {errors.username}
+                        </p>
+                      )}
                     </div>
 
+                    {/* TRƯỜNG PASSWORD */}
                     <div>
                       <label className="block text-[12px] font-semibold text-white/45 uppercase tracking-[0.08em] mb-2">
-                        Mật khẩu
+                        Mật khẩu <span className="text-[#ff682c]">*</span>
                       </label>
                       <div className="relative">
-                        <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-white/25 text-[18px]">lock</span>
+                        <span className={`material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[18px] transition-colors ${errors.password ? 'text-red-400' : 'text-white/25'}`}>
+                          lock
+                        </span>
                         <input
                           type={showPassword ? 'text' : 'password'}
                           value={password}
-                          onChange={(e) => setPassword(e.target.value)}
+                          onChange={(e) => {
+                            setPassword(e.target.value)
+                            if (errors.password) setErrors((prev) => ({ ...prev, password: '' }))
+                            if (errors.general) setErrors((prev) => ({ ...prev, general: '' }))
+                          }}
                           placeholder="••••••••••••"
-                          className="w-full bg-white/5 border border-white/12 rounded-lg py-3 pl-11 pr-11 text-white text-[14px] font-medium outline-none focus:border-[#ff682c]/60 focus:bg-white/[0.07] focus:ring-2 focus:ring-[#ff682c]/10 transition-all placeholder:text-white/30"
+                          className={`w-full rounded-lg py-3 pl-11 pr-11 text-white text-[14px] font-medium outline-none transition-all placeholder:text-white/30 ${
+                            errors.password
+                              ? 'bg-red-500/[0.06] border border-red-500/70 focus:border-red-400 focus:ring-2 focus:ring-red-500/20'
+                              : 'bg-white/5 border border-white/12 focus:border-[#ff682c]/60 focus:bg-white/[0.07] focus:ring-2 focus:ring-[#ff682c]/10'
+                          }`}
                         />
                         <button
                           type="button"
                           onClick={() => setShowPassword(!showPassword)}
                           className="absolute right-4 top-1/2 -translate-y-1/2 text-white/25 hover:text-white/60 transition-colors"
+                          tabIndex={-1}
                         >
                           <span className="material-symbols-outlined text-[18px]">
                             {showPassword ? 'visibility_off' : 'visibility'}
                           </span>
                         </button>
                       </div>
+                      {errors.password && (
+                        <p className="mt-1.5 text-[12px] text-red-400 flex items-center gap-1 font-medium animate-fadeIn">
+                          <span className="material-symbols-outlined text-[14px]">error</span>
+                          {errors.password}
+                        </p>
+                      )}
                     </div>
 
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between pt-1">
                       <label className="flex items-center gap-2.5 cursor-pointer group select-none">
                         <div
                           onClick={() => setRememberMe(!rememberMe)}
@@ -539,6 +677,7 @@ export default function Login() {
                         onClick={() => {
                           setForgotEmail(username)
                           setForgotStep(1)
+                          setForgotErrors({ email: '', otp: '', newPassword: '', confirmPassword: '' })
                           setShowForgotModal(true)
                         }}
                         className="text-[#ff682c] text-[13px] font-semibold hover:underline"
@@ -567,36 +706,10 @@ export default function Login() {
                       </button>
                     </div>
                   </form>
-
-                  {/* SSO option */}
-                  <div className="mt-4 relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-white/10" />
-                    </div>
-                    <div className="relative flex justify-center">
-                      <span className="px-3 text-[11px] text-white/25 font-medium bg-[#080808]">hoặc tiếp tục với</span>
-                    </div>
-                  </div>
-
-                  <button className="mt-4 w-full bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-lg py-3 px-4 flex items-center justify-center gap-3 text-white/60 text-[13px] font-semibold hover:text-white transition-all">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
-                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-                    </svg>
-                    Đăng nhập bằng Google Workspace
-                  </button>
                 </div>
               )}
 
             </div>
-
-            <p className="text-center text-white/20 text-[11px] mt-6 font-medium">
-              Bằng cách đăng nhập, bạn đồng ý với{' '}
-              <a href="#" className="text-white/35 hover:text-white/60 underline">Điều khoản sử dụng</a> và{' '}
-              <a href="#" className="text-white/35 hover:text-white/60 underline">Chính sách bảo mật</a>.
-            </p>
 
           </div>
         </div>
@@ -627,21 +740,34 @@ export default function Login() {
             </div>
 
             {forgotStep === 1 ? (
-              <form onSubmit={handleRequestOtp} className="space-y-4 mt-4">
+              <form onSubmit={handleRequestOtp} className="space-y-4 mt-4" noValidate>
                 <div>
                   <label className="block text-[11px] font-semibold text-white/45 uppercase tracking-wider mb-2">
-                    Email / Tên đăng nhập
+                    Email / Tên đăng nhập <span className="text-[#ff682c]">*</span>
                   </label>
                   <div className="relative">
                     <span className="material-symbols-outlined absolute left-3.5 top-1/2 -translate-y-1/2 text-white/30 text-[18px]">mail</span>
                     <input
                       type="text"
                       value={forgotEmail}
-                      onChange={(e) => setForgotEmail(e.target.value)}
+                      onChange={(e) => {
+                        setForgotEmail(e.target.value)
+                        if (forgotErrors.email) setForgotErrors((prev) => ({ ...prev, email: '' }))
+                      }}
                       placeholder="admin hoặc admin@nexusport.vn"
-                      className="w-full bg-white/5 border border-white/12 rounded-lg py-2.5 pl-10 pr-4 text-white text-[13px] outline-none focus:border-[#ff682c] transition-all"
+                      className={`w-full rounded-lg py-2.5 pl-10 pr-4 text-white text-[13px] outline-none transition-all ${
+                        forgotErrors.email
+                          ? 'bg-red-500/[0.06] border border-red-500/70 focus:border-red-400'
+                          : 'bg-white/5 border border-white/12 focus:border-[#ff682c]'
+                      }`}
                     />
                   </div>
+                  {forgotErrors.email && (
+                    <p className="mt-1 text-[11px] text-red-400 flex items-center gap-1 font-medium">
+                      <span className="material-symbols-outlined text-[13px]">error</span>
+                      {forgotErrors.email}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex gap-3 pt-2">
@@ -662,13 +788,16 @@ export default function Login() {
                 </div>
               </form>
             ) : (
-              <form onSubmit={handleResetPassword} className="space-y-3.5 mt-4">
+              <form onSubmit={handleResetPassword} className="space-y-3.5 mt-4" noValidate>
                 {generatedOtp && (
                   <div className="bg-[#ff682c]/10 border border-[#ff682c]/30 rounded-lg p-3 text-[12px] text-[#ff682c] font-medium flex items-center justify-between">
                     <span>Mã OTP thử nghiệm: <strong>{generatedOtp}</strong></span>
                     <button
                       type="button"
-                      onClick={() => setForgotOtp(generatedOtp)}
+                      onClick={() => {
+                        setForgotOtp(generatedOtp)
+                        if (forgotErrors.otp) setForgotErrors((prev) => ({ ...prev, otp: '' }))
+                      }}
                       className="text-[11px] underline font-semibold hover:text-white"
                     >
                       Tự điền
@@ -678,42 +807,81 @@ export default function Login() {
 
                 <div>
                   <label className="block text-[11px] font-semibold text-white/45 uppercase tracking-wider mb-1.5">
-                    Mã OTP (6 chữ số)
+                    Mã OTP (6 chữ số) <span className="text-[#ff682c]">*</span>
                   </label>
                   <input
                     type="text"
                     maxLength={6}
                     value={forgotOtp}
-                    onChange={(e) => setForgotOtp(e.target.value)}
+                    onChange={(e) => {
+                      setForgotOtp(e.target.value)
+                      if (forgotErrors.otp) setForgotErrors((prev) => ({ ...prev, otp: '' }))
+                    }}
                     placeholder="123456"
-                    className="w-full bg-white/5 border border-white/12 rounded-lg py-2 pl-3 text-white text-[14px] font-mono tracking-widest outline-none focus:border-[#ff682c]"
+                    className={`w-full rounded-lg py-2 pl-3 text-white text-[14px] font-mono tracking-widest outline-none ${
+                      forgotErrors.otp
+                        ? 'bg-red-500/[0.06] border border-red-500/70 focus:border-red-400'
+                        : 'bg-white/5 border border-white/12 focus:border-[#ff682c]'
+                    }`}
                   />
+                  {forgotErrors.otp && (
+                    <p className="mt-1 text-[11px] text-red-400 flex items-center gap-1 font-medium">
+                      <span className="material-symbols-outlined text-[13px]">error</span>
+                      {forgotErrors.otp}
+                    </p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-semibold text-white/45 uppercase tracking-wider mb-1.5">
-                    Mật khẩu mới
+                    Mật khẩu mới (tối thiểu 6 ký tự) <span className="text-[#ff682c]">*</span>
                   </label>
                   <input
                     type="password"
                     value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
+                    onChange={(e) => {
+                      setNewPassword(e.target.value)
+                      if (forgotErrors.newPassword) setForgotErrors((prev) => ({ ...prev, newPassword: '' }))
+                    }}
                     placeholder="Nhập mật khẩu mới"
-                    className="w-full bg-white/5 border border-white/12 rounded-lg py-2 pl-3 text-white text-[13px] outline-none focus:border-[#ff682c]"
+                    className={`w-full rounded-lg py-2 pl-3 text-white text-[13px] outline-none ${
+                      forgotErrors.newPassword
+                        ? 'bg-red-500/[0.06] border border-red-500/70 focus:border-red-400'
+                        : 'bg-white/5 border border-white/12 focus:border-[#ff682c]'
+                    }`}
                   />
+                  {forgotErrors.newPassword && (
+                    <p className="mt-1 text-[11px] text-red-400 flex items-center gap-1 font-medium">
+                      <span className="material-symbols-outlined text-[13px]">error</span>
+                      {forgotErrors.newPassword}
+                    </p>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-semibold text-white/45 uppercase tracking-wider mb-1.5">
-                    Xác nhận mật khẩu mới
+                    Xác nhận mật khẩu mới <span className="text-[#ff682c]">*</span>
                   </label>
                   <input
                     type="password"
                     value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value)
+                      if (forgotErrors.confirmPassword) setForgotErrors((prev) => ({ ...prev, confirmPassword: '' }))
+                    }}
                     placeholder="Nhập lại mật khẩu mới"
-                    className="w-full bg-white/5 border border-white/12 rounded-lg py-2 pl-3 text-white text-[13px] outline-none focus:border-[#ff682c]"
+                    className={`w-full rounded-lg py-2 pl-3 text-white text-[13px] outline-none ${
+                      forgotErrors.confirmPassword
+                        ? 'bg-red-500/[0.06] border border-red-500/70 focus:border-red-400'
+                        : 'bg-white/5 border border-white/12 focus:border-[#ff682c]'
+                    }`}
                   />
+                  {forgotErrors.confirmPassword && (
+                    <p className="mt-1 text-[11px] text-red-400 flex items-center gap-1 font-medium">
+                      <span className="material-symbols-outlined text-[13px]">error</span>
+                      {forgotErrors.confirmPassword}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex gap-3 pt-2">
