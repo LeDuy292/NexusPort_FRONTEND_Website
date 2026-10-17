@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { containerService } from "../../services/containerService";
-import ContainerIntake from "./ContainerIntake";
+
 
 const STATUSES = [
   "expected",
@@ -62,11 +62,7 @@ const LIFECYCLE_ORDER = [
   "ready_for_gate_out",
   "gate_out",
 ];
-const EMPTY_FORM = {
-  containerNumber: "",
-  containerTypeId: "",
-  carrierId: "",
-};
+
 
 const formatDate = (value) =>
   value
@@ -83,156 +79,6 @@ const loadStatusLabel = (status) =>
   ({ full: "Có hàng", empty: "Rỗng", unknown: "Chưa xác định" })[status] || "—";
 const visitStatusLabel = (status) =>
   ({ planned: "Dự kiến", active: "Đang ở cảng", completed: "Hoàn tất", canceled: "Đã hủy" })[status] || status || "—";
-
-function Field({ label, required, children }) {
-  return (
-    <label className="space-y-1.5 text-xs font-bold text-graphite">
-      <span>
-        {label}
-        {required && " *"}
-      </span>
-      {children}
-    </label>
-  );
-}
-
-function ContainerFormModal({ container, types, onClose, onSaved }) {
-  const editing = Boolean(container);
-  const [form, setForm] = useState(() =>
-    container
-      ? {
-          containerNumber: container.containerNumber,
-          containerTypeId: container.containerTypeId,
-          carrierId: container.carrierId || "",
-        }
-      : { ...EMPTY_FORM, containerTypeId: types[0]?.id || "" },
-  );
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-
-  const update = (key, value) =>
-    setForm((current) => ({ ...current, [key]: value }));
-  const submit = async (event) => {
-    event.preventDefault();
-    setSaving(true);
-    setError("");
-    const payload = {
-      containerNumber: form.containerNumber
-        .toUpperCase()
-        .replace(/[\s-]+/g, ""),
-      containerTypeId: form.containerTypeId,
-      carrierId: form.carrierId || null,
-    };
-    try {
-      const saved = editing
-        ? await containerService.updateContainer(container.id, payload)
-        : await containerService.createContainer(payload);
-      onSaved(saved);
-    } catch (requestError) {
-      const detail =
-        requestError.details && Object.values(requestError.details).flat()[0];
-      setError(detail || requestError.message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const inputClass =
-    "w-full rounded-lg border border-chalk bg-fog px-3 py-2.5 text-sm font-medium text-carbon outline-none focus:border-signal-orange focus:ring-2 focus:ring-orange-100";
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
-      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-chalk bg-white px-6 py-4">
-          <div>
-            <h2 className="font-heading text-xl font-bold text-carbon">
-              {editing ? "Cập nhật Container" : "Đăng ký Container"}
-            </h2>
-            <p className="mt-1 text-xs text-slate">
-              Hồ sơ vật lý cố định theo tiêu chuẩn ISO 6346
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-full bg-fog text-graphite hover:bg-chalk"
-          >
-            <span className="material-symbols-outlined">close</span>
-          </button>
-        </div>
-        <form onSubmit={submit} className="space-y-5 p-6">
-          {error && (
-            <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              <span className="material-symbols-outlined text-lg">error</span>
-              {error}
-            </div>
-          )}
-          <div className="grid gap-4 md:grid-cols-2">
-            <Field label="Container ID" required>
-              <input
-                className={`${inputClass} font-mono uppercase tracking-wider`}
-                required
-                maxLength={14}
-                placeholder="MSCU6639871"
-                value={form.containerNumber}
-                onChange={(e) => update("containerNumber", e.target.value)}
-              />
-            </Field>
-            <Field label="Size / Type" required>
-              <select
-                className={inputClass}
-                required
-                value={form.containerTypeId}
-                onChange={(e) => update("containerTypeId", e.target.value)}
-              >
-                <option value="">Chọn loại container</option>
-                {types.map((type) => (
-                  <option key={type.id} value={type.id}>
-                    {type.code} · {displaySize(type.size)} ·{" "}
-                    {type.category.replaceAll("_", " ")}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Carrier ID">
-              <input
-                className={`${inputClass} font-mono`}
-                placeholder="UUID (không bắt buộc)"
-                value={form.carrierId}
-                onChange={(e) => update("carrierId", e.target.value)}
-              />
-            </Field>
-          </div>
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
-            Seal, hàng hóa, trọng lượng, chuyến tàu và thời gian vào/ra thuộc từng lượt cảng/EIR nên được lấy từ dữ liệu nghiệp vụ, không ghi đè vào hồ sơ vật lý Container.
-          </div>
-          {!types.length && (
-            <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
-              Chưa có dữ liệu Container Type trong database. Administrator cần
-              seed bảng container_types trước khi đăng ký.
-            </p>
-          )}
-          <div className="flex justify-end gap-3 border-t border-chalk pt-5">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg border border-chalk px-5 py-2.5 text-sm font-bold text-graphite hover:bg-fog"
-            >
-              Hủy
-            </button>
-            <button
-              disabled={saving || !types.length}
-              className="rounded-lg bg-signal-orange px-5 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {saving ? "Đang lưu..." : editing ? "Lưu thay đổi" : "Đăng ký"}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
-  );
-}
 
 function InfoItem({ label, value, mono = false }) {
   return (
@@ -290,7 +136,7 @@ function EirCard({ eir, containerNumber, defaultOpen = false }) {
   );
 }
 
-function ContainerDetailModal({ detail, loading, onClose, onEdit, onTransition, transitioning, canWrite }) {
+function ContainerDetailModal({ detail, loading, onClose, onTransition, transitioning, canWrite }) {
   const lifecycleStatus = detail?.lifecycleStatus?.status;
   const nextStatus = lifecycleStatus ? NEXT_LIFECYCLE_STATUS[lifecycleStatus] : null;
   const latestVisit = detail?.visits?.[0];
@@ -335,6 +181,9 @@ function ContainerDetailModal({ detail, loading, onClose, onEdit, onTransition, 
                 <InfoItem label="Kích thước" value={displaySize(detail.containerType?.size)} />
                 <InfoItem label="Phân loại" value={detail.containerType?.category?.replaceAll("_", " ")} />
                 <InfoItem label="Carrier" value={detail.carrierName} />
+                <InfoItem label="Loại hàng khai báo" value={detail.cargoTypeName} />
+                <InfoItem label="Khối lượng khai báo" value={detail.grossWeightKg == null ? null : `${detail.grossWeightKg} kg`} />
+                {detail.cargoType === "reefer" && <InfoItem label="Công suất điện yêu cầu" value={detail.requiredPowerKw == null ? "Chưa khai báo" : `${detail.requiredPowerKw} kW`} />}
                 <InfoItem label="Ngày đăng ký" value={formatDate(detail.createdAt)} />
               </dl>
               <p className="mt-3 text-xs text-slate">Seal, hàng hóa, trọng lượng và tàu được hiển thị theo từng EIR bên dưới, không coi là thuộc tính cố định của vỏ Container.</p>
@@ -484,15 +333,6 @@ function ContainerDetailModal({ detail, loading, onClose, onEdit, onTransition, 
                 </p>
               )}
               </section>
-            {canWrite && detail.status !== "canceled" && (
-              <button
-                onClick={() => onEdit(detail)}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-signal-orange py-3 text-sm font-bold text-white"
-              >
-                <span className="material-symbols-outlined text-lg">edit</span>
-                Cập nhật Container
-              </button>
-            )}
             </aside>
           </div>
         )}
@@ -514,12 +354,8 @@ export default function ContainerManagement() {
   const canWrite = ["Administrator", "Dispatcher", "Gate Officer"].includes(
     user?.role,
   );
-  const canIntake = ["Administrator", "Dispatcher"].includes(user?.role);
   const isTransport = ["Transport Company", "Carrier Staff", "Carrier"].includes(user?.role);
-  const canDelete = user?.role === "Administrator";
-  const [viewMode, setViewMode] = useState(isTransport ? "intake" : "registry");
   const [items, setItems] = useState([]);
-  const [types, setTypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [filters, setFilters] = useState({
@@ -531,8 +367,6 @@ export default function ContainerManagement() {
     category: "",
   });
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
-  const [formContainer, setFormContainer] = useState(undefined);
-  const [showForm, setShowForm] = useState(false);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [showDetail, setShowDetail] = useState(false);
@@ -552,18 +386,12 @@ export default function ContainerManagement() {
       setLoading(false);
     }
   }, [filters]);
+
   useEffect(() => {
-    if (isTransport) return;
-    containerService
-      .getContainerTypes()
-      .then(setTypes)
-      .catch((e) => setError(e.message));
-  }, [isTransport]);
-  useEffect(() => {
-    if (isTransport || viewMode !== "registry") return undefined;
+    if (isTransport) return undefined;
     const timer = setTimeout(load, 300);
     return () => clearTimeout(timer);
-  }, [isTransport, load, viewMode]);
+  }, [isTransport, load]);
 
   const openDetail = async (id) => {
     setShowDetail(true);
@@ -599,34 +427,6 @@ export default function ContainerManagement() {
       setTransitioning(false);
     }
   };
-  const saved = () => {
-    setShowForm(false);
-    setFormContainer(undefined);
-    setNotice("Đã lưu thông tin Container thành công.");
-    load();
-    setTimeout(() => setNotice(""), 3000);
-  };
-  const edit = (container) => {
-    setShowDetail(false);
-    setFormContainer(container);
-    setShowForm(true);
-  };
-  const remove = async (container) => {
-    if (
-      !window.confirm(
-        `Bạn có chắc muốn xóa mềm Container ${container.containerNumber}? Dữ liệu lịch sử vẫn được giữ lại.`,
-      )
-    )
-      return;
-    try {
-      await containerService.deleteContainer(container.id);
-      setNotice("Container đã được xóa mềm thành công.");
-      load();
-      setTimeout(() => setNotice(""), 3000);
-    } catch (e) {
-      setError(e.message);
-    }
-  };
   const setFilter = (key, value) =>
     setFilters((current) => ({
       ...current,
@@ -634,9 +434,7 @@ export default function ContainerManagement() {
       page: key === "page" ? value : 1,
     }));
 
-  if (viewMode === "intake") {
-    return <ContainerIntake embedded onBack={isTransport ? undefined : () => setViewMode("registry")} />;
-  }
+
 
   return (
     <div className="mx-auto w-full max-w-[1500px] space-y-5 p-1">
@@ -644,7 +442,7 @@ export default function ContainerManagement() {
         <div>
           <div className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-signal-orange">
             <span className="h-2 w-2 rounded-full bg-signal-orange" />
-            Central Registry · Đăng kiểm trung tâm
+            Kho bãi · Danh sách Container
           </div>
           <h1 className="font-heading text-3xl font-bold text-carbon">
             Quản lý Container
@@ -653,29 +451,7 @@ export default function ContainerManagement() {
             Theo dõi xuyên suốt Booking → Gate-In → Yard → Gate-Out
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
-          {canIntake && (
-            <button
-              onClick={() => setViewMode("intake")}
-              className="flex items-center justify-center gap-2 rounded-lg border border-carbon bg-white px-5 py-3 text-sm font-bold text-carbon hover:bg-fog"
-            >
-              <span className="material-symbols-outlined text-lg">upload_file</span>
-              Tiếp nhận / Đăng ký Container
-            </button>
-          )}
-          {canWrite && !canIntake && (
-            <button
-              onClick={() => {
-                setFormContainer(undefined);
-                setShowForm(true);
-              }}
-              className="flex items-center justify-center gap-2 rounded-lg bg-signal-orange px-5 py-3 text-sm font-bold text-white shadow-sm hover:bg-orange-600"
-            >
-              <span className="material-symbols-outlined text-lg">add</span>
-              Đăng ký Container
-            </button>
-          )}
-        </div>
+
       </div>
 
       {notice && (
@@ -885,28 +661,6 @@ export default function ContainerManagement() {
                             visibility
                           </span>
                         </button>
-                        {canWrite && container.status !== "canceled" && (
-                          <button
-                            title="Cập nhật"
-                            onClick={() => edit(container)}
-                            className="flex h-8 w-8 items-center justify-center rounded-md text-slate hover:bg-orange-50 hover:text-signal-orange"
-                          >
-                            <span className="material-symbols-outlined text-lg">
-                              edit
-                            </span>
-                          </button>
-                        )}
-                        {canDelete && container.status !== "canceled" && (
-                          <button
-                            title="Xóa mềm"
-                            onClick={() => remove(container)}
-                            className="flex h-8 w-8 items-center justify-center rounded-md text-slate hover:bg-red-50 hover:text-red-600"
-                          >
-                            <span className="material-symbols-outlined text-lg">
-                              delete
-                            </span>
-                          </button>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -938,20 +692,11 @@ export default function ContainerManagement() {
           </div>
         </div>
       </div>
-      {showForm && (
-        <ContainerFormModal
-          container={formContainer}
-          types={types}
-          onClose={() => setShowForm(false)}
-          onSaved={saved}
-        />
-      )}
       {showDetail && (
         <ContainerDetailModal
           detail={detail}
           loading={detailLoading}
           onClose={() => setShowDetail(false)}
-          onEdit={edit}
           onTransition={transitionStatus}
           transitioning={transitioning}
           canWrite={canWrite}

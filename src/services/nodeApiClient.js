@@ -30,6 +30,7 @@ const request = async (method, path, { params, body } = {}) => {
   }
 
   if (response.status === 204) return null
+  if (response.ok && response.headers.get('content-type')?.includes('spreadsheetml')) return response.blob()
   const payload = await response.json().catch(() => ({}))
   if (!response.ok || payload.success === false) {
     const error = new Error(payload?.error?.message || payload?.message || `Yêu cầu không thành công (HTTP ${response.status}).`)
