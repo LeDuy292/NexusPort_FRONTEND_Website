@@ -72,7 +72,7 @@ export default function CarrierProfile() {
                       type="text"
                       value={profile.companyName}
                       onChange={e => setProfile({ ...profile, companyName: e.target.value })}
-                      className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange"
+                      className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange focus:border-signal-orange"
                     />
                   </div>
 
@@ -82,7 +82,7 @@ export default function CarrierProfile() {
                       type="text"
                       value={profile.regNumber}
                       onChange={e => setProfile({ ...profile, regNumber: e.target.value })}
-                      className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon font-mono focus:outline-none focus:ring-1 focus:ring-signal-orange"
+                      className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon font-mono focus:outline-none focus:ring-1 focus:ring-signal-orange focus:border-signal-orange"
                     />
                   </div>
                 </div>
@@ -110,7 +110,7 @@ export default function CarrierProfile() {
                   type="text"
                   value={profile.address}
                   onChange={e => setProfile({ ...profile, address: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange"
+                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange focus:border-signal-orange"
                 />
               </div>
 
@@ -120,7 +120,7 @@ export default function CarrierProfile() {
                   type="text"
                   value={profile.city}
                   onChange={e => setProfile({ ...profile, city: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange"
+                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange focus:border-signal-orange"
                 />
               </div>
 
@@ -130,7 +130,7 @@ export default function CarrierProfile() {
                   type="text"
                   value={profile.state}
                   onChange={e => setProfile({ ...profile, state: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange"
+                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange focus:border-signal-orange"
                 />
               </div>
 
@@ -140,7 +140,7 @@ export default function CarrierProfile() {
                   type="text"
                   value={profile.zip}
                   onChange={e => setProfile({ ...profile, zip: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange"
+                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange focus:border-signal-orange"
                 />
               </div>
 
@@ -150,7 +150,7 @@ export default function CarrierProfile() {
                   type="text"
                   value={profile.country}
                   onChange={e => setProfile({ ...profile, country: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange"
+                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange focus:border-signal-orange"
                 />
               </div>
             </div>
@@ -181,7 +181,7 @@ export default function CarrierProfile() {
                   type="text"
                   value={profile.repName}
                   onChange={e => setProfile({ ...profile, repName: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange"
+                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange focus:border-signal-orange"
                 />
               </div>
 
@@ -191,7 +191,7 @@ export default function CarrierProfile() {
                   type="text"
                   value={profile.repTitle}
                   onChange={e => setProfile({ ...profile, repTitle: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange"
+                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange focus:border-signal-orange"
                 />
               </div>
 
@@ -201,7 +201,7 @@ export default function CarrierProfile() {
                   type="email"
                   value={profile.repEmail}
                   onChange={e => setProfile({ ...profile, repEmail: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange"
+                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange focus:border-signal-orange"
                 />
               </div>
 
@@ -211,7 +211,7 @@ export default function CarrierProfile() {
                   type="tel"
                   value={profile.repPhone}
                   onChange={e => setProfile({ ...profile, repPhone: e.target.value })}
-                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange"
+                  className="w-full h-10 rounded-lg border border-chalk bg-transparent px-3 text-carbon focus:outline-none focus:ring-1 focus:ring-signal-orange focus:border-signal-orange"
                 />
               </div>
             </div>

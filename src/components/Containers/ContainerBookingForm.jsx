@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { containerService } from '../../services/containerService'
 import { bookingService } from '../../services/bookingService'
 
-const inputClass = 'w-full rounded-xl border border-chalk bg-fog px-4 py-3 text-sm outline-none focus:border-signal-orange focus:bg-white'
+const inputClass = 'w-full rounded-xl border border-chalk bg-fog px-4 py-3 text-sm outline-none focus:border-signal-orange focus:bg-white focus:ring-0'
 const message = e => {
   const body = e.response?.data
   const errors = body?.errors || body?.Errors
@@ -394,7 +394,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                       <select
                         value={form.truckId}
                         onChange={(e) => handleTruckChange(e.target.value)}
-                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange cursor-pointer"
+                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange cursor-pointer focus:border-signal-orange"
                       >
                         <option value="">
                           {form.selectedContainerId ? '-- Chọn xe đầu kéo khác --' : '-- Chọn container trước --'}
@@ -424,7 +424,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                           }
                           setForm({ ...form, driverId, truckId });
                         }}
-                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange cursor-pointer"
+                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange cursor-pointer focus:border-signal-orange"
                       >
                         <option value="">
                           {form.selectedContainerId ? '-- Chọn tài xế khác --' : '-- Chọn container trước --'}
@@ -533,7 +533,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                         required
                         value={form.appointmentDate}
                         onChange={(e) => setForm({ ...form, appointmentDate: e.target.value })}
-                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange"
+                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange focus:border-signal-orange"
                       />
                     </div>
 
@@ -544,7 +544,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                         required
                         value={form.startTime}
                         onChange={(e) => setForm({ ...form, startTime: e.target.value })}
-                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange"
+                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange focus:border-signal-orange"
                       />
                     </div>
 
@@ -555,7 +555,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                         required
                         value={form.endTime}
                         onChange={(e) => setForm({ ...form, endTime: e.target.value })}
-                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange"
+                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange focus:border-signal-orange"
                       />
                     </div>
                   </div>

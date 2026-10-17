@@ -19,7 +19,7 @@ const loadLabel = (value) =>
   value;
 const date = (value) => (value ? new Date(value).toLocaleString("vi-VN") : "—");
 const inputClass =
-  "w-full rounded-xl border border-chalk bg-fog px-3.5 py-2.5 text-xs font-semibold text-carbon outline-none focus:border-signal-orange focus:bg-white";
+  "w-full rounded-xl border border-chalk bg-fog px-3.5 py-2.5 text-xs font-semibold text-carbon outline-none focus:border-signal-orange focus:bg-white focus:ring-0";
 
 export default function CargoDeclaration() {
   const navigate = useNavigate();

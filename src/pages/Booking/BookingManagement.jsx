@@ -848,7 +848,6 @@ export default function BookingManagement() {
             <button
               onClick={() => {
                 setActiveTab('create')
-                setWizardStep(1)
               }}
               className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 group cursor-pointer"
             >
@@ -1007,7 +1006,7 @@ export default function BookingManagement() {
                     setTypeFilter(e.target.value)
                     setPageNumber(1)
                   }}
-                  className="px-3 py-2.5 rounded-xl border border-chalk bg-white text-xs font-semibold text-carbon focus:ring-2 focus:ring-signal-orange cursor-pointer"
+                  className="px-3 py-2.5 rounded-xl border border-chalk bg-white text-xs font-semibold text-carbon focus:ring-2 focus:ring-signal-orange cursor-pointer focus:border-signal-orange"
                 >
                   <option value="All">Tất cả nghiệp vụ</option>
                   <option value="Pickup">Chỉ Pickup (Bốc hàng)</option>
@@ -1078,7 +1077,6 @@ export default function BookingManagement() {
                 <button
                   onClick={() => {
                     setActiveTab('create')
-                    setWizardStep(1)
                   }}
                   className="px-5 py-2.5 rounded-xl bg-signal-orange text-white font-bold text-xs hover:bg-orange-600 transition-all inline-flex items-center gap-2 cursor-pointer shadow-sm"
                 >
@@ -1397,7 +1395,7 @@ export default function BookingManagement() {
                 <select
                   value={assignForm.containerId}
                   onChange={(e) => handleAssignContainerChange(e.target.value)}
-                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-mono font-bold text-carbon cursor-pointer"
+                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-mono font-bold text-carbon cursor-pointer focus:outline-none focus:ring-0 focus:border-signal-orange"
                 >
                   {(availableResources.containers || []).map((c) => (
                     <option key={c.id} value={c.id}>
@@ -1412,7 +1410,7 @@ export default function BookingManagement() {
                 <select
                   value={assignForm.truckId}
                   onChange={(e) => handleAssignTruckChange(e.target.value)}
-                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon cursor-pointer"
+                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon cursor-pointer focus:outline-none focus:ring-0 focus:border-signal-orange"
                 >
                   {(availableResources.trucks || []).map((t) => (
                     <option key={t.id} value={t.id}>
@@ -1435,7 +1433,7 @@ export default function BookingManagement() {
                     }
                     setAssignForm({ ...assignForm, driverId, truckId });
                   }}
-                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon cursor-pointer"
+                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon cursor-pointer focus:outline-none focus:ring-0 focus:border-signal-orange"
                 >
                   {(availableResources.drivers || []).map((d) => (
                     <option key={d.id} value={d.id}>
@@ -1724,7 +1722,7 @@ export default function BookingManagement() {
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
                 placeholder="Nhập lý do hủy đặt chỗ..."
-                className="w-full p-3 rounded-2xl border border-chalk bg-white text-xs text-carbon focus:ring-2 focus:ring-rose-500"
+                className="w-full p-3 rounded-2xl border border-chalk bg-white text-xs text-carbon focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
               />
             </div>
 
@@ -1776,7 +1774,7 @@ export default function BookingManagement() {
                   required
                   value={editForm.containerNo}
                   onChange={(e) => setEditForm({ ...editForm, containerNo: e.target.value })}
-                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-mono font-bold text-carbon"
+                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-mono font-bold text-carbon focus:outline-none focus:ring-0 focus:border-signal-orange"
                 />
               </div>
 
@@ -1787,7 +1785,7 @@ export default function BookingManagement() {
                   required
                   value={editForm.appointmentDate}
                   onChange={(e) => setEditForm({ ...editForm, appointmentDate: e.target.value })}
-                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon"
+                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon focus:outline-none focus:ring-0 focus:border-signal-orange"
                 />
               </div>
 
@@ -1799,7 +1797,7 @@ export default function BookingManagement() {
                     required
                     value={editForm.startTime}
                     onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })}
-                    className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon"
+                    className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon focus:outline-none focus:ring-0 focus:border-signal-orange"
                   />
                 </div>
 
@@ -1810,7 +1808,7 @@ export default function BookingManagement() {
                     required
                     value={editForm.endTime}
                     onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })}
-                    className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon"
+                    className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon focus:outline-none focus:ring-0 focus:border-signal-orange"
                   />
                 </div>
               </div>

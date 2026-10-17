@@ -56,7 +56,7 @@ const sidebarItems = [
     path: '/dispatch',
     label: 'Lệnh Điều Phối Xe',
     icon: 'alt_route',
-    roles: [ROLES.DISPATCHER],
+    roles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   // 3. Quản lý nguồn lực: Xe & Tài xế
   {
