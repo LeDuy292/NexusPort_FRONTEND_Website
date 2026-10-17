@@ -236,7 +236,10 @@ export default function GateBookingRequests() {
       setShowApproveModal(false)
       fetchBookings()
     } catch (error) {
-      showToast('⚠️ Có lỗi xảy ra khi duyệt Booking.', 'error')
+      const body = error.response?.data
+      const details = body?.Errors || body?.errors
+      const reason = details ? Object.values(details).flat().join(' ') : body?.Message || body?.message || error.message
+      showToast(`⚠️ ${reason || 'Không thể duyệt booking. Vui lòng thử lại.'}`, 'error')
     } finally {
       setLoading(false)
     }

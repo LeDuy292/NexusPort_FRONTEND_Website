@@ -6,8 +6,9 @@ export const driverContainerConfirmationService = {
     return response.data
   },
 
-  async confirmContainer(containerId, condition = 'OK', notes = '') {
+  async confirmContainer(bookingId, containerId, condition = 'OK', notes = '') {
     const response = await apiClient.post('/v1/Booking/driver/container-confirmation', {
+      bookingId,
       containerId,
       condition,
       notes: notes || null
