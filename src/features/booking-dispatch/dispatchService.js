@@ -18,6 +18,8 @@ export function connectDispatchBoard({ onChange, onConnected, onDisconnected }) 
     new URL(import.meta.env.VITE_API_URL || '/api', window.location.origin).origin
   const socket = io(url, { auth: { token }, transports: ['websocket', 'polling'], reconnection: true })
   socket.on('booking:dispatch_updated', onChange)
+  socket.on('yard.operation.completed', onChange)
+  socket.on('dispatcher.status.updated', onChange)
   socket.on('connect', onConnected)
   socket.on('disconnect', onDisconnected)
   socket.on('connect_error', onDisconnected)

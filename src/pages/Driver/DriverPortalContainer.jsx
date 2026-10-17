@@ -1,26 +1,24 @@
 import React, { useEffect, useState } from 'react'
-import DriverHome from './DriverHome'
 import DriverAppointments from './DriverAppointments'
 import DriverQR from './DriverQR'
-import DriverCheckin from './DriverCheckin'
 import DriverSmartRoute from './DriverSmartRoute'
-import DriverContainerLocation from './DriverContainerLocation'
-import DriverTransactionStatus from './DriverTransactionStatus'
 import { connectDriverRealtime } from '../../services/driverRealtimeService'
 import { driverContainerConfirmationService } from '../../services/driverContainerConfirmationService'
 import DriverTripDashboard from './DriverTripDashboard'
+import useAuth from '../../hooks/useAuth'
 
 export default function DriverPortalContainer() {
+  const { user } = useAuth()
+  const displayName = user?.fullName || user?.username || 'Tài xế'
+  const initials = displayName.split(/\s+/).slice(-2).map(word => word[0]).join('').toUpperCase()
   const [activeTab, setActiveTab] = useState('home')
-  const [subView, setSubView] = useState(null) // 'checkin', 'navigation', 'location', 'status', 'qr_fullscreen'
+  const [subView, setSubView] = useState(null) // 'navigation' | 'qr_fullscreen'
   const [selectedApp, setSelectedApp] = useState(null)
+  const [navigationSelection, setNavigationSelection] = useState(null)
   const [toastMessage, setToastMessage] = useState('')
-  const [driverMode, setDriverMode] = useState('pickup') // 'pickup' | 'delivery'
-  const [tripStep, setTripStep] = useState(1) // 1: Nhận xe, 2: Di chuyển, 3: Xếp dỡ, 4: Rời cảng, 5: Hoàn thành
   const [yardNotifications, setYardNotifications] = useState([])
   const [showNotifications, setShowNotifications] = useState(false)
   const [pendingConfirmation, setPendingConfirmation] = useState(null)
-  const [isConfirming, setIsConfirming] = useState(false)
 
   useEffect(() => {
     const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
@@ -42,46 +40,21 @@ export default function DriverPortalContainer() {
         const matching = (Array.isArray(operations) ? operations : []).find(item => item.containerId === event.containerId)
         if (matching) setPendingConfirmation(matching)
       }).catch(() => setToastMessage('Không tải được booking cần xác nhận. Vui lòng thử lại.'))
-      setTripStep(current => Math.max(current, 4))
       setTimeout(() => setToastMessage(''), 5000)
     }, () => {
       // The app remains usable offline; Socket.IO will retry in the background.
     })
   }, [])
 
-  const handleConfirmContainer = async () => {
-    if (!pendingConfirmation?.containerId || isConfirming) return
-    setIsConfirming(true)
-    try {
-      const result = await driverContainerConfirmationService.confirmContainer(pendingConfirmation.bookingId, pendingConfirmation.containerId, 'OK')
-      setPendingConfirmation(current => ({ ...current, ...result, operationStatus: result.containerStatus }))
-      setTripStep(current => Math.max(current, 4))
-      setToastMessage(`✅ Container ${result.containerNumber} đã sẵn sàng Gate-Out`)
-      setTimeout(() => setToastMessage(''), 4000)
-    } catch (error) {
-      setToastMessage(`❌ Không thể xác nhận container: ${error.message}`)
-      setTimeout(() => setToastMessage(''), 5000)
-    } finally {
-      setIsConfirming(false)
-    }
-  }
-
   const handleSelectQR = (app) => {
     setSelectedApp(app)
     setSubView('qr_fullscreen')
   }
 
-  const handleGoToNavigation = () => {
+  const handleGoToNavigation = (item) => {
+    setNavigationSelection(item?.containerId ? { containerId: item.containerId, bookingId: item.bookingId } : null)
     setActiveTab('trip')
     setSubView('navigation')
-  }
-
-  const handleGoToLocation = () => {
-    setTripStep(3) // Advance to step 3 (load/unload cargo)
-    setActiveTab('home') // Bring back to home to see step 3 CTA
-    setSubView(null)
-    setToastMessage('📍 Đã đến vị trí bãi! Vui lòng cẩu hàng.')
-    setTimeout(() => setToastMessage(''), 3000)
   }
 
   return (
@@ -99,14 +72,14 @@ export default function DriverPortalContainer() {
       <header className="bg-white border-b border-chalk px-5 py-3.5 sticky top-0 z-40 flex justify-between items-center shadow-sm">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-carbon text-white flex items-center justify-center font-bold text-sm shadow">
-            VA
+            {initials}
           </div>
           <div>
             <div className="flex items-center gap-1.5">
-              <h1 className="font-bold text-carbon text-sm">Nguyễn Văn A</h1>
+              <h1 className="font-bold text-carbon text-sm">{displayName}</h1>
               <span className="w-2 h-2 rounded-full bg-green-500"></span>
             </div>
-            <p className="text-[11px] text-slate font-mono font-bold">Xe: 43C-123.45 • NexusPort Fleet</p>
+            <p className="text-[11px] text-slate font-mono font-bold">Driver · Điều hướng và giao nhận container</p>
           </div>
         </div>
 
@@ -145,37 +118,6 @@ export default function DriverPortalContainer() {
         </section>
       )}
 
-      {/* DRIVER TRIP TYPE SWITCHER (PICKUP VS DELIVERY) */}
-      <div className="bg-white border-b border-chalk px-5 py-2.5 flex items-center justify-between gap-2 z-30">
-        <span className="text-[10px] font-bold text-slate uppercase tracking-wider">Chế độ xe:</span>
-        <div className="flex bg-fog p-0.5 rounded-lg border border-chalk text-[11px] font-bold">
-          <button
-            onClick={() => {
-              setDriverMode('pickup')
-              setToastMessage('📥 Đã chuyển sang Lấy Container (Pickup)')
-              setTimeout(() => setToastMessage(''), 2000)
-            }}
-            className={`px-2.5 py-1 rounded-md transition-all ${
-              driverMode === 'pickup' ? 'bg-carbon text-white shadow-xs' : 'text-slate hover:text-carbon'
-            }`}
-          >
-            📥 Lấy cont
-          </button>
-          <button
-            onClick={() => {
-              setDriverMode('delivery')
-              setToastMessage('📤 Đã chuyển sang Trả Container (Delivery)')
-              setTimeout(() => setToastMessage(''), 2000)
-            }}
-            className={`px-2.5 py-1 rounded-md transition-all ${
-              driverMode === 'delivery' ? 'bg-carbon text-white shadow-xs' : 'text-slate hover:text-carbon'
-            }`}
-          >
-            📤 Trả cont
-          </button>
-        </div>
-      </div>
-
       {/* NXP-062: driver reviews the assigned operation and confirms the container. */}
       {pendingConfirmation && (
         <section className="mx-5 mt-4 bg-white border-2 border-signal-orange rounded-2xl p-4 shadow-sm space-y-3">
@@ -195,11 +137,10 @@ export default function DriverPortalContainer() {
             <div className="text-center text-xs font-bold text-green-700 bg-green-50 border border-green-200 rounded-lg py-2">Đã xác nhận · Ready for Gate-Out</div>
           ) : (
             <button
-              onClick={handleConfirmContainer}
-              disabled={isConfirming}
+              onClick={() => handleGoToNavigation(pendingConfirmation)}
               className="w-full bg-carbon text-white rounded-xl py-3 text-xs font-extrabold disabled:opacity-50"
             >
-              {isConfirming ? 'ĐANG LƯU XÁC NHẬN...' : 'CONFIRM CONTAINER'}
+              MỞ ĐIỂM GIAO NHẬN ĐỂ XÁC NHẬN
             </button>
           )}
         </section>
@@ -210,20 +151,8 @@ export default function DriverPortalContainer() {
         {!subView && <div className="mb-5"><DriverSmartRoute compact onOpen={handleGoToNavigation} /></div>}
         
         {/* SUBVIEWS (WORKFLOW STEP OVERLAYS) */}
-        {subView === 'checkin' && (
-          <DriverCheckin onNavigateToRoute={handleGoToNavigation} />
-        )}
-
         {subView === 'navigation' && (
-          <DriverSmartRoute />
-        )}
-
-        {subView === 'location' && (
-          <DriverContainerLocation driverMode={driverMode} tripStep={tripStep} setTripStep={setTripStep} onStartNavigate={handleGoToNavigation} />
-        )}
-
-        {subView === 'status' && (
-          <DriverTransactionStatus driverMode={driverMode} tripStep={tripStep} />
+          <DriverSmartRoute {...navigationSelection} onStatusUpdated={() => setPendingConfirmation(null)} />
         )}
 
         {subView === 'qr_fullscreen' && (
@@ -234,7 +163,7 @@ export default function DriverPortalContainer() {
         {!subView && (
           <>
             {activeTab === 'home' && (
-              <DriverHome driverMode={driverMode} tripStep={tripStep} setTripStep={setTripStep} onNavigateToTrip={handleGoToNavigation} />
+              <DriverTripDashboard />
             )}
 
             {activeTab === 'appointments' && (
@@ -253,27 +182,27 @@ export default function DriverPortalContainer() {
               <div className="space-y-4 animate-in fade-in duration-200">
                 <div className="bg-white border border-chalk rounded-2xl p-6 shadow-sm text-center space-y-3">
                   <div className="w-20 h-20 rounded-full bg-carbon text-white text-2xl font-bold flex items-center justify-center mx-auto shadow">
-                    VA
+                    {initials}
                   </div>
-                  <h2 className="font-bold text-carbon text-xl">Nguyễn Văn A</h2>
-                  <p className="text-xs text-slate font-mono">BẰNG LÁI: DL-8472848 (CDL-A)</p>
+                  <h2 className="font-bold text-carbon text-xl">{displayName}</h2>
+                  <p className="text-xs text-slate font-mono">{user?.email || user?.username}</p>
                   <div className="inline-block bg-orange-50 text-signal-orange text-xs font-bold px-3 py-1 rounded-full border border-orange-200">
-                    Hãng xe: NexusPort Logistics Fleet
+                    Tài khoản Driver
                   </div>
                 </div>
 
                 <div className="bg-white border border-chalk rounded-2xl p-4 shadow-sm divide-y divide-chalk text-xs font-bold">
                   <div className="py-3 flex justify-between items-center text-carbon">
                     <span>Số điện thoại</span>
-                    <span className="font-mono text-slate">+84 905 123 456</span>
+                    <span className="font-mono text-slate">{user?.phone || 'Chưa cập nhật'}</span>
                   </div>
                   <div className="py-3 flex justify-between items-center text-carbon">
-                    <span>Biển số xe kéo cố định</span>
-                    <span className="font-mono text-slate">43C-123.45</span>
+                    <span>Xe vận chuyển</span>
+                    <span className="font-mono text-slate">Theo chuyến được phân công</span>
                   </div>
                   <div className="py-3 flex justify-between items-center text-carbon">
-                    <span>Trạng thái sức khỏe</span>
-                    <span className="text-green-600">✓ Đã kiểm tra đạt</span>
+                    <span>Điều hướng trong bãi</span>
+                    <button type="button" onClick={handleGoToNavigation} className="text-teal-700">Xem Smart Route →</button>
                   </div>
                 </div>
               </div>
