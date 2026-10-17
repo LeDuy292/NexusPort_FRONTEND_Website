@@ -2,7 +2,7 @@ import { bookingService } from '../../services/bookingService'
 import { useRef, useState } from 'react'
 import { containerService } from '../../services/containerService'
 
-const fieldClass = 'w-full rounded-xl border border-chalk bg-fog px-3.5 py-2.5 text-sm outline-none focus:border-signal-orange focus:bg-white'
+const fieldClass = 'w-full rounded-xl border border-chalk bg-fog px-3.5 py-2.5 text-sm outline-none focus:ring-0 focus:border-signal-orange focus:bg-white'
 const time = value => value ? new Date(value).toLocaleString('vi-VN') : '—'
 const statusName = { planned: 'Đã lên kế hoạch', active: 'Đang lưu bãi', completed: 'Đã kết thúc', canceled: 'Đã hủy' }
 
@@ -52,7 +52,7 @@ export default function ContainerJourneySearch({ isTransport = false, onDeclare 
     finally { if (id === requestId.current) setLoading(false) }
   }
   const input = (label, key, type = 'text') => <label className="space-y-2 text-xs font-bold text-slate"><span>{label}</span><input type={type} className={fieldClass} value={filters[key]} onChange={e => setFilters({ ...filters, [key]: e.target.value })} maxLength={key === 'containerNumber' ? 11 : 250} /></label>
-  return <div className="space-y-4">
+  return <div className={isTransport ? 'space-y-4' : 'space-y-4 p-6 lg:p-8'}>
     {!isTransport && <div><p className="text-xs font-bold uppercase tracking-wider text-signal-orange">Kho bãi · Tra cứu lịch sử</p><h1 className="mt-2 font-heading text-3xl font-bold text-carbon">Lượt lưu bãi Container</h1><p className="mt-2 text-sm text-slate">Mỗi dòng là một lượt bãi, gồm lịch đưa vào và lấy ra. Nhập điều kiện để tìm kiếm.</p></div>}
     <form onSubmit={e => { e.preventDefault(); search(filters) }} className="rounded-2xl border border-chalk bg-white p-5">
       <div className={`grid items-end gap-4 ${isTransport ? 'sm:grid-cols-[1fr_auto]' : 'md:grid-cols-3 xl:grid-cols-6'}`}>

@@ -7,6 +7,11 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      '/socket.io': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+        ws: true,
+      },
       // C# owns Booking/Gate/Identity; match before the broader Express prefix.
       '/api/v1': {
         target: 'http://localhost:5000',

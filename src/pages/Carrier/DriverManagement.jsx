@@ -942,7 +942,7 @@ export default function DriverManagement() {
                 <select 
                   value={vehicleStatusFilter}
                   onChange={(e) => setVehicleStatusFilter(e.target.value)}
-                  className="px-3 py-2 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none cursor-pointer flex-1 xl:w-40"
+                  className="px-3 py-2 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none cursor-pointer flex-1 xl:w-40 focus:ring-0"
                 >
                   <option value="ALL">Tất cả Trạng thái</option>
                   <option value="active">Sẵn sàng</option>
@@ -951,7 +951,7 @@ export default function DriverManagement() {
                 </select>
 
                 <select 
-                  className="px-3 py-2 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none cursor-pointer flex-1 xl:w-32"
+                  className="px-3 py-2 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none cursor-pointer flex-1 xl:w-32 focus:ring-0"
                 >
                   <option value="ALL">Tất cả Vị trí</option>
                   <option value="GATE">Cổng</option>
@@ -1271,12 +1271,12 @@ export default function DriverManagement() {
                   <div>
                     <label className="block text-[10px] font-bold text-slate uppercase mb-1">Biển Số Xe</label>
                     <input type="text" value={vehicleEditData.plateNumber} onChange={e => setVehicleEditData(f => ({ ...f, plateNumber: e.target.value }))}
-                      className="w-full px-3 h-10 border border-chalk rounded-md text-xs text-carbon focus:outline-none focus:border-carbon bg-white" />
+                      className="w-full px-3 h-10 border border-chalk rounded-md text-xs text-carbon focus:outline-none focus:border-carbon bg-white focus:ring-0" />
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate uppercase mb-1">Trạng Thái</label>
                     <select value={vehicleEditData.status} onChange={e => setVehicleEditData(f => ({ ...f, status: e.target.value }))}
-                      className="w-full px-3 h-10 border border-chalk rounded-md text-xs text-carbon focus:outline-none focus:border-carbon bg-white">
+                      className="w-full px-3 h-10 border border-chalk rounded-md text-xs text-carbon focus:outline-none focus:border-carbon bg-white focus:ring-0">
                       <option value="active">Sẵn sàng (Active)</option>
                       <option value="inactive">Đã phân công (Inactive)</option>
                       <option value="maintenance">Bảo trì (Maintenance)</option>
@@ -1292,7 +1292,7 @@ export default function DriverManagement() {
                       onFocus={() => { if (locationSuggestions.length > 0) setShowLocationSuggestions(true) }}
                       onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 200)}
                       placeholder="Nhập vị trí mới..."
-                      className="w-full px-3 h-10 border border-chalk rounded-md text-xs text-carbon focus:outline-none focus:border-carbon bg-white"
+                      className="w-full px-3 h-10 border border-chalk rounded-md text-xs text-carbon focus:outline-none focus:border-carbon bg-white focus:ring-0"
                     />
                     {showLocationSuggestions && locationSuggestions.length > 0 && (
                       <ul className="absolute z-50 w-full mt-1 bg-white border border-chalk rounded-xl shadow-lg max-h-48 overflow-y-auto">
@@ -1375,7 +1375,7 @@ export default function DriverManagement() {
                       <select 
                         value={driverAssignForm} 
                         onChange={e => setDriverAssignForm(e.target.value)}
-                        className="flex-1 h-10 px-3 border border-chalk rounded-md text-xs text-carbon focus:border-carbon outline-none"
+                        className="flex-1 h-10 px-3 border border-chalk rounded-md text-xs text-carbon focus:border-carbon outline-none focus:ring-0"
                       >
                         <option value="">-- Bỏ trống (Không phân công) --</option>
                         {drivers.filter(d => {
