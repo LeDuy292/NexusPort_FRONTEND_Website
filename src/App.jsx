@@ -3,6 +3,7 @@ import ProtectedRoute from './routes/ProtectedRoute'
 import RoleRoute from './routes/RoleRoute'
 import { ROLES } from './routes/routeConfig'
 import MainLayout from './layouts/MainLayout'
+import SessionListener from './components/SessionListener'
 
 // Import các trang đã di chuyển
 import BerthOps from './pages/Ships/BerthOps'
@@ -115,12 +116,14 @@ function ContainerRoute() {
 
 function App() {
   return (
-    <Routes>
-      {/* Route Công khai */}
-      <Route path="/login" element={<Login />} />
+    <>
+      <SessionListener />
+      <Routes>
+        {/* Route Công khai */}
+        <Route path="/login" element={<Login />} />
 
-      {/* Tuyến đường được Bảo vệ (Yêu cầu Đăng nhập) */}
-      <Route element={<ProtectedRoute />}>
+        {/* Tuyến đường được Bảo vệ (Yêu cầu Đăng nhập) */}
+        <Route element={<ProtectedRoute />}>
         
         {/* Route chuyển hướng trang chủ dựa theo vai trò */}
         <Route path="/" element={<HomeRedirect />} />
@@ -240,6 +243,7 @@ function App() {
       {/* Route không tồn tại ➔ Chuyển về trang chủ */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+    </>
   )
 }
 

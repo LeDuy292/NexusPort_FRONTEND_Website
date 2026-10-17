@@ -291,9 +291,22 @@ export default function MainLayout() {
     return () => clearInterval(interval)
   }, [])
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      const apiBase = import.meta.env.VITE_API_URL || '/api'
+      const token = localStorage.getItem('token') || sessionStorage.getItem('token')
+      await fetch(`${apiBase}/auth/logout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      }).catch(() => {})
+    } catch (_) {}
     localStorage.removeItem('user')
     sessionStorage.removeItem('user')
+    localStorage.removeItem('token')
+    sessionStorage.removeItem('token')
     navigate('/login')
   }
 
