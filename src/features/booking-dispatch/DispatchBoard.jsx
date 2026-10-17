@@ -5,6 +5,7 @@ import { updateDispatch } from './dispatchService'
 import { dateTime as time, displayState, stateOf, statusLabel, vietnamDate } from './dispatchPresentation'
 import './DispatchBoard.css'
 import SmartRouteMonitor from './SmartRouteMonitor'
+import { formatPlateNumber } from '../../utils/format'
 
 const dateToday = () => vietnamDate(new Date())
 
@@ -76,7 +77,7 @@ export default function DispatchBoard() {
         {!loading && !visible.length && <p className="arrival-empty">Chưa có booking trong nhóm này. Booking phải được duyệt và có tài xế trước khi xác nhận đến.</p>}
         <div className="arrival-list">
           {visible.map(booking => <button key={booking.id} type="button" onClick={() => choose(booking)} aria-pressed={selectedId === booking.id} className={'arrival-row ' + displayState(booking) + (selectedId === booking.id ? ' selected' : '')}>
-            <div><strong>{booking.bookingCode}</strong><span>{booking.truckPlate || 'Chưa gán xe'} · {booking.driverName}</span><small>{booking.carrierName}</small></div>
+            <div><strong>{booking.bookingCode}</strong><span>{formatPlateNumber(booking.truckPlate) || 'Chưa gán xe'} · {booking.driverName}</span><small>{booking.carrierName}</small></div>
             <div><span className={'arrival-status ' + displayState(booking)}>{statusLabel(booking)}</span>
               <small>Hẹn: {time(booking.appointmentStart)}</small>
               <small>{stateOf(booking) !== 'not-arrived' ? 'Đến: ' + time(booking.dispatch.arrivedAt) : 'Chưa báo đến'}{booking.coordination.isLate ? ' · Muộn >10 phút' : ''}</small>
@@ -90,13 +91,14 @@ export default function DispatchBoard() {
           </div>
           <dl className="arrival-facts">
             <div><dt>Tài xế</dt><dd>{selected.driverName}</dd></div>
-            <div><dt>Xe</dt><dd>{selected.truckPlate || 'Chưa gán'}</dd></div>
+            <div><dt>Xe</dt><dd>{formatPlateNumber(selected.truckPlate) || 'Chưa gán'}</dd></div>
             <div><dt>Công ty</dt><dd>{selected.carrierName}</dd></div>
             <div><dt>Thao tác</dt><dd>{selected.bookingType?.toLowerCase() === 'pickup' ? 'Lấy container' : 'Giao container'}</dd></div>
             <div><dt>Lịch hẹn</dt><dd>{time(selected.appointmentStart)} – {time(selected.appointmentEnd)}</dd></div>
             <div><dt>Đến khu chờ</dt><dd>{selectedState === 'not-arrived' ? 'Chưa xác nhận' : time(selected.dispatch?.arrivedAt)}</dd></div>
             {selected.dispatch?.callExpiresAt && <div><dt>Hạn phản hồi</dt><dd>{time(selected.dispatch.callExpiresAt)}</dd></div>}
             {selected.dispatch?.acknowledgedAt && <div><dt>Đã nhận lệnh</dt><dd>{time(selected.dispatch.acknowledgedAt)}</dd></div>}
+            {selected.gateEntryOrder&&<div><dt>Lệnh vào cổng</dt><dd>{({pending_ack:'Chờ tài xế nhận lệnh',active:'Được phép vào',expired:'Hết hạn',consumed:'Đã Gate In',revoked:'Đã thu hồi'})[selected.gateEntryOrder.status]||selected.gateEntryOrder.status} · Hạn {time(selected.gateEntryOrder.validUntil)}</dd></div>}
             {selected.coordination.isHeld && <div><dt>Chờ dự kiến đến</dt><dd>{time(selected.dispatch.holdUntil)}</dd></div>}
           </dl>
           <div className="arrival-cargo"><h3>Container / hàng hóa</h3>
@@ -108,7 +110,10 @@ export default function DispatchBoard() {
             <textarea rows="3" maxLength="500" value={note} onChange={e => setNote(e.target.value)} placeholder="Ví dụ: Tiếp tục chờ tại khu chờ, thiết bị đang phục vụ xe trước." />
           </label>
           <button type="button" className="arrival-call" disabled={busy || !selected.coordination.canCall || Boolean(error)} onClick={() => void act('call')}>{busy ? 'Đang gửi…' : 'Gọi tài xế'}</button>
-          {!selected.coordination.canCall && <p className="arrival-muted">Chỉ gọi khi tài xế sẵn sàng, tới giờ hẹn và không còn thời gian chờ thêm.</p>}
+          {!selected.coordination.canCall && <p className="arrival-muted">{selectedState === 'acknowledged'
+            ? 'Tài xế đã nhận lệnh. Dùng lệnh còn hạn tại cổng; không cần gọi thêm. Khi lệnh hết hạn, hệ thống trả xe về sẵn sàng để gọi lại.'
+            : selectedState === 'called' ? 'Đã gửi lệnh gọi, đang chờ tài xế nhận trên app trong 10 phút.'
+            : 'Chỉ gọi khi tài xế sẵn sàng, từ 12 giờ trước giờ hẹn và không còn thời gian chờ thêm.'}</p>}
           <div className="arrival-delay"><label>Chờ thêm (phút)<input type="number" min="1" max="120" value={minutes} onChange={e => setMinutes(e.target.value)} /></label>
             <button type="button" disabled={busy || !canDelay || !note.trim() || Boolean(error)} onClick={() => void act('delay')}>Báo chờ thêm</button></div>
           {(['called','acknowledged'].includes(selectedState) || selected.dispatch?.holdUntil) && <button type="button" disabled={busy || Boolean(error)} onClick={() => void act('release')}>Thu hồi lệnh / bỏ thời gian chờ</button>}
