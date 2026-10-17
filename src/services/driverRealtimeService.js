@@ -50,9 +50,42 @@ export function subscribeDriverTripEvents(handlers = {}) {
       reconnectionDelay: 1000,
     });
 
+    const handleKickout = () => {
+      try {
+        localStorage.removeItem('user');
+        localStorage.removeItem('token');
+        sessionStorage.removeItem('user');
+        sessionStorage.removeItem('token');
+      } catch (_) {}
+      if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+        window.location.href = '/login?kicked=true';
+      }
+    };
+
     if (onConnected) socket.on('connect', onConnected);
-    if (onDisconnected) socket.on('disconnect', onDisconnected);
-    if (onConnectionError) socket.on('connect_error', onConnectionError);
+    socket.on('disconnect', (reason) => {
+      if (onDisconnected) onDisconnected(reason);
+      if (reason === 'io server disconnect') {
+        handleKickout();
+      }
+    });
+
+    socket.on('connect_error', (err) => {
+      if (onConnectionError) onConnectionError(err);
+      const msg = err?.message || '';
+      if (
+        msg.includes('Phiên làm việc đã bị kết thúc') ||
+        msg.includes('SESSION_KICKED') ||
+        msg.includes('không còn hợp lệ')
+      ) {
+        handleKickout();
+      }
+    });
+
+    socket.on('auth:session_kicked', (data) => {
+      console.warn('[DriverRealtime] auth:session_kicked event received:', data);
+      handleKickout();
+    });
 
     if (onTripAssigned) {
       socket.on('trip:assigned', onTripAssigned);
@@ -65,12 +98,13 @@ export function subscribeDriverTripEvents(handlers = {}) {
     }
 
     return () => {
+      socket.off('auth:session_kicked');
       if (onTripAssigned) socket.off('trip:assigned', onTripAssigned);
       if (onTripStatusUpdated) socket.off('trip:status_updated', onTripStatusUpdated);
       if (onOperationCompleted) socket.off('yard.operation.completed', onOperationCompleted);
       if (onConnected) socket.off('connect', onConnected);
-      if (onDisconnected) socket.off('disconnect', onDisconnected);
-      if (onConnectionError) socket.off('connect_error', onConnectionError);
+      socket.off('disconnect');
+      socket.off('connect_error');
       socket.disconnect();
     };
   } catch (err) {
