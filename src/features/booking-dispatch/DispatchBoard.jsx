@@ -4,6 +4,7 @@ import { useDispatchBoard } from './useDispatchBoard'
 import { updateDispatch } from './dispatchService'
 import { dateTime as time, displayState, stateOf, statusLabel, vietnamDate } from './dispatchPresentation'
 import './DispatchBoard.css'
+import SmartRouteMonitor from './SmartRouteMonitor'
 
 const dateToday = () => vietnamDate(new Date())
 
@@ -60,6 +61,7 @@ export default function DispatchBoard() {
       <div className="count-absent"><span className="arrival-stat-icon material-symbols-outlined" aria-hidden="true">schedule</span><div><span>Chưa xác nhận đến</span><strong>{counts.absent}</strong></div></div>
       <div className="count-called"><span className="arrival-stat-icon material-symbols-outlined" aria-hidden="true">campaign</span><div><span>Đã gọi / đã nhận lệnh</span><strong>{counts.called}</strong></div></div>
     </div>
+    <SmartRouteMonitor />
     <div className="arrival-workspace">
       <section className="arrival-queue" aria-label="Hàng chờ điều phối">
         <div className="arrival-panel-heading">

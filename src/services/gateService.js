@@ -1,4 +1,5 @@
 import apiClient from './apiClient'
+import nodeApiClient from './nodeApiClient'
 
 const AI_URL = import.meta.env.VITE_AI_URL || 'http://localhost:8000'
 
@@ -120,7 +121,7 @@ export const gateService = {
   async approveGateIn(payload) {
     try {
       const res = await apiClient.post('/v1/gate/approve-in', payload)
-      return { success: true, isLive: true, data: res.data }
+      return { success: res.data?.success !== false, isLive: true, data: res.data, error: res.data?.success === false ? res.data.message : undefined }
     } catch (err) {
       return {
         success: false,
@@ -128,6 +129,10 @@ export const gateService = {
         error: err.response?.data?.message || err.message,
       }
     }
+  },
+
+  async completeGateOut(bookingId, gateId) {
+    return nodeApiClient.post('/gate/complete-out', { bookingId, gateId })
   },
 
   /**

@@ -1,16 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import {
-  getMyTrips,
-  getTripById,
   getTransportOrders,
   getTransportOrderDetail,
   acknowledgeTrip,
   pickupVehicle,
   pickupContainer,
-  confirmGateIn,
-  confirmArrivedAtYard,
-  confirmContainerDelivery,
-  confirmGateOut,
   confirmVehicleReturn,
 } from '../../services/tripService'
 import { subscribeDriverTripEvents } from '../../services/driverRealtimeService'
@@ -47,10 +41,6 @@ const ACTION_CONFIG = {
   'Assigned':           { label: 'Xác nhận nhận chuyến',    fn: acknowledgeTrip,           icon: '✋', color: 'bg-blue-600 hover:bg-blue-700' },
   'Acknowledged':       { label: 'Xác nhận đã lấy xe',      fn: pickupVehicle,             icon: '🚛', color: 'bg-indigo-600 hover:bg-indigo-700' },
   'Vehicle Picked Up':  { label: 'Xác nhận đã lấy container',fn: pickupContainer,          icon: '📦', color: 'bg-amber-600 hover:bg-amber-700' },
-  'Container Picked Up':{ label: 'Thực hiện Gate In',       fn: confirmGateIn,             icon: '🚧', color: 'bg-orange-600 hover:bg-orange-700' },
-  'In Transit':         { label: 'Xác nhận đã đến Yard',    fn: confirmArrivedAtYard,      icon: '🏭', color: 'bg-purple-600 hover:bg-purple-700' },
-  'Arrived at Yard':    { label: 'Xác nhận giao container', fn: confirmContainerDelivery,  icon: '🤝', color: 'bg-teal-600 hover:bg-teal-700' },
-  'Container Delivered':{ label: 'Thực hiện Gate Out',      fn: confirmGateOut,            icon: '🏁', color: 'bg-lime-600 hover:bg-lime-700' },
   'Gate Out Completed': { label: 'Xác nhận trả xe',         fn: confirmVehicleReturn,      icon: '🔑', color: 'bg-green-600 hover:bg-green-700' },
 }
 
@@ -321,6 +311,10 @@ function TripDetail({ trip, onBack, onTripUpdated, onOpenNavigation }) {
       )}
 
       {/* Action Button */}
+      {['Container Picked Up', 'Container Delivered', 'Gate In', 'In Transit', 'Arrived at Yard'].includes(trip.status) && <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
+        <p className="text-xs text-amber-900 leading-relaxed">{trip.status === 'Container Picked Up' ? 'Đến cổng vào và xuất trình booking. Gate Officer sẽ kiểm tra và ghi nhận xe đã qua cổng.' : 'Mở Smart Route để xác nhận đã đến và giao nhận đúng container của booking. Trạng thái qua cổng được cập nhật sau khi Gate Officer xác nhận.'}</p>
+        <button type="button" onClick={() => onOpenNavigation(trip)} className="w-full py-3 bg-teal-700 text-white font-bold rounded-xl text-xs">Xem bản đồ và trạng thái qua cổng</button>
+      </div>}
       {!isCompleted && !isCancelled && action && (
         <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3">
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Bước tiếp theo</p>
@@ -517,6 +511,7 @@ export default function DriverTripDashboard() {
         tripId={navigatingTrip.id}
         containerId={navigatingTrip.containerId}
         containerNumber={navigatingTrip.containerNo}
+        bookingId={navigatingTrip.bookingId}
         onBack={() => setNavigatingTrip(null)}
         onStatusUpdated={() => {
           loadTrips(true)
