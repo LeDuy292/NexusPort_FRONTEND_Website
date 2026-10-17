@@ -40,12 +40,13 @@ export default function DriverSmartRoute({ containerId, containerNumber, booking
   const previousJourney = useRef(null)
 
   useEffect(() => {
-    let active = true, pending = false, retry = false, timer
+    let active = true, pending = false, retry = false, timer, lastError = null
     async function refresh() {
       if (!active) return
       if (pending) { retry = true; return }
       if (!navigator.onLine) { setOnline(false); setLoading(false); return }
       pending = true
+      lastError = null
       try {
         const items = await driverSmartRouteService.list()
         if (!active) return
@@ -69,13 +70,14 @@ export default function DriverSmartRoute({ containerId, containerNumber, booking
         previousRevision.current = revision
         setRoute(detail); setOnline(true); setError('')
       } catch (err) {
+        lastError = err
         if (active) setError(err.message || 'Không thể tải lộ trình. Vui lòng thử lại.')
       } finally {
         pending = false
         if (active) {
           setLoading(false)
           if (retry) { retry = false; void refresh() }
-          else timer = setTimeout(refresh, 15000)
+          else if (lastError?.status !== 403 && lastError?.status !== 401) timer = setTimeout(refresh, 15000)
         }
       }
     }
