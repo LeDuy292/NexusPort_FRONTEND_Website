@@ -5,7 +5,7 @@ export default function GateCameras() {
   const [currentTime, setCurrentTime] = useState('')
   const [fullscreen, setFullscreen] = useState(null)
   const [cameras, setCameras] = useState([
-    { id: 'CAM-01', gate: 'Cổng A (AI YOLO)', status: 'Checking...', anpr: true, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
+    { id: 'CAM-01', gate: 'Cổng A (Nhận diện tự động)', status: 'Checking...', anpr: true, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
     { id: 'CAM-02', gate: 'Cổng B (Làn ra)', status: 'Online', anpr: true, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
     { id: 'CAM-03', gate: 'Cổng C (Dự phòng)', status: 'Offline', anpr: false, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
   ])
@@ -27,7 +27,7 @@ export default function GateCameras() {
     return () => clearInterval(t)
   }, [])
 
-  // Simulate ANPR confidence fluctuation
+  // Simulate confidence fluctuation
   useEffect(() => {
     const pulse = setInterval(() => {
       setConfidences(prev => ({
@@ -47,7 +47,7 @@ export default function GateCameras() {
         <div>
           <span className="text-xs font-extrabold bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">Nhân viên cổng</span>
           <h2 className="font-heading text-3xl font-extrabold text-carbon mt-1">Giám Sát Camera Cổng</h2>
-          <p className="text-xs text-slate mt-0.5">Hệ thống camera ANPR theo dõi xe ra/vào tại tất cả cổng cảng theo thời gian thực.</p>
+          <p className="text-xs text-slate mt-0.5">Hệ thống camera nhận diện biển số theo dõi xe ra/vào tại tất cả cổng cảng theo thời gian thực.</p>
         </div>
         <div className="text-right">
           <div className="font-mono text-xl font-extrabold text-carbon">{currentTime}</div>
@@ -124,7 +124,7 @@ export default function GateCameras() {
             <div className="p-4 space-y-2">
               <div className="grid grid-cols-2 gap-2 text-xs font-mono">
                 <div className="bg-fog p-2.5 rounded-xl border border-chalk">
-                  <div className="text-[9px] text-slate uppercase mb-0.5">Hệ thống ANPR</div>
+                  <div className="text-[9px] text-slate uppercase mb-0.5">Hệ thống nhận diện</div>
                   <div className={`font-extrabold text-[11px] flex items-center gap-1 ${cam.anpr ? 'text-green-700' : 'text-slate-500'}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${cam.anpr ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></span>
                     {cam.anpr ? 'Đang chạy' : 'Dừng'}
@@ -147,7 +147,7 @@ export default function GateCameras() {
                 {cam.lastConfidence > 0 && (
                   <div className="mt-1">
                     <div className="flex justify-between text-[9px] font-mono text-slate mb-0.5">
-                      <span>Độ chính xác ANPR</span>
+                      <span>Độ chính xác nhận diện</span>
                       <span>{confidences[cam.id].toFixed(1)}%</span>
                     </div>
                     <div className="w-full h-1.5 bg-chalk rounded-full overflow-hidden">
@@ -183,7 +183,7 @@ export default function GateCameras() {
                 {fullscreen.gate} · {fullscreen.id}
               </span>
               <span className="px-2.5 py-0.5 bg-green-900 text-green-300 border border-green-700 rounded-full text-[10px] font-extrabold flex items-center gap-1">
-                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>ANPR ĐANG CHẠY
+                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>NHẬN DIỆN TỰ ĐỘNG ĐANG CHẠY
               </span>
             </div>
             <div className="flex items-center gap-4">
