@@ -519,17 +519,22 @@ export default function DriverManagement() {
     setLoading(true)
     try {
       const data = await driverService.getAllDrivers({})
-      setDrivers(data)
+      setDrivers(Array.isArray(data) ? data : [])
       if (selectedDriver) {
-        const updated = data.find(d => d.id === selectedDriver.id)
+        const updated = (Array.isArray(data) ? data : []).find(d => d.id === selectedDriver.id)
         if (updated) setSelectedDriver(updated)
       }
-      // Load bookings
-      const bks = await bookingService.getBookings({ pageNumber: 1, pageSize: 50 })
-      setActiveBookings(bks.items?.filter(b => b.status === 'Pending' || b.status === 'Ready' || b.status === 'Approved' || b.status === 'CheckedIn') || [])
+      setLoading(false)
+      // Load bookings in background without blocking driver list display
+      bookingService.getBookings({ pageNumber: 1, pageSize: 50 }).then(bks => {
+        if (bks?.items) {
+          setActiveBookings(bks.items.filter(b => b.status === 'Pending' || b.status === 'Ready' || b.status === 'Approved' || b.status === 'CheckedIn') || [])
+        }
+      }).catch(err => {
+        console.warn('Booking fetch warning:', err)
+      })
     } catch (err) {
       showToast('❌ Lỗi tải danh sách tài xế: ' + err.message)
-    } finally {
       setLoading(false)
     }
   }
