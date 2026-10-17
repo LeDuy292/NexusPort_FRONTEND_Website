@@ -289,9 +289,9 @@ export default function DriverPortalContainer() {
               <div className="space-y-4 animate-in fade-in duration-200">
                 <div className="bg-white border border-chalk rounded-2xl p-6 shadow-sm text-center space-y-3">
                   <div className="w-20 h-20 rounded-full bg-carbon text-white text-2xl font-bold flex items-center justify-center mx-auto shadow">
-                    VA
+                    {(driverUser?.fullName || driverUser?.username || 'TX').split(' ').map(n => n[0]).join('').slice(-2).toUpperCase()}
                   </div>
-                  <h2 className="font-bold text-carbon text-xl">Nguyễn Văn A</h2>
+                  <h2 className="font-bold text-carbon text-xl">{driverUser?.fullName || driverUser?.username || 'Tài xế'}</h2>
                   <p className="text-xs text-slate font-mono">BẰNG LÁI: DL-8472848 (CDL-A)</p>
                   <div className="inline-block bg-orange-50 text-signal-orange text-xs font-bold px-3 py-1 rounded-full border border-orange-200">
                     Hãng xe: NexusPort Logistics Fleet
