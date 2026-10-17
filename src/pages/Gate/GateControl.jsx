@@ -2,11 +2,19 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import apiClient from '../../services/apiClient'
 import gateService from '../../services/gateService'
+import { driverSmartRouteService } from '../../services/driverSmartRouteService'
 
 export default function GateControl() {
   const [currentTime, setCurrentTime] = useState('')
   const [toastMessage, setToastMessage] = useState('')
   const [mode, setMode] = useState('checkin') // 'checkin' | 'checkout'
+  const [gateLocations, setGateLocations] = useState([])
+  const [selectedGateId, setSelectedGateId] = useState('')
+  const [gateError, setGateError] = useState('')
+  const [verificationBusy, setVerificationBusy] = useState(false)
+  const [gateOutBusy, setGateOutBusy] = useState(false)
+  const availableGates = gateLocations.filter(gate => gate.isActive !== false && gate.gateType === (mode === 'checkin' ? 'gate_in' : 'gate_out'))
+  const selectedGate = availableGates.find(gate => gate.id === selectedGateId)
   
   // Trạng thái Camera máy (Webcam)
   const [cameraActive, setCameraActive] = useState(false)
@@ -22,6 +30,7 @@ export default function GateControl() {
   const [confidence, setConfidence] = useState(0)
   const [isAiScanning, setIsAiScanning] = useState(false)
   const isScanningRef = useRef(false)
+  const scanActionRef = useRef(null)
   const lastScannedPlateRef = useRef('')
   const [aiCropImage, setAiCropImage] = useState(null)
 
@@ -56,7 +65,19 @@ export default function GateControl() {
   // ── 2. TẢI DỮ LIỆU BOOKING & VEHICLE THỰC TẾ TỪ BACKEND ────────────────
   useEffect(() => {
     loadInitialData()
+    let active = true
+    driverSmartRouteService.gateLocations().then(items => {
+      if (active) { setGateLocations(Array.isArray(items) ? items : []); setGateError('') }
+    }).catch(error => { if (active) setGateError(error.message || 'Không thể tải danh sách cổng.') })
+    return () => { active = false }
   }, [])
+
+  useEffect(() => {
+    const matching = gateLocations.filter(gate => gate.isActive !== false && gate.gateType === (mode === 'checkin' ? 'gate_in' : 'gate_out'))
+    setSelectedGateId(current => matching.some(gate => gate.id === current) ? current : matching[0]?.id || '')
+    setActiveBooking(null); setProcessingStatus('idle'); setBarrierState('closed')
+    lastScannedPlateRef.current = ''
+  }, [mode, gateLocations])
 
   const loadInitialData = async () => {
     try {
@@ -141,6 +162,9 @@ export default function GateControl() {
 
   const evaluateVerification = async (plate, currentConfidence = 98, overviewImg = null, plateImg = null) => {
     if (!plate || !plate.trim()) return
+    if (!selectedGate || gateError) { showToast('Vui lòng chọn cổng thực tế đang hoạt động trước khi xác minh.'); return }
+    if (verificationBusy || gateOutBusy) return
+    setVerificationBusy(true)
 
     const trimmedPlate = plate.trim().toUpperCase()
     setDetectedPlate(trimmedPlate)
@@ -157,7 +181,7 @@ export default function GateControl() {
     try {
       // Gọi trực tiếp API đối soát qua 7 điều kiện Rule Engine của Backend C# (kèm hình ảnh lưu trữ)
       const verifyRes = await gateService.verifyGateScan({
-        gateCode: 'GATE_A',
+        gateCode: selectedGate.code,
         laneCode: 'LANE_01',
         detectedVehiclePlate: trimmedPlate,
         vehicleDetected: true,
@@ -181,42 +205,34 @@ export default function GateControl() {
           const matchedVehicle = cachedVehicles.find((v) => normalizePlate(v.plateNumber) === normalizePlate(plate))
 
           const bookingData = {
-            id: bkg?.bookingId || bkg?.bookingNumber || '—',
+            id: bkg?.bookingId || matchedFull?.id,
             bookingCode: bkg?.bookingNumber || matchedFull?.bookingCode || '—',
-            company: drv?.carrierName || bkg?.carrierName || matchedFull?.carrierName || 'Công ty CP Vận tải Quốc tế Nexus',
+            company: drv?.carrierName || bkg?.carrierName || matchedFull?.carrierName || 'Chưa cập nhật',
             vehicleId: matchedVehicle?.id ? `TRK-${matchedVehicle.id.slice(0, 4).toUpperCase()}` : `TRK-${normalizePlate(plate).slice(0, 4)}`,
             licensePlate: plate,
             status: 'Checked-in',
-            licenseNumber: drv?.licenseNumber || bkg?.driverLicenseNumber || matchedFull?.licenseNumber || 'B2-998877',
-            licenseStatus: drv?.status === 'active' || drv?.status === 'Valid' ? 'Valid' : 'Valid',
-            driverId: drv?.driverId ? `DRV-${String(drv.driverId).slice(0, 6).toUpperCase()}` : 'DRV-VN01',
-            driverName: drv?.fullName || bkg?.driverName || matchedFull?.driverName || 'Nguyễn Văn A',
-            driverPhone: drv?.phone || bkg?.driverPhone || matchedFull?.driverPhone || '0901 234 567',
-            driverIdCard: drv?.idCardNumber || '079090012345',
-            containerId: bkg?.containerNumber || matchedFull?.containers?.[0]?.containerNumber || matchedFull?.containerIds?.[0] || 'MSCU1234567',
-            containerType: matchedFull?.containers?.[0]?.containerType || '40HC',
-            cargoType: 'Hàng xuất nhập khẩu',
+            licenseNumber: drv?.licenseNumber || bkg?.driverLicenseNumber || matchedFull?.licenseNumber || 'Chưa cập nhật',
+            licenseStatus: 'Valid', // The backend Rule Engine returned PASS.
+            driverId: drv?.driverId || 'Chưa cập nhật',
+            driverName: drv?.fullName || bkg?.driverName || matchedFull?.driverName || 'Chưa cập nhật',
+            driverPhone: drv?.phone || bkg?.driverPhone || matchedFull?.driverPhone || 'Chưa cập nhật',
+            driverIdCard: drv?.idCardNumber || 'Chưa cập nhật',
+            containerId: bkg?.containerNumber || matchedFull?.containers?.[0]?.containerNumber || matchedFull?.containers?.[0]?.containerNo,
+            containerType: matchedFull?.containers?.[0]?.containerType || 'Chưa cập nhật',
+            cargoType: matchedFull?.containers?.[0]?.cargoType || 'Theo booking',
             operation: bkg?.gateType === 'GateOut' ? 'Giao container hàng' : 'Hạ bãi container',
-            gate: 'Cổng A · Làn 01',
+            gate: `${selectedGate.code} · Làn 01`,
             etaDisplay: bkg?.validFrom
               ? `${new Date(bkg.validFrom).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${new Date(bkg.validTo).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`
               : 'Trong khung giờ hợp lệ',
-            sealNumber: 'SEAL-CHECKED',
+            sealNumber: matchedFull?.containers?.[0]?.sealNumber || 'Chưa cập nhật',
           }
-          setActiveBooking(bookingData)
-
-          // 🚀 TỰ ĐỘNG MỞ CỔNG — Không cần nhấn nút xác nhận
-          setProcessingStatus('checked-in')
-          setBarrierState('opening')
-          setTimeout(() => setBarrierState('opened'), 600)
-          setRejectionReason('')
-          showToast(`🟢 XÁC MINH HỢP LỆ — CỔNG TỰ ĐỘNG MỞ cho xe "${plate}"!`)
-
-          // Gọi API Backend ghi nhận Gate-In kèm hình ảnh bằng chứng
-          gateService.approveGateIn({
-            gateCode: 'GATE_A',
+          if (!bookingData.id) throw new Error('Booking không có mã định danh hợp lệ. Không thể ghi nhận qua cổng.')
+          if (mode === 'checkin') {
+            const approval = await gateService.approveGateIn({
+            verificationRecordId: result.recordId,
+            gateCode: selectedGate.code,
             laneCode: 'LANE_01',
-            gateType: mode === 'checkin' ? 'GateIn' : 'GateOut',
             vehiclePlate: plate,
             bookingNumber: bookingData.bookingCode,
             containerNumber: bookingData.containerId,
@@ -224,7 +240,15 @@ export default function GateControl() {
             notes: 'Tự động mở cổng sau xác minh thành công.',
             overviewImageUrl: finalOverviewImg,
             vehiclePlateImageUrl: finalPlateImg,
-          }).catch(() => {})
+            })
+            if (!approval.success) throw new Error(approval.error || approval.data?.message || 'Không ghi nhận được Gate In. Vui lòng thử lại.')
+          }
+          setActiveBooking(bookingData)
+          setProcessingStatus(mode === 'checkin' ? 'checked-in' : 'passed')
+          setBarrierState('opening')
+          setTimeout(() => setBarrierState('opened'), 600)
+          setRejectionReason('')
+          showToast(mode === 'checkin' ? `Đã ghi nhận xe ${plate} vào ${selectedGate.code}. Smart Route đã sẵn sàng cho tài xế.` : `Xe ${plate} đủ điều kiện ra ${selectedGate.code}. Xác nhận bên dưới khi xe đã qua cổng.`)
         } else {
           // 🚫 KIỂM TRA SAI: Không tìm thấy booking hoặc điều kiện không hợp lệ
           setActiveBooking(null)
@@ -248,14 +272,29 @@ export default function GateControl() {
     } catch (err) {
       setActiveBooking(null)
       setProcessingStatus('rejected')
+      setBarrierState('closed')
       const reason = `Lỗi hệ thống khi kiểm tra: ${err.message}`
       setRejectionReason(reason)
       showToast(`⛔ ${reason}`)
+    } finally {
+      setVerificationBusy(false)
     }
+  }
+
+  const completePhysicalGateOut = async () => {
+    if (!activeBooking?.id || !selectedGate || processingStatus !== 'passed' || gateOutBusy) return
+    setGateOutBusy(true)
+    try {
+      await gateService.completeGateOut(activeBooking.id, selectedGate.id)
+      setProcessingStatus('checked-in')
+      showToast(`Đã xác nhận xe ${activeBooking.licensePlate} qua ${selectedGate.code}. Driver và Dispatcher sẽ nhận trạng thái mới.`)
+    } catch (error) { showToast(`Không ghi nhận được Gate Out: ${error.message}`) }
+    finally { setGateOutBusy(false) }
   }
 
   // ── 5. QUÉT ANPR TỰ ĐỘNG LIÊN TỤC TỪ CAMERA LIVE STREAM (AUTO-SCAN) ──
   const performAutoScan = async (isManual = false) => {
+    if (!selectedGate || verificationBusy || gateOutBusy) return
     if (!videoRef.current || videoRef.current.readyState < 2 || isScanningRef.current) {
       if (isManual) showToast('⚠️ Camera chưa sẵn sàng nhận hình ảnh. Vui lòng thử lại sau 1-2 giây!')
       return
@@ -286,7 +325,7 @@ export default function GateControl() {
       const res = await fetch(dataUrl)
       const imageBlob = await res.blob()
 
-      const aiRes = await gateService.recognizeVehicleImage(imageBlob, 'GATE_IN_A', 'LANE_01')
+      const aiRes = await gateService.recognizeVehicleImage(imageBlob, selectedGate.code, 'LANE_01')
       if (aiRes.success && aiRes.data) {
         const data = aiRes.data
         const plateObj = data.license_plate || {}
@@ -318,21 +357,22 @@ export default function GateControl() {
   }
 
 
+  scanActionRef.current = performAutoScan
   // Tự động quét theo chu kỳ 2.5s khi camera đang bật
   useEffect(() => {
     if (!cameraActive) return
     const timer = setInterval(() => {
-      performAutoScan()
+      scanActionRef.current?.()
     }, 2500)
     const initialTimer = setTimeout(() => {
-      performAutoScan()
+      scanActionRef.current?.()
     }, 1000)
 
     return () => {
       clearInterval(timer)
       clearTimeout(initialTimer)
     }
-  }, [cameraActive, barrierState])
+  }, [cameraActive, barrierState, selectedGateId, mode, verificationBusy, gateOutBusy])
 
 
   // Danh sách checklist kiểm tra
@@ -415,6 +455,7 @@ export default function GateControl() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center bg-slate-100 border border-slate-200 rounded-xl overflow-hidden text-xs font-bold">
             <button
+              disabled={verificationBusy || isAiScanning || gateOutBusy}
               onClick={() => {
                 setMode('checkin')
                 setProcessingStatus('idle')
@@ -429,6 +470,7 @@ export default function GateControl() {
               Cổng Vào
             </button>
             <button
+              disabled={verificationBusy || isAiScanning || gateOutBusy}
               onClick={() => {
                 setMode('checkout')
                 setProcessingStatus('idle')
@@ -444,6 +486,19 @@ export default function GateControl() {
             </button>
           </div>
         </div>
+      </div>
+
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+        <label className="flex items-center gap-3 flex-wrap text-xs font-bold text-slate-700">Cổng đang kiểm soát
+          <select className="border border-slate-300 rounded-lg p-2 bg-white max-w-full" value={selectedGateId} disabled={verificationBusy || isAiScanning || gateOutBusy} onChange={event => { setSelectedGateId(event.target.value); setActiveBooking(null); setProcessingStatus('idle'); setBarrierState('closed'); lastScannedPlateRef.current = '' }}>
+            {!availableGates.length && <option value="">Chưa tải được cổng hoạt động</option>}
+            {availableGates.map(gate => <option key={gate.id} value={gate.id}>{gate.code} · {gate.name}</option>)}
+          </select>
+        </label>
+        {gateError && <p role="alert" className="text-xs text-red-700">{gateError} Không thể xác minh xe khi chưa có cấu hình cổng thực tế.</p>}
+        {selectedGate && <p className="text-xs text-slate-500">{mode === 'checkin' ? 'Gate In được ghi nhận sau khi backend duyệt xác minh thành công.' : 'Sau khi xe qua cổng, nhân viên cổng xác nhận bên dưới để hoàn tất hành trình và cập nhật điều độ.'}</p>}
+        {mode === 'checkout' && processingStatus === 'passed' && activeBooking && <button type="button" onClick={() => void completePhysicalGateOut()} disabled={gateOutBusy || !selectedGate} className="w-full bg-emerald-700 text-white font-bold rounded-xl px-4 py-3 text-sm disabled:opacity-50">{gateOutBusy ? 'Đang ghi nhận…' : `Xác nhận xe ${activeBooking.licensePlate} đã qua ${selectedGate?.code}`}</button>}
+        {mode === 'checkout' && processingStatus === 'checked-in' && <p role="status" className="text-xs text-emerald-700 font-bold">Đã ghi nhận Gate Out. Trạng thái xe và container đã được cập nhật.</p>}
       </div>
 
       {/* ── MAIN CONTENT (2 CỘT) ── */}
@@ -999,7 +1054,7 @@ export default function GateControl() {
                 <button
                   onClick={() => {
                     setBarrierState('opened')
-                    showToast('🟢 Đã mở Barie Cổng A thành công!')
+                    showToast(`Đã mở barie ${selectedGate?.code}.`)
                   }}
                   disabled={barrierState === 'opened'}
                   className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold font-mono flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
@@ -1010,7 +1065,7 @@ export default function GateControl() {
                 <button
                   onClick={() => {
                     setBarrierState('closed')
-                    showToast('🔒 Đã đóng Barie Cổng A!')
+                    showToast(`Đã đóng barie ${selectedGate?.code}.`)
                   }}
                   disabled={barrierState === 'closed'}
                   className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold font-mono flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"

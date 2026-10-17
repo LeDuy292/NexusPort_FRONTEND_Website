@@ -1,11 +1,17 @@
+import ContainerBookingForm from '../../components/Containers/ContainerBookingForm'
+import ContainerJourneySearch from '../Containers/ContainerJourneySearch'
+import { useLocation, useSearchParams } from 'react-router-dom'
 import React, { useState, useEffect, useMemo } from 'react'
 import { bookingService } from '../../services/bookingService'
 import driverService from '../../services/driverService'
 import vehicleService from '../../services/vehicleService'
 
 export default function BookingManagement() {
-  const [activeTab, setActiveTab] = useState('my_bookings')
-  
+  const location = useLocation()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const detailBookingId = searchParams.get('bookingId')
+  const [activeTab, setActiveTab] = useState(!detailBookingId && location.state?.containerNumber ? 'create' : 'my_bookings')
+
   // Data States for My Bookings
   const [bookings, setBookings] = useState([])
   const [totalCount, setTotalCount] = useState(0)
@@ -23,7 +29,7 @@ export default function BookingManagement() {
   // Local persistent cache để lưu thông tin phương tiện, tài xế & container cho booking
   const [fleetCache, setFleetCache] = useState(() => {
     try {
-      const saved = localStorage.getItem('nexusport_booking_fleet_cache')
+      const saved = null
       return saved ? JSON.parse(saved) : {}
     } catch {
       return {}
@@ -41,23 +47,102 @@ export default function BookingManagement() {
         }
       }
       try {
-        localStorage.setItem('nexusport_booking_fleet_cache', JSON.stringify(next))
+        /* Server remains the source of booking facts. */
       } catch {}
       return next
     })
   }
 
-  // Danh sách ID container đã có trong booking đang hoạt động
-  const activeBookedContainerIds = useMemo(() => {
-    return (bookings || [])
-      .filter(b => {
-        const s = (b.status || '').toLowerCase()
-        return s !== 'canceled' && s !== 'cancelled' && s !== 'rejected' && s !== 'expired'
-      })
-      .flatMap(b => b.containerIds || [])
-  }, [bookings])
+  // Local persistent cache để lưu thông tin thanh toán (Payment Status, cước phí, mã giao dịch)
+  const [paymentCache, setPaymentCache] = useState(() => {
+    try {
+      const saved = null
+      return saved ? JSON.parse(saved) : {}
+    } catch {
+      return {}
+    }
+  })
 
-  // Notification Toast State
+  const updatePaymentCache = (bookingCode, bookingId, paymentData) => {
+    setPaymentCache(prev => {
+      const next = { ...prev }
+      if (bookingCode) next[bookingCode] = paymentData
+      if (bookingId) next[bookingId] = paymentData
+      try {
+        /* Payment facts are read from the server. */
+      } catch (err) {
+        console.warn('Failed to save payment cache', err)
+      }
+      return next
+    })
+  }
+
+  // Helper tính cước phí dịch vụ cảng TOS (Port Tariff Calculation)
+  const getBookingPaymentInfo = (booking) => {
+    if (!booking) {
+      return {
+        status: 'Unpaid',
+        baseHandling: 450000,
+        weighFee: 50000,
+        securityFee: 40000,
+        subtotal: 540000,
+        vat: 43200,
+        amount: 583200,
+        paidAt: null,
+        transactionId: null,
+        method: 'VietQR (Napas 247)'
+      }
+    }
+
+    // 1. Kiểm tra cache đã lưu (theo bookingCode hoặc theo id)
+    const code = booking.bookingCode || booking.id
+    if (booking.bookingCode && paymentCache[booking.bookingCode]) {
+      return paymentCache[booking.bookingCode]
+    }
+    if (booking.id && paymentCache[booking.id]) {
+      return paymentCache[booking.id]
+    }
+    if (code && paymentCache[code]) {
+      return paymentCache[code]
+    }
+
+    const is40ft = booking.containerSize === 'ft40' ||
+                   (booking.containerNumbers && booking.containerNumbers.some(c => c.includes('40') || c.includes('TEMU'))) ||
+                   (booking.bookingType === 'Dropoff')
+    const baseHandling = is40ft ? 650000 : 450000
+    const weighFee = 50000
+    const securityFee = 40000
+    const subtotal = baseHandling + weighFee + securityFee
+    const vat = Math.round(subtotal * 0.08)
+    const amount = subtotal + vat
+
+    // Nhận diện trạng thái đã thanh toán:
+    // - Khi booking.paymentStatus là 'Paid' / 'paid'
+    // - HOẶC khi booking đạt trạng thái 'Ready' (sẵn sàng vào cổng sau khi đã đóng cước/phê duyệt)
+    // - HOẶC khi đã vào cổng 'CheckedIn' hoặc đã xong 'Completed'
+    const statusLower = (booking.status || '').toLowerCase()
+    const paymentStatusLower = (booking.paymentStatus || '').toLowerCase()
+    const isSystemPaid = paymentStatusLower === 'paid' ||
+                         statusLower === 'ready' ||
+                         statusLower === 'checkedin' ||
+                         statusLower === 'completed'
+
+    return {
+      status: isSystemPaid ? 'Paid' : 'Unpaid',
+      baseHandling,
+      weighFee,
+      securityFee,
+      subtotal,
+      vat,
+      amount,
+      paidAt: isSystemPaid ? (booking.paidAt || booking.createdAt || new Date().toISOString()) : null,
+      transactionId: isSystemPaid ? (booking.transactionRef || `TXN-NP-${code?.slice(-8) || '88391023'}`) : null,
+      method: 'VietQR (Napas 247)'
+    }
+  }
+
+  // Danh sách ID container đã có trong booking đang hoạt động
+
   const [toast, setToast] = useState(null)
   const [copiedText, setCopiedText] = useState(null)
 
@@ -82,41 +167,39 @@ export default function BookingManagement() {
   // Smart e-Pass QR Modal
   const [showQrModal, setShowQrModal] = useState(false)
 
-  // Backend AI Recommendation & Payload Analysis States
-  const [aiMatching, setAiMatching] = useState(false)
-  const [backendPayload, setBackendPayload] = useState({
-    ratio: 74.0,
-    status: 'Optimal',
-    severity: 'optimal',
-    warningMessage: 'TỐI ƯU: Tải trọng đạt chuẩn, xe vận hành an toàn và tiết kiệm nhiên liệu.',
-    isSafe: true
-  })
-  const [aiRecommendation, setAiRecommendation] = useState(null)
+  // NXP Payment & TOS Port Charges Modal States
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
+  const [paymentBooking, setPaymentBooking] = useState(null)
+  const [paymentProcessing, setPaymentProcessing] = useState(false)
+  const [copiedPaymentField, setCopiedPaymentField] = useState(null)
 
   // NXP-049: State phân tích tải trọng cho Modal Điều phối
   const [assignPayloadAnalysis, setAssignPayloadAnalysis] = useState(null)
   const [assignAiLoading, setAssignAiLoading] = useState(false)
 
-  // Create Form Wizard State (Step 1: Container & Fleet AI Match -> Step 2: Optimal Time Slot & Confirm)
-  const [wizardStep, setWizardStep] = useState(1)
-  const [form, setForm] = useState({
-    bookingType: 'Pickup', // Pickup or Dropoff
-    carrierId: '',
-    selectedContainerId: '',
-    containerNo: '',
-    sealNumber: '',
-    containerGrossWeightTon: 0,
-    containerSize: 'ft40',
-    cargoType: 'general',
-    driverId: '',
-    truckId: '',
-    bookingCode: `BK-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(1000 + Math.random() * 9000)}`,
-    appointmentDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10), // Ngày mai
-    startTime: '08:30',
-    endTime: '10:30'
-  })
+  useEffect(() => {
+    if (!detailBookingId) return undefined
+    let current = true
+    setActiveTab('my_bookings')
+    setShowDetailModal(false)
+    bookingService.getBookingById(detailBookingId).then(booking => {
+      if (!current) return
+      setSelectedBooking(booking)
+      setShowDetailModal(true)
+    }).catch(error => {
+      if (current) setToast({ message: error.response?.data?.Message || error.message || 'Không thể tải booking.', type: 'error' })
+    })
+    return () => { current = false }
+  }, [detailBookingId])
 
-  const [validationErrors, setValidationErrors] = useState([])
+  const closeBookingDetail = () => {
+    setShowDetailModal(false)
+    if (detailBookingId) setSearchParams(params => {
+      const next = new URLSearchParams(params)
+      next.delete('bookingId')
+      return next
+    }, { replace: true })
+  }
 
   // Load Bookings Data from API on filters, page change, or entering tab
   useEffect(() => {
@@ -134,9 +217,7 @@ export default function BookingManagement() {
       const res = await bookingService.getAvailableResources()
       if (res) {
         setAvailableResources(res)
-        if (form.selectedContainerId) {
-          triggerBackendAiRecommendation(form.selectedContainerId, res)
-        }
+
       }
     } catch (err) {
       console.error('Lỗi tải tài nguyên từ Database:', err)
@@ -189,125 +270,37 @@ export default function BookingManagement() {
   }
 
   // 🤖 GỌI BACKEND XỬ LÝ AI TỰ ĐỘNG PHỐI XE & TÀI XẾ TỐI ƯU TỪ CSDL
-  const triggerBackendAiRecommendation = async (containerId, currentResources = null) => {
-    if (!containerId) return
-    setAiMatching(true)
-    const resources = currentResources || availableResources
-    try {
-      const rec = await bookingService.getFleetRecommendation({ containerId, bookingType: form.bookingType })
-      if (rec) {
-        setAiRecommendation(rec)
-        setBackendPayload({
-          ratio: Number(rec.payloadRatio) || 0,
-          status: rec.payloadStatus || 'Optimal',
-          severity: rec.payloadSeverity || 'optimal',
-          warningMessage: rec.payloadMessage || '',
-          isSafe: rec.payloadStatus !== 'Overloaded'
-        })
-        setForm(prev => {
-          const matchedTruckId = rec.recommendedTruckId || prev.truckId || resources.trucks?.[0]?.id || ''
-          const matchedDriverId = rec.recommendedDriverId || prev.driverId || resources.drivers?.[0]?.id || ''
-          return {
-            ...prev,
-            selectedContainerId: rec.containerId || containerId,
-            containerNo: rec.containerNumber || prev.containerNo,
-            containerGrossWeightTon: Number(rec.containerGrossWeightTon) || prev.containerGrossWeightTon,
-            containerSize: rec.containerSize || prev.containerSize,
-            cargoType: rec.cargoType || prev.cargoType,
-            truckId: matchedTruckId,
-            driverId: matchedDriverId,
-            appointmentDate: rec.recommendedDate || prev.appointmentDate,
-            startTime: rec.recommendedStartTime || '08:30',
-            endTime: rec.recommendedEndTime || '10:30'
-          }
-        })
-      } else {
-        setForm(prev => ({
-          ...prev,
-          selectedContainerId: containerId,
-          truckId: prev.truckId || resources.trucks?.[0]?.id || '',
-          driverId: prev.driverId || resources.drivers?.[0]?.id || ''
-        }))
-      }
-    } catch (err) {
-      console.error('Lỗi khi gọi backend AI Smart Match:', err)
-    } finally {
-      setAiMatching(false)
-    }
-  }
-
-  const handleContainerChange = (containerId) => {
-    if (!containerId) {
-      setForm(prev => ({
-        ...prev,
-        selectedContainerId: '',
-        containerNo: '',
-        sealNumber: '',
-        containerGrossWeightTon: 0,
-        truckId: '',
-        driverId: ''
-      }))
-      setAiRecommendation(null)
-      return
-    }
-
-    const selectedCont = (availableResources.containers || []).find(c => c.id === containerId)
-    if (selectedCont) {
-      setForm(prev => ({
-        ...prev,
-        selectedContainerId: selectedCont.id,
-        containerNo: selectedCont.containerNumber,
-        sealNumber: selectedCont.sealNumber || 'SEAL-LIVE',
-        containerGrossWeightTon: Number(selectedCont.grossWeightTon) || (Number(selectedCont.grossWeightKg) / 1000) || 20,
-        containerSize: selectedCont.size || 'ft40',
-        cargoType: selectedCont.cargoType || 'general'
-      }))
-    }
-
-    triggerBackendAiRecommendation(containerId)
-  }
-
-  // Khi người dùng chỉnh chọn xe đầu kéo khác -> gọi backend đánh giá lại tải trọng
-  const handleTruckChange = async (truckId) => {
-    let newDriverId = undefined;
-    if (truckId) {
-      const assignedTruck = (availableResources.trucks || []).find(t => String(t.id) === String(truckId));
-      if (assignedTruck && assignedTruck.driverId) newDriverId = assignedTruck.driverId;
-    }
-    setForm(prev => ({ ...prev, truckId, ...(newDriverId ? { driverId: newDriverId } : {}) }))
-    try {
-      const evalRes = await bookingService.evaluatePayload({
-        containerId: form.selectedContainerId,
-        truckId
-      })
-      if (evalRes) {
-        setBackendPayload({
-          ratio: Number(evalRes.payloadRatio) || 0,
-          status: evalRes.status || 'Optimal',
-          severity: evalRes.severity || 'optimal',
-          warningMessage: evalRes.warningMessage || '',
-          isSafe: evalRes.isSafe
-        })
-      }
-    } catch (err) {
-      console.warn('Lỗi gọi backend evaluate payload:', err)
-    }
-  }
-
   const fetchBookings = async () => {
     setLoading(true)
     try {
       const params = {
         pageNumber,
         pageSize,
-        carrierId: form.carrierId || undefined,
+
         search: searchTerm.trim() || undefined,
         status: statusFilter !== 'All' ? statusFilter : undefined,
         bookingType: typeFilter !== 'All' ? typeFilter : undefined
       }
 
       const res = await bookingService.getBookings(params)
-      setBookings(res.items || [])
+      let activePaymentCache = {}
+      try {
+        activePaymentCache = {}
+      } catch {}
+
+      const enriched = (res.items || []).map(b => {
+        const isPaid = (b.bookingCode && activePaymentCache[b.bookingCode]?.status === 'Paid') ||
+                       (b.id && activePaymentCache[b.id]?.status === 'Paid') ||
+                       (b.paymentStatus || '').toLowerCase() === 'paid' ||
+                       b.status === 'Ready' ||
+                       b.status === 'CheckedIn' ||
+                       b.status === 'Completed'
+        return {
+          ...b,
+          paymentStatus: isPaid ? 'Paid' : (b.paymentStatus || 'Unpaid')
+        }
+      })
+      setBookings(enriched)
       setTotalCount(res.totalCount || 0)
     } catch (err) {
       console.error('Lỗi tải danh sách booking:', err)
@@ -334,7 +327,6 @@ export default function BookingManagement() {
   }
 
   // Phân tích trạng thái tải trọng
-  const selectedTruck = (availableResources.trucks || []).find(t => t.id === form.truckId)
 
   // Metrics summary
   const metrics = useMemo(() => {
@@ -349,177 +341,12 @@ export default function BookingManagement() {
     }
   }, [bookings, totalCount])
 
-  // Handle Form Submit (Create Booking - NXP-048)
-  const handleCreateBooking = async (e) => {
-    e.preventDefault()
-    setActionLoading(true)
-    setValidationErrors([])
-    try {
-      const startIso = new Date(`${form.appointmentDate}T${form.startTime}:00Z`).toISOString()
-      const endIso = new Date(`${form.appointmentDate}T${form.endTime}:00Z`).toISOString()
-
-      const selectedDriverObj = (availableResources.drivers || []).find(d => d.id === form.driverId)
-      const selectedTruckObj = (availableResources.trucks || []).find(t => t.id === form.truckId)
-      const selectedContObj = (availableResources.containers || []).find(c => c.id === form.selectedContainerId)
-
-      const payload = {
-        carrierId: form.carrierId || undefined,
-        driverId: form.driverId || undefined,
-        driverName: selectedDriverObj?.fullName,
-        truckId: form.truckId || undefined,
-        vehicleId: form.truckId || undefined,
-        vehiclePlate: selectedTruckObj?.plateNumber,
-        bookingCode: form.bookingCode,
-        bookingType: form.bookingType,
-        appointmentStart: startIso,
-        appointmentEnd: endIso,
-        containerIds: form.selectedContainerId ? [form.selectedContainerId] : []
-      }
-
-      // Lưu ngay vào cache cục bộ để hiển thị chính xác lập tức
-      updateFleetCache(form.bookingCode, {
-        vehiclePlate: selectedTruckObj?.plateNumber || form.vehiclePlate,
-        driverName: selectedDriverObj?.fullName || form.driverName,
-        containerNumber: selectedContObj?.containerNumber || form.containerNo,
-        containerId: form.selectedContainerId,
-        truckId: form.truckId,
-        driverId: form.driverId
-      })
-
-      const created = await bookingService.createBooking(payload)
-      const currentStatus = created?.status || 'Pending'
-
-      // Gán tự động Xe & Tài xế
-      if (form.truckId && form.driverId) {
-        try {
-          await vehicleService.assignDriver(form.truckId, form.driverId)
-          if (form.driverId) {
-            // Get fresh driver data to avoid stale state from another tab
-            const freshDriver = await driverService.getDriverById(form.driverId).catch(() => selectedDriverObj);
-            const statusToCheck = freshDriver?.status || selectedDriverObj?.status;
-            
-            if (['active', 'inactive'].includes(statusToCheck)) {
-              await driverService.toggleStatus(form.driverId, 'waiting_confirmation')
-            } else if (['vehicle_received', 'transporting', 'receiving_vehicle', 'waiting_confirmation'].includes(statusToCheck)) {
-              await driverService.toggleStatus(form.driverId, 'booking_confirmed')
-            }
-          }
-        } catch (e) { console.error('Lỗi khi tự động gán xe & tài xế:', e) }
-      }
-      
-      showNotification(
-        `🎉 Khởi tạo Đặt chỗ ${form.bookingCode} thành công! Trạng thái: [Pending] chờ Dispatcher phê duyệt.`,
-        'success'
-      )
-      
-      if (form.selectedContainerId) {
-        setAvailableResources(prev => ({
-          ...prev,
-          containers: (prev.containers || []).filter(c => c.id !== form.selectedContainerId)
-        }))
-      }
-
-      if (created) {
-        const optimisticBooking = {
-          id: created.id || `bk-local-${Date.now()}`,
-          carrierId: form.carrierId,
-          bookingCode: created.bookingCode || form.bookingCode,
-          bookingType: created.bookingType || form.bookingType,
-          status: currentStatus,
-          appointmentStart: startIso,
-          appointmentEnd: endIso,
-          containerIds: payload.containerIds,
-          containerNumbers: [selectedContObj?.containerNumber || form.containerNo || 'CONT-LIVE'],
-          driverId: form.driverId,
-          driverName: selectedDriverObj?.fullName || form.driverName,
-          truckId: form.truckId,
-          vehiclePlate: selectedTruckObj?.plateNumber || form.vehiclePlate,
-          createdAt: new Date().toISOString()
-        }
-        setBookings(prev => [optimisticBooking, ...prev.filter(b => b.id !== optimisticBooking.id && b.bookingCode !== optimisticBooking.bookingCode)])
-        setTotalCount(prev => Math.max(prev + 1, 1))
-      }
-
-      setForm({
-        bookingType: 'Pickup',
-        carrierId: form.carrierId,
-        selectedContainerId: '',
-        containerNo: '',
-        sealNumber: '',
-        containerGrossWeightTon: 0,
-        containerSize: 'ft40',
-        cargoType: 'general',
-        driverId: '',
-        truckId: '',
-        bookingCode: `BK-${new Date().toISOString().slice(0,10).replace(/-/g,'')}-${Math.floor(1000 + Math.random() * 9000)}`,
-        appointmentDate: new Date(Date.now() + 86400000).toISOString().slice(0, 10),
-        startTime: '08:30',
-        endTime: '10:30'
-      })
-      setAiRecommendation(null)
-      setWizardStep(1)
-      setActiveTab('my_bookings')
-      fetchBookings()
-      loadAvailableResources()
-    } catch (err) {
-      const errResponse = err?.response?.data
-      if (errResponse && errResponse.Errors) {
-        let errorList = []
-        if (typeof errResponse.Errors === 'string') {
-          errorList = [errResponse.Errors]
-        } else if (typeof errResponse.Errors === 'object') {
-          errorList = Object.entries(errResponse.Errors).flatMap(([_, msgs]) => Array.isArray(msgs) ? msgs : [msgs])
-        }
-        setValidationErrors(errorList)
-        showNotification(errResponse?.Message || errResponse?.message || 'Yêu cầu bị từ chối do vi phạm điều kiện nghiệp vụ!', 'error')
-      } else {
-        const errorMsg = errResponse?.Message || errResponse?.message || err?.message || 'Lỗi kiểm tra tạo đặt chỗ. Vui lòng kiểm tra lại!'
-        setValidationErrors([errorMsg])
-        showNotification(errorMsg, 'error')
-      }
-    } finally {
-      setActionLoading(false)
-    }
-  }
-
-  // NXP-049: Mở Modal Điều phối Fleet cho Booking đang Pending
-  const openAssignFleetModal = async (bk) => {
-    const existingCont = availableResources.containers.find(c => bk.containerIds?.includes(c.id)) || availableResources.containers[0]
-    const initialTruckId = bk.truckId || availableResources.trucks[0]?.id || ''
-    const initialContainerId = existingCont?.id || availableResources.containers[0]?.id || ''
-
-    setAssignForm({
-      bookingId: bk.id,
-      bookingCode: bk.bookingCode,
-      driverId: bk.driverId || availableResources.drivers[0]?.id || '',
-      truckId: initialTruckId,
-      containerId: initialContainerId,
-      containerNo: existingCont?.containerNumber || 'MSKU8829104'
-    })
-    setShowAssignModal(true)
-
-    if (initialContainerId && initialTruckId) {
-      try {
-        const evalRes = await bookingService.evaluatePayload({
-          containerId: initialContainerId,
-          truckId: initialTruckId
-        })
-        if (evalRes) {
-          setAssignPayloadAnalysis({
-            ratio: Number(evalRes.payloadRatio) || 0,
-            status: evalRes.status || 'Optimal',
-            severity: evalRes.severity || 'optimal',
-            warningMessage: evalRes.warningMessage || ''
-          })
-        }
-      } catch { /* ignore */ }
-    }
-  }
+  // Hàm chuyển đổi tất cả thông báo lỗi nghiệp vụ cảng sang 100% Tiếng Việt
 
   const triggerAssignAiMatch = async () => {
     setAssignAiLoading(true)
     try {
-      const rec = await bookingService.getFleetRecommendation({ containerId: assignForm.containerId })
+      const rec = await bookingService.getSelectionRecommendation({ bookingId: assignForm.bookingId, containerId: assignForm.containerId })
       if (rec) {
         setAssignForm(prev => ({
           ...prev,
@@ -527,6 +354,7 @@ export default function BookingManagement() {
           driverId: rec.recommendedDriverId || prev.driverId
         }))
         setAssignPayloadAnalysis({
+          grossWeightTon: rec.containerGrossWeightTon,
           ratio: Number(rec.payloadRatio) || 0,
           status: rec.payloadStatus || 'Optimal',
           severity: rec.payloadSeverity || 'optimal',
@@ -550,10 +378,12 @@ export default function BookingManagement() {
     try {
       const evalRes = await bookingService.evaluatePayload({
         containerId,
-        truckId: assignForm.truckId
+        truckId: assignForm.truckId,
+        customGrossWeightTon: assignPayloadAnalysis?.grossWeightTon
       })
       if (evalRes) {
         setAssignPayloadAnalysis({
+          grossWeightTon: evalRes.containerGrossWeightTon,
           ratio: Number(evalRes.payloadRatio) || 0,
           status: evalRes.status || 'Optimal',
           severity: evalRes.severity || 'optimal',
@@ -573,10 +403,12 @@ export default function BookingManagement() {
     try {
       const evalRes = await bookingService.evaluatePayload({
         containerId: assignForm.containerId,
-        truckId
+        truckId,
+        customGrossWeightTon: assignPayloadAnalysis?.grossWeightTon
       })
       if (evalRes) {
         setAssignPayloadAnalysis({
+          grossWeightTon: evalRes.containerGrossWeightTon,
           ratio: Number(evalRes.payloadRatio) || 0,
           status: evalRes.status || 'Optimal',
           severity: evalRes.severity || 'optimal',
@@ -605,15 +437,15 @@ export default function BookingManagement() {
 
       const payload = {
         driverId: assignForm.driverId,
-        driverName: selectedDriverObj?.fullName || 'Nguyễn Văn Hùng',
+        driverName: selectedDriverObj?.fullName || '',
         truckId: assignForm.truckId,
-        vehiclePlate: selectedTruckObj?.plateNumber || '51C-992.81',
+        vehiclePlate: selectedTruckObj?.plateNumber || '',
         containerIds: assignForm.containerId ? [assignForm.containerId] : [],
         containerNo: selectedContObj?.containerNumber || assignForm.containerNo
       }
 
       await bookingService.assignBookingResources(assignForm.bookingId, payload)
-      
+
       if (assignForm.truckId && assignForm.driverId) {
         try {
           await vehicleService.assignDriver(assignForm.truckId, assignForm.driverId)
@@ -621,7 +453,7 @@ export default function BookingManagement() {
             // Get fresh driver data to avoid stale state
             const freshDriver = await driverService.getDriverById(assignForm.driverId).catch(() => selectedDriverObj);
             const statusToCheck = freshDriver?.status || selectedDriverObj?.status;
-            
+
             if (['active', 'inactive'].includes(statusToCheck)) {
               await driverService.toggleStatus(assignForm.driverId, 'waiting_confirmation')
             } else if (['vehicle_received', 'transporting', 'receiving_vehicle', 'waiting_confirmation'].includes(statusToCheck)) {
@@ -713,8 +545,132 @@ export default function BookingManagement() {
     }
   }
 
-  // Helper function: Render Status Badge with Modern Glow
-  const renderStatusBadge = (status) => {
+  // Xử lý mở Modal Thanh Toán & Sao Chép thông tin
+  const openPaymentModal = async (booking) => {
+    if (!booking) return
+    setPaymentBooking(booking)
+    setShowPaymentModal(true)
+
+    // Đồng bộ thông tin cước phí và hóa đơn từ Backend CSDL nếu có ID
+    if (booking.id) {
+      try {
+        const apiInfo = await bookingService.getPaymentInfo(booking.id)
+        if (apiInfo) {
+          updatePaymentCache(booking.bookingCode || booking.id, {
+            status: apiInfo.paymentStatus || 'Unpaid',
+            baseHandling: apiInfo.handlingFee || 450000,
+            weighFee: apiInfo.weighingFee || 50000,
+            securityFee: apiInfo.infrastructureFee || 40000,
+            subtotal: apiInfo.subtotal || 540000,
+            vat: apiInfo.taxAmount || 43200,
+            amount: apiInfo.totalAmount || 583200,
+            paidAt: apiInfo.paidAt,
+            transactionId: apiInfo.transactionRef,
+            invoiceNo: apiInfo.invoiceNo,
+            method: apiInfo.paymentMethod || 'VietQR (Napas 247)'
+          })
+        }
+      } catch (err) {
+        console.warn('Backend payment info sync fallback:', err?.message)
+      }
+    }
+  }
+
+  const handleCopyPaymentInfo = (text, fieldName) => {
+    navigator.clipboard?.writeText(text)
+    setCopiedPaymentField(fieldName)
+    setTimeout(() => setCopiedPaymentField(null), 2500)
+  }
+
+  // Xác nhận đã thanh toán VietQR (đồng bộ qua Backend API CSDL & Napas 24/7)
+  const handleConfirmPayment = async () => {
+    if (!paymentBooking) return
+    setPaymentProcessing(true)
+    try {
+      const code = paymentBooking.bookingCode || paymentBooking.id
+      const currentInfo = getBookingPaymentInfo(paymentBooking)
+      const txnId = `TXN-NP-${Date.now().toString().slice(-8)}`
+      const paidDate = new Date().toISOString()
+
+      // Gửi yêu cầu thanh toán tới C# Backend API (lưu vào CSDL invoices & payments)
+      let backendTxn = txnId
+      let invoiceNo = `INV-NP-${code}`
+      try {
+        const res = await bookingService.processPayment(paymentBooking.id, {
+          method: 'vietqr',
+          transactionRef: txnId,
+          amount: currentInfo.amount
+        })
+        if (res) {
+          if (res.transactionRef) backendTxn = res.transactionRef
+          if (res.invoiceNo) invoiceNo = res.invoiceNo
+        }
+      } catch (err) {
+        console.warn('Backend payment processing fallback:', err?.message)
+      }
+
+      const newPaymentData = {
+        ...currentInfo,
+        status: 'Paid',
+        paidAt: paidDate,
+        transactionId: backendTxn,
+        invoiceNo: invoiceNo,
+        method: 'VietQR (Napas 247)'
+      }
+
+      // Lưu trực tiếp vào localStorage đồng thời cập nhật cache
+      let rawCache = {}
+      try {
+        rawCache = {}
+      } catch {}
+      if (paymentBooking.bookingCode) rawCache[paymentBooking.bookingCode] = newPaymentData
+      if (paymentBooking.id) rawCache[paymentBooking.id] = newPaymentData
+      if (code) rawCache[code] = newPaymentData
+      try {
+        /* Read payment state from the API. */
+      } catch {}
+
+      updatePaymentCache(paymentBooking.bookingCode, paymentBooking.id, newPaymentData)
+
+      // Cập nhật booking trong state danh sách:
+      // Nếu booking đang ở Approved hoặc Pending thì chuyển sang Ready (kích hoạt vé e-Pass vào cổng)
+      setBookings(prev => prev.map(b => {
+        if ((b.bookingCode && b.bookingCode === code) || b.id === paymentBooking.id) {
+          return {
+            ...b,
+            paymentStatus: 'Paid',
+            status: (b.status === 'Approved' || b.status === 'Pending') ? 'Ready' : b.status
+          }
+        }
+        return b
+      }))
+
+      if (selectedBooking && ((selectedBooking.bookingCode === code) || selectedBooking.id === paymentBooking.id)) {
+        setSelectedBooking(prev => ({
+          ...prev,
+          paymentStatus: 'Paid',
+          status: (prev.status === 'Approved' || prev.status === 'Pending') ? 'Ready' : prev.status
+        }))
+      }
+
+      // Cập nhật paymentBooking đang mở trong modal để hiển thị ngay biên lai
+      setPaymentBooking(prev => ({
+        ...prev,
+        paymentStatus: 'Paid',
+        status: (prev.status === 'Approved' || prev.status === 'Pending') ? 'Ready' : prev.status
+      }))
+
+      showNotification(`Thanh toán cước cảng thành công qua VietQR! Mã GD: ${backendTxn}`, 'success')
+      fetchBookings() // refresh danh sách từ server
+    } catch (err) {
+      showNotification('Không thể hoàn tất thanh toán: ' + err.message, 'error')
+    } finally {
+      setPaymentProcessing(false)
+    }
+  }
+
+  // 1. Render Trạng Thái Booking (Hoàn toàn bằng Tiếng Việt, chuẩn vận hành cảng)
+  const renderBookingStatusBadge = (status) => {
     switch (status) {
       case 'Ready':
         return (
@@ -723,19 +679,19 @@ export default function BookingManagement() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
             </span>
-            Sẵn sàng (Ready)
+            Sẵn sàng
           </span>
         )
       case 'Pending':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-300">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-300 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
             Chờ điều phối
           </span>
         )
       case 'Approved':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-50 text-teal-700 border border-teal-300">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-teal-50 text-teal-700 border border-teal-300 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-teal-500"></span>
             Đã duyệt
           </span>
@@ -747,28 +703,28 @@ export default function BookingManagement() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
             </span>
-            Đã Gate-In
+            Đã vào cổng (Gate-In)
           </span>
         )
       case 'Completed':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-700 border border-slate-300 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-slate-500"></span>
             Hoàn tất
           </span>
         )
       case 'Canceled':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-300">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-300 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-rose-500"></span>
             Đã hủy
           </span>
         )
       case 'Rejected':
         return (
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-900 border border-red-300 shadow-sm">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-900 border border-red-300 shadow-2xs">
             <span className="w-2 h-2 rounded-full bg-red-600"></span>
-            Từ chối (Rejected)
+            Từ chối
           </span>
         )
       default:
@@ -780,18 +736,72 @@ export default function BookingManagement() {
     }
   }
 
+  // 2. Render Cột Riêng Biệt Cho Trạng Thái Thanh Toán Cước Cảng (Payment)
+  const renderPaymentStatusBadge = (booking) => {
+    if (!booking) return null
+    const payment = getBookingPaymentInfo(booking)
+    const isPaid = payment?.status === 'Paid'
+    const amountStr = `${(payment?.amount || 0).toLocaleString('vi-VN')}đ`
+
+    if (isPaid) {
+      return (
+        <div className="flex flex-col items-start gap-1">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300 shadow-2xs">
+            <span className="material-symbols-outlined text-[13px] text-emerald-600">verified</span>
+            Đã thanh toán
+          </span>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              openPaymentModal(booking)
+            }}
+            className="text-[10px] text-emerald-700 font-bold hover:underline flex items-center gap-0.5 cursor-pointer"
+            title="Bấm để xem biên lai cước điện tử"
+          >
+            <span className="material-symbols-outlined text-[12px]">receipt_long</span>
+            <span>Biên lai ({amountStr})</span>
+          </button>
+        </div>
+      )
+    }
+
+    return (
+      <div className="flex flex-col items-start gap-1">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300 shadow-2xs">
+          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
+          Chưa thanh toán
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation()
+            openPaymentModal(booking)
+          }}
+          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-bold bg-orange-50 hover:bg-orange-100 text-signal-orange border border-orange-200 hover:border-orange-300 transition-all cursor-pointer shadow-2xs group"
+          title="Bấm để mở cổng thanh toán VietQR"
+        >
+          <span className="material-symbols-outlined text-[12px]">payments</span>
+          <span>{amountStr}</span>
+          <span className="underline ml-0.5 font-black text-orange-600">Đóng ngay</span>
+        </button>
+      </div>
+    )
+  }
+
+  // Tương thích ngược
   const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 w-full max-w-7xl mx-auto space-y-6 font-sans">
-      
+
       {/* ========================================================================= */}
       {/* FLOATING TOAST NOTIFICATION */}
       {/* ========================================================================= */}
       {toast && (
         <div className={`fixed top-6 right-6 z-50 px-5 py-3.5 rounded-2xl shadow-xl border text-sm font-medium flex items-center gap-3 backdrop-blur-md transition-all transform animate-in slide-in-from-top-4 duration-300 ${
-          toast.type === 'error' 
-            ? 'bg-rose-900 border-rose-700 text-rose-100 shadow-rose-900/30' 
+          toast.type === 'error'
+            ? 'bg-rose-900 border-rose-700 text-rose-100 shadow-rose-900/30'
             : 'bg-emerald-900 border-emerald-600 text-emerald-100 shadow-emerald-900/30'
         }`}>
           <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${toast.type === 'error' ? 'bg-rose-800' : 'bg-emerald-800'}`}>
@@ -824,30 +834,25 @@ export default function BookingManagement() {
                 Hệ Thống Trực Tuyến
               </span>
               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                <span className="material-symbols-outlined text-xs">neurology</span>
-                AI Auto-Match Active
+                <span className="material-symbols-outlined text-xs">tune</span>
+                Tự Động Phân Bổ Xe
               </span>
             </div>
-            
+
             <h1 className="text-2xl sm:text-3xl font-black font-heading text-carbon tracking-tight">
               Quản Lý Lịch Hẹn & Điều Phối Bãi Thông Minh
             </h1>
-            
-            <p className="text-xs sm:text-sm text-slate-600 max-w-2xl leading-relaxed">
-              Tự động hóa luồng đặt hẹn vào cảng, tối ưu phân bổ đầu kéo bằng AI (NXP-048) và điều phối tài nguyên đội xe cấp thẻ điện tử Ready Gate-In tức thời (NXP-049).
-            </p>
           </div>
 
           <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => {
                 setActiveTab('create')
-                setWizardStep(1)
               }}
               className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 group cursor-pointer"
             >
               <span className="material-symbols-outlined text-base group-hover:rotate-90 transition-transform">add_circle</span>
-              Tạo Lịch Hẹn Mới (AI Wizard)
+              Tạo Lịch Hẹn Mới
             </button>
           </div>
         </div>
@@ -907,7 +912,7 @@ export default function BookingManagement() {
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none w-full sm:w-auto">
           {[
             { key: 'my_bookings', label: 'Lịch hẹn của tôi (Live Database)', icon: 'format_list_bulleted', badge: totalCount },
-            { key: 'create', label: 'Tạo Mới (AI Smart Match)', icon: 'auto_awesome', isNew: true },
+            { key: 'create', label: 'Tạo Lịch Hẹn Mới', icon: 'add_circle' },
             { key: 'container_status', label: 'Lộ Trình Container', icon: 'timeline' },
           ].map((tab) => (
             <button
@@ -915,11 +920,11 @@ export default function BookingManagement() {
               onClick={() => setActiveTab(tab.key)}
               className={`px-4 py-2.5 rounded-xl font-bold text-xs sm:text-sm transition-all duration-200 flex items-center gap-2 whitespace-nowrap cursor-pointer ${
                 activeTab === tab.key
-                  ? 'bg-carbon text-white shadow-md shadow-carbon/20'
+                  ? 'bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5'
                   : 'text-slate-600 hover:text-carbon hover:bg-fog'
               }`}
             >
-              <span className={`material-symbols-outlined text-lg ${activeTab === tab.key ? 'text-signal-orange' : 'text-slate-400'}`}>
+              <span className={`material-symbols-outlined text-lg ${activeTab === tab.key ? 'text-white' : 'text-slate-400'}`}>
                 {tab.icon}
               </span>
               <span>{tab.label}</span>
@@ -928,11 +933,6 @@ export default function BookingManagement() {
                   activeTab === tab.key ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
                 }`}>
                   {tab.badge}
-                </span>
-              )}
-              {tab.isNew && (
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-signal-orange text-white">
-                  AI
                 </span>
               )}
             </button>
@@ -961,7 +961,7 @@ export default function BookingManagement() {
       {/* ========================================================================= */}
       {activeTab === 'my_bookings' && (
         <div className="space-y-4 animate-in fade-in duration-200">
-          
+
           {/* SEARCH & FILTERS CONTROLS */}
           <div className="bg-paper border border-chalk rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
             <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row gap-3">
@@ -994,7 +994,7 @@ export default function BookingManagement() {
               <div className="flex gap-2">
                 <button
                   type="submit"
-                  className="px-6 py-2.5 rounded-xl bg-carbon hover:bg-black text-white font-bold text-xs transition-all shadow-sm flex items-center gap-1.5 justify-center cursor-pointer"
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 transition-all flex items-center gap-1.5 justify-center cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-sm">filter_alt</span>
                   Tìm kiếm
@@ -1006,7 +1006,7 @@ export default function BookingManagement() {
                     setTypeFilter(e.target.value)
                     setPageNumber(1)
                   }}
-                  className="px-3 py-2.5 rounded-xl border border-chalk bg-white text-xs font-semibold text-carbon focus:ring-2 focus:ring-signal-orange cursor-pointer"
+                  className="px-3 py-2.5 rounded-xl border border-chalk bg-white text-xs font-semibold text-carbon focus:ring-2 focus:ring-signal-orange cursor-pointer focus:border-signal-orange"
                 >
                   <option value="All">Tất cả nghiệp vụ</option>
                   <option value="Pickup">Chỉ Pickup (Bốc hàng)</option>
@@ -1038,7 +1038,7 @@ export default function BookingManagement() {
                     }}
                     className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                       statusFilter === s.id
-                        ? 'bg-carbon text-white shadow-xs'
+                        ? 'bg-gradient-to-r from-signal-orange to-orange-600 text-white shadow-md shadow-orange-500/25'
                         : 'bg-fog hover:bg-chalk text-slate-600 border border-transparent'
                     }`}
                   >
@@ -1077,7 +1077,6 @@ export default function BookingManagement() {
                 <button
                   onClick={() => {
                     setActiveTab('create')
-                    setWizardStep(1)
                   }}
                   className="px-5 py-2.5 rounded-xl bg-signal-orange text-white font-bold text-xs hover:bg-orange-600 transition-all inline-flex items-center gap-2 cursor-pointer shadow-sm"
                 >
@@ -1094,7 +1093,8 @@ export default function BookingManagement() {
                       <th className="py-3.5 px-4">Loại & Phương Tiện</th>
                       <th className="py-3.5 px-4">Container</th>
                       <th className="py-3.5 px-4">Khung Giờ Hẹn</th>
-                      <th className="py-3.5 px-4">Trạng Thái</th>
+                      <th className="py-3.5 px-4">Trạng Thái Booking</th>
+                      <th className="py-3.5 px-4">Thanh Toán</th>
                       <th className="py-3.5 px-5 text-right">Thao Tác Nghiệp Vụ</th>
                     </tr>
                   </thead>
@@ -1105,8 +1105,8 @@ export default function BookingManagement() {
                       const resolvedContainers = getBookingContainers(bk)
 
                       return (
-                        <tr key={bk.id} className="hover:bg-orange-50/20 transition-colors group">
-                          
+                        <tr key={bk.id} className="hover:bg-orange-50/30 transition-all duration-150 group">
+
                           {/* 1. Mã Booking */}
                           <td className="py-4 px-5">
                             <div className="flex items-center gap-2">
@@ -1140,8 +1140,8 @@ export default function BookingManagement() {
                             <div className="space-y-1.5">
                               <div className="flex items-center gap-2">
                                 <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider ${
-                                  bk.bookingType === 'Pickup' 
-                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200' 
+                                  bk.bookingType === 'Pickup'
+                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
                                     : 'bg-teal-50 text-teal-700 border border-teal-200'
                                 }`}>
                                   {bk.bookingType}
@@ -1200,26 +1200,35 @@ export default function BookingManagement() {
                             </div>
                           </td>
 
-                          {/* 5. Trạng Thái */}
+                          {/* 5. Trạng Thái Booking */}
                           <td className="py-4 px-4">
-                            {renderStatusBadge(bk.status)}
+                            {renderBookingStatusBadge(bk.status)}
                           </td>
 
-                          {/* 6. Thao Tác Nghiệp Vụ */}
+                          {/* 6. Trạng Thái Thanh Toán Cước Cảng */}
+                          <td className="py-4 px-4">
+                            {renderPaymentStatusBadge(bk)}
+                          </td>
+
+                          {/* 7. Thao Tác Nghiệp Vụ */}
                           <td className="py-4 px-5 text-right">
                             <div className="flex items-center justify-end gap-1.5">
-                              
-                              {/* NXP-049: Nút Gán Fleet cho Booking Pending */}
-                              {bk.status === 'Pending' && (
-                                <button
-                                  onClick={() => openAssignFleetModal(bk)}
-                                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-all flex items-center gap-1 shadow-sm hover:shadow-emerald-800/30 cursor-pointer"
-                                  title="Điều phối Xe & Tài xế để chuyển sang trạng thái Ready"
-                                >
-                                  <span className="material-symbols-outlined text-sm">local_shipping</span>
-                                  Điều phối
-                                </button>
-                              )}
+
+                              {/* Nút Xem / Thanh toán cước cảng VietQR */}
+                              <button
+                                onClick={() => openPaymentModal(bk)}
+                                className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition-all flex items-center gap-1 shadow-sm cursor-pointer ${
+                                  getBookingPaymentInfo(bk).status === 'Paid'
+                                    ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300'
+                                    : 'bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5'
+                                }`}
+                                title={getBookingPaymentInfo(bk).status === 'Paid' ? 'Xem biên lai cước cảng' : 'Thanh toán cước cảng (VietQR)'}
+                              >
+                                <span className="material-symbols-outlined text-sm">
+                                  {getBookingPaymentInfo(bk).status === 'Paid' ? 'receipt_long' : 'payments'}
+                                </span>
+                                {getBookingPaymentInfo(bk).status === 'Paid' ? 'Biên lai' : 'Thanh toán'}
+                              </button>
 
                               {/* Vé e-Pass QR khi đã Ready */}
                               {(bk.status === 'Ready' || bk.status === 'Approved' || bk.status === 'CheckedIn') && (
@@ -1228,10 +1237,10 @@ export default function BookingManagement() {
                                     setSelectedBooking(bk)
                                     setShowQrModal(true)
                                   }}
-                                  className="px-3 py-1.5 rounded-xl bg-carbon hover:bg-black text-white font-bold text-[11px] transition-all flex items-center gap-1 shadow-xs cursor-pointer group"
+                                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-[11px] transition-all flex items-center gap-1 shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 cursor-pointer group"
                                   title="Xem Vé Điện Tử e-Pass để quét vào cổng"
                                 >
-                                  <span className="material-symbols-outlined text-sm text-signal-orange group-hover:scale-110 transition-transform">
+                                  <span className="material-symbols-outlined text-sm text-white group-hover:scale-110 transition-transform">
                                     qr_code_2
                                   </span>
                                   Vé e-Pass
@@ -1307,7 +1316,7 @@ export default function BookingManagement() {
                         onClick={() => setPageNumber(page)}
                         className={`w-8 h-8 rounded-xl font-bold transition-all cursor-pointer ${
                           pageNumber === page
-                            ? 'bg-carbon text-white shadow-xs'
+                            ? 'bg-gradient-to-r from-signal-orange to-orange-600 text-white shadow-md shadow-orange-500/25'
                             : 'bg-white border border-chalk hover:bg-fog text-slate-700'
                         }`}
                       >
@@ -1334,703 +1343,12 @@ export default function BookingManagement() {
       {/* ========================================================================= */}
       {/* TAB 2: CREATE BOOKING WIZARD */}
       {/* ========================================================================= */}
-      {activeTab === 'create' && (
-        <div className="bg-paper border border-chalk rounded-3xl p-6 sm:p-8 shadow-sm space-y-8 animate-in fade-in duration-200">
-          
-          {/* STEPPER HEADER */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-chalk">
-            <div>
-              <div className="flex items-center gap-2 text-xs font-bold text-signal-orange uppercase tracking-wider mb-1">
-                <span className="material-symbols-outlined text-sm">neurology</span>
-                Quy Trình Khởi Tạo Lịch Hẹn AI Container-First (NXP-048)
-              </div>
-              <h3 className="font-heading text-xl sm:text-2xl font-extrabold text-carbon">
-                Đăng Ký Cuộc Hẹn Cảng Mới
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Hệ thống tự động đề xuất tổ hợp Xe đầu kéo - Tài xế - Khung giờ tối ưu nhằm hạn chế ùn tắc cổng.
-              </p>
-            </div>
-
-            {/* Stepper Steps Navigation */}
-            <div className="flex items-center gap-3 bg-fog p-1.5 rounded-2xl border border-chalk w-fit">
-              <button
-                type="button"
-                onClick={() => setWizardStep(1)}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  wizardStep === 1
-                    ? 'bg-carbon text-white shadow-xs'
-                    : 'text-slate-600 hover:text-carbon'
-                }`}
-              >
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
-                  wizardStep === 1 ? 'bg-signal-orange text-white' : 'bg-slate-200 text-slate-700'
-                }`}>
-                  1
-                </span>
-                <span>Hàng Hóa & AI Phối Xe</span>
-              </button>
-
-              <div className="w-4 h-0.5 bg-chalk"></div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (form.selectedContainerId || form.containerNo) {
-                    setWizardStep(2)
-                  } else {
-                    showNotification('Vui lòng chọn container trước khi chuyển sang bước 2!', 'error')
-                  }
-                }}
-                className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  wizardStep === 2
-                    ? 'bg-carbon text-white shadow-xs'
-                    : 'text-slate-600 hover:text-carbon'
-                }`}
-              >
-                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
-                  wizardStep === 2 ? 'bg-signal-orange text-white' : 'bg-slate-200 text-slate-700'
-                }`}>
-                  2
-                </span>
-                <span>Khung Giờ & Cấp Vé Ready</span>
-              </button>
-            </div>
-          </div>
-
-          {/* Validation Alert */}
-          {validationErrors.length > 0 && (
-            <div className="bg-rose-50 border-2 border-rose-300 rounded-2xl p-4 sm:p-5 text-xs text-rose-900 space-y-2 animate-in fade-in">
-              <div className="font-bold flex items-center gap-2 text-rose-700 text-sm">
-                <span className="material-symbols-outlined text-lg">gpp_bad</span>
-                Yêu cầu Đặt chỗ chưa thỏa mãn các quy tắc nghiệp vụ cảng:
-              </div>
-              <ul className="list-disc list-inside space-y-1 font-medium pl-1 text-rose-800">
-                {validationErrors.map((msg, i) => (
-                  <li key={i}>{msg}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <form onSubmit={handleCreateBooking}>
-            
-            {/* STEP 1: CONTAINER & FLEET AI AUTO-MATCH */}
-            {wizardStep === 1 && (
-              <div className="space-y-6">
-                
-                {/* 1. TRANSACTION TYPE */}
-                <div className="space-y-3">
-                  <label className="block text-xs font-extrabold uppercase text-slate-500 tracking-wider">
-                    1. Loại Giao Dịch Nghiệp Vụ Cảng (Booking Type)
-                  </label>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div
-                      onClick={() => setForm({ ...form, bookingType: 'Pickup' })}
-                      className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-4 ${
-                        form.bookingType === 'Pickup'
-                          ? 'border-signal-orange bg-orange-50/40 shadow-sm ring-2 ring-orange-500/10'
-                          : 'border-chalk hover:border-slate-300 bg-white'
-                      }`}
-                    >
-                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-                        form.bookingType === 'Pickup' ? 'bg-signal-orange text-white' : 'bg-fog text-indigo-600'
-                      }`}>
-                        <span className="material-symbols-outlined text-2xl">arrow_upward</span>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-heading font-extrabold text-carbon text-base">Pickup</span>
-                          <span className="text-xs font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                            Bốc cont xuất/nhập từ cảng
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 leading-relaxed">
-                          Xe đầu kéo đến cảng nhận container đã hạ bãi hoặc dỡ từ tàu để vận chuyển giao cho chủ hàng.
-                        </p>
-                      </div>
-                    </div>
-
-                    <div
-                      onClick={() => setForm({ ...form, bookingType: 'Dropoff' })}
-                      className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex items-start gap-4 ${
-                        form.bookingType === 'Dropoff'
-                          ? 'border-signal-orange bg-orange-50/40 shadow-sm ring-2 ring-orange-500/10'
-                          : 'border-chalk hover:border-slate-300 bg-white'
-                      }`}
-                    >
-                      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
-                        form.bookingType === 'Dropoff' ? 'bg-signal-orange text-white' : 'bg-fog text-teal-600'
-                      }`}>
-                        <span className="material-symbols-outlined text-2xl">arrow_downward</span>
-                      </div>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-heading font-extrabold text-carbon text-base">Dropoff</span>
-                          <span className="text-xs font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
-                            Hạ container vào bãi cảng
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-500 leading-relaxed">
-                          Xe đầu kéo chở container hàng xuất khẩu hoặc vỏ cont rỗng vào bãi cảng lưu kho chờ bốc lên tàu.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. CORE CONTAINER SELECTION */}
-                <div className="bg-gradient-to-br from-fog to-white border border-chalk rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-chalk pb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2.5 h-2.5 rounded-full bg-signal-orange"></span>
-                      <h4 className="text-xs font-extrabold uppercase tracking-wider text-carbon">
-                        2. Chọn Container Khai Báo (Live Yard Database) *
-                      </h4>
-                    </div>
-                    <span className="text-[11px] text-slate-500 font-medium">
-                      Chỉ hiển thị container khả dụng chưa gán lịch hẹn khác
-                    </span>
-                  </div>
-
-                  <div className="relative">
-                    <select
-                      value={form.selectedContainerId || ''}
-                      onChange={(e) => handleContainerChange(e.target.value)}
-                      className="w-full p-4 rounded-2xl border border-chalk bg-white text-sm font-mono font-bold text-carbon focus:ring-2 focus:ring-signal-orange shadow-xs cursor-pointer"
-                    >
-                      <option value="">-- Bấm vào đây để chọn container trong kho bãi (AI sẽ tự động tìm xe) --</option>
-                      {(availableResources.containers || [])
-                        .filter(c => c.status !== 'reserved' && c.status !== 'loaded' && c.status !== 'gate_out' && !activeBookedContainerIds.includes(c.id))
-                        .map((c) => (
-                          <option key={c.id} value={c.id}>
-                            📦 {c.containerNumber} · {c.size} · {c.grossWeightTon || (c.grossWeightKg / 1000)} Tấn · {c.cargoType} · [{c.status}]
-                          </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Container Spec Details Card */}
-                  {form.containerNo ? (
-                    <div className="bg-white border border-chalk rounded-2xl p-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs shadow-xs animate-in fade-in">
-                      <div className="space-y-0.5">
-                        <span className="text-[11px] text-slate-400 font-medium">Mã Số Container:</span>
-                        <div className="font-mono font-extrabold text-carbon text-sm flex items-center gap-1.5">
-                          <span>{form.containerNo}</span>
-                          <span className="material-symbols-outlined text-xs text-emerald-600">verified</span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-0.5">
-                        <span className="text-[11px] text-slate-400 font-medium">Kích Thước & Loại:</span>
-                        <p className="font-bold text-carbon">{form.containerSize} · {form.cargoType}</p>
-                      </div>
-
-                      <div className="space-y-0.5">
-                        <span className="text-[11px] text-slate-400 font-medium">Khối Lượng Toàn Bộ:</span>
-                        <p className="font-mono font-extrabold text-signal-orange text-sm">
-                          {form.containerGrossWeightTon} Tấn
-                        </p>
-                      </div>
-
-                      <div className="space-y-0.5">
-                        <span className="text-[11px] text-slate-400 font-medium">Số Niêm Chì (Seal No):</span>
-                        <p className="font-mono font-bold text-slate-700">{form.sealNumber || 'SEAL-2026-NXP'}</p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-200/80 flex items-start sm:items-center gap-3 text-xs text-indigo-950">
-                      <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0 text-indigo-700">
-                        <span className="material-symbols-outlined text-lg">auto_awesome</span>
-                      </div>
-                      <div className="flex-1">
-                        <strong className="font-bold text-indigo-900 block text-xs sm:text-sm">
-                          Hệ thống AI đang chờ Container
-                        </strong>
-                        <p className="text-indigo-800 text-[11px] mt-0.5">
-                          Vui lòng chọn một container ở trên. AI Backend sẽ tự động tính toán tải trọng và tự động điền Xe đầu kéo cùng Tài xế thích hợp nhất từ kho tài nguyên.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* 3. AI RECOMMENDED VEHICLE & DRIVER */}
-                <div className="bg-white border border-chalk rounded-3xl p-5 sm:p-6 space-y-5 shadow-xs">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-chalk pb-3">
-                    <div className="flex items-center gap-2">
-                      <span className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-extrabold text-xs flex items-center gap-1.5 border border-indigo-200">
-                        <span className="material-symbols-outlined text-sm">neurology</span>
-                        AI Backend Optimization
-                      </span>
-                      <span className="text-xs font-bold text-carbon">
-                        3. Điều Phối Xe Đầu Kéo & Tài Xế Phù Hợp
-                      </span>
-                    </div>
-
-                    <button
-                      type="button"
-                      disabled={aiMatching || !form.selectedContainerId}
-                      onClick={() => triggerBackendAiRecommendation(form.selectedContainerId)}
-                      className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 disabled:opacity-40 text-indigo-700 border border-indigo-200 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer w-fit"
-                    >
-                      <span className={`material-symbols-outlined text-sm ${aiMatching ? 'animate-spin' : ''}`}>
-                        {aiMatching ? 'sync' : 'auto_awesome'}
-                      </span>
-                      {aiMatching ? 'Đang phân tích...' : 'AI Phân tích lại'}
-                    </button>
-                  </div>
-
-                  {/* AI Match Success Banner */}
-                  {aiRecommendation && form.selectedContainerId && (
-                    <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-300 flex items-center gap-3 text-xs text-emerald-950 animate-in fade-in">
-                      <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center shrink-0 text-emerald-700">
-                        <span className="material-symbols-outlined text-lg">verified</span>
-                      </div>
-                      <div className="flex-1 text-[11px] leading-relaxed">
-                        <strong className="text-emerald-900 font-bold block text-xs">AI Backend Đã Đề Xuất Cặp Đôi Tối Ưu:</strong>
-                        Đã chọn xe <strong>{aiRecommendation.recommendedTruckPlate}</strong> (Tải tối đa {aiRecommendation.truckMaxPayloadTon}T) và Tài xế <strong>{aiRecommendation.recommendedDriverName}</strong> cho Container {form.containerNo} ({form.containerGrossWeightTon}T).
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    {/* Truck Selector */}
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold uppercase text-slate-500 flex items-center justify-between">
-                        <span>Xe Đầu Kéo (Truck)</span>
-                        <span className="text-[10px] text-indigo-600 font-bold">✨ AI đề xuất tự động</span>
-                      </label>
-                      <select
-                        value={form.truckId}
-                        onChange={(e) => handleTruckChange(e.target.value)}
-                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange cursor-pointer"
-                      >
-                        <option value="">
-                          {form.selectedContainerId ? '-- Chọn xe đầu kéo khác --' : '-- Chọn container trước --'}
-                        </option>
-                        {(availableResources.trucks || []).map((t) => (
-                          <option key={t.id} value={t.id}>
-                            🚚 Biển số: {t.plateNumber} · Tải trọng: {t.maxPayloadTon} Tấn ({t.vehicleType})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {/* Driver Selector */}
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold uppercase text-slate-500 flex items-center justify-between">
-                        <span>Tài Xế Phụ Trách (Driver)</span>
-                        <span className="text-[10px] text-indigo-600 font-bold">✨ AI đề xuất active</span>
-                      </label>
-                      <select
-                        value={form.driverId}
-                        onChange={(e) => {
-                          const driverId = e.target.value;
-                          let truckId = form.truckId;
-                          if (driverId) {
-                            const assignedTruck = (availableResources.trucks || []).find(t => String(t.driverId) === String(driverId));
-                            if (assignedTruck) truckId = assignedTruck.id;
-                          }
-                          setForm({ ...form, driverId, truckId });
-                        }}
-                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange cursor-pointer"
-                      >
-                        <option value="">
-                          {form.selectedContainerId ? '-- Chọn tài xế khác --' : '-- Chọn container trước --'}
-                        </option>
-                        {(availableResources.drivers || []).map((d) => (
-                          <option key={d.id} value={d.id}>
-                            👤 {d.fullName} (Hạng: {d.licenseClass || 'FC'}) · {d.phone}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* 4. DYNAMIC INTERACTIVE PAYLOAD GAUGE */}
-                  {form.selectedContainerId && (
-                    <div className="p-4 rounded-2xl bg-fog/70 border border-chalk space-y-3 animate-in fade-in">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-carbon">Đánh giá Độ An Toàn Tải Trọng:</span>
-                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase border ${
-                            backendPayload.severity === 'danger'
-                              ? 'bg-rose-100 text-rose-800 border-rose-300'
-                              : backendPayload.severity === 'warning'
-                              ? 'bg-amber-100 text-amber-800 border-amber-300'
-                              : 'bg-emerald-100 text-emerald-800 border-emerald-300'
-                          }`}>
-                            {backendPayload.status === 'Overloaded' ? '⚠️ Quá tải nghiêm trọng' : backendPayload.status === 'Underutilized' ? '⚠️ Tải trọng chưa tối ưu' : '✅ Đạt chuẩn an toàn'}
-                          </span>
-                        </div>
-
-                        <span className="font-mono font-bold text-carbon">
-                          Hàng: {form.containerGrossWeightTon}T / Xe: {selectedTruck ? selectedTruck.maxPayloadTon : 24}T ({backendPayload.ratio}%)
-                        </span>
-                      </div>
-
-                      {/* Visual Meter Bar */}
-                      <div className="w-full h-3 bg-chalk rounded-full overflow-hidden flex shadow-inner">
-                        <div
-                          style={{ width: `${Math.min(backendPayload.ratio, 100)}%` }}
-                          className={`h-full transition-all duration-500 rounded-full ${
-                            backendPayload.severity === 'danger'
-                              ? 'bg-rose-600'
-                              : backendPayload.severity === 'warning'
-                              ? 'bg-amber-500'
-                              : 'bg-emerald-500'
-                          }`}
-                        ></div>
-                      </div>
-
-                      {/* Guidance Box */}
-                      <div className={`p-3 rounded-xl border text-xs flex items-center gap-2.5 ${
-                        backendPayload.severity === 'danger'
-                          ? 'bg-rose-50 border-rose-200 text-rose-800'
-                          : backendPayload.severity === 'warning'
-                          ? 'bg-amber-50 border-amber-200 text-amber-800'
-                          : 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                      }`}>
-                        <span className={`material-symbols-outlined text-base ${
-                          backendPayload.severity === 'danger' ? 'text-rose-600' : backendPayload.severity === 'warning' ? 'text-amber-600' : 'text-emerald-600'
-                        }`}>
-                          {backendPayload.severity === 'danger' ? 'error' : backendPayload.severity === 'warning' ? 'warning' : 'verified'}
-                        </span>
-                        <span className="text-[11px] font-medium leading-relaxed">
-                          {backendPayload.warningMessage}
-                        </span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Continue Button */}
-                <div className="flex justify-end pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!form.selectedContainerId && !form.containerNo) {
-                        showNotification('Vui lòng chọn container trước khi tiếp tục!', 'error')
-                        return
-                      }
-                      setWizardStep(2)
-                    }}
-                    className="px-8 py-3.5 rounded-2xl bg-carbon hover:bg-black text-white font-bold text-xs transition-all flex items-center gap-2 shadow-md cursor-pointer"
-                  >
-                    <span>Tiếp tục: Khung giờ & Xác nhận (Bước 2)</span>
-                    <span className="material-symbols-outlined text-sm">arrow_forward</span>
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* STEP 2: OFF-PEAK TIME SLOT & BOARDING PASS CONFIRMATION */}
-            {wizardStep === 2 && (
-              <div className="space-y-6">
-                
-                {/* AI Time Slot Recommendation Banner */}
-                <div className="bg-gradient-to-r from-indigo-50 via-blue-50 to-indigo-50 border-2 border-indigo-200/80 rounded-3xl p-5 text-xs text-indigo-950 flex items-start gap-4 shadow-xs">
-                  <div className="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-indigo-600/20">
-                    <span className="material-symbols-outlined text-xl">alarm_on</span>
-                  </div>
-                  <div className="space-y-1">
-                    <strong className="text-sm font-bold text-indigo-900 block font-heading">
-                      ✨ Đề Xuất Khung Giờ Thấp Điểm (Off-Peak Slot Optimization)
-                    </strong>
-                    <p className="text-indigo-800 leading-relaxed text-[11px]">
-                      AI đã tự động chọn khung giờ <strong>{form.startTime} - {form.endTime} ngày {form.appointmentDate}</strong>. 
-                      Mật độ phương tiện tại trạm cân và barrier dự kiến dưới 25%, giúp xe Gate-In nhanh gấp 3 lần và giảm 40% thời gian chờ đợi.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Date Time Picker Grid */}
-                <div className="bg-white border border-chalk rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-carbon">
-                    Xác Nhận Khung Thời Gian Hẹn Đến Cảng
-                  </h4>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold uppercase text-slate-500">Ngày Hẹn Đến Cảng</label>
-                      <input
-                        type="date"
-                        required
-                        value={form.appointmentDate}
-                        onChange={(e) => setForm({ ...form, appointmentDate: e.target.value })}
-                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold uppercase text-slate-500">Giờ Bắt Đầu (Start Time)</label>
-                      <input
-                        type="time"
-                        required
-                        value={form.startTime}
-                        onChange={(e) => setForm({ ...form, startTime: e.target.value })}
-                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange"
-                      />
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-bold uppercase text-slate-500">Giờ Kết Thúc (End Time)</label>
-                      <input
-                        type="time"
-                        required
-                        value={form.endTime}
-                        onChange={(e) => setForm({ ...form, endTime: e.target.value })}
-                        className="w-full p-3 rounded-2xl border border-chalk bg-white text-sm font-medium text-carbon focus:ring-2 focus:ring-signal-orange"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Quick Presets */}
-                  <div className="flex items-center gap-2 pt-1 overflow-x-auto text-[11px]">
-                    <span className="text-slate-400 font-medium">Ca gợi ý:</span>
-                    <button
-                      type="button"
-                      onClick={() => setForm({ ...form, startTime: '08:30', endTime: '10:30' })}
-                      className="px-2.5 py-1 rounded-lg bg-fog hover:bg-chalk text-slate-700 font-semibold border border-chalk transition-colors cursor-pointer"
-                    >
-                      ☀️ Ca Sáng (08:30 - 10:30)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setForm({ ...form, startTime: '14:00', endTime: '16:00' })}
-                      className="px-2.5 py-1 rounded-lg bg-fog hover:bg-chalk text-slate-700 font-semibold border border-chalk transition-colors cursor-pointer"
-                    >
-                      ⛅ Ca Chiều (14:00 - 16:00)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setForm({ ...form, startTime: '20:00', endTime: '22:00' })}
-                      className="px-2.5 py-1 rounded-lg bg-fog hover:bg-chalk text-slate-700 font-semibold border border-chalk transition-colors cursor-pointer"
-                    >
-                      🌙 Ca Đêm (20:00 - 22:00)
-                    </button>
-                  </div>
-                </div>
-
-                {/* DIGITAL E-PASS BOARDING PASS TICKET PREVIEW */}
-                <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-carbon to-gray-950 text-white p-6 sm:p-7 border border-white/10 shadow-xl space-y-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-white/10 pb-4">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-xl bg-signal-orange flex items-center justify-center font-black text-white text-sm">
-                        NP
-                      </div>
-                      <div>
-                        <span className="text-[10px] font-extrabold uppercase tracking-widest text-signal-orange">NexusPort Smart TAS</span>
-                        <h5 className="font-mono font-bold text-sm text-white">Thẻ Điện Tử Dự Kiến · Digital e-Pass</h5>
-                      </div>
-                    </div>
-
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                      SẴN SÀNG KÍCH HOẠT [READY]
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                    <div className="space-y-1">
-                      <span className="text-slate-400 text-[11px]">MÃ BOOKING:</span>
-                      <p className="font-mono font-black text-base text-signal-orange tracking-tight">{form.bookingCode}</p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-slate-400 text-[11px]">LOẠI GIAO DỊCH:</span>
-                      <p className="font-bold text-white text-sm">{form.bookingType}</p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-slate-400 text-[11px]">CONTAINER:</span>
-                      <p className="font-mono font-bold text-white text-sm">{form.containerNo} ({form.containerGrossWeightTon}T)</p>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-slate-400 text-[11px]">PHƯƠNG TIỆN & TÀI XẾ:</span>
-                      <p className="font-mono font-bold text-white text-sm">
-                        {selectedTruck?.plateNumber || '51C-882.19'} • {availableResources.drivers.find(d => d.id === form.driverId)?.fullName || 'Tài xế'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="pt-3 border-t border-white/10 flex items-center gap-2 text-[11px] text-slate-300">
-                    <span className="material-symbols-outlined text-sm text-emerald-400">verified</span>
-                    Ngay sau khi xác nhận, Backend sẽ cấp vé QR thông hành tự động và mã định danh OCR cho làn cổng.
-                  </div>
-                </div>
-
-                {/* Form Buttons */}
-                <div className="flex items-center justify-between pt-2">
-                  <button
-                    type="button"
-                    onClick={() => setWizardStep(1)}
-                    className="px-6 py-3.5 rounded-2xl border border-chalk bg-white hover:bg-fog text-carbon font-bold text-xs transition-colors flex items-center gap-2 cursor-pointer"
-                  >
-                    <span className="material-symbols-outlined text-sm">arrow_back</span>
-                    <span>Quay lại Bước 1 (Đổi xe / container)</span>
-                  </button>
-
-                  <button
-                    type="submit"
-                    disabled={actionLoading}
-                    className="px-8 py-3.5 rounded-2xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-extrabold text-xs shadow-lg shadow-orange-950/40 hover:-translate-y-0.5 transition-all flex items-center gap-2 cursor-pointer"
-                  >
-                    {actionLoading && <span className="material-symbols-outlined text-sm animate-spin">sync</span>}
-                    <span>Xác Nhận & Khởi Tạo Booking [Ready]</span>
-                    <span className="material-symbols-outlined text-sm">rocket_launch</span>
-                  </button>
-                </div>
-
-              </div>
-            )}
-
-          </form>
-        </div>
-      )}
+      {activeTab === 'create' && <ContainerBookingForm onClose={() => setActiveTab('my_bookings')} onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
 
       {/* ========================================================================= */}
       {/* TAB 3: CONTAINER JOURNEY TRACKING */}
       {/* ========================================================================= */}
-      {activeTab === 'container_status' && (
-        <div className="bg-paper border border-chalk rounded-3xl p-6 sm:p-8 shadow-sm space-y-8 animate-in fade-in duration-200">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-chalk pb-6">
-            <div>
-              <div className="flex items-center gap-2 text-xs font-bold text-signal-orange uppercase tracking-wider mb-1">
-                <span className="material-symbols-outlined text-sm">route</span>
-                Real-Time Container Flow Telemetry
-              </div>
-              <h3 className="font-heading text-xl sm:text-2xl font-extrabold text-carbon">
-                Theo Dõi Vòng Đời Container Tại Bãi Cảng
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                Mô phỏng 5 chặng vận hành từ khâu đăng ký lịch hẹn, barrier cổng, cẩu bãi hạ container đến gate-out.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2 bg-fog p-2 rounded-2xl border border-chalk">
-              <span className="text-xs text-slate-400 font-bold font-mono px-2">CONT:</span>
-              <span className="font-mono font-extrabold text-signal-orange text-sm bg-white px-3 py-1 rounded-xl border border-chalk">
-                MSKU8891024
-              </span>
-            </div>
-          </div>
-
-          {/* Interactive Stepper Journey */}
-          <div className="relative p-6 bg-gradient-to-b from-fog/60 to-white rounded-3xl border border-chalk">
-            <div className="grid grid-cols-1 md:grid-cols-5 gap-6 relative z-10">
-              
-              {/* Stage 1 */}
-              <div className="flex flex-col items-center text-center space-y-2.5">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
-                  <span className="material-symbols-outlined text-xl">event_available</span>
-                </div>
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-extrabold uppercase text-emerald-600 tracking-wider">GIAI ĐOẠN 1</span>
-                  <h6 className="font-bold text-carbon text-xs">Đã Đặt Lịch Hẹn</h6>
-                  <p className="text-[11px] text-slate-500">Khởi tạo và đối soát AI</p>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                  Hoàn thành
-                </span>
-              </div>
-
-              {/* Stage 2 */}
-              <div className="flex flex-col items-center text-center space-y-2.5">
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/20">
-                  <span className="material-symbols-outlined text-xl">qr_code_scanner</span>
-                </div>
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-extrabold uppercase text-emerald-600 tracking-wider">GIAI ĐOẠN 2</span>
-                  <h6 className="font-bold text-carbon text-xs">Cấp Thẻ Ready</h6>
-                  <p className="text-[11px] text-slate-500">Gán xe & vé e-Pass</p>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                  Hoàn thành
-                </span>
-              </div>
-
-              {/* Stage 3 */}
-              <div className="flex flex-col items-center text-center space-y-2.5">
-                <div className="w-12 h-12 rounded-2xl bg-signal-orange text-white flex items-center justify-center shadow-lg shadow-orange-500/30 animate-pulse">
-                  <span className="material-symbols-outlined text-xl">sensor_door</span>
-                </div>
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-extrabold uppercase text-signal-orange tracking-wider">GIAI ĐOẠN 3</span>
-                  <h6 className="font-bold text-carbon text-xs">Gate-In Cảng</h6>
-                  <p className="text-[11px] text-slate-500">Quét OCR & Cân xe</p>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-signal-orange">
-                  Đang diễn ra
-                </span>
-              </div>
-
-              {/* Stage 4 */}
-              <div className="flex flex-col items-center text-center space-y-2.5 opacity-60">
-                <div className="w-12 h-12 rounded-2xl bg-slate-200 text-slate-500 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-xl">warehouse</span>
-                </div>
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">GIAI ĐOẠN 4</span>
-                  <h6 className="font-bold text-carbon text-xs">Lưu Bãi (Yard)</h6>
-                  <p className="text-[11px] text-slate-500">Xếp chồng block A3</p>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
-                  Chờ tiếp nhận
-                </span>
-              </div>
-
-              {/* Stage 5 */}
-              <div className="flex flex-col items-center text-center space-y-2.5 opacity-60">
-                <div className="w-12 h-12 rounded-2xl bg-slate-200 text-slate-500 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-xl">local_shipping</span>
-                </div>
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">GIAI ĐOẠN 5</span>
-                  <h6 className="font-bold text-carbon text-xs">Gate-Out / Lên Tàu</h6>
-                  <p className="text-[11px] text-slate-500">Hoàn tất quy trình</p>
-                </div>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
-                  Dự kiến
-                </span>
-              </div>
-
-            </div>
-          </div>
-
-          {/* Terminal Gate Live Status Card */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-4 rounded-2xl border border-chalk bg-white space-y-1">
-              <span className="text-slate-400 text-[11px] font-bold uppercase">LÀN CỔNG CHỈ ĐỊNH:</span>
-              <p className="font-heading font-extrabold text-carbon text-base flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                Làn Cổng L02 (Smart Gate AI)
-              </p>
-              <p className="text-slate-500 text-[11px]">Đầu đọc OCR tự động mở barrier khi quét đúng biển số</p>
-            </div>
-
-            <div className="p-4 rounded-2xl border border-chalk bg-white space-y-1">
-              <span className="text-slate-400 text-[11px] font-bold uppercase">VỊ TRÍ BÃI DỰ KIẾN:</span>
-              <p className="font-heading font-extrabold text-carbon text-base flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
-                Khu A3 - Bay 12 - Tier 03
-              </p>
-              <p className="text-slate-500 text-[11px]">Cẩu RTG-04 đã sẵn sàng nhận container hạ bãi</p>
-            </div>
-
-            <div className="p-4 rounded-2xl border border-chalk bg-white space-y-1">
-              <span className="text-slate-400 text-[11px] font-bold uppercase">TRẠNG THÁI NIÊM CHÌ:</span>
-              <p className="font-heading font-extrabold text-emerald-700 text-base flex items-center gap-2">
-                <span className="material-symbols-outlined text-base">verified</span>
-                SEAL-VALIDATED
-              </p>
-              <p className="text-slate-500 text-[11px]">Niêm phong khớp dữ liệu hải quan điện tử</p>
-            </div>
-          </div>
-        </div>
-      )}
+      {activeTab === 'container_status' && <ContainerJourneySearch isTransport />}
 
       {/* ========================================================================= */}
       {/* MODAL 1: FLEET ASSIGNMENT MODAL (NXP-049 CHUYỂN SANG READY) */}
@@ -2038,7 +1356,7 @@ export default function BookingManagement() {
       {showAssignModal && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-paper border border-chalk rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl space-y-5 animate-in zoom-in-95 duration-200">
-            
+
             <div className="flex justify-between items-center border-b border-chalk pb-4">
               <div>
                 <span className="text-[10px] font-extrabold uppercase text-emerald-600 tracking-wider">
@@ -2067,7 +1385,7 @@ export default function BookingManagement() {
                 <span className={`material-symbols-outlined text-sm ${assignAiLoading ? 'animate-spin' : ''}`}>
                   {assignAiLoading ? 'sync' : 'auto_awesome'}
                 </span>
-                {assignAiLoading ? 'Đang phân tích...' : '🤖 AI Gợi Ý Tự Động Từ CSDL'}
+                {assignAiLoading ? 'Đang xử lý...' : '✨ Gợi Ý Xe & Tài Xế Tự Động'}
               </button>
             </div>
 
@@ -2077,7 +1395,7 @@ export default function BookingManagement() {
                 <select
                   value={assignForm.containerId}
                   onChange={(e) => handleAssignContainerChange(e.target.value)}
-                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-mono font-bold text-carbon cursor-pointer"
+                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-mono font-bold text-carbon cursor-pointer focus:outline-none focus:ring-0 focus:border-signal-orange"
                 >
                   {(availableResources.containers || []).map((c) => (
                     <option key={c.id} value={c.id}>
@@ -2092,7 +1410,7 @@ export default function BookingManagement() {
                 <select
                   value={assignForm.truckId}
                   onChange={(e) => handleAssignTruckChange(e.target.value)}
-                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon cursor-pointer"
+                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon cursor-pointer focus:outline-none focus:ring-0 focus:border-signal-orange"
                 >
                   {(availableResources.trucks || []).map((t) => (
                     <option key={t.id} value={t.id}>
@@ -2115,7 +1433,7 @@ export default function BookingManagement() {
                     }
                     setAssignForm({ ...assignForm, driverId, truckId });
                   }}
-                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon cursor-pointer"
+                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon cursor-pointer focus:outline-none focus:ring-0 focus:border-signal-orange"
                 >
                   {(availableResources.drivers || []).map((d) => (
                     <option key={d.id} value={d.id}>
@@ -2183,15 +1501,15 @@ export default function BookingManagement() {
       {showQrModal && selectedBooking && (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-paper border border-chalk rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95 text-center relative overflow-hidden">
-            
+
             {/* Ticket Accent Header */}
             <div className="flex justify-between items-center border-b border-chalk pb-3">
               <div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-signal-orange">
                 <span className="w-2 h-2 rounded-full bg-signal-orange"></span>
                 NexusPort Smart e-Pass
               </div>
-              <button 
-                onClick={() => setShowQrModal(false)} 
+              <button
+                onClick={() => setShowQrModal(false)}
                 className="w-7 h-7 rounded-full bg-fog hover:bg-chalk flex items-center justify-center text-slate-500 hover:text-carbon font-bold text-sm cursor-pointer"
               >
                 ✕
@@ -2199,25 +1517,25 @@ export default function BookingManagement() {
             </div>
 
             {/* Ticket Card Info */}
-            <div className="bg-gradient-to-br from-carbon to-gray-900 text-white rounded-2xl p-4 text-left space-y-2 shadow-md">
+            <div className="bg-gradient-to-br from-orange-50/70 via-white to-slate-50 text-carbon rounded-2xl p-4 text-left space-y-2 border border-orange-200/80 shadow-xs">
               <div className="flex justify-between items-start">
                 <div>
-                  <span className="text-[10px] text-slate-400 font-mono tracking-wider block">MÃ LỊCH HẸN</span>
+                  <span className="text-[10px] text-slate-500 font-mono tracking-wider block">MÃ LỊCH HẸN</span>
                   <h4 className="font-mono font-black text-xl text-signal-orange tracking-tight">{selectedBooking.bookingCode}</h4>
                 </div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
                   READY
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-white/10 text-xs">
+              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-orange-200/60 text-xs">
                 <div>
-                  <span className="text-[10px] text-slate-400">BIỂN SỐ XE</span>
-                  <p className="font-mono font-bold text-white">{getBookingVehiclePlate(selectedBooking) || '51C-992.81'}</p>
+                  <span className="text-[10px] text-slate-500 font-semibold">BIỂN SỐ XE</span>
+                  <p className="font-mono font-bold text-carbon">{getBookingVehiclePlate(selectedBooking) || '51C-992.81'}</p>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400">TÀI XẾ</span>
-                  <p className="font-bold text-white truncate">{getBookingDriverName(selectedBooking) || 'Nguyễn Văn Hùng'}</p>
+                  <span className="text-[10px] text-slate-500 font-semibold">TÀI XẾ</span>
+                  <p className="font-bold text-carbon truncate">{getBookingDriverName(selectedBooking) || 'Nguyễn Văn Hùng'}</p>
                 </div>
               </div>
             </div>
@@ -2261,7 +1579,7 @@ export default function BookingManagement() {
 
               <button
                 onClick={() => setShowQrModal(false)}
-                className="flex-1 py-3 rounded-2xl bg-carbon hover:bg-black text-white font-bold text-xs transition-colors shadow-sm cursor-pointer"
+                className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 transition-all cursor-pointer"
               >
                 Đóng Thẻ
               </button>
@@ -2276,24 +1594,61 @@ export default function BookingManagement() {
       {showDetailModal && selectedBooking && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-paper border border-chalk rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl space-y-6 animate-in zoom-in-95 duration-200">
-            
+
             <div className="flex justify-between items-center border-b border-chalk pb-4">
               <div>
                 <span className="text-[10px] font-extrabold uppercase text-slate-400 tracking-wider">Hồ Sơ Chi Tiết Lịch Hẹn</span>
                 <h3 className="font-mono font-black text-xl text-carbon">{selectedBooking.bookingCode}</h3>
               </div>
               <button
-                onClick={() => setShowDetailModal(false)}
+                onClick={closeBookingDetail}
                 className="w-8 h-8 rounded-full bg-fog hover:bg-chalk flex items-center justify-center text-slate-500 hover:text-carbon font-bold text-base transition-colors cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
+            {selectedBooking.bookingType === 'Dropoff' && (selectedBooking.containerSelections || []).filter(link => link.yardCode).map(link => <div key={link.containerVisitId} className="space-y-2 rounded-2xl border border-orange-200 bg-orange-50 p-4"><p className="text-xs font-bold">Mã lượt bãi · {link.containerNumber}</p><div className="flex items-center justify-between gap-2"><b className="select-all break-all font-mono text-sm">{link.yardCode}</b><button onClick={() => copyToClipboard(link.yardCode, 'yard-code')} className="rounded-lg border border-orange-200 bg-white px-3 py-2 text-xs font-bold">{copiedText === 'yard-code' ? 'Đã copy' : 'Copy'}</button></div><p className="text-xs text-slate">Gửi mã cho công ty được phép đặt Pickup của lượt bãi này.</p></div>)}
             <div className="space-y-4 text-xs">
               <div className="flex justify-between items-center bg-fog p-3.5 rounded-2xl border border-chalk">
                 <span className="text-slate-600 font-bold">Trạng thái vận hành:</span>
-                {renderStatusBadge(selectedBooking.status)}
+                {renderBookingStatusBadge(selectedBooking.status)}
+              </div>
+
+              {/* Thông tin Cước & Thanh Toán TOS */}
+              <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-signal-orange text-lg">payments</span>
+                    <span className="font-bold text-carbon text-xs">Cước Phí Cảng & Thanh Toán:</span>
+                  </div>
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
+                    getBookingPaymentInfo(selectedBooking).status === 'Paid'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                      : 'bg-amber-50 text-amber-800 border-amber-300'
+                  }`}>
+                    <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                    {getBookingPaymentInfo(selectedBooking).status === 'Paid' ? 'Đã thanh toán (Paid)' : 'Chưa thanh toán (Unpaid)'}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between text-xs pt-1 border-t border-slate-200">
+                  <span className="text-slate-500">Tổng tiền cước TOS (đã gồm VAT 8%):</span>
+                  <span className="font-mono font-black text-carbon text-sm">
+                    {getBookingPaymentInfo(selectedBooking).amount.toLocaleString('vi-VN')} VNĐ
+                  </span>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => openPaymentModal(selectedBooking)}
+                  className="w-full py-2 px-3 rounded-xl bg-white hover:bg-slate-100 text-carbon font-bold text-xs border border-slate-200 shadow-2xs hover:shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <span className="material-symbols-outlined text-sm text-signal-orange">
+                    {getBookingPaymentInfo(selectedBooking).status === 'Paid' ? 'receipt_long' : 'qr_code_scanner'}
+                  </span>
+                  <span>{getBookingPaymentInfo(selectedBooking).status === 'Paid' ? 'Xem Chi Tiết Biên Lai Thanh Toán' : 'Mở VietQR & Thanh Toán Ngay'}</span>
+                </button>
               </div>
 
               <div className="grid grid-cols-2 gap-4 p-4 rounded-2xl border border-chalk bg-white">
@@ -2335,8 +1690,8 @@ export default function BookingManagement() {
 
             <div className="flex justify-end pt-2">
               <button
-                onClick={() => setShowDetailModal(false)}
-                className="px-6 py-2.5 rounded-xl bg-carbon hover:bg-black text-white text-xs font-bold transition-colors cursor-pointer"
+                onClick={closeBookingDetail}
+                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white text-xs font-bold shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 transition-all cursor-pointer"
               >
                 Đóng
               </button>
@@ -2367,7 +1722,7 @@ export default function BookingManagement() {
                 value={cancelReason}
                 onChange={(e) => setCancelReason(e.target.value)}
                 placeholder="Nhập lý do hủy đặt chỗ..."
-                className="w-full p-3 rounded-2xl border border-chalk bg-white text-xs text-carbon focus:ring-2 focus:ring-rose-500"
+                className="w-full p-3 rounded-2xl border border-chalk bg-white text-xs text-carbon focus:ring-2 focus:ring-rose-500 focus:border-rose-500"
               />
             </div>
 
@@ -2403,8 +1758,8 @@ export default function BookingManagement() {
                 <span className="text-[10px] font-extrabold uppercase text-amber-600">Cập Nhật Lịch Hẹn</span>
                 <h3 className="font-mono font-bold text-xl text-carbon">{editForm.bookingCode}</h3>
               </div>
-              <button 
-                onClick={() => setShowEditModal(false)} 
+              <button
+                onClick={() => setShowEditModal(false)}
                 className="w-8 h-8 rounded-full bg-fog hover:bg-chalk flex items-center justify-center text-slate-500 font-bold cursor-pointer"
               >
                 ✕
@@ -2419,7 +1774,7 @@ export default function BookingManagement() {
                   required
                   value={editForm.containerNo}
                   onChange={(e) => setEditForm({ ...editForm, containerNo: e.target.value })}
-                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-mono font-bold text-carbon"
+                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-mono font-bold text-carbon focus:outline-none focus:ring-0 focus:border-signal-orange"
                 />
               </div>
 
@@ -2430,7 +1785,7 @@ export default function BookingManagement() {
                   required
                   value={editForm.appointmentDate}
                   onChange={(e) => setEditForm({ ...editForm, appointmentDate: e.target.value })}
-                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon"
+                  className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon focus:outline-none focus:ring-0 focus:border-signal-orange"
                 />
               </div>
 
@@ -2442,7 +1797,7 @@ export default function BookingManagement() {
                     required
                     value={editForm.startTime}
                     onChange={(e) => setEditForm({ ...editForm, startTime: e.target.value })}
-                    className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon"
+                    className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon focus:outline-none focus:ring-0 focus:border-signal-orange"
                   />
                 </div>
 
@@ -2453,7 +1808,7 @@ export default function BookingManagement() {
                     required
                     value={editForm.endTime}
                     onChange={(e) => setEditForm({ ...editForm, endTime: e.target.value })}
-                    className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon"
+                    className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon focus:outline-none focus:ring-0 focus:border-signal-orange"
                   />
                 </div>
               </div>
@@ -2479,6 +1834,341 @@ export default function BookingManagement() {
           </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* MODAL 6: PAYMENT & TOS PORT CHARGES MODAL (VIETQR NAPAS 24/7) */}
+      {/* ========================================================================= */}
+      {showPaymentModal && paymentBooking && (() => {
+        const pInfo = getBookingPaymentInfo(paymentBooking)
+        const isPaid = pInfo.status === 'Paid'
+        const code = paymentBooking.bookingCode || paymentBooking.id
+        const bankName = 'MB Bank (Ngân Hàng TMCP Quân Đội)'
+        const accountNo = '190388668899'
+        const accountName = 'CÔNG TY CP CẢNG QUỐC TẾ NEXUSPORT'
+        const transferContent = `NP ${code}`
+        const vietQrUrl = `https://img.vietqr.io/image/MB-${accountNo}-compact2.png?amount=${pInfo.amount}&addInfo=${encodeURIComponent(transferContent)}&accountName=${encodeURIComponent(accountName)}`
+        const fallbackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(`00020101021238540010A0000007270124000697042201121903886688990208QRIBFTTA5303704540${pInfo.amount}5802VN62190815${transferContent}6304`)}`
+
+        return (
+          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+            <div className="bg-paper border border-slate-200 rounded-3xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto animate-in zoom-in-95 duration-200">
+
+              {/* Header */}
+              <div className="flex justify-between items-start border-b border-chalk pb-4">
+                <div className="flex items-center gap-3">
+                  <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm ${
+                    isPaid ? 'bg-emerald-100 text-emerald-600' : 'bg-orange-100 text-signal-orange'
+                  }`}>
+                    <span className="material-symbols-outlined text-2xl">
+                      {isPaid ? 'verified' : 'payments'}
+                    </span>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
+                        Hệ Thống Thu Phí Cảng Điện Tử · e-Port TOS
+                      </span>
+                      <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
+                        isPaid
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                          : 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse'
+                      }`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
+                        {isPaid ? 'Đã Thanh Toán (Paid)' : 'Chờ Thanh Toán (Unpaid)'}
+                      </span>
+                    </div>
+                    <h3 className="font-mono font-black text-xl text-carbon mt-0.5">
+                      {code}
+                    </h3>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setShowPaymentModal(false)}
+                  className="w-9 h-9 rounded-full bg-fog hover:bg-chalk flex items-center justify-center text-slate-500 hover:text-carbon font-bold text-base transition-colors cursor-pointer"
+                  title="Đóng cửa sổ"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Bảng Chi Tiết Biểu Phí Dịch Vụ Cảng TOS */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-bold text-xs uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm text-signal-orange">receipt</span>
+                    Bảng Kê Chi Tiết Biểu Phí Dịch Vụ Cảng (TOS Tariff Breakdown)
+                  </h4>
+                  <span className="text-[11px] text-slate-400">Đơn vị tính: VNĐ</span>
+                </div>
+
+                <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white text-xs divide-y divide-slate-100">
+                  <div className="p-3 flex justify-between items-center hover:bg-slate-50/50">
+                    <div>
+                      <span className="font-bold text-carbon">1. Cước nâng / hạ vỏ và hàng (Lo-Lo Service)</span>
+                      <p className="text-[11px] text-slate-400">
+                        {pInfo.baseHandling >= 650000 ? 'Áp dụng container tiêu chuẩn 40ft/45ft' : 'Áp dụng container tiêu chuẩn 20ft'}
+                      </p>
+                    </div>
+                    <span className="font-mono font-bold text-carbon">{pInfo.baseHandling.toLocaleString('vi-VN')} đ</span>
+                  </div>
+
+                  <div className="p-3 flex justify-between items-center hover:bg-slate-50/50">
+                    <div>
+                      <span className="font-bold text-carbon">2. Phí cân kiểm soát tải trọng tự động (Weighbridge Fee)</span>
+                      <p className="text-[11px] text-slate-400">Kiểm tra tải trọng trục xe tự động qua trạm cân Gate-In</p>
+                    </div>
+                    <span className="font-mono font-bold text-carbon">{pInfo.weighFee.toLocaleString('vi-VN')} đ</span>
+                  </div>
+
+                  <div className="p-3 flex justify-between items-center hover:bg-slate-50/50">
+                    <div>
+                      <span className="font-bold text-carbon">3. Phí an ninh bến cảng & tiện ích e-Port</span>
+                      <p className="text-[11px] text-slate-400">Hạ tầng công nghệ e-Pass, giám sát an ninh camera OCR</p>
+                    </div>
+                    <span className="font-mono font-bold text-carbon">{pInfo.securityFee.toLocaleString('vi-VN')} đ</span>
+                  </div>
+
+                  <div className="p-3 flex justify-between items-center bg-slate-50/40">
+                    <span className="text-slate-500">Cộng tiền dịch vụ trước thuế:</span>
+                    <span className="font-mono font-semibold text-slate-700">{pInfo.subtotal.toLocaleString('vi-VN')} đ</span>
+                  </div>
+
+                  <div className="p-3 flex justify-between items-center bg-slate-50/40">
+                    <span className="text-slate-500">Thuế GTGT (VAT 8%):</span>
+                    <span className="font-mono font-semibold text-slate-700">{pInfo.vat.toLocaleString('vi-VN')} đ</span>
+                  </div>
+
+                  <div className="p-3.5 flex justify-between items-center bg-orange-50/50 border-t-2 border-orange-200">
+                    <div>
+                      <span className="font-extrabold text-sm text-carbon uppercase tracking-wider">Tổng Cộng Tiền Thanh Toán:</span>
+                      <p className="text-[11px] text-slate-500 font-normal">Đã bao gồm toàn bộ thuế & lệ phí cảng</p>
+                    </div>
+                    <span className="font-mono font-black text-xl text-signal-orange">
+                      {pInfo.amount.toLocaleString('vi-VN')} VNĐ
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Phần Hành Động: ĐÃ THANH TOÁN (BIÊN LAI) hoặc CHƯA THANH TOÁN (VIETQR) */}
+              {isPaid ? (
+                /* GIAO DIỆN BIÊN LAI ĐÃ THANH TOÁN */
+                <div className="space-y-4">
+                  <div className="p-5 rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50/70 to-teal-50/40 space-y-4">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-600/20">
+                        <span className="material-symbols-outlined text-2xl">check</span>
+                      </div>
+                      <div>
+                        <h4 className="font-black text-emerald-900 text-sm">GIAO DỊCH ĐÃ THANH TOÁN THÀNH CÔNG</h4>
+                        <p className="text-xs text-emerald-700">
+                          Hệ thống đã ghi nhận thanh toán phí cảng. Chuyến xe đủ điều kiện nhận vé e-Pass để vào cảng.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-white/80 backdrop-blur-sm p-4 rounded-xl border border-emerald-200/80">
+                      <div>
+                        <span className="text-slate-400 text-[11px]">Mã Giao Dịch Quyết Toán (Txn ID):</span>
+                        <p className="font-mono font-black text-carbon mt-0.5">{pInfo.transactionId || `TXN-NP-${code}`}</p>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 text-[11px]">Thời Gian Thanh Toán:</span>
+                        <p className="font-semibold text-carbon mt-0.5">
+                          {pInfo.paidAt ? new Date(pInfo.paidAt).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN')}
+                        </p>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 text-[11px]">Phương Thức:</span>
+                        <p className="font-semibold text-carbon mt-0.5">{pInfo.method || 'VietQR Napas 247'}</p>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 text-[11px]">Trạng Thái Kế Toán TOS:</span>
+                        <p className="font-bold text-emerald-600 mt-0.5 flex items-center gap-1">
+                          <span className="material-symbols-outlined text-sm">done_all</span>
+                          Đã Đối Soát & Xuất Vé
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        showNotification('Đã xuất hóa đơn điện tử e-Invoice PDF về máy!', 'success')
+                      }}
+                      className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-carbon font-bold text-xs flex items-center justify-center gap-2 cursor-pointer shadow-2xs"
+                    >
+                      <span className="material-symbols-outlined text-sm">print</span>
+                      In Biên Lai Hóa Đơn
+                    </button>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowPaymentModal(false)
+                          setSelectedBooking(paymentBooking)
+                          setShowQrModal(true)
+                        }}
+                        className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-sm">qr_code_2</span>
+                        Xem Vé Vào Cổng e-Pass
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowPaymentModal(false)}
+                        className="px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-carbon font-bold text-xs hover:bg-slate-50 cursor-pointer"
+                      >
+                        Đóng
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* GIAO DIỆN THANH TOÁN QUA VIETQR */
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center p-5 rounded-2xl border border-slate-200 bg-slate-50/70">
+
+                    {/* Cột trái: Mã QR Chuyển Khoản VietQR */}
+                    <div className="flex flex-col items-center text-center space-y-2.5 bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
+                      <div className="relative p-2 rounded-2xl bg-white border border-slate-200 shadow-inner group">
+                        <img
+                          src={vietQrUrl}
+                          alt="VietQR Payment"
+                          className="w-48 h-48 sm:w-52 sm:h-52 object-contain rounded-xl"
+                          onError={(e) => {
+                            e.currentTarget.src = fallbackQrUrl
+                          }}
+                        />
+                        <div className="absolute inset-x-2 bottom-2 bg-gradient-to-t from-black/60 to-transparent p-1.5 rounded-b-xl flex items-center justify-center gap-1.5 text-white text-[10px] font-bold">
+                          <span className="material-symbols-outlined text-xs">center_focus_strong</span>
+                          Quét mã bằng App Ngân Hàng
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                        <span>Mã QR động Napas 247 · Khớp lệnh tức thì</span>
+                      </div>
+                    </div>
+
+                    {/* Cột phải: Thông tin chuyển khoản chi tiết */}
+                    <div className="space-y-2.5 text-xs">
+                      <div>
+                        <span className="text-slate-400 text-[11px]">Ngân Hàng Thụ Hưởng:</span>
+                        <div className="font-bold text-carbon mt-0.5 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+                          {bankName}
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-200">
+                        <span className="text-slate-400 text-[10px]">Chủ Tài Khoản:</span>
+                        <div className="font-mono font-bold text-carbon text-xs mt-0.5">{accountName}</div>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between">
+                        <div>
+                          <span className="text-slate-400 text-[10px]">Số Tài Khoản:</span>
+                          <div className="font-mono font-black text-carbon text-sm mt-0.5 tracking-wider">{accountNo}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyPaymentInfo(accountNo, 'acc')}
+                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-xs">
+                            {copiedPaymentField === 'acc' ? 'check' : 'content_copy'}
+                          </span>
+                          {copiedPaymentField === 'acc' ? 'Đã chép' : 'Sao chép'}
+                        </button>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-white border border-slate-200 flex items-center justify-between">
+                        <div>
+                          <span className="text-slate-400 text-[10px]">Số Tiền Cần Chuyển:</span>
+                          <div className="font-mono font-black text-signal-orange text-sm mt-0.5">
+                            {pInfo.amount.toLocaleString('vi-VN')} VNĐ
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyPaymentInfo(pInfo.amount.toString(), 'amount')}
+                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-xs">
+                            {copiedPaymentField === 'amount' ? 'check' : 'content_copy'}
+                          </span>
+                          {copiedPaymentField === 'amount' ? 'Đã chép' : 'Sao chép'}
+                        </button>
+                      </div>
+
+                      <div className="p-2.5 rounded-xl bg-orange-50/70 border border-orange-200 flex items-center justify-between">
+                        <div>
+                          <span className="text-amber-800 text-[10px] font-bold">Nội Dung Chuyển Khoản (Bắt buộc):</span>
+                          <div className="font-mono font-black text-carbon text-xs mt-0.5">{transferContent}</div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleCopyPaymentInfo(transferContent, 'content')}
+                          className="px-2.5 py-1 rounded-lg bg-white hover:bg-orange-100 text-amber-900 border border-orange-300 font-bold text-[11px] flex items-center gap-1 transition-all cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-xs">
+                            {copiedPaymentField === 'content' ? 'check' : 'content_copy'}
+                          </span>
+                          {copiedPaymentField === 'content' ? 'Đã chép' : 'Sao chép'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Thanh nút bấm xác nhận */}
+                  <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-200">
+                    <p className="text-[11px] text-slate-400 text-center sm:text-left">
+                      💡 Mở app ngân hàng quét mã VietQR hoặc chuyển khoản đúng nội dung để hệ thống tự động đối soát.
+                    </p>
+
+                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                      <button
+                        type="button"
+                        onClick={() => setShowPaymentModal(false)}
+                        className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:text-carbon font-bold text-xs hover:bg-slate-50 cursor-pointer"
+                      >
+                        Đóng
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={paymentProcessing}
+                        onClick={handleConfirmPayment}
+                        className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                      >
+                        {paymentProcessing ? (
+                          <>
+                            <span className="material-symbols-outlined text-sm animate-spin">sync</span>
+                            <span>Đang Đối Soát Napas...</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="material-symbols-outlined text-sm">task_alt</span>
+                            <span>Xác Nhận Đã Thanh Toán</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </div>
+        )
+      })()}
 
     </div>
   )

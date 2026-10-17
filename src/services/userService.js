@@ -42,8 +42,8 @@ export async function updateUser(id, data) {
  * @param {string} id
  * @param {string} role
  */
-export async function assignRole(id, role) {
-  const response = await apiClient.patch(`/users/${id}/assign-role`, { role })
+export async function assignRole(id, role, assignment = {}) {
+  const response = await apiClient.patch(`/users/${id}/assign-role`, { role, ...assignment })
   return response.data
 }
 

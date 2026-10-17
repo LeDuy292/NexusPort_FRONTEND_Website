@@ -1,18 +1,15 @@
-import apiClient from './apiClient'
+import { driverSmartRouteService } from './driverSmartRouteService'
 
 export const driverContainerConfirmationService = {
   async getAssignedOperations() {
-    const response = await apiClient.get('/v1/Booking/driver/operations')
-    return response.data
+    const routes = await driverSmartRouteService.list()
+    return (Array.isArray(routes) ? routes : []).filter(route => route.journey?.canConfirmContainer)
+      .map(route => ({ ...route, operationStatus: route.operation?.status, containerStatus: route.journey?.phase === 'ready_for_gate_out' ? 'ReadyForGateOut' : undefined }))
   },
 
-  async confirmContainer(containerId, condition = 'OK', notes = '') {
-    const response = await apiClient.post('/v1/Booking/driver/container-confirmation', {
-      containerId,
-      condition,
-      notes: notes || null
-    })
-    return response.data
+  async confirmContainer(bookingId, containerId, condition = 'OK', notes = '') {
+    const route = await driverSmartRouteService.confirmContainer(containerId, bookingId, condition, notes)
+    return { ...route, containerStatus: route.journey?.phase === 'ready_for_gate_out' ? 'ReadyForGateOut' : undefined }
   }
 }
 

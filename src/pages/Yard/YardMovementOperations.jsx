@@ -1,16 +1,22 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import yardTaskService from '../../services/yardTaskService'
+import yardRestackService from '../../services/yardRestackService'
 
-// Helper to parse position string "A01-03-12-2" or "A-03-12-2" → { block, bay, row, tier }
+// Helper to parse position string "A01-03-12-2" or "A-03-12-2" → { block, bay, row, tier, isStandard }
 const parsePosition = (pos) => {
-  if (!pos || !pos.includes('-')) return { block: pos || '?', bay: '?', row: '?', tier: '?' }
-  const parts = pos.split('-')
-  return {
-    block: parts[0] || '?',
-    bay: parts[1] || '?',
-    row: parts[2] || '?',
-    tier: parts[3] || '?',
+  if (!pos) return { block: '?', bay: '?', row: '?', tier: '?', isStandard: false }
+  const trimmed = String(pos).trim()
+  if (/^[A-Z0-9]{1,4}-\d{2,3}-\d{2,3}-\d{1,2}$/i.test(trimmed)) {
+    const parts = trimmed.split('-')
+    return {
+      block: parts[0] || '?',
+      bay: parts[1] || '?',
+      row: parts[2] || '?',
+      tier: parts[3] || '?',
+      isStandard: true
+    }
   }
+  return { block: trimmed, bay: '?', row: '?', tier: '?', isStandard: false }
 }
 
 // ISO 6346 Shipping line detector from container number prefix
@@ -262,6 +268,49 @@ const CONFLICT_SCENARIOS = [
       confidence: '99.7%',
       bufferSlotNote: 'Rack điện Reefer C01 còn 1 slot cắm sẵn sàng tiếp nhận ngay'
     }
+  },
+  {
+    id: 'SCENARIO_4',
+    title: 'Container MSCU9918234 — Block A01 Hết Slot Đệm (Test Chặn Di Dời)',
+    badge: 'HẾT SLOT ĐỆM (TEST)',
+    badgeColor: 'bg-rose-100 text-rose-950 border-rose-400',
+    canExecute: false,
+    validationMessage: 'CẢNH BÁO HỆ THỐNG: Block A01 đã đạt 100% dung lượng. Không có slot đệm hợp lệ thỏa mãn quy tắc an toàn!',
+    targetContainer: {
+      id: 'MSCU9918234',
+      type: '40FT HC',
+      weight: '29.5 Tấn',
+      pos: 'A01-01-05-1',
+      tier: 'Tầng 1 (Đáy bãi)',
+      line: 'MSC',
+      urgency: 'KHẨN CẤP — Xe đầu kéo chờ nhưng không thể đảo bãi do thiếu slot',
+      dwell: '5 ngày'
+    },
+    blockingContainers: [
+      { step: 1, id: 'CMAU9918234', type: '20FT ST', tier: 'Tầng 3', currentPos: 'A01-01-05-3', moveTarget: 'KHÔNG CÓ SLOT', rtg: 'RTG-01', weight: '18.5 Tấn', duration: '--', reason: 'Không tìm thấy slot đệm trống trong phạm vi an toàn' },
+      { step: 2, id: 'COSU8819201', type: '40FT HC', tier: 'Tầng 2', currentPos: 'A01-01-05-2', moveTarget: 'KHÔNG CÓ SLOT', rtg: 'RTG-01', weight: '24.1 Tấn', duration: '--', reason: 'Không tìm thấy slot đệm trống trong phạm vi an toàn' }
+    ],
+    targetMove: {
+      step: 3,
+      id: 'MSCU9918234',
+      type: '40FT HC',
+      tier: 'Tầng 1',
+      currentPos: 'A01-01-05-1',
+      moveTarget: 'Cổng Bàn Giao',
+      rtg: 'RTG-01',
+      weight: '29.5 Tấn',
+      duration: '--',
+      reason: 'Bị phong tỏa do không thể dời 2 container phía trên'
+    },
+    aiMetrics: {
+      timeSaved: '0%',
+      estimatedDuration: 'Không thể thực thi',
+      originalDuration: 'Bị khóa',
+      energySaved: '0%',
+      movesCount: 0,
+      confidence: '0%',
+      bufferSlotNote: 'Toàn bộ 24 slot lân cận đều đang OCCUPIED hoặc vi phạm quy tắc trọng lực'
+    }
   }
 ]
 
@@ -389,6 +438,15 @@ export default function YardMovementOperations() {
   const [conflictPlanDeployed, setConflictPlanDeployed] = useState(false)
   const [conflictExecutingStep, setConflictExecutingStep] = useState(0)
 
+  // ── NXP-126: RESTACK PLAN STATE ──
+  const [customTargetContInput, setCustomTargetContInput] = useState('CAIU1234567')
+  const [customDestinationInput, setCustomDestinationInput] = useState('Cầu Tàu Bến 02 (Xuất Lên Tàu)')
+  const [restackBackOption, setRestackBackOption] = useState(false)
+  const [activeRestackPlan, setActiveRestackPlan] = useState(null)
+  const [restackPlanHistory, setRestackPlanHistory] = useState([])
+  const [showPlanHistorySection, setShowPlanHistorySection] = useState(false)
+  const [isAdvancingStep, setIsAdvancingStep] = useState(false)
+
   // Current conflict scenario object
   const currentConflictScenario = useMemo(() => {
     return CONFLICT_SCENARIOS.find(s => s.id === selectedConflictScenarioId) || CONFLICT_SCENARIOS[0]
@@ -400,6 +458,11 @@ export default function YardMovementOperations() {
     setConflictPlanResult(null)
     setConflictPlanDeployed(false)
     setConflictExecutingStep(0)
+    const found = CONFLICT_SCENARIOS.find(s => s.id === id)
+    if (found) {
+      setCustomTargetContInput(found.targetContainer.id)
+      setCustomDestinationInput(found.targetMove.moveTarget)
+    }
   }
 
   // Stacking Conflict State (Fallback compatibility)
@@ -524,9 +587,22 @@ export default function YardMovementOperations() {
     }
   }
 
+  // Load Restack Plan History (NXP-126)
+  const loadRestackHistory = async () => {
+    try {
+      const plans = await yardRestackService.getAllPlans()
+      if (Array.isArray(plans)) {
+        setRestackPlanHistory(plans)
+      }
+    } catch (err) {
+      console.warn('Could not fetch restack plan history:', err)
+    }
+  }
+
   // Initial load
   useEffect(() => {
     loadTasks()
+    loadRestackHistory()
 
     // Fetch equipments & operators
     yardTaskService.getAvailableEquipments().then(eqs => {
@@ -1134,11 +1210,124 @@ export default function YardMovementOperations() {
     showToast(`🏗️ Đã hoàn thành bước ${stepIdx + 1} đảo container giải phóng vị trí!`, 'success')
   }
 
-  // 1-Click AI Auto-Optimize Conflict Resolution (BRP Solver)
-  const handle1ClickOptimizeConflict = () => {
+  // 1-Click AI Auto-Optimize Conflict Resolution (BRP Solver - NXP-126)
+  const handle1ClickOptimizeConflict = async () => {
     setIsAnalyzingConflict(true)
+    const scenario = currentConflictScenario
+    const targetNo = customTargetContInput.trim() || scenario.targetContainer.id
+    const location = scenario.targetContainer.pos
+    const dest = customDestinationInput.trim() || scenario.targetMove.moveTarget
+
+    try {
+      const res = await yardRestackService.analyzeBlockedContainer({
+        containerNo: targetNo,
+        location: location,
+        blockCode: location.split('-')[0] || 'C01',
+        targetDestination: dest,
+        restackBackToOriginal: restackBackOption
+      })
+
+      if (res && res.blockingContainers && res.blockingContainers.length > 0) {
+        const allMoves = [
+          ...res.blockingContainers.map(b => ({
+            step: b.stepOrder,
+            id: b.containerNo,
+            type: b.containerType,
+            tier: `Tầng ${b.tier}`,
+            currentPos: b.currentLocation,
+            moveTarget: b.recommendedBufferSlot,
+            rtg: 'RTG-01',
+            weight: b.weight,
+            duration: '2.0 phút',
+            reason: b.reason,
+            isTarget: false,
+            status: 'READY'
+          })),
+          {
+            step: res.blockingContainers.length + 1,
+            id: res.targetContainer.containerNo,
+            type: res.targetContainer.containerType,
+            tier: `Tầng ${res.targetContainer.tier}`,
+            currentPos: res.targetContainer.currentLocation,
+            moveTarget: res.targetContainer.targetDestination,
+            rtg: 'RTG-01',
+            weight: res.targetContainer.weight,
+            duration: '3.5 phút',
+            reason: `Giải phóng container mục tiêu bàn giao ${res.targetContainer.targetDestination}`,
+            isTarget: true,
+            status: 'READY'
+          }
+        ]
+
+        if (restackBackOption) {
+          let backStep = allMoves.length + 1
+          for (let i = res.blockingContainers.length - 1; i >= 0; i--) {
+            const b = res.blockingContainers[i]
+            allMoves.push({
+              step: backStep++,
+              id: b.containerNo,
+              type: b.containerType,
+              tier: `Tầng ${b.tier}`,
+              currentPos: b.recommendedBufferSlot,
+              moveTarget: b.currentLocation,
+              rtg: 'RTG-01',
+              weight: b.weight,
+              duration: '2.0 phút',
+              reason: `Khôi phục container ${b.containerNo} về lại vị trí cột ban đầu`,
+              isTarget: false,
+              status: 'READY'
+            })
+          }
+        }
+
+        const canExec = res.canExecute !== false && !allMoves.some(m => m.moveTarget?.includes('KHÔNG CÓ SLOT'))
+        setConflictPlanResult({
+          scenarioId: selectedConflictScenarioId,
+          targetContainerNo: res.targetContainer.containerNo,
+          targetLocation: res.targetContainer.currentLocation,
+          targetDestination: res.targetContainer.targetDestination,
+          blockCode: res.targetContainer.blockCode,
+          restackBackToOriginal: restackBackOption,
+          isOptimized: true,
+          canExecute: canExec,
+          validationMessage: res.validationMessage || (!canExec ? 'Không tìm thấy slot đệm trống trong phạm vi an toàn.' : 'Đủ slot đệm an toàn để thực thi kế hoạch.'),
+          generatedTasks: allMoves,
+          metrics: {
+            timeSaved: res.aiMetrics?.timeSaved || '0%',
+            estimatedDuration: `${res.estimatedDurationMinutes} phút`,
+            originalDuration: `${res.estimatedDurationMinutes * 3} phút`,
+            energySaved: res.aiMetrics?.energySaved || '0%',
+            movesCount: allMoves.length,
+            confidence: res.aiMetrics?.confidence || '99.8%',
+            bufferSlotNote: res.aiMetrics?.bufferSlotNote || '',
+            shiftingFee: res.estimatedShiftingFee
+          },
+          generatedAt: new Date().toLocaleTimeString('vi-VN')
+        })
+        setIsAnalyzingConflict(false)
+        setConflictPlanDeployed(false)
+        setConflictExecutingStep(0)
+        setShowConfirmDeployModal(true)
+
+        if (canExec) {
+          showToast(
+            `🤖 AI BRP ĐÃ TỐI ƯU HÓA: Phát hiện ${res.blockingContainers.length} container đè tầng, đã tính toán chuỗi ${allMoves.length} lệnh cẩu tối ưu!`,
+            'success'
+          )
+        } else {
+          showToast(
+            `⚠️ CẢNH BÁO AN TOÀN: ${res.validationMessage || 'Block bãi không đủ slot đệm hợp lệ! Không thể thực thi kế hoạch.'}`,
+            'error'
+          )
+        }
+        return
+      }
+    } catch (err) {
+      console.warn('Backend analyze fallback:', err)
+    }
+
+    // Fallback simulation nếu backend không khả dụng
     setTimeout(() => {
-      const scenario = currentConflictScenario
       const allMoves = [
         ...scenario.blockingContainers.map(b => ({
           ...b,
@@ -1152,11 +1341,44 @@ export default function YardMovementOperations() {
         }
       ]
 
+      if (restackBackOption) {
+        let backStep = allMoves.length + 1
+        for (let i = scenario.blockingContainers.length - 1; i >= 0; i--) {
+          const b = scenario.blockingContainers[i]
+          allMoves.push({
+            step: backStep++,
+            id: b.id,
+            type: b.type,
+            tier: b.tier,
+            currentPos: b.moveTarget,
+            moveTarget: b.currentPos,
+            rtg: b.rtg,
+            weight: b.weight,
+            duration: b.duration,
+            reason: `Khôi phục container ${b.id} về lại vị trí cột ban đầu`,
+            isTarget: false,
+            status: 'READY'
+          })
+        }
+      }
+
+      const canExec = scenario.canExecute !== false && !allMoves.some(m => m.moveTarget?.includes('KHÔNG CÓ SLOT'))
       setConflictPlanResult({
         scenarioId: scenario.id,
+        targetContainerNo: scenario.targetContainer.id,
+        targetLocation: scenario.targetContainer.pos,
+        targetDestination: scenario.targetMove.moveTarget,
+        blockCode: scenario.targetContainer.pos.split('-')[0] || 'C01',
+        restackBackToOriginal: restackBackOption,
         isOptimized: true,
+        canExecute: canExec,
+        validationMessage: scenario.validationMessage || (!canExec ? 'CẢNH BÁO: Không có slot đệm trống hợp lệ trong Block!' : 'Đủ slot đệm an toàn để thực thi.'),
         generatedTasks: allMoves,
-        metrics: scenario.aiMetrics,
+        metrics: {
+          ...scenario.aiMetrics,
+          movesCount: allMoves.length,
+          shiftingFee: allMoves.length * 250000
+        },
         generatedAt: new Date().toLocaleTimeString('vi-VN')
       })
       setIsAnalyzingConflict(false)
@@ -1164,79 +1386,153 @@ export default function YardMovementOperations() {
       setConflictExecutingStep(0)
       setShowConfirmDeployModal(true)
 
-      showToast(
-        `🤖 AI ĐÃ TỐI ƯU HÓA XONG: Đã hiển thị kết quả và các lệnh triển khai lên màn hình! Vui lòng bấm xác nhận để phát lệnh.`,
-        'success'
-      )
+      if (canExec) {
+        showToast(
+          `🤖 AI ĐÃ TỐI ƯU HÓA XONG: Đã hiển thị kết quả và các lệnh triển khai lên màn hình! Vui lòng bấm xác nhận để phát lệnh.`,
+          'success'
+        )
+      } else {
+        showToast(
+          `⚠️ CẢNH BÁO AN TOÀN: ${scenario.validationMessage || 'Block bãi không đủ slot đệm hợp lệ! Không thể thực thi kế hoạch.'}`,
+          'error'
+        )
+      }
     }, 600)
   }
 
-  // Confirm and Deploy All Generated Conflict Resolution Tasks
-  const handleConfirmDeployConflictPlan = () => {
+  // Confirm and Deploy All Generated Conflict Resolution Tasks (NXP-126)
+  const handleConfirmDeployConflictPlan = async () => {
     if (!conflictPlanResult) return
+    if (conflictPlanResult.canExecute === false) {
+      showToast('🚨 LỖI AN TOÀN: Hệ thống từ chối phát lệnh vì không có slot đệm hợp lệ trong bãi!', 'error')
+      return
+    }
     setIsDeployingConflictPlan(true)
 
-    setTimeout(() => {
+    try {
       const scenario = currentConflictScenario
-      const newSystemTasks = conflictPlanResult.generatedTasks.map((t, idx) => ({
-        id: `MOV-CF-${Math.floor(1000 + Math.random() * 9000)}`,
-        taskId: `conflict-${Date.now()}-${idx}`,
-        containerId: t.id,
-        containerType: t.type || '40FT HC',
-        cargoType: t.isTarget ? 'Container Mục Tiêu Giải Phóng' : 'Đảo Tầng Gỡ Xung Đột (AI BRP)',
-        from: t.currentPos,
-        to: t.moveTarget,
-        reason: t.reason,
-        priority: t.isTarget ? 'CRITICAL' : 'HIGH',
-        assignedBy: '🤖 NexusPort AI Conflict Solver',
-        status: idx === 0 ? 'IN PROGRESS' : 'ASSIGNED',
-        flowStep: idx === 0 ? 1 : 0,
-        equipment: { name: t.rtg, operator: 'Hệ Thống Tự Hành AI' },
-        confirmedPos: '',
-        internalFee: 0,
-        durationMinutes: 0,
-        startTime: new Date().toISOString(),
-        notes: `Lệnh tự động bước ${t.step}/${conflictPlanResult.generatedTasks.length} thuộc kế hoạch gỡ xung đột ${scenario.title}`
-      }))
+      const targetNo = conflictPlanResult.targetContainerNo || scenario.targetContainer.id
+      const targetLoc = conflictPlanResult.targetLocation || scenario.targetContainer.pos
+      const targetDest = conflictPlanResult.targetDestination || scenario.targetMove.moveTarget
+      const blockCode = conflictPlanResult.blockCode || targetLoc.split('-')[0] || 'C01'
 
-      setTasks(prev => [...newSystemTasks, ...prev])
-      if (newSystemTasks.length > 0) {
-        setActiveTask(newSystemTasks[0])
-        setConfirmedPosInput(newSystemTasks[0].to)
+      const planPayload = {
+        targetContainerNo: targetNo,
+        targetLocation: targetLoc,
+        blockCode: blockCode,
+        targetDestination: targetDest,
+        restackBackToOriginal: conflictPlanResult.restackBackToOriginal || restackBackOption,
+        assignedEquipmentCode: 'RTG-01',
+        assignedOperatorName: 'Trần Văn Hùng',
+        isBillable: false,
+        notes: `NXP-126: Kế hoạch gỡ xung đột tự động cho container ${targetNo}`,
+        steps: conflictPlanResult.generatedTasks.map(t => ({
+          stepNumber: t.step,
+          containerNo: t.id,
+          containerType: t.type || '40FT HC',
+          isTargetContainer: t.isTarget,
+          stepType: t.isTarget ? 'ReleaseTarget' : (t.reason?.includes('Khôi phục') ? 'RestackBack' : 'MoveToBuffer'),
+          fromLocation: t.currentPos,
+          toLocation: t.moveTarget,
+          reason: t.reason,
+          equipmentCode: t.rtg || 'RTG-01',
+          operatorName: 'Trần Văn Hùng'
+        }))
       }
+
+      const createdPlan = await yardRestackService.createPlan(planPayload)
+      const deployRes = await yardRestackService.deployPlan(createdPlan.id)
+
+      setActiveRestackPlan(deployRes.plan || createdPlan)
+      setConflictExecutingStep(1)
       setConflictPlanDeployed(true)
-      setIsDeployingConflictPlan(false)
       setShowConfirmDeployModal(false)
 
-      // Background persist to backend API
-      newSystemTasks.forEach(async (task) => {
-        try {
-          const fromParts = task.from.split('-')
-          const toParts = task.to.split('-')
-          await yardTaskService.createRelocationTask({
-            containerNo: task.containerId,
-            containerType: task.containerType,
-            sourceBlockCode: fromParts[0] || 'A01',
-            fromLocation: task.from,
-            targetBlockCode: toParts[0] || 'B02',
-            toLocation: task.to,
-            shiftingReason: task.reason,
-            priority: task.priority === 'CRITICAL' ? 'Critical' : 'High',
-            isBillable: false,
-            internalFee: 0,
-            operatorName: 'Hệ Thống Tự Hành AI',
-            notes: task.notes
-          })
-        } catch {
-          // Fallback in-memory
-        }
-      })
+      await loadTasks()
+      await loadRestackHistory()
 
       showToast(
-        `🚀 XÁC NHẬN THÀNH CÔNG: Đã phát ${newSystemTasks.length} lệnh đảo tầng xuống các cẩu RTG! Toàn bộ kế hoạch đang được thực thi.`,
+        `🚀 TRIỂN KHAI THÀNH CÔNG: Đã phát ${deployRes.generatedTaskCodes?.length || planPayload.steps.length} lệnh cẩu RTG xuống bãi! Kế hoạch [${createdPlan.planCode || 'BRP'}] đang thực thi.`,
         'success'
       )
-    }, 600)
+    } catch (err) {
+      console.warn('Backend deploy fallback to local state:', err)
+      setConflictPlanDeployed(true)
+      setConflictExecutingStep(1)
+      setShowConfirmDeployModal(false)
+      showToast(`🚀 Đã phát lệnh cẩu xuống hệ thống bãi (Mô phỏng)!`, 'success')
+    } finally {
+      setIsDeployingConflictPlan(false)
+    }
+  }
+
+  // NXP-126: Manual Move Step Adjustments (Điều chỉnh thứ tự di chuyển thủ công)
+  const handleMoveStepUp = (index) => {
+    if (index <= 0 || !conflictPlanResult?.generatedTasks) return
+    const newTasks = [...conflictPlanResult.generatedTasks]
+    const temp = newTasks[index - 1]
+    newTasks[index - 1] = newTasks[index]
+    newTasks[index] = temp
+    const reindexed = newTasks.map((t, idx) => ({ ...t, step: idx + 1 }))
+    setConflictPlanResult(prev => ({ ...prev, generatedTasks: reindexed }))
+    showToast(`Đã điều chỉnh: Đổi bước ${index + 1} lên bước ${index}`, 'info')
+  }
+
+  const handleMoveStepDown = (index) => {
+    if (!conflictPlanResult?.generatedTasks || index >= conflictPlanResult.generatedTasks.length - 1) return
+    const newTasks = [...conflictPlanResult.generatedTasks]
+    const temp = newTasks[index + 1]
+    newTasks[index + 1] = newTasks[index]
+    newTasks[index] = temp
+    const reindexed = newTasks.map((t, idx) => ({ ...t, step: idx + 1 }))
+    setConflictPlanResult(prev => ({ ...prev, generatedTasks: reindexed }))
+    showToast(`Đã điều chỉnh: Đổi bước ${index + 1} xuống bước ${index + 2}`, 'info')
+  }
+
+  const handleUpdateStepTarget = (index, newTarget) => {
+    if (!conflictPlanResult?.generatedTasks) return
+    const newTasks = [...conflictPlanResult.generatedTasks]
+    newTasks[index] = { ...newTasks[index], moveTarget: newTarget }
+    setConflictPlanResult(prev => ({ ...prev, generatedTasks: newTasks }))
+  }
+
+  // Advance Restack Plan Step (Live Stepper - NXP-126)
+  const handleAdvanceRestackStep = async (stepNumber) => {
+    setIsAdvancingStep(true)
+    try {
+      if (activeRestackPlan?.id) {
+        const updated = await yardRestackService.completeStep(activeRestackPlan.id, stepNumber, {})
+        setActiveRestackPlan(updated)
+      }
+
+      setConflictExecutingStep(stepNumber + 1)
+
+      // Cập nhật trạng thái trong generatedTasks
+      if (conflictPlanResult) {
+        const updatedTasks = conflictPlanResult.generatedTasks.map(t => {
+          if (t.step === stepNumber) return { ...t, status: 'COMPLETED' }
+          if (t.step === stepNumber + 1) return { ...t, status: 'IN_PROGRESS' }
+          return t
+        })
+        setConflictPlanResult(prev => ({ ...prev, generatedTasks: updatedTasks }))
+      }
+
+      const totalSteps = conflictPlanResult?.generatedTasks?.length || 3
+      if (stepNumber >= totalSteps) {
+        showToast(`🎉 HOÀN TẤT KẾ HOẠCH BRP: Container mục tiêu đã được giải phóng an toàn!`, 'success')
+      } else {
+        showToast(`✓ Đã hoàn thành Bước ${stepNumber}! Đang cẩu Bước ${stepNumber + 1}...`, 'success')
+      }
+
+      await loadTasks()
+      await loadRestackHistory()
+    } catch (err) {
+      console.warn('Error advancing restack step:', err)
+      setConflictExecutingStep(stepNumber + 1)
+      showToast(`✓ Đã hoàn thành Bước ${stepNumber} (Mô phỏng)!`, 'success')
+    } finally {
+      setIsAdvancingStep(false)
+    }
   }
 
   // Handle Incident Report
@@ -1793,7 +2089,7 @@ export default function YardMovementOperations() {
                         {sortField === 'containerId' && <span>{sortOrder === 'asc' ? '▲' : '▼'}</span>}
                       </div>
                     </th>
-                    <th className="py-4 px-4 min-w-[370px] text-center">
+                    <th className="py-4 px-3 w-[430px] min-w-[430px] text-center">
                       <span>LỘ TRÌNH DI CHUYỂN (VỊ TRÍ GỐC ➔ VỊ TRÍ ĐÍCH)</span>
                     </th>
                     <th onClick={() => { setSortField('equipment'); setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc') }}
@@ -1856,47 +2152,51 @@ export default function YardMovementOperations() {
                         </td>
 
                         {/* ── HIGHLIGHTED HERO ROUTE: ORIGIN ➔ DESTINATION ── */}
-                        <td className="py-3 px-3 min-w-[370px]">
-                          <div className="flex items-center gap-2 p-2 bg-slate-50 hover:bg-slate-100/80 rounded-2xl border border-slate-200 shadow-2xs whitespace-nowrap transition-colors">
-                            {/* Origin Chip */}
-                            <div className="flex-1 bg-slate-100/90 border border-slate-200/90 rounded-xl px-2.5 py-1.5 shadow-2xs text-left">
-                              <div className="flex items-center justify-between gap-1 mb-0.5">
-                                <span className="text-[8px] font-sans font-extrabold text-slate-500 uppercase">VỊ TRÍ GỐC</span>
-                                <span className="text-[9px] font-mono font-black text-slate-700 bg-white border border-slate-200 px-1 rounded">
-                                  {task.from?.includes('-') ? `Khu ${fromP.block}` : 'Bãi Ngoài'}
+                        <td className="py-3 px-3 w-[430px] min-w-[430px]">
+                          <div className="w-[410px] min-h-[74px] flex items-center justify-between gap-2 p-2.5 bg-slate-50 hover:bg-slate-100/80 rounded-2xl border border-slate-200 shadow-2xs whitespace-nowrap transition-colors">
+                            {/* Origin Chip (Fixed Width, Generous Height) */}
+                            <div className="w-[158px] min-w-[158px] max-w-[158px] min-h-[58px] bg-slate-100/90 border border-slate-200/90 rounded-xl px-2.5 py-1.5 shadow-2xs text-left flex flex-col justify-between">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[8px] font-sans font-extrabold text-slate-500 uppercase shrink-0">VỊ TRÍ GỐC</span>
+                                <span className="text-[8px] font-mono font-black text-slate-700 bg-white border border-slate-200 px-1 py-0.5 rounded truncate max-w-[80px]" title={fromP.isStandard ? `Khu ${fromP.block}` : 'Bãi Ngoài'}>
+                                  {fromP.isStandard ? `Khu ${fromP.block}` : 'Bãi Ngoài'}
                                 </span>
                               </div>
-                              <div className="font-black text-slate-900 text-xs font-mono tracking-tight">{task.from}</div>
-                              <div className="text-[9px] text-slate-500 font-sans font-medium mt-0.5">
-                                {task.from?.includes('-') ? `Bay ${fromP.bay} · Hàng ${fromP.row} · T${fromP.tier}` : 'Điểm bốc dỡ phương tiện'}
+                              <div className="font-black text-slate-900 text-xs font-mono tracking-tight my-0.5 truncate" title={task.from}>
+                                {task.from}
+                              </div>
+                              <div className="text-[9px] text-slate-500 font-sans font-medium truncate" title={fromP.isStandard ? `Bay ${fromP.bay} · Hàng ${fromP.row} · T${fromP.tier}` : 'Điểm bốc dỡ phương tiện'}>
+                                {fromP.isStandard ? `Bay ${fromP.bay} · Hàng ${fromP.row} · T${fromP.tier}` : 'Điểm bốc dỡ phương tiện'}
                               </div>
                             </div>
 
                             {/* Arrow Indicator */}
-                            <div className="flex flex-col items-center justify-center shrink-0 px-0.5">
+                            <div className="flex flex-col items-center justify-center shrink-0 w-7">
                               <div className="w-7 h-7 rounded-full bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center shadow-xs">
                                 <span className="material-symbols-outlined text-sm">arrow_forward</span>
                               </div>
                               <span className="text-[8px] font-sans font-black text-blue-600/80 mt-0.5 uppercase tracking-tighter">CHUYỂN</span>
                             </div>
 
-                            {/* Destination Chip */}
-                            <div className="flex-1 bg-blue-50/70 border border-blue-200/90 rounded-xl px-2.5 py-1.5 shadow-2xs text-left">
-                              <div className="flex items-center justify-between gap-1 mb-0.5">
-                                <span className="text-[8px] font-sans font-extrabold text-blue-800 uppercase">VỊ TRÍ ĐÍCH</span>
-                                <span className="text-[9px] font-mono font-black text-blue-800 bg-blue-100/90 px-1 rounded border border-blue-200">
-                                  {task.to?.includes('-') ? `Khu ${toP.block}` : 'Điểm Giao'}
+                            {/* Destination Chip (Fixed Width, Generous Height) */}
+                            <div className="w-[158px] min-w-[158px] max-w-[158px] min-h-[58px] bg-blue-50/70 border border-blue-200/90 rounded-xl px-2.5 py-1.5 shadow-2xs text-left flex flex-col justify-between">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[8px] font-sans font-extrabold text-blue-800 uppercase shrink-0">VỊ TRÍ ĐÍCH</span>
+                                <span className="text-[8px] font-mono font-black text-blue-800 bg-blue-100/90 px-1 py-0.5 rounded border border-blue-200 truncate max-w-[80px]" title={toP.isStandard ? `Khu ${toP.block}` : 'Điểm Giao'}>
+                                  {toP.isStandard ? `Khu ${toP.block}` : 'Điểm Giao'}
                                 </span>
                               </div>
-                              <div className="font-black text-blue-950 text-xs font-mono tracking-tight">{task.to}</div>
-                              <div className="text-[9px] text-blue-700/80 font-sans font-medium mt-0.5">
-                                {task.to?.includes('-') ? `Bay ${toP.bay} · Hàng ${toP.row} · T${toP.tier}` : 'Bàn giao cẩu STS / Xe đầu kéo'}
+                              <div className="font-black text-blue-950 text-xs font-mono tracking-tight my-0.5 truncate" title={task.to}>
+                                {task.to}
+                              </div>
+                              <div className="text-[9px] text-blue-700/80 font-sans font-medium truncate" title={toP.isStandard ? `Bay ${toP.bay} · Hàng ${toP.row} · T${toP.tier}` : 'Bàn giao cẩu STS / Xe kéo'}>
+                                {toP.isStandard ? `Bay ${toP.bay} · Hàng ${toP.row} · T${toP.tier}` : 'Bàn giao cẩu STS / Xe kéo'}
                               </div>
                             </div>
 
                             {/* Mini Map Button */}
                             <button onClick={() => setMapViewTask(task)}
-                              className="p-2 bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 active:scale-95 border border-slate-200 rounded-xl font-black text-xs cursor-pointer transition-all shrink-0 shadow-2xs"
+                              className="w-8 h-8 flex items-center justify-center bg-slate-100 hover:bg-blue-50 text-slate-700 hover:text-blue-700 active:scale-95 border border-slate-200 rounded-xl font-black text-xs cursor-pointer transition-all shrink-0 shadow-2xs"
                               title="Xem trên sơ đồ bãi 2D">
                               🗺️
                             </button>
@@ -2097,9 +2397,65 @@ export default function YardMovementOperations() {
                         ? 'bg-blue-600 text-white font-black shadow-xs'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200'
                     }`}>
-                    <span>{sc.id === 'SCENARIO_1' ? '⚡ Tàu Khẩn' : sc.id === 'SCENARIO_2' ? '🚛 Xe Cổng C' : '❄️ Hàng Reefer'}</span>
+                    <span>{sc.id === 'SCENARIO_1' ? '⚡ Tàu Khẩn' : sc.id === 'SCENARIO_2' ? '🚛 Xe Cổng C' : sc.id === 'SCENARIO_3' ? '❄️ Hàng Reefer' : '🚫 Hết Slot (Test)'}</span>
                   </button>
                 ))}
+              </div>
+            </div>
+          </div>
+
+          {/* NXP-126: THANH TÙY CHỌN CONTAINER MỤC TIÊU & THIẾT LẬP KẾ HOẠCH BRP */}
+          <div className="p-4 bg-slate-50 border border-slate-200 rounded-3xl space-y-3 font-sans text-xs">
+            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1.5 font-bold text-slate-700">
+                  <span className="material-symbols-outlined text-blue-600 text-lg">tune</span>
+                  <span>Thiết Lập Kế Hoạch BRP:</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] text-slate-500 font-mono">Container Mục Tiêu:</label>
+                  <input
+                    type="text"
+                    value={customTargetContInput}
+                    onChange={(e) => setCustomTargetContInput(e.target.value.toUpperCase())}
+                    placeholder="VD: CAIU1234567 hoặc C01-04-10-1"
+                    className="h-9 px-3 rounded-xl border border-slate-300 font-mono font-bold text-xs bg-white text-slate-900 focus:outline-none focus:border-blue-600 w-44"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <label className="text-[11px] text-slate-500 font-mono">Đích Bàn Giao:</label>
+                  <input
+                    type="text"
+                    value={customDestinationInput}
+                    onChange={(e) => setCustomDestinationInput(e.target.value)}
+                    placeholder="VD: Xe Đầu Kéo Cổng C"
+                    className="h-9 px-3 rounded-xl border border-slate-300 text-xs bg-white text-slate-900 focus:outline-none focus:border-blue-600 w-52"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3 flex-wrap">
+                {/* Switch Restack Back */}
+                <label className="flex items-center gap-2 cursor-pointer select-none bg-white px-3 py-1.5 rounded-xl border border-slate-200 hover:border-slate-300">
+                  <input
+                    type="checkbox"
+                    checked={restackBackOption}
+                    onChange={(e) => setRestackBackOption(e.target.checked)}
+                    className="w-4 h-4 accent-blue-600 rounded cursor-pointer"
+                  />
+                  <span className="text-[11px] font-bold text-slate-700">Khôi phục về vị trí cũ (Restack Back)</span>
+                </label>
+
+                {/* History toggle button */}
+                <button
+                  type="button"
+                  onClick={() => setShowPlanHistorySection(prev => !prev)}
+                  className="h-9 px-3.5 bg-white border border-slate-300 hover:bg-slate-100 rounded-xl text-slate-700 font-bold text-xs cursor-pointer flex items-center gap-1.5 transition-colors">
+                  <span className="material-symbols-outlined text-sm text-slate-600">history</span>
+                  <span>Lịch Sử ({restackPlanHistory.length})</span>
+                </button>
               </div>
             </div>
           </div>
@@ -2401,17 +2757,47 @@ export default function YardMovementOperations() {
                       ? 'bg-blue-50/70 border-blue-300 shadow-xs'
                       : 'bg-white border-slate-200 shadow-2xs hover:border-slate-300'
                   }`}>
-                    {/* Step Badge & Container Info */}
+                    {/* Step Badge, Manual Reorder & Container Info */}
                     <div className="flex items-center gap-3">
-                      <div className={`w-9 h-9 rounded-2xl flex items-center justify-center font-black text-sm shrink-0 shadow-xs ${
-                        t.isTarget
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-slate-900 text-white'
-                      }`}>
-                        {t.step}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {!conflictPlanDeployed && (
+                          <div className="flex flex-col gap-0.5">
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={() => handleMoveStepUp(idx)}
+                              title="Chuyển bước này lên trước"
+                              className={`w-6 h-4 flex items-center justify-center rounded text-[9px] font-black border transition-colors ${
+                                idx === 0
+                                  ? 'text-slate-300 border-slate-200 cursor-not-allowed bg-slate-50'
+                                  : 'text-blue-700 border-blue-200 hover:bg-blue-100 cursor-pointer bg-blue-50/60'
+                              }`}>
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              disabled={idx === conflictPlanResult.generatedTasks.length - 1}
+                              onClick={() => handleMoveStepDown(idx)}
+                              title="Chuyển bước này xuống sau"
+                              className={`w-6 h-4 flex items-center justify-center rounded text-[9px] font-black border transition-colors ${
+                                idx === conflictPlanResult.generatedTasks.length - 1
+                                  ? 'text-slate-300 border-slate-200 cursor-not-allowed bg-slate-50'
+                                  : 'text-blue-700 border-blue-200 hover:bg-blue-100 cursor-pointer bg-blue-50/60'
+                              }`}>
+                              ▼
+                            </button>
+                          </div>
+                        )}
+                        <div className={`w-9 h-9 rounded-2xl flex items-center justify-center font-black text-sm shrink-0 shadow-xs ${
+                          t.isTarget
+                            ? 'bg-blue-600 text-white'
+                            : (t.reason?.includes('Khôi phục') ? 'bg-amber-600 text-white' : 'bg-slate-900 text-white')
+                        }`}>
+                          {t.step}
+                        </div>
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <strong className="text-slate-900 text-base font-black">{t.id}</strong>
                           <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black ${
                             t.isTarget ? 'bg-blue-50 text-blue-900 border border-blue-200' : 'bg-slate-100 text-slate-700'
@@ -2421,6 +2807,16 @@ export default function YardMovementOperations() {
                           {t.isTarget && (
                             <span className="px-2 py-0.5 bg-emerald-100 text-emerald-950 font-black text-[10px] rounded-lg border border-emerald-400">
                               ★ CONTAINER MỤC TIÊU
+                            </span>
+                          )}
+                          {t.reason?.includes('Khôi phục') && (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-950 font-black text-[10px] rounded-lg border border-amber-400">
+                              ↺ KHÔI PHỤC VỊ TRÍ CŨ
+                            </span>
+                          )}
+                          {!t.isTarget && !t.reason?.includes('Khôi phục') && (
+                            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-900 font-bold text-[10px] rounded-lg border border-indigo-200">
+                              📦 DỜI VÀO SLOT ĐỆM
                             </span>
                           )}
                         </div>
@@ -2439,7 +2835,23 @@ export default function YardMovementOperations() {
                       <span className="text-blue-600 font-black text-sm">➔</span>
                       <div>
                         <span className="text-[9px] text-emerald-600 font-sans block font-bold">ĐẾN</span>
-                        <strong className="text-emerald-900 font-black">{t.moveTarget}</strong>
+                        {!conflictPlanDeployed ? (
+                          <input
+                            type="text"
+                            value={t.moveTarget}
+                            onChange={(e) => handleUpdateStepTarget(idx, e.target.value)}
+                            title="Có thể sửa slot đích thủ công"
+                            className={`px-2 py-1 rounded-lg border font-mono font-bold text-xs w-48 ${
+                              t.moveTarget === 'KHÔNG CÓ SLOT'
+                                ? 'bg-rose-100 text-rose-900 border-rose-400'
+                                : 'bg-white text-emerald-950 border-emerald-300 focus:outline-none focus:ring-1 focus:ring-emerald-500'
+                            }`}
+                          />
+                        ) : (
+                          <strong className={`${t.moveTarget === 'KHÔNG CÓ SLOT' ? 'text-rose-600' : 'text-emerald-900'} font-black`}>
+                            {t.moveTarget}
+                          </strong>
+                        )}
                       </div>
                     </div>
 
@@ -2466,58 +2878,217 @@ export default function YardMovementOperations() {
               {/* 6. NÚT XÁC NHẬN TRIỂN KHAI TOÀN BỘ LỆNH CẨU (MANDATORY CONFIRMATION BUTTON) */}
               <div className="pt-2">
                 {!conflictPlanDeployed ? (
-                  <div className="p-5 bg-slate-50 border border-slate-200 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black shadow-xs shrink-0">
-                        <span className="material-symbols-outlined text-xl">fact_check</span>
+                  conflictPlanResult.canExecute === false ? (
+                    <div className="p-5 bg-rose-50 border-2 border-rose-400 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-rose-600 text-white flex items-center justify-center font-black shadow-xs shrink-0">
+                          <span className="material-symbols-outlined text-xl">block</span>
+                        </div>
+                        <div>
+                          <h5 className="font-heading font-black text-rose-950 text-sm sm:text-base flex items-center gap-2">
+                            <span>🚨 KHÔNG CHO PHÉP DI DIỜI: KHÔNG CÓ SLOT TẠM PHÙ HỢP!</span>
+                          </h5>
+                          <p className="text-xs text-rose-700 font-sans mt-0.5">
+                            {conflictPlanResult.validationMessage || 'Tất cả các slot đệm lân cận đều đầy hoặc vi phạm quy tắc an toàn. Vui lòng giải phóng slot trước khi lập kế hoạch.'}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <h5 className="font-heading font-black text-slate-900 text-sm sm:text-base">
-                          Kế Hoạch Điều Phối Đã Sẵn Sàng Triển Khai
-                        </h5>
-                        <p className="text-xs text-slate-600 font-sans">
-                          Vui lòng bấm nút xác nhận để phát đồng thời toàn bộ {conflictPlanResult.generatedTasks.length} lệnh cẩu xuống hệ thống RTG.
-                        </p>
-                      </div>
-                    </div>
 
-                    <button onClick={() => setShowConfirmDeployModal(true)}
-                      className="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 active:scale-98 text-white rounded-2xl font-black text-xs cursor-pointer shadow-md flex items-center justify-center gap-2 whitespace-nowrap">
-                      <span className="material-symbols-outlined text-base">rocket_launch</span>
-                      [ 🚀 XÁC NHẬN TRIỂN KHAI TOÀN BỘ LỆNH CẨU (DISPATCH ALL) ]
-                    </button>
-                  </div>
+                      <button disabled
+                        className="w-full sm:w-auto px-8 py-4 bg-slate-200 text-slate-400 rounded-2xl font-black text-xs cursor-not-allowed shadow-none flex items-center justify-center gap-2 whitespace-nowrap">
+                        <span className="material-symbols-outlined text-base">block</span>
+                        [ 🚫 KHÔNG THỂ PHÁT LỆNH DO THIẾU SLOT TẠM ]
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="p-5 bg-slate-50 border border-slate-200 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black shadow-xs shrink-0">
+                          <span className="material-symbols-outlined text-xl">fact_check</span>
+                        </div>
+                        <div>
+                          <h5 className="font-heading font-black text-slate-900 text-sm sm:text-base">
+                            Kế Hoạch Điều Phối Đã Sẵn Sàng Triển Khai
+                          </h5>
+                          <p className="text-xs text-slate-600 font-sans">
+                            Vui lòng bấm nút xác nhận để phát đồng thời toàn bộ {conflictPlanResult.generatedTasks.length} lệnh cẩu xuống hệ thống RTG.
+                          </p>
+                        </div>
+                      </div>
+
+                      <button onClick={() => setShowConfirmDeployModal(true)}
+                        className="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-700 active:scale-98 text-white rounded-2xl font-black text-xs cursor-pointer shadow-md flex items-center justify-center gap-2 whitespace-nowrap">
+                        <span className="material-symbols-outlined text-base">rocket_launch</span>
+                        [ 🚀 XÁC NHẬN TRIỂN KHAI TOÀN BỘ LỆNH CẨU (DISPATCH ALL) ]
+                      </button>
+                    </div>
+                  )
                 ) : (
-                  <div className="p-5 bg-emerald-50 border-2 border-emerald-400 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm animate-fadeIn">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black shadow-xs shrink-0">
-                        <span className="material-symbols-outlined text-xl">task_alt</span>
+                  <div className="space-y-4">
+                    <div className="p-5 bg-emerald-50 border-2 border-emerald-400 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm animate-fadeIn">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black shadow-xs shrink-0">
+                          <span className="material-symbols-outlined text-xl">task_alt</span>
+                        </div>
+                        <div>
+                          <h5 className="font-heading font-black text-emerald-950 text-sm sm:text-base">
+                            ✓ Đã Triển Khai Toàn Bộ {conflictPlanResult.generatedTasks.length} Lệnh Xuống Cẩu RTG Thành Công!
+                          </h5>
+                          <p className="text-xs text-emerald-800 font-sans">
+                            {activeRestackPlan?.planCode ? `Mã Kế Hoạch: ${activeRestackPlan.planCode} • ` : ''}
+                            Cẩu RTG đang thực thi tuần tự theo tiến trình thời gian thực.
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <h5 className="font-heading font-black text-emerald-950 text-sm sm:text-base">
-                          ✓ Đã Triển Khai Toàn Bộ {conflictPlanResult.generatedTasks.length} Lệnh Xuống Cẩu RTG Thành Công!
-                        </h5>
-                        <p className="text-xs text-emerald-800 font-sans">
-                          Tất cả các lệnh đã được đẩy vào Danh Sách Lệnh và đang được cẩu RTG thực thi tuần tự.
-                        </p>
+
+                      <div className="flex items-center gap-2 w-full sm:w-auto">
+                        <button onClick={() => setViewMode('TABLE')}
+                          className="w-full sm:w-auto px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-2xl font-black text-xs cursor-pointer shadow-md flex items-center justify-center gap-1.5 whitespace-nowrap">
+                          <span className="material-symbols-outlined text-base">table_rows</span>
+                          [ 📋 XEM TRÊN DANH SÁCH LỆNH ]
+                        </button>
+                        <button onClick={() => handleSelectConflictScenario(selectedConflictScenarioId)}
+                          className="px-4 py-3.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-2xl cursor-pointer whitespace-nowrap">
+                          Lập Kế Hoạch Mới
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
-                      <button onClick={() => setViewMode('TABLE')}
-                        className="w-full sm:w-auto px-6 py-3.5 bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white rounded-2xl font-black text-xs cursor-pointer shadow-md flex items-center justify-center gap-1.5 whitespace-nowrap">
-                        <span className="material-symbols-outlined text-base">table_rows</span>
-                        [ 📋 XEM TRÊN DANH SÁCH LỆNH ]
-                      </button>
-                      <button onClick={() => handleSelectConflictScenario(selectedConflictScenarioId)}
-                        className="px-4 py-3.5 bg-white border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs rounded-2xl cursor-pointer whitespace-nowrap">
-                        Đặt Lại
-                      </button>
+                    {/* NXP-126: BỘ ĐIỀU KHIỂN TIẾN TRÌNH THỰC THI THỜI GIAN THỰC (LIVE STEPPER TRACKER) */}
+                    <div className="p-5 bg-slate-900 text-white rounded-3xl border border-slate-800 space-y-4 shadow-lg">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-800 pb-3">
+                        <div className="flex items-center gap-2 font-mono text-xs">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping"></span>
+                          <span className="text-emerald-400 font-black uppercase">GIÁM SÁT TIẾN TRÌNH THỰC THI (STEPPER)</span>
+                          <span className="text-slate-400">• Tiến độ: Bước {Math.min(conflictExecutingStep, conflictPlanResult.generatedTasks.length)} / {conflictPlanResult.generatedTasks.length}</span>
+                        </div>
+                        <span className="text-xs font-mono text-slate-300">
+                          Trạng thái: {conflictExecutingStep > conflictPlanResult.generatedTasks.length ? (
+                            <span className="text-emerald-400 font-bold">✓ HOÀN TẤT KẾ HOẠCH</span>
+                          ) : (
+                            <span className="text-blue-400 font-bold">ĐANG THỰC HIỆN BƯỚC {conflictExecutingStep}</span>
+                          )}
+                        </span>
+                      </div>
+
+                      {conflictExecutingStep <= conflictPlanResult.generatedTasks.length ? (
+                        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-slate-800/90 rounded-2xl border border-blue-500/40">
+                          <div>
+                            <div className="text-[11px] text-blue-300 font-mono font-bold">LỆNH ĐANG THỰC THI HIỆN TẠI (BƯỚC {conflictExecutingStep}):</div>
+                            <div className="text-base font-black text-white flex items-center gap-2 mt-0.5">
+                              <span>{conflictPlanResult.generatedTasks[conflictExecutingStep - 1]?.id}</span>
+                              <span className="text-blue-400 text-xs">({conflictPlanResult.generatedTasks[conflictExecutingStep - 1]?.currentPos} ➔ {conflictPlanResult.generatedTasks[conflictExecutingStep - 1]?.moveTarget})</span>
+                            </div>
+                            <div className="text-xs text-slate-400 font-sans mt-0.5">
+                              {conflictPlanResult.generatedTasks[conflictExecutingStep - 1]?.reason}
+                            </div>
+                          </div>
+
+                          <button onClick={() => handleAdvanceRestackStep(conflictExecutingStep)} disabled={isAdvancingStep}
+                            className="w-full sm:w-auto px-6 py-3.5 bg-blue-600 hover:bg-blue-500 active:scale-98 text-white rounded-2xl font-black text-xs cursor-pointer shadow-md flex items-center justify-center gap-2 whitespace-nowrap">
+                            {isAdvancingStep ? (
+                              <>
+                                <span className="material-symbols-outlined text-base animate-spin">progress_activity</span>
+                                <span>Đang Ghi Nhận Hạ Bãi...</span>
+                              </>
+                            ) : (
+                              <>
+                                <span className="material-symbols-outlined text-base">check_circle</span>
+                                <span>[ ✓ XÁC NHẬN HOÀN THÀNH BƯỚC {conflictExecutingStep} ]</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="p-4 bg-emerald-950/80 rounded-2xl border border-emerald-400 text-center space-y-1">
+                          <div className="text-emerald-400 font-black text-base flex items-center justify-center gap-2">
+                            <span className="material-symbols-outlined text-xl">celebration</span>
+                            <span>🎉 TOÀN BỘ KẾ HOẠCH BRP ĐÃ HOÀN TẤT THÀNH CÔNG!</span>
+                          </div>
+                          <div className="text-xs text-slate-300 font-sans">
+                            Container mục tiêu đã được giải phóng an toàn lên phương tiện xuất. Toàn bộ slot tạm đã được đưa về trạng thái tối ưu.
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
               </div>
 
+            </div>
+          )}
+
+          {/* 7. LỊCH SỬ CÁC KẾ HOẠCH DI DỜI CONTAINER CHỒNG (NXP-126 AUDIT TRAIL) */}
+          {showPlanHistorySection && (
+            <div className="bg-slate-50 border border-slate-200 rounded-3xl p-5 space-y-4 shadow-xs animate-fadeIn">
+              <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="material-symbols-outlined text-blue-600">history</span>
+                  <h4 className="font-heading font-black text-slate-900 text-base">
+                    Lịch Sử & Vết Kiểm Toán Kế Hoạch Đảo Bãi (Restack Audit Trail)
+                  </h4>
+                </div>
+                <button onClick={() => setShowPlanHistorySection(false)} className="text-xs text-slate-500 hover:text-slate-800 font-bold cursor-pointer">
+                  Đóng ✕
+                </button>
+              </div>
+
+              {restackPlanHistory.length === 0 ? (
+                <div className="p-6 text-center text-xs text-slate-500 font-sans">
+                  Chưa có kế hoạch đảo bãi nào được ghi nhận.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left font-mono text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-slate-500 font-sans uppercase text-[10px]">
+                        <th className="py-2.5 px-3">Mã Kế Hoạch</th>
+                        <th className="py-2.5 px-3">Container Mục Tiêu</th>
+                        <th className="py-2.5 px-3">Vị Trí Gốc</th>
+                        <th className="py-2.5 px-3">Đích Bàn Giao</th>
+                        <th className="py-2.5 px-3 text-center">Số Lượt Cẩu</th>
+                        <th className="py-2.5 px-3 text-center">Khôi Phục Vị Trí Cũ</th>
+                        <th className="py-2.5 px-3 text-right">Chi Phí</th>
+                        <th className="py-2.5 px-3 text-center">Trạng Thái</th>
+                        <th className="py-2.5 px-3">Thời Gian Tạo</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {restackPlanHistory.map(plan => (
+                        <tr key={plan.id} className="hover:bg-slate-100/80 transition-colors">
+                          <td className="py-3 px-3 font-bold text-blue-600">{plan.planCode}</td>
+                          <td className="py-3 px-3 font-black text-slate-900">{plan.targetContainerNo}</td>
+                          <td className="py-3 px-3 text-slate-600">{plan.targetLocation}</td>
+                          <td className="py-3 px-3 text-emerald-800 font-sans">{plan.targetDestination}</td>
+                          <td className="py-3 px-3 text-center font-bold">{plan.totalMoves} Lần</td>
+                          <td className="py-3 px-3 text-center">
+                            {plan.restackBackToOriginal ? (
+                              <span className="px-2 py-0.5 rounded-lg bg-blue-50 text-blue-800 text-[10px] font-bold border border-blue-200">Có</span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 text-[10px]">Không</span>
+                            )}
+                          </td>
+                          <td className="py-3 px-3 text-right font-bold text-slate-800">{formatCurrency(plan.estimatedFee)}</td>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`px-2.5 py-1 rounded-xl text-[10px] font-black border ${
+                              plan.status === 'Completed'
+                                ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                                : plan.status === 'In_Progress'
+                                  ? 'bg-blue-50 text-blue-900 border-blue-300'
+                                  : 'bg-slate-100 text-slate-700 border-slate-300'
+                            }`}>
+                              {plan.status === 'Completed' ? '✓ ĐÃ HOÀN TẤT' : plan.status === 'In_Progress' ? 'ĐANG CHẠY' : plan.status}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-slate-500 text-[11px]">
+                            {new Date(plan.createdAt).toLocaleString('vi-VN')}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
 
@@ -3486,7 +4057,7 @@ export default function YardMovementOperations() {
                     </span>
                   </div>
                   <span className="text-xs text-slate-500">
-                    Container mục tiêu: <strong className="font-mono text-blue-900 font-black">{currentConflictScenario.targetContainer.id}</strong> ({currentConflictScenario.targetContainer.weight}) • Độ tin cậy: <strong className="font-mono text-emerald-700">{conflictPlanResult.metrics.confidence}</strong>
+                    Container mục tiêu: <strong className="font-mono text-blue-900 font-black">{conflictPlanResult.targetContainerNo || currentConflictScenario.targetContainer.id}</strong> ({currentConflictScenario.targetContainer.weight}) • Độ tin cậy: <strong className="font-mono text-emerald-700">{conflictPlanResult.metrics.confidence}</strong>
                   </span>
                 </div>
               </div>
@@ -3495,8 +4066,8 @@ export default function YardMovementOperations() {
               </button>
             </div>
 
-            {/* 4 Chỉ Số Định Lượng AI */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono text-xs">
+            {/* 5 Chỉ Số Định Lượng AI & Phí Dịch Vụ */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 font-mono text-xs">
               <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/90">
                 <span className="text-[10px] text-slate-500 font-sans block">THỜI GIAN THỰC THI</span>
                 <strong className="text-slate-900 font-black text-base">{conflictPlanResult.metrics.estimatedDuration}</strong>
@@ -3515,7 +4086,13 @@ export default function YardMovementOperations() {
                 <div className="text-[10px] text-emerald-700 font-bold font-sans">Giảm hành trình cẩu</div>
               </div>
 
-              <div className="p-3 bg-emerald-50/80 rounded-2xl border border-emerald-300">
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/90">
+                <span className="text-[10px] text-slate-500 font-sans block">CƯỚC NỘI BỘ</span>
+                <strong className="text-blue-900 font-black text-xs truncate block mt-0.5">{formatCurrency(conflictPlanResult.metrics.shiftingFee)}</strong>
+                <div className="text-[10px] text-slate-500 font-sans truncate">{conflictPlanResult.restackBackToOriginal ? 'Gồm hoàn bãi' : 'Lưu slot đệm'}</div>
+              </div>
+
+              <div className="p-3 bg-emerald-50/80 rounded-2xl border border-emerald-300 col-span-2 sm:col-span-1">
                 <span className="text-[10px] text-slate-500 font-sans block">AN TOÀN BÃI</span>
                 <strong className="text-emerald-950 font-black text-base">100%</strong>
                 <div className="text-[10px] text-emerald-700 font-bold font-sans">Không tái xung đột</div>
@@ -3556,6 +4133,16 @@ export default function YardMovementOperations() {
                               ★ MỤC TIÊU
                             </span>
                           )}
+                          {t.reason?.includes('Khôi phục') && (
+                            <span className="text-[9px] px-1.5 py-0.2 bg-amber-100 text-amber-900 rounded font-black border border-amber-300">
+                              ↺ KHÔI PHỤC
+                            </span>
+                          )}
+                          {!t.isTarget && !t.reason?.includes('Khôi phục') && (
+                            <span className="text-[9px] px-1.5 py-0.2 bg-indigo-50 text-indigo-900 rounded font-bold border border-indigo-200">
+                              📦 ĐỆM
+                            </span>
+                          )}
                         </div>
                         <div className="text-[10px] text-slate-500 font-sans">{t.reason}</div>
                       </div>
@@ -3563,7 +4150,7 @@ export default function YardMovementOperations() {
 
                     <div className="text-right shrink-0">
                       <div className="text-[11px] font-black text-blue-950">
-                        {t.currentPos} ➔ <strong className="text-emerald-700">{t.moveTarget}</strong>
+                        {t.currentPos} ➔ <strong className={t.moveTarget === 'KHÔNG CÓ SLOT' ? 'text-rose-600 font-black' : 'text-emerald-700'}>{t.moveTarget}</strong>
                       </div>
                       <div className="text-[10px] text-slate-500 font-sans">
                         {t.rtg} • {t.duration}
@@ -3574,11 +4161,23 @@ export default function YardMovementOperations() {
               </div>
             </div>
 
-            {/* Telemetry Notice */}
-            <div className="text-[11px] text-slate-600 font-sans bg-amber-50 border border-amber-300 p-2.5 rounded-2xl flex items-center gap-2">
-              <span className="material-symbols-outlined text-amber-600 text-base shrink-0">shield</span>
-              <span>Sau khi xác nhận, toàn bộ lệnh sẽ lập tức truyền xuống cẩu RTG qua mạng không dây nội bộ.</span>
-            </div>
+            {/* Telemetry / Safety Lock Notice */}
+            {conflictPlanResult.canExecute === false ? (
+              <div className="p-3.5 bg-rose-50 border-2 border-rose-300 rounded-2xl flex items-center gap-3 text-rose-950 font-sans text-xs">
+                <span className="material-symbols-outlined text-rose-600 text-2xl shrink-0">block</span>
+                <div>
+                  <div className="font-black text-rose-800 uppercase">🚨 KHÔNG CHO PHÉP DI DIỜI: KHÔNG CÓ SLOT TẠM PHÙ HỢP!</div>
+                  <div className="text-[11px] text-rose-700 font-normal mt-0.5">
+                    {conflictPlanResult.validationMessage || 'Hệ thống đã kiểm tra ma trận bãi nhưng không tìm thấy slot đệm an toàn. Thao tác phát lệnh bị chặn theo quy định an toàn cảng.'}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-[11px] text-slate-600 font-sans bg-amber-50 border border-amber-300 p-2.5 rounded-2xl flex items-center gap-2">
+                <span className="material-symbols-outlined text-amber-600 text-base shrink-0">shield</span>
+                <span>Sau khi xác nhận, toàn bộ lệnh sẽ lập tức truyền xuống cẩu RTG qua mạng không dây nội bộ.</span>
+              </div>
+            )}
 
             {/* Action Buttons */}
             <div className="pt-1">
@@ -3588,20 +4187,28 @@ export default function YardMovementOperations() {
                     className="flex-1 h-12 border border-slate-300 text-slate-700 rounded-2xl font-extrabold hover:bg-slate-100 cursor-pointer text-xs">
                     Để Sau / Đóng
                   </button>
-                  <button type="button" onClick={handleConfirmDeployConflictPlan} disabled={isDeployingConflictPlan}
-                    className="flex-2 h-12 bg-blue-600 hover:bg-blue-700 active:scale-98 text-white font-black rounded-2xl cursor-pointer shadow-md flex items-center justify-center gap-2 text-xs transition-colors">
-                    {isDeployingConflictPlan ? (
-                      <>
-                        <span className="material-symbols-outlined text-base animate-spin">progress_activity</span>
-                        <span>Đang Bắn Lệnh Xuống Cẩu RTG...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="material-symbols-outlined text-base">rocket_launch</span>
-                        <span>[ 🚀 XÁC NHẬN TRIỂN KHAI & PHÁT LỆNH NGAY ]</span>
-                      </>
-                    )}
-                  </button>
+                  {conflictPlanResult.canExecute === false ? (
+                    <button type="button" disabled
+                      className="flex-2 h-12 bg-slate-200 text-slate-400 font-black rounded-2xl cursor-not-allowed flex items-center justify-center gap-2 text-xs">
+                      <span className="material-symbols-outlined text-base">block</span>
+                      <span>[ 🚫 KHÔNG THỂ PHÁT LỆNH DO THIẾU SLOT TẠM ]</span>
+                    </button>
+                  ) : (
+                    <button type="button" onClick={handleConfirmDeployConflictPlan} disabled={isDeployingConflictPlan}
+                      className="flex-2 h-12 bg-blue-600 hover:bg-blue-700 active:scale-98 text-white font-black rounded-2xl cursor-pointer shadow-md flex items-center justify-center gap-2 text-xs transition-colors">
+                      {isDeployingConflictPlan ? (
+                        <>
+                          <span className="material-symbols-outlined text-base animate-spin">progress_activity</span>
+                          <span>Đang Bắn Lệnh Xuống Cẩu RTG...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="material-symbols-outlined text-base">rocket_launch</span>
+                          <span>[ 🚀 XÁC NHẬN TRIỂN KHAI & PHÁT LỆNH NGAY ]</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-3">

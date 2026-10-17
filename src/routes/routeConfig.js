@@ -170,6 +170,7 @@ export const routeConfig = [
   },
   {
     path: '/dispatch',
+    title: 'Lệnh điều phối xe',
     allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {

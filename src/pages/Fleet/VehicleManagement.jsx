@@ -378,7 +378,7 @@ export default function VehicleManagement() {
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="Tìm mã xe, biển số, tài xế, container..."
-            className="w-full pl-9 pr-4 py-2 bg-fog border border-chalk rounded-xl text-xs font-medium focus:outline-none focus:border-signal-orange"
+            className="w-full pl-9 pr-4 py-2 bg-fog border border-chalk rounded-xl text-xs font-medium focus:outline-none focus:border-signal-orange focus:ring-0"
           />
         </div>
 
@@ -414,7 +414,7 @@ export default function VehicleManagement() {
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
-            className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-xs font-bold text-carbon focus:outline-none focus:border-signal-orange"
+            className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-xs font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
           >
             <option value="All">Tất cả Trạng thái</option>
             <option value="Available">🟢 Sẵn sàng (Available)</option>
@@ -429,7 +429,7 @@ export default function VehicleManagement() {
           <select
             value={locationFilter}
             onChange={e => setLocationFilter(e.target.value)}
-            className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-xs font-bold text-carbon focus:outline-none focus:border-signal-orange"
+            className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-xs font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
           >
             <option value="All">Tất cả Vị trí</option>
             <option value="Cổng">Cổng vào / Cổng ra</option>
@@ -601,7 +601,7 @@ export default function VehicleManagement() {
                     <select
                       value={editDriverId}
                       onChange={e => setEditDriverId(e.target.value)}
-                      className="w-full p-3 bg-white border border-chalk rounded-xl font-bold text-carbon text-xs focus:outline-none focus:border-signal-orange"
+                      className="w-full p-3 bg-white border border-chalk rounded-xl font-bold text-carbon text-xs focus:outline-none focus:border-signal-orange focus:ring-0"
                     >
                       <option value="">-- Bỏ phân công (Chưa phân công) --</option>
                       {availableDrivers.map(d => (
@@ -725,7 +725,7 @@ export default function VehicleManagement() {
                   value={newVehicle.id}
                   onChange={e => setNewVehicle({ ...newVehicle, id: e.target.value })}
                   placeholder="Tự động tạo..."
-                  className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
+                  className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
                   readOnly
                 />
               </div>
@@ -736,7 +736,7 @@ export default function VehicleManagement() {
                   <select
                     value={newVehicle.type}
                     onChange={e => setNewVehicle({ ...newVehicle, type: e.target.value })}
-                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
+                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
                   >
                     <option value="ROAD_TRUCK">🚚 Xe Đầu Kéo Đường Dài</option>
                     <option value="YARD_TRACTOR">🚜 Xe Đầu Kéo Nội Bãi</option>
@@ -751,7 +751,7 @@ export default function VehicleManagement() {
                     value={newVehicle.plate}
                     onChange={e => setNewVehicle({ ...newVehicle, plate: e.target.value })}
                     placeholder="VD: 43C-998.12"
-                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
+                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
                   />
                 </div>
 
@@ -760,7 +760,7 @@ export default function VehicleManagement() {
                   <select
                     value={newVehicle.driverId}
                     onChange={e => setNewVehicle({ ...newVehicle, driverId: e.target.value })}
-                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
+                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
                   >
                     <option value="">-- Chưa phân công --</option>
                     {availableDrivers.map(d => (
@@ -780,7 +780,7 @@ export default function VehicleManagement() {
                     onFocus={() => { if (locationSuggestions.length > 0) setShowLocationSuggestions(true) }}
                     onBlur={() => setTimeout(() => setShowLocationSuggestions(false), 200)}
                     placeholder="Nhập số nhà, tên đường..."
-                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
+                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
                   />
                   {showLocationSuggestions && locationSuggestions.length > 0 && (
                     <ul className="absolute z-50 w-full mt-1 bg-white border border-chalk rounded-xl shadow-lg max-h-48 overflow-y-auto">
@@ -805,7 +805,7 @@ export default function VehicleManagement() {
                   <select
                     value={newVehicle.status}
                     onChange={e => setNewVehicle({ ...newVehicle, status: e.target.value })}
-                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange"
+                    className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
                   >
                     <option value="Available">🟢 Sẵn sàng (Available)</option>
                     <option value="Assigned">🔵 Đã chỉ định (Assigned)</option>
