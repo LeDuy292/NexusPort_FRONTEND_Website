@@ -72,7 +72,14 @@ export default function DriverPortalContainer() {
     if (window.confirm('Bạn có chắc chắn muốn đăng xuất khỏi tài khoản tài xế không?')) {
       try {
         const apiBase = import.meta.env.VITE_API_URL || '/api'
-        await fetch(`${apiBase}/auth/logout`, { method: 'POST' }).catch(() => {})
+        const token = localStorage.getItem('token') || sessionStorage.getItem('token')
+        await fetch(`${apiBase}/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          }
+        }).catch(() => {})
       } catch (_) {}
       localStorage.removeItem('user')
       sessionStorage.removeItem('user')

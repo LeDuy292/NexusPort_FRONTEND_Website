@@ -29,6 +29,21 @@ const request = async (method, path, { params, body } = {}) => {
     throw new Error('Không thể kết nối đến dịch vụ quản lý Container. Vui lòng thử lại sau.')
   }
 
+  if (response.status === 401) {
+    try {
+      localStorage.removeItem('user')
+      localStorage.removeItem('token')
+      sessionStorage.removeItem('user')
+      sessionStorage.removeItem('token')
+    } catch (_) {}
+    if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+      window.location.href = '/login?kicked=true'
+    }
+    const error = new Error('Phiên làm việc đã kết thúc. Vui lòng đăng nhập lại.')
+    error.status = 401
+    throw error
+  }
+
   if (response.status === 204) return null
   if (response.ok && response.headers.get('content-type')?.includes('spreadsheetml')) return response.blob()
   const payload = await response.json().catch(() => ({}))

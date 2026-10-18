@@ -40,12 +40,13 @@ export default function DriverSmartRoute({ containerId, containerNumber, booking
   const previousJourney = useRef(null)
 
   useEffect(() => {
-    let active = true, pending = false, retry = false, timer
+    let active = true, pending = false, retry = false, timer, lastError = null
     async function refresh() {
       if (!active) return
       if (pending) { retry = true; return }
       if (!navigator.onLine) { setOnline(false); setLoading(false); return }
       pending = true
+      lastError = null
       try {
         const items = await driverSmartRouteService.list()
         if (!active) return
@@ -69,13 +70,14 @@ export default function DriverSmartRoute({ containerId, containerNumber, booking
         previousRevision.current = revision
         setRoute(detail); setOnline(true); setError('')
       } catch (err) {
+        lastError = err
         if (active) setError(err.message || 'Không thể tải lộ trình. Vui lòng thử lại.')
       } finally {
         pending = false
         if (active) {
           setLoading(false)
           if (retry) { retry = false; void refresh() }
-          else timer = setTimeout(refresh, 15000)
+          else if (lastError?.status !== 403 && lastError?.status !== 401) timer = setTimeout(refresh, 15000)
         }
       }
     }
@@ -115,7 +117,7 @@ export default function DriverSmartRoute({ containerId, containerNumber, booking
     <div className="smart-route-body">
       {(!online || error) && <p role="alert" className="smart-route-alert error">{!online ? 'Mất kết nối. Lộ trình chưa được xác nhận lại. Hãy dừng ở nơi an toàn và kết nối lại.' : error}</p>}
       {loading && !route && <div role="status" className="smart-route-empty">Đang kiểm tra Gate In và điểm đến…</div>}
-      {!loading && !route && !error && online && <div role="status" className="smart-route-empty">{containerId || containerNumber ? 'Chưa có Gate In hợp lệ cho container của chuyến này.' : 'Chưa có xe qua Gate In. Khi nhân viên cổng xác nhận, điểm đến và lộ trình sẽ hiển thị tại đây.'}</div>}
+      {!loading && !route && !error && online && <div role="status" className="smart-route-empty">{containerId || containerNumber ? 'Chưa có Gate In hợp lệ cho container của chuyến này.' : 'Chưa có xe qua Gate In. Khi hệ thống ghi nhận xe qua cổng, điểm đến và lộ trình sẽ hiển thị tại đây.'}</div>}
       {!containerId && !containerNumber && routes.length > 1 && <label className="smart-route-position">Chuyến / container
         <select value={route ? routeKey(route) : ''} onChange={event => selectRoute(event.target.value)} disabled={busy} className="smart-route-select">{routes.map(item => <option key={routeKey(item)} value={routeKey(item)}>{item.containerNumber} · {item.bookingCode || item.bookingId.slice(0, 8)}</option>)}</select>
       </label>}
@@ -149,10 +151,10 @@ export default function DriverSmartRoute({ containerId, containerNumber, booking
               <button type="button" disabled={busy} onClick={() => setShowConfirm(false)} className="smart-route-secondary">Quay lại kiểm tra</button>
             </div>}
             {journey?.phase === 'ready_for_gate_out' && <p className="smart-route-alert info">Di chuyển theo tuyến đến {journey.exitGateCode || 'cổng ra'}. Nhân viên cổng sẽ kiểm tra và xác nhận xe đã ra cảng.</p>}
-            {journey?.phase === 'exited' && <p className="smart-route-alert success">Đã hoàn tất hành trình. Xe đã được nhân viên cổng xác nhận Gate Out lúc {time(journey.gateOutAt)}.</p>}
+            {journey?.phase === 'exited' && <p className="smart-route-alert success">Đã hoàn tất hành trình. Hệ thống đã ghi nhận Gate Out lúc {time(journey.gateOutAt)}.</p>}
           </div>
         </>}
-        <div className="smart-route-footer"><span>Tự kiểm tra mỗi 15 giây{navigation?.generatedAt ? ` · ${time(navigation.generatedAt)}` : ''}</span><span>Gate In / Out do nhân viên cổng xác nhận</span></div>
+        <div className="smart-route-footer"><span>Tự kiểm tra mỗi 15 giây{navigation?.generatedAt ? ` · ${time(navigation.generatedAt)}` : ''}</span><span>Gate In / Out cập nhật từ hệ thống cổng</span></div>
       </>}
     </div>
   </section>
