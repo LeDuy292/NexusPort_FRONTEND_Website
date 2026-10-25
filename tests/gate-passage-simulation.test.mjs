@@ -2,7 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { createGatePassageSimulation, passageOpenSeconds } from '../src/services/gatePassageSimulation.js'
 
-const cycle = (mode = 'checkin') => ({ mode, gate: { id: 'gate-id', code: mode === 'checkin' ? 'GATE-01' : 'GATE-03' },
+const cycle = (mode = 'checkin') => ({ mode, gate: { id: 'gate-id', code: mode === 'checkin' ? 'GATE-01' : 'GATE-02' },
   booking: { id: 'booking-id', licensePlate: '29Y3-036.58' },
   evidence: { verificationRecordId: 'verification-id', vehiclePlate: '29Y3-036.58' }, closeRequestId: 'close-id' })
 

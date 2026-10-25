@@ -513,7 +513,7 @@ export default function GateBookings() {
           >
             <option value="All">Tất cả cổng</option>
             <option value="GATE-01">GATE-01 · Cổng vào</option>
-            <option value="GATE-03">GATE-03 · Cổng ra</option>
+            <option value="GATE-02">GATE-02 · Cổng ra</option>
           </select>
 
         </div>

@@ -234,7 +234,7 @@ export default function GateIncidents() {
                   <label className="block text-slate uppercase text-[10px] mb-1">Làn cổng</label>
                   <select value={createForm.gate} onChange={e => setCreateForm(p => ({ ...p, gate: e.target.value }))}
                     className="w-full px-3.5 py-2 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange">
-                    {['GATE-01', 'GATE-03'].map(g => <option key={g}>{g}</option>)}
+                    {['GATE-01', 'GATE-02'].map(g => <option key={g}>{g}</option>)}
                   </select>
                 </div>
               </div>

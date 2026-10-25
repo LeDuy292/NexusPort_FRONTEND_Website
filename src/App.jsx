@@ -36,7 +36,6 @@ import IncidentManagement from './pages/Incident/IncidentManagement'
 import DriverManagement from './pages/Carrier/DriverManagement'
 import YardOperations from './pages/Yard/YardOperations'
 import YardOperationsDashboard from './pages/Yard/YardOperationsDashboard'
-import YardMapContainerManagement from './pages/Yard/YardMapContainerManagement'
 import YardMovementOperations from './pages/Yard/YardMovementOperations'
 import ContainerGateOutPreparation from './pages/Yard/ContainerGateOutPreparation'
 import ContainerDetail from './pages/Yard/ContainerDetail'
@@ -175,7 +174,8 @@ function App() {
           <Route element={<RoleRoute allowedRoles={[ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
             <Route path="/dashboard" element={<DashboardIndex />} />
             <Route path="/yard-staff/dashboard" element={<YardOperationsDashboard />} />
-            <Route path="/yard" element={<YardOperations />} />
+            <Route path="/yard" element={<YardMap />} />
+            <Route path="/yard/map" element={<YardMap />} />
             <Route path="/yard-staff/map" element={<YardMap />} />
             <Route path="/yard-ops" element={<YardOperations />} />
             <Route path="/yard/receiving" element={<YardReceiving />} />
