@@ -1,7 +1,6 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { createSessionHeartbeat, SESSION_HEARTBEAT_MS } from '../services/sessionHeartbeat'
 
 const getRealtimeUrl = () => {
   if (import.meta.env.VITE_REALTIME_URL) {
@@ -92,13 +91,13 @@ export default function SessionListener() {
       }
     })
 
-    // 3: Deduplicate polling/focus checks and ignore stale responses after cleanup.
-    const heartbeat = createSessionHeartbeat({
-      getToken,
-      isVisible: () => !document.hidden,
-      request: (currentToken,signal) => fetch(`${(import.meta.env.VITE_API_URL || '/api').replace(/\/$/,'')}/auth/me`, {
-          signal,
-          cache: 'no-store',
+    // 3: Heartbeat liveness check (mỗi 2.5 giây)
+    const checkSessionLiveness = async () => {
+      const currentToken = getToken()
+      if (!currentToken) return
+
+      try {
+        const res = await fetch('/api/auth/me', {
           headers: {
             Authorization: `Bearer ${currentToken}`,
             'Cache-Control': 'no-cache',
@@ -116,21 +115,20 @@ export default function SessionListener() {
       } catch (_) {}
     }
 
-    const heartbeatInterval = setInterval(() => void heartbeat.check(), SESSION_HEARTBEAT_MS)
+    const heartbeatInterval = setInterval(checkSessionLiveness, 2500)
 
     // 4: Kiểm tra ngay lập tức khi user focus / đổi tab
     const handleWindowFocus = () => {
-      void heartbeat.check()
+      checkSessionLiveness()
     }
 
     window.addEventListener('focus', handleWindowFocus)
-    document.addEventListener('visibilitychange', handleWindowFocus)
+    window.addEventListener('visibilitychange', handleWindowFocus)
 
     return () => {
       clearInterval(heartbeatInterval)
-      heartbeat.stop()
       window.removeEventListener('focus', handleWindowFocus)
-      document.removeEventListener('visibilitychange', handleWindowFocus)
+      window.removeEventListener('visibilitychange', handleWindowFocus)
       socket.off('auth:session_kicked')
       socket.off('disconnect')
       socket.off('connect_error')

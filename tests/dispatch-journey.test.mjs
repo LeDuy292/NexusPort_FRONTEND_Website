@@ -28,9 +28,9 @@ test('no timer or assumed GPS advances a trip beyond its confirmed milestones', 
   route.journey.phase = 'at_yard'
   assert.equal(journeyStep(null, route), 3)
   route.journey.phase = 'ready_for_gate_out'
-  route.journey.exitGateCode = 'GATE-03'
+  route.journey.exitGateCode = 'GATE-02'
   assert.equal(journeyStep(null, route), 4)
-  route.navigation = { origin: { gateCode: 'GATE-03' } }
+  route.navigation = { origin: { gateCode: 'GATE-02' } }
   assert.equal(journeyStep(null, route), 5)
   route.journey.gateOutAt = '2026-10-18T10:00:00Z'
   assert.equal(journeyStep(null, route), 6)

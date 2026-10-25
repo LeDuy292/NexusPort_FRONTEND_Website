@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import apiClient from '../../services/apiClient';
+import expressApiClient from '../../services/expressApiClient';
 
 export default function CreateBlockModal({ isOpen, onClose, onBlockCreated }) {
   const [formData, setFormData] = useState({
     name: '',
-    description: 'BLOCK CONTAINER',
+    description: 'Khu container',
     max_bays: 10,
     max_rows: 6,
     max_tiers: 4
@@ -28,14 +28,14 @@ export default function CreateBlockModal({ isOpen, onClose, onBlockCreated }) {
         maxRows: formData.max_rows,
         maxTiers: formData.max_tiers
       };
-      const response = await apiClient.post('/v1/Yard', payload);
-      onBlockCreated(response.data);
+      const response = await expressApiClient.post('/yard/blocks', payload);
+      onBlockCreated(response);
       setLoading(false);
       onClose();
       
     } catch (err) {
       console.error(err);
-      setError(err.response?.data?.message || 'Có lỗi xảy ra khi tạo Block.');
+      setError(err.data?.message || err.message || 'Có lỗi xảy ra khi tạo khu bãi.');
       setLoading(false);
     }
   };
@@ -48,7 +48,7 @@ export default function CreateBlockModal({ isOpen, onClose, onBlockCreated }) {
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
           <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
             <span className="material-symbols-outlined text-signal-orange">add_box</span>
-            Tạo Khối (Block) Mới
+            Tạo khu bãi mới
           </h2>
           <button 
             onClick={onClose}
@@ -68,7 +68,7 @@ export default function CreateBlockModal({ isOpen, onClose, onBlockCreated }) {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">Tên Block (Mã Ký Hiệu)</label>
+              <label className="block text-xs font-bold text-slate-700 mb-1">Mã khu bãi</label>
               <input 
                 type="text" 
                 required
