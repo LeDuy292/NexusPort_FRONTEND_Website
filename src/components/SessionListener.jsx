@@ -24,7 +24,7 @@ const getToken = () => {
   return localStorage.getItem('token') || sessionStorage.getItem('token') || null
 }
 
-const performKickout = (reason = 'SESSION_KICKED') => {
+const performKickout = (reason = 'AUTH_EXPIRED') => {
   console.warn('[SessionListener] Thực hiện cưỡng chế đăng xuất:', reason)
   try {
     localStorage.removeItem('user')
@@ -34,7 +34,12 @@ const performKickout = (reason = 'SESSION_KICKED') => {
   } catch (_) {}
 
   if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-    window.location.href = '/login?kicked=true'
+    // CHỈ gửi query kicked=duplicate khi thực sự phát hiện đăng nhập trùng lặp!
+    if (reason === 'DUPLICATE_LOGIN' || reason === 'SESSION_KICKED') {
+      window.location.href = '/login?kicked=duplicate'
+    } else {
+      window.location.href = '/login'
+    }
   }
 }
 
@@ -42,8 +47,8 @@ const performKickout = (reason = 'SESSION_KICKED') => {
  * SessionListener: Giám sát phiên đăng nhập duy nhất (Single Active Session).
  * Tích hợp 4 lớp bảo vệ:
  * 1. Lắng nghe trực tiếp sự kiện 'auth:session_kicked' từ Socket.IO
- * 2. Bắt sự kiện ngắt kết nối cưỡng chế ('io server disconnect') từ máy chủ
- * 3. Kiểm tra dự phòng mỗi 15 giây khi tab đang hiển thị
+ * 2. Phân biệt chính xác giữa ngắt kết nối mạng và bị đá do đăng nhập trùng lặp
+ * 3. Polling kiểm tra trạng thái phiên mỗi 2.5 giây (/api/auth/me)
  * 4. Kiểm tra ngay lập tức khi người dùng click chuột hoặc quay lại cửa sổ (window focus/visibilitychange)
  */
 export default function SessionListener() {
@@ -68,23 +73,22 @@ export default function SessionListener() {
 
     socket.on('auth:session_kicked', (data) => {
       console.warn('[SessionListener] auth:session_kicked received:', data)
-      performKickout('SOCKET_EVENT')
+      if (data?.reason === 'LOGGED_OUT') {
+        performKickout('LOGGED_OUT')
+      } else {
+        performKickout('DUPLICATE_LOGIN')
+      }
     })
 
     socket.on('disconnect', (reason) => {
-      if (reason === 'io server disconnect') {
-        performKickout('IO_SERVER_DISCONNECT')
-      }
+      // Socket tạm thời ngắt do server reload hoặc mạng -> KHÔNG tự ý kick người dùng
+      console.log('[SessionListener] Socket disconnect:', reason)
     })
 
     socket.on('connect_error', (err) => {
       const msg = err?.message || ''
-      if (
-        msg.includes('Phiên làm việc đã bị kết thúc') ||
-        msg.includes('SESSION_KICKED') ||
-        msg.includes('không còn hợp lệ')
-      ) {
-        performKickout('CONNECT_ERROR')
+      if (msg.includes('Phiên làm việc đã bị kết thúc') || msg.includes('SESSION_KICKED')) {
+        performKickout('DUPLICATE_LOGIN')
       }
     })
 
@@ -99,9 +103,18 @@ export default function SessionListener() {
             Authorization: `Bearer ${currentToken}`,
             'Cache-Control': 'no-cache',
           },
-        }),
-      onUnauthorized: () => performKickout('HEARTBEAT_401'),
-    })
+        })
+        if (res.status === 401) {
+          const body = await res.json().catch(() => ({}))
+          // CHỈ kickout duplicate khi backend trả về rõ ràng code === 'SESSION_KICKED'
+          if (body.code === 'SESSION_KICKED') {
+            performKickout('DUPLICATE_LOGIN')
+          } else if (body.code === 'TOKEN_EXPIRED') {
+            performKickout('AUTH_EXPIRED')
+          }
+        }
+      } catch (_) {}
+    }
 
     const heartbeatInterval = setInterval(() => void heartbeat.check(), SESSION_HEARTBEAT_MS)
 
