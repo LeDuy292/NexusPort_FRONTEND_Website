@@ -312,7 +312,7 @@ function TripDetail({ trip, onBack, onTripUpdated, onOpenNavigation }) {
 
       {/* Action Button */}
       {['Container Picked Up', 'Container Delivered', 'Gate In', 'In Transit', 'Arrived at Yard'].includes(trip.status) && <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
-        <p className="text-xs text-amber-900 leading-relaxed">{trip.status === 'Container Picked Up' ? 'Đến cổng vào và xuất trình booking. Gate Officer sẽ kiểm tra và ghi nhận xe đã qua cổng.' : 'Mở Smart Route để xác nhận đã đến và giao nhận đúng container của booking. Trạng thái qua cổng được cập nhật sau khi Gate Officer xác nhận.'}</p>
+        <p className="text-xs text-amber-900 leading-relaxed">{trip.status === 'Container Picked Up' ? 'Đến cổng vào và xuất trình booking. Hệ thống cổng sẽ đối soát và ghi nhận xe qua cổng.' : 'Mở Smart Route để xác nhận đã đến và giao nhận đúng container của booking. Trạng thái qua cổng được cập nhật từ hệ thống cổng.'}</p>
         <button type="button" onClick={() => onOpenNavigation(trip)} className="w-full py-3 bg-teal-700 text-white font-bold rounded-xl text-xs">Xem bản đồ và trạng thái qua cổng</button>
       </div>}
       {!isCompleted && !isCancelled && action && (

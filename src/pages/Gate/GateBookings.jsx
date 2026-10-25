@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
-import { bookingService } from '../../services/bookingService'
+import gateService from '../../services/gateService'
+import GateEntryOrders from '../../features/booking-dispatch/GateEntryOrders'
+import { gateBookingDate } from '../../features/booking-dispatch/gateBookingDate'
+import { formatPlateNumber, matchesPlateSearch } from '../../utils/format'
 
 const getRealtimeUrl = () => {
   if (import.meta.env.VITE_REALTIME_URL) return import.meta.env.VITE_REALTIME_URL
@@ -42,13 +45,14 @@ export default function GateBookings() {
   // State dữ liệu & chế độ xem
   const [bookings, setBookings] = useState([])
   const [loading, setLoading] = useState(true)
+  const [loadError,setLoadError]=useState('')
   const [viewMode, setViewMode] = useState('day_cards') // 'day_cards' | 'week_overview' | 'table'
 
   // Đồng hồ thời gian thực
   const [currentTime, setCurrentTime] = useState(new Date())
 
   // Bộ lọc Ngày
-  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], [])
+  const todayStr = useMemo(() => gateBookingDate(), [])
   const [selectedDate, setSelectedDate] = useState(todayStr)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('All')
@@ -71,14 +75,14 @@ export default function GateBookings() {
     if (isInitial) setLoading(true)
 
     try {
-      const res = await bookingService.getBookings({ pageSize: 150 })
+      const res = await gateService.getBookings({ pageSize: 150 })
       const items = res?.items || res?.data?.items || res || []
 
       const mapped = items.map((b) => {
         const startRaw = b.appointmentStart || b.validFrom || b.createdAt
         const startDate = startRaw ? new Date(startRaw) : new Date()
         const startIsoDate = !isNaN(startDate.getTime())
-          ? startDate.toISOString().split('T')[0]
+          ? gateBookingDate(startDate)
           : todayStr
 
         // Trích xuất mã Container
@@ -119,7 +123,7 @@ export default function GateBookings() {
           appointmentEnd: b.appointmentEnd || b.validTo,
           company: b.carrierName || b.carrier?.name || 'Công Ty Vận Tải',
           companyId: b.carrierId ? b.carrierId.substring(0, 8) : '—',
-          licensePlate: b.vehiclePlate || b.truckPlateNumber || b.truck?.licensePlate || '—',
+          licensePlate: formatPlateNumber(b.vehiclePlate || b.truckPlateNumber || b.truck?.licensePlate) || '—',
           trailerPlate: b.trailerPlate || '—',
           driverName: b.driverName || b.driver?.fullName || '—',
           driverPhone: b.driverPhone || b.driver?.phoneNumber || '—',
@@ -131,7 +135,7 @@ export default function GateBookings() {
           grossWeight: b.grossWeight ? `${b.grossWeight} Tấn` : '28.5 Tấn',
           yardLocation: b.containerSelections?.[0]?.yardCode || b.yardLocation || 'Khu A · Block 02',
           operation: operation,
-          gate: b.gate || 'Cổng A · Làn 01',
+          gate: b.gate || 'GATE-01 · Cổng vào',
           status: normalizedStatus,
           rawStatus: rawStatus,
           totalAmount: b.totalAmount,
@@ -140,7 +144,9 @@ export default function GateBookings() {
       })
 
       setBookings(mapped)
-    } catch {
+      setLoadError('')
+    } catch(err) {
+      setLoadError(err.message||'Không tải được lịch booking cổng.')
       // Giữ nguyên dữ liệu khi gặp lỗi mạng tạm thời
     } finally {
       if (isInitial) setLoading(false)
@@ -172,6 +178,7 @@ export default function GateBookings() {
       socket.on('booking:created', triggerRealtimeUpdate)
       socket.on('booking:updated', triggerRealtimeUpdate)
       socket.on('gate:booking_updated', triggerRealtimeUpdate)
+      socket.on('booking:dispatch_updated', triggerRealtimeUpdate)
       socket.on('gate:checkin', triggerRealtimeUpdate)
       socket.on('gate:checkout', triggerRealtimeUpdate)
       socket.on('trip:status_updated', triggerRealtimeUpdate)
@@ -181,10 +188,10 @@ export default function GateBookings() {
       // fallback to interval
     }
 
-    // 3. Chu kỳ tự động đồng bộ ngầm mỗi 4 giây (đảm bảo dữ liệu luôn mới nhất)
+    // 3. Đồng bộ dự phòng mỗi 15 giây; sự kiện realtime vẫn cập nhật ngay.
     const realtimeInterval = setInterval(() => {
       loadBookings(false)
-    }, 4000)
+    }, 15000)
 
     return () => {
       clearInterval(realtimeInterval)
@@ -202,7 +209,7 @@ export default function GateBookings() {
     for (let i = -2; i <= 4; i++) {
       const d = new Date(base)
       d.setDate(base.getDate() + i)
-      const iso = d.toISOString().split('T')[0]
+      const iso = gateBookingDate(d)
       const count = bookings.filter(b => b.dateStr === iso).length
       list.push({
         dateStr: iso,
@@ -228,7 +235,7 @@ export default function GateBookings() {
       const matchQ = !q ||
         b.id.toLowerCase().includes(q) ||
         b.containerId.toLowerCase().includes(q) ||
-        b.licensePlate.toLowerCase().includes(q) ||
+        matchesPlateSearch(b.licensePlate, q) ||
         b.driverName.toLowerCase().includes(q) ||
         b.company.toLowerCase().includes(q)
 
@@ -273,11 +280,13 @@ export default function GateBookings() {
             Lịch Booking Cổng
           </h1>
           <p className="text-xs md:text-sm text-slate-500 mt-1">
-            Kế hoạch lượt xe container ra vào cổng được điều phối theo ngày (Hiệu lực cả ngày 00:00 – 23:59)
+            Lịch hẹn theo ngày Việt Nam. Quyền vào cổng được cấp riêng khi điều độ gọi xe.
           </p>
         </div>
       </div>
 
+      <GateEntryOrders />
+      {loadError&&<div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">Không tải được lịch booking: {loadError}. <button type="button" onClick={()=>void loadBookings(true)} className="font-bold underline">Thử lại</button></div>}
       {/* ── BỘ ĐIỀU HƯỚNG CHỌN NGÀY (DAILY NAVIGATION BAR) ── */}
       <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm flex flex-col gap-4">
         
@@ -503,8 +512,8 @@ export default function GateBookings() {
             className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-orange-500"
           >
             <option value="All">Tất cả cổng</option>
-            <option value="Cổng A">Cổng A</option>
-            <option value="Cổng B">Cổng B</option>
+            <option value="GATE-01">GATE-01 · Cổng vào</option>
+            <option value="GATE-03">GATE-03 · Cổng ra</option>
           </select>
 
         </div>

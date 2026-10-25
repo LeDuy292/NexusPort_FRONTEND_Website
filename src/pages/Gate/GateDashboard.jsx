@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { gateStatusData, waitingVehiclesData } from '../../data/gateOfficerData'
-import apiClient from '../../services/apiClient'
 import gateService from '../../services/gateService'
+import GateEntryOrders from '../../features/booking-dispatch/GateEntryOrders'
 
 export default function GateDashboard() {
   const navigate = useNavigate()
@@ -15,13 +15,14 @@ export default function GateDashboard() {
     pendingIncidents: 0,
   })
   const [todayBookings, setTodayBookings] = useState([])
+  const [loadError,setLoadError]=useState('')
 
 
 
   useEffect(() => {
     // Tải thống kê thực tế từ API
     Promise.all([
-      apiClient.get('/v1/booking').catch(() => ({ data: [] })),
+      gateService.getBookings({pageSize:150}).then(data=>({data})),
       gateService.getVerificationHistory().catch(() => ({ data: [] })),
     ]).then(([bookingRes, verifyRes]) => {
       const bookings = bookingRes.data?.items || bookingRes.data || []
@@ -36,7 +37,7 @@ export default function GateDashboard() {
         expiredCount: bookings.filter(b => b.status === 'Expired').length,
         pendingIncidents: 0,
       })
-    })
+    }).catch(error=>setLoadError(error.message||'Không tải được lịch booking cổng.'))
   }, [])
 
   const { checkedIn, completed, rejected, waiting, expiredCount, pendingIncidents } = stats
@@ -189,6 +190,8 @@ export default function GateDashboard() {
         </div>
       </div>
 
+      {loadError&&<p role="alert" className="text-red-700">Không tải được dữ liệu cổng: {loadError}</p>}
+      <GateEntryOrders />
       {/* ── VEHICLES WAITING TABLE ── */}
       <div className="bg-white rounded-2xl border border-chalk shadow-sm overflow-hidden">
         <div className="p-4 border-b border-chalk flex justify-between items-center">
