@@ -154,7 +154,8 @@ function UserDrawer({ mode, user, onClose, onSaved }) {
       }
       onSaved(result.data.user, isEdit ? 'Cập nhật thông tin thành công.' : 'Tạo tài khoản thành công.')
     } catch (err) {
-      setError(err.response?.data?.message || 'Đã có lỗi xảy ra. Vui lòng thử lại.')
+      const messages = [...new Set((err.response?.data?.errors || []).map(item => item.message).filter(Boolean))]
+      setError(messages.length ? messages.join(' ') : err.response?.data?.message || 'Đã có lỗi xảy ra. Vui lòng thử lại.')
     } finally {
       setLoading(false)
     }
@@ -196,6 +197,8 @@ function UserDrawer({ mode, user, onClose, onSaved }) {
               type="text"
               required
               value={form.username}
+              name="username"
+              autoComplete="username"
               onChange={set('username')}
               placeholder="vd: yard_operator_02"
               className="w-full h-10 px-3.5 border border-chalk rounded-lg text-sm text-carbon focus:outline-none focus:ring-2 focus:ring-signal-orange/40 focus:border-signal-orange transition-colors"
@@ -225,6 +228,8 @@ function UserDrawer({ mode, user, onClose, onSaved }) {
               type="email"
               required
               value={form.email}
+              name="email"
+              autoComplete="email"
               onChange={set('email')}
               placeholder="user@nexusport.vn"
               className="w-full h-10 px-3.5 border border-chalk rounded-lg text-sm text-carbon focus:outline-none focus:ring-2 focus:ring-signal-orange/40 focus:border-signal-orange transition-colors"
@@ -241,6 +246,8 @@ function UserDrawer({ mode, user, onClose, onSaved }) {
                 type="password"
                 required
                 value={form.password}
+                name="password"
+                autoComplete="new-password"
                 onChange={set('password')}
                 placeholder="Tối thiểu 6 ký tự"
                 className="w-full h-10 px-3.5 border border-chalk rounded-lg text-sm text-carbon focus:outline-none focus:ring-2 focus:ring-signal-orange/40 focus:border-signal-orange transition-colors"
