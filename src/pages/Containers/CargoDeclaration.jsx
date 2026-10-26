@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { containerService } from "../../services/containerService";
 import { declarationBookingSummary } from "../../utils/declarationBookingSummary";
 import ContainerImportPanel from "../../components/Containers/ContainerImportPanel";
@@ -254,12 +254,6 @@ export default function CargoDeclaration() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Link
-            to="/booking"
-            className="rounded-xl border border-chalk px-4 py-3 text-xs font-bold"
-          >
-            Đặt lịch vào / ra bãi
-          </Link>
           <button
             onClick={() => open("import")}
             className="rounded-xl border border-carbon px-4 py-3 text-xs font-bold"

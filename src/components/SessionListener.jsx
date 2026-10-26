@@ -19,21 +19,21 @@ const getToken = () => {
       const parsed = JSON.parse(stored)
       if (parsed?.token) return parsed.token
     }
-  } catch (_) {}
+  } catch (_) { }
   return localStorage.getItem('token') || sessionStorage.getItem('token') || null
 }
 
-const performKickout = (reason = 'SESSION_KICKED') => {
-  console.warn('[SessionListener] Thực hiện cưỡng chế đăng xuất:', reason)
+const performKickout = (reason = 'SESSION_KICKED', isKicked = true) => {
+  console.warn('[SessionListener] Thực hiện đăng xuất:', reason)
   try {
     localStorage.removeItem('user')
     localStorage.removeItem('token')
     sessionStorage.removeItem('user')
     sessionStorage.removeItem('token')
-  } catch (_) {}
+  } catch (_) { }
 
   if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-    window.location.href = '/login?kicked=true'
+    window.location.href = isKicked ? '/login?kicked=true' : '/login'
   }
 }
 
@@ -71,9 +71,8 @@ export default function SessionListener() {
     })
 
     socket.on('disconnect', (reason) => {
-      if (reason === 'io server disconnect') {
-        performKickout('IO_SERVER_DISCONNECT')
-      }
+      console.warn('[SessionListener] Socket disconnected:', reason)
+      // Không cưỡng chế đăng xuất khi ngắt kết nối mạng hoặc server restart
     })
 
     socket.on('connect_error', (err) => {
@@ -101,11 +100,13 @@ export default function SessionListener() {
         })
         if (res.status === 401) {
           const body = await res.json().catch(() => ({}))
-          if (body.code === 'SESSION_KICKED' || !body.success) {
-            performKickout('HEARTBEAT_401')
+          if (body.code === 'SESSION_KICKED') {
+            performKickout('HEARTBEAT_KICKED', true)
+          } else if (body.message?.includes('hết hạn') || body.message?.includes('không hợp lệ')) {
+            performKickout('TOKEN_EXPIRED', false)
           }
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     const heartbeatInterval = setInterval(checkSessionLiveness, 2500)

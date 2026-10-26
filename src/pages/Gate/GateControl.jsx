@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
+import { io } from 'socket.io-client'
 import apiClient from '../../services/apiClient'
 import gateService from '../../services/gateService'
 import { driverSmartRouteService } from '../../services/driverSmartRouteService'
 
 export default function GateControl() {
+  const [iotConnected, setIotConnected] = useState(false)
   const [currentTime, setCurrentTime] = useState('')
   const [toastMessage, setToastMessage] = useState('')
   const [mode, setMode] = useState('checkin') // 'checkin' | 'checkout'
@@ -374,6 +376,56 @@ export default function GateControl() {
     }
   }, [cameraActive, barrierState, selectedGateId, mode, verificationBusy, gateOutBusy])
 
+  // ── LẮNG NGHE SỰ KIỆN QUÉT XE TỪ THIẾT BỊ IOT QUA REALTIME SOCKET.IO ──
+  useEffect(() => {
+    const realtimeUrl = import.meta.env.VITE_REALTIME_URL || 'http://localhost:3001'
+    let token = null
+    try {
+      const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
+      if (stored) token = JSON.parse(stored)?.token
+      if (!token) token = localStorage.getItem('token')
+    } catch (_) {}
+
+    const socket = io(realtimeUrl, {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+      reconnection: true,
+      reconnectionAttempts: 15,
+      reconnectionDelay: 1000,
+    })
+
+    socket.on('connect', () => {
+      setIotConnected(true)
+    })
+
+    socket.on('disconnect', () => {
+      setIotConnected(false)
+    })
+
+    socket.on('gate:iot_scan', async (eventData) => {
+      console.log('📡 [IoT Camera Event Received]', eventData)
+      const plate = eventData?.detectedPlate ? eventData.detectedPlate.trim().toUpperCase() : ''
+      if (!plate) return
+
+      const conf = eventData.plateConfidence ? eventData.plateConfidence * 100 : 98
+      const overview = eventData.overviewImageUrl || null
+      const crop = eventData.vehiclePlateImageUrl || null
+
+      setDetectedPlate(plate)
+      setConfidence(conf)
+      if (overview) setCapturedImage(overview)
+      if (crop) setAiCropImage(crop)
+
+      showToast(`📡 [IoT Camera] Nhận diện xe: "${plate}" (${conf.toFixed(1)}%)`)
+      await evaluateVerification(plate, conf, overview, crop)
+    })
+
+    return () => {
+      socket.off('gate:iot_scan')
+      socket.disconnect()
+    }
+  }, [selectedGateId, mode, verificationBusy, gateOutBusy])
+
 
   // Danh sách checklist kiểm tra
   const normDetected = normalizePlate(detectedPlate)
@@ -444,6 +496,14 @@ export default function GateControl() {
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs font-bold bg-orange-100 text-orange-800 border border-orange-200 px-3 py-0.5 rounded-full">
               Nhân viên cổng
+            </span>
+            <span className={`text-xs font-bold px-3 py-0.5 rounded-full border flex items-center gap-1.5 transition-all ${
+              iotConnected
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-slate-100 text-slate-500 border-slate-200'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${iotConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
+              {iotConnected ? 'IoT Camera: Trực tuyến (Sẵn sàng nhận ảnh)' : 'IoT Camera: Đang kết nối...'}
             </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
