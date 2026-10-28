@@ -20,26 +20,21 @@ const getToken = () => {
       const parsed = JSON.parse(stored)
       if (parsed?.token) return parsed.token
     }
-  } catch (_) {}
+  } catch (_) { }
   return localStorage.getItem('token') || sessionStorage.getItem('token') || null
 }
 
-const performKickout = (reason = 'AUTH_EXPIRED') => {
-  console.warn('[SessionListener] Thực hiện cưỡng chế đăng xuất:', reason)
+const performKickout = (reason = 'SESSION_KICKED', isKicked = true) => {
+  console.warn('[SessionListener] Thực hiện đăng xuất:', reason)
   try {
     localStorage.removeItem('user')
     localStorage.removeItem('token')
     sessionStorage.removeItem('user')
     sessionStorage.removeItem('token')
-  } catch (_) {}
+  } catch (_) { }
 
   if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-    // CHỈ gửi query kicked=duplicate khi thực sự phát hiện đăng nhập trùng lặp!
-    if (reason === 'DUPLICATE_LOGIN' || reason === 'SESSION_KICKED') {
-      window.location.href = '/login?kicked=duplicate'
-    } else {
-      window.location.href = '/login'
-    }
+    window.location.href = isKicked ? '/login?kicked=true' : '/login'
   }
 }
 
@@ -81,8 +76,8 @@ export default function SessionListener() {
     })
 
     socket.on('disconnect', (reason) => {
-      // Socket tạm thời ngắt do server reload hoặc mạng -> KHÔNG tự ý kick người dùng
-      console.log('[SessionListener] Socket disconnect:', reason)
+      console.warn('[SessionListener] Socket disconnected:', reason)
+      // Không cưỡng chế đăng xuất khi ngắt kết nối mạng hoặc server restart
     })
 
     socket.on('connect_error', (err) => {
@@ -106,14 +101,13 @@ export default function SessionListener() {
         })
         if (res.status === 401) {
           const body = await res.json().catch(() => ({}))
-          // CHỈ kickout duplicate khi backend trả về rõ ràng code === 'SESSION_KICKED'
           if (body.code === 'SESSION_KICKED') {
-            performKickout('DUPLICATE_LOGIN')
-          } else if (body.code === 'TOKEN_EXPIRED') {
-            performKickout('AUTH_EXPIRED')
+            performKickout('HEARTBEAT_KICKED', true)
+          } else if (body.message?.includes('hết hạn') || body.message?.includes('không hợp lệ')) {
+            performKickout('TOKEN_EXPIRED', false)
           }
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     const heartbeatInterval = setInterval(() => void heartbeat.check(), SESSION_HEARTBEAT_MS)

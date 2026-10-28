@@ -19,5 +19,19 @@ export const bookingService = {
   evaluatePayload: params => get('/evaluate-payload', params),
   getPaymentInfo: id => get(`/${id}/payment`),
   processPayment: (id, data = {}) => post(`/${id}/payment`, data),
+  getOperations: id => get(`/${id}/operations`),
+  updateOperationStatus: async (id, operationId, data) => (await apiClient.put(`/v1/Booking/${id}/operations/${operationId}/status`, data)).data,
+  addDocument: (id, data) => post(`/${id}/documents`, data),
+  verifyDocument: (id, documentId, data) => post(`/${id}/documents/${documentId}/verify`, data),
+  getOperationRequirements: params => get('/operation-requirements', params),
+  validateCombination: data => post('/validate-combination', data),
+  uploadDocumentFile: async (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await apiClient.post('/v1/Booking/upload-document', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return res.data
+  },
 }
 export default bookingService

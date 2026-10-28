@@ -351,13 +351,13 @@ export default function MainLayout() {
                   : 'text-graphite hover:bg-mist hover:text-carbon'
                   }`}
               >
-                {/* Material Icon (loaded from index.html) */}
-                <span className="material-symbols-outlined mr-3 text-lg">
+                {/* Material Icon */}
+                <span className="material-symbols-outlined mr-3 text-xl shrink-0 select-none flex items-center justify-center w-6 h-6">
                   {item.icon}
                 </span>
-                <span className="flex-1">{item.label}</span>
+                <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis">{item.label}</span>
                 {item.badge && (
-                  <span className="px-2 py-0.5 text-[10px] font-extrabold bg-amber-500 text-white rounded-full font-mono">
+                  <span className="px-2 py-0.5 text-[10px] font-extrabold bg-amber-500 text-white rounded-full font-mono ml-2 shrink-0">
                     {item.badge}
                   </span>
                 )}

@@ -546,6 +546,55 @@ export default function BookingManagement() {
     }
   }
 
+  const openBookingDetail = async (bk) => {
+    try {
+      setSelectedBooking(bk)
+      setShowDetailModal(true)
+      const fresh = await bookingService.getBookingById(bk.id)
+      if (fresh) setSelectedBooking(fresh)
+    } catch {
+      setSelectedBooking(bk)
+      setShowDetailModal(true)
+    }
+  }
+
+  const handleVerifyDocument = async (bookingId, documentId) => {
+    setActionLoading(true)
+    try {
+      await bookingService.verifyDocument(bookingId, documentId, {
+        status: 'Verified',
+        verificationNotes: 'Duyệt chứng từ bởi điều độ cảng NexusPort'
+      })
+      showNotification('Đã duyệt và xác thực chứng từ thành công!')
+      const fresh = await bookingService.getBookingById(bookingId)
+      if (fresh) {
+        setSelectedBooking(fresh)
+        setBookings(prev => prev.map(b => b.id === bookingId ? fresh : b))
+      }
+    } catch (err) {
+      showNotification('Lỗi khi duyệt chứng từ: ' + (err.response?.data?.message || err.message), 'error')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleUpdateOperationStatus = async (bookingId, operationId, newStatus) => {
+    setActionLoading(true)
+    try {
+      await bookingService.updateOperationStatus(bookingId, operationId, { status: newStatus })
+      showNotification(`Đã chuyển trạng thái nghiệp vụ sang: ${newStatus}`)
+      const fresh = await bookingService.getBookingById(bookingId)
+      if (fresh) {
+        setSelectedBooking(fresh)
+        setBookings(prev => prev.map(b => b.id === bookingId ? fresh : b))
+      }
+    } catch (err) {
+      showNotification('Lỗi cập nhật nghiệp vụ: ' + (err.response?.data?.message || err.message), 'error')
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   // Xử lý mở Modal Thanh Toán & Sao Chép thông tin
   const openPaymentModal = async (booking) => {
     if (!booking) return
@@ -670,6 +719,77 @@ export default function BookingManagement() {
     }
   }
 
+  // 1. Dịch thuật các thuật ngữ nghiệp vụ cảng sang Tiếng Việt
+  const getOperationNameVi = (type) => {
+    switch (type) {
+      case 'Export': return 'Giao container hàng xuất'
+      case 'Import': return 'Nhận container hàng nhập'
+      case 'EmptyPickup': return 'Bốc vỏ container rỗng'
+      case 'EmptyReturn': return 'Hạ trả container rỗng'
+      case 'Combined': return 'Chuyến xe kết hợp 2 chiều'
+      case 'Pickup': return 'Nhận container'
+      case 'Dropoff': return 'Giao container'
+      default: return type || 'Nghiệp vụ container'
+    }
+  }
+
+  const getDirectionVi = (direction) => {
+    if (direction === 'GateIn') return 'Cổng vào'
+    if (direction === 'GateOut') return 'Cổng ra'
+    return direction || ''
+  }
+
+  const getDocTypeVi = (docType) => {
+    switch (docType) {
+      case 'BookingNote':
+      case 'CarrierBookingReference': return 'Booking Note / Đặt chỗ Hãng tàu'
+      case 'BillOfLading': return 'Vận đơn đường biển (B/L)'
+      case 'DeliveryOrder': return 'Lệnh giao hàng điện tử (eDO)'
+      case 'CustomsDeclaration': return 'Tờ khai Hải quan điện tử'
+      case 'VgmCertificate': return 'Chứng thư khối lượng VGM'
+      case 'ReeferInstructions': return 'Chỉ dẫn nhiệt độ lạnh'
+      case 'DangerousGoodsDeclaration': return 'Khai báo hàng nguy hiểm (DG/IMO)'
+      case 'EirReceipt': return 'Phiếu hạ/giao nhận EIR'
+      case 'Other': return 'Chứng từ / Hồ sơ đính kèm khác'
+      case 'EmptyContainerReleaseOrder': return 'Lệnh cấp vỏ container'
+      case 'EmptyReturnAuthorization': return 'Lệnh hạ vỏ rỗng'
+      default: return docType || 'Chứng từ thẩm định'
+    }
+  }
+
+  const getCargoTypeVi = (cargoType) => {
+    switch (cargoType) {
+      case 'Reefer': return 'Hàng đông lạnh'
+      case 'DangerousGoods': return 'Hàng nguy hiểm'
+      case 'Oversized': return 'Hàng quá khổ quá tải'
+      case 'General':
+      default:
+        return 'Hàng bách hóa'
+    }
+  }
+
+  const getOperationStatusVi = (status) => {
+    switch (status) {
+      case 'Approved': return 'Đã duyệt'
+      case 'Completed': return 'Hoàn tất'
+      case 'InProgress': return 'Đang xử lý'
+      case 'OnHold': return 'Tạm giữ'
+      case 'PendingVerification':
+      default:
+        return 'Chờ thẩm định'
+    }
+  }
+
+  const getDocStatusVi = (status) => {
+    switch (status) {
+      case 'Verified': return 'Đã duyệt'
+      case 'Rejected': return 'Từ chối'
+      case 'Pending':
+      default:
+        return 'Chờ thẩm định'
+    }
+  }
+
   // 1. Render Trạng Thái Booking (Hoàn toàn bằng Tiếng Việt, chuẩn vận hành cảng)
   const renderBookingStatusBadge = (status) => {
     switch (status) {
@@ -704,7 +824,7 @@ export default function BookingManagement() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
             </span>
-            Đã vào cổng (Gate-In)
+            Đã vào cổng
           </span>
         )
       case 'Completed':
@@ -734,6 +854,32 @@ export default function BookingManagement() {
             {status || 'Khởi tạo'}
           </span>
         )
+    }
+  }
+
+  // Render Badge Loại Nghiệp Vụ Cảng (Export, Import, EmptyPickup, EmptyReturn, Combined)
+  const renderOperationTypeBadge = (bk) => {
+    if (bk.isCombined || (bk.operations && bk.operations.length > 1) || bk.bookingType === 'Combined') {
+      return (
+        <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200 flex items-center gap-1 shadow-2xs">
+          <span>⚡ 2 Chiều</span>
+          <span className="text-[9px] bg-purple-200/70 px-1 rounded font-bold">({bk.operations?.length || 2} tác nghiệp)</span>
+        </span>
+      )
+    }
+    switch (bk.bookingType) {
+      case 'Export':
+        return <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">Giao hàng xuất</span>
+      case 'Import':
+        return <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-blue-50 text-blue-700 border border-blue-200">Nhận hàng nhập</span>
+      case 'EmptyPickup':
+        return <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-amber-50 text-amber-700 border border-amber-200">Bốc vỏ rỗng</span>
+      case 'EmptyReturn':
+        return <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-teal-50 text-teal-700 border border-teal-200">Hạ trả rỗng</span>
+      case 'Pickup':
+        return <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">Nhận container</span>
+      default:
+        return <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-slate-100 text-slate-700 border border-slate-200">{bk.bookingType === 'Dropoff' ? 'Giao container' : (bk.bookingType || 'Giao container')}</span>
     }
   }
 
@@ -828,7 +974,7 @@ export default function BookingManagement() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-orange-50 text-signal-orange border border-orange-200 shadow-2xs">
                 <span className="material-symbols-outlined text-xs">calendar_month</span>
-                TAS · Terminal Appointment System
+                Hệ Thống Đặt Hẹn Cảng Thông Minh (TAS)
               </span>
               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
@@ -873,7 +1019,7 @@ export default function BookingManagement() {
 
           <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:border-emerald-300 hover:shadow-sm transition-all group">
             <div className="flex items-center justify-between text-emerald-700 text-xs mb-1 font-semibold">
-              <span>Sẵn Sàng (Ready)</span>
+              <span>Sẵn Sàng Vào Cổng</span>
               <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <span className="material-symbols-outlined text-base">verified</span>
               </div>
@@ -895,7 +1041,7 @@ export default function BookingManagement() {
 
           <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:border-blue-300 hover:shadow-sm transition-all group">
             <div className="flex items-center justify-between text-blue-700 text-xs mb-1 font-semibold">
-              <span>Gate-In / Hoàn Tất</span>
+              <span>Đã Vào Cổng / Hoàn Tất</span>
               <div className="w-7 h-7 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center group-hover:scale-110 transition-transform">
                 <span className="material-symbols-outlined text-base">check_circle</span>
               </div>
@@ -912,7 +1058,7 @@ export default function BookingManagement() {
       <div className="flex items-center justify-between gap-4 bg-paper p-1.5 rounded-2xl border border-chalk shadow-xs">
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none w-full sm:w-auto">
           {[
-            { key: 'my_bookings', label: 'Lịch hẹn của tôi (Live Database)', icon: 'format_list_bulleted', badge: totalCount },
+            { key: 'my_bookings', label: 'Danh Sách Lịch Hẹn', icon: 'format_list_bulleted', badge: totalCount },
             { key: 'create', label: 'Tạo Lịch Hẹn Mới', icon: 'add_circle' },
             { key: 'container_status', label: 'Lộ Trình Container', icon: 'timeline' },
           ].map((tab) => (
@@ -1010,8 +1156,11 @@ export default function BookingManagement() {
                   className="px-3 py-2.5 rounded-xl border border-chalk bg-white text-xs font-semibold text-carbon focus:ring-2 focus:ring-signal-orange cursor-pointer focus:border-signal-orange"
                 >
                   <option value="All">Tất cả nghiệp vụ</option>
-                  <option value="Pickup">Chỉ Pickup (Bốc hàng)</option>
-                  <option value="Dropoff">Chỉ Dropoff (Hạ bãi)</option>
+                  <option value="Export">Giao container hàng xuất (Cổng vào)</option>
+                  <option value="Import">Nhận container hàng nhập (Cổng ra)</option>
+                  <option value="Combined">Chuyến xe kết hợp 2 chiều</option>
+                  <option value="Pickup">Nhận container</option>
+                  <option value="Dropoff">Giao container</option>
                 </select>
               </div>
             </form>
@@ -1024,10 +1173,10 @@ export default function BookingManagement() {
                 </span>
                 {[
                   { id: 'All', label: 'Tất cả' },
-                  { id: 'Ready', label: '✨ Sẵn sàng (Ready)' },
+                  { id: 'Ready', label: '✨ Sẵn sàng' },
                   { id: 'Pending', label: 'Chờ điều phối' },
                   { id: 'Approved', label: 'Đã duyệt' },
-                  { id: 'CheckedIn', label: 'Đã Gate-In' },
+                  { id: 'CheckedIn', label: 'Đã vào cổng' },
                   { id: 'Completed', label: 'Hoàn tất' },
                   { id: 'Canceled', label: 'Đã hủy' },
                 ].map((s) => (
@@ -1139,14 +1288,18 @@ export default function BookingManagement() {
                           {/* 2. Loại & Phương tiện */}
                           <td className="py-4 px-4">
                             <div className="space-y-1.5">
-                              <div className="flex items-center gap-2">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider ${
-                                  bk.bookingType === 'Pickup'
-                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                                    : 'bg-teal-50 text-teal-700 border border-teal-200'
-                                }`}>
-                                  {bk.bookingType}
-                                </span>
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {renderOperationTypeBadge(bk)}
+
+                                {bk.tripStatus && (
+                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200">
+                                    {bk.tripStatus === 'Scheduled' ? 'Chuyến: Đã lên lịch' :
+                                     bk.tripStatus === 'Arrived' ? 'Chuyến: Đã đến cảng' :
+                                     bk.tripStatus === 'Processing' ? 'Chuyến: Đang xử lý' :
+                                     bk.tripStatus === 'PartiallyCompleted' ? 'Chuyến: Xong 1 chặng' :
+                                     bk.tripStatus === 'Completed' ? 'Chuyến: Hoàn tất' : `Chuyến: ${bk.tripStatus}`}
+                                  </span>
+                                )}
 
                                 {resolvedPlate ? (
                                   <span className="font-mono font-bold text-[11px] text-carbon bg-slate-100 px-2.5 py-0.5 rounded-md border border-slate-200 flex items-center gap-1 shadow-2xs">
@@ -1174,17 +1327,39 @@ export default function BookingManagement() {
                           {/* 3. Container */}
                           <td className="py-4 px-4">
                             {resolvedContainers.length > 0 ? (
-                              <div className="space-y-1">
+                              <div className="space-y-1.5">
                                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-gradient-to-r from-orange-50 to-amber-50/60 border border-orange-200/90 text-signal-orange font-mono font-black text-xs shadow-2xs">
                                   <span className="material-symbols-outlined text-xs">inventory_2</span>
                                   <span>{resolvedContainers.join(', ')}</span>
                                 </div>
+                                {bk.isReeferPowerRequired && (
+                                  <div className="flex items-center gap-1 flex-wrap">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-50 border border-cyan-300 text-cyan-800 text-[10px] font-bold shadow-2xs">
+                                      <span className="material-symbols-outlined text-[12px] text-cyan-600 animate-pulse">ac_unit</span>
+                                      <span>Kho Lạnh ({bk.targetTemperature ? `${bk.targetTemperature}°C` : 'Cấp điện'})</span>
+                                    </span>
+                                    {bk.reeferPlugCode && (
+                                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-300 text-emerald-800 text-[9px] font-mono font-bold">
+                                        <span className="material-symbols-outlined text-[10px] text-emerald-600">power</span>
+                                        {bk.reeferPlugCode}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                                 <div className="text-[10px] text-slate-400">Tiêu chuẩn cảng · Đã xác thực</div>
                               </div>
                             ) : (
-                              <span className="text-[11px] text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 italic inline-block">
-                                Chưa gắn container
-                              </span>
+                              <div className="space-y-1">
+                                <span className="text-[11px] text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 italic inline-block">
+                                  Chưa gắn container
+                                </span>
+                                {bk.isReeferPowerRequired && (
+                                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-50 border border-cyan-300 text-cyan-800 text-[10px] font-bold">
+                                    <span className="material-symbols-outlined text-[12px] text-cyan-600">ac_unit</span>
+                                    <span>Yêu cầu cấp điện kho lạnh</span>
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </td>
 
@@ -1249,10 +1424,7 @@ export default function BookingManagement() {
                               )}
 
                               <button
-                                onClick={() => {
-                                  setSelectedBooking(bk)
-                                  setShowDetailModal(true)
-                                }}
+                                onClick={() => openBookingDetail(bk)}
                                 className="w-8 h-8 rounded-xl border border-chalk hover:border-carbon text-slate-600 hover:text-carbon hover:bg-fog transition-all flex items-center justify-center cursor-pointer"
                                 title="Xem chi tiết"
                               >
@@ -1361,7 +1533,7 @@ export default function BookingManagement() {
             <div className="flex justify-between items-center border-b border-chalk pb-4">
               <div>
                 <span className="text-[10px] font-extrabold uppercase text-emerald-600 tracking-wider">
-                  NXP-049: Điều Phối Tài Nguyên Fleet
+                  Điều Phối Phương Tiện & Tài Xế
                 </span>
                 <h3 className="font-mono font-bold text-xl text-carbon">
                   Điều Phối Xe Cho {assignForm.bookingCode}
@@ -1407,7 +1579,7 @@ export default function BookingManagement() {
               </div>
 
               <div className="space-y-1">
-                <label className="block font-bold uppercase text-slate-500">2. Chọn Xe Đầu Kéo (Truck)</label>
+                <label className="block font-bold uppercase text-slate-500">2. Chọn Xe Đầu Kéo</label>
                 <select
                   value={assignForm.truckId}
                   onChange={(e) => handleAssignTruckChange(e.target.value)}
@@ -1422,7 +1594,7 @@ export default function BookingManagement() {
               </div>
 
               <div className="space-y-1">
-                <label className="block font-bold uppercase text-slate-500">3. Chọn Tài Xế Phụ Trách (Driver)</label>
+                <label className="block font-bold uppercase text-slate-500">3. Chọn Tài Xế Phụ Trách</label>
                 <select
                   value={assignForm.driverId}
                   onChange={(e) => {
@@ -1471,7 +1643,7 @@ export default function BookingManagement() {
 
               <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-emerald-800 text-[11px] flex items-center gap-2">
                 <span className="material-symbols-outlined text-base">info</span>
-                <span>Sau khi xác nhận, Booking sẽ tự động chuyển sang <strong>Ready</strong> và kích hoạt Vé e-Pass QR vào cổng.</span>
+                <span>Sau khi xác nhận, Booking sẽ tự động chuyển sang <strong>Sẵn sàng</strong> và kích hoạt Vé e-Pass QR vào cổng.</span>
               </div>
 
               <div className="flex justify-end gap-3 pt-3 border-t border-chalk">
@@ -1488,7 +1660,7 @@ export default function BookingManagement() {
                   className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold flex items-center gap-1.5 shadow-md cursor-pointer"
                 >
                   {actionLoading && <span className="material-symbols-outlined text-sm animate-spin">sync</span>}
-                  <span>Xác Nhận Điều Phối [Ready] ➔</span>
+                  <span>Xác Nhận Điều Phối ➔</span>
                 </button>
               </div>
             </form>
@@ -1507,7 +1679,7 @@ export default function BookingManagement() {
             <div className="flex justify-between items-center border-b border-chalk pb-3">
               <div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-signal-orange">
                 <span className="w-2 h-2 rounded-full bg-signal-orange"></span>
-                NexusPort Smart e-Pass
+                Vé Vào Cổng Điện Tử NexusPort
               </div>
               <button
                 onClick={() => setShowQrModal(false)}
@@ -1525,7 +1697,7 @@ export default function BookingManagement() {
                   <h4 className="font-mono font-black text-xl text-signal-orange tracking-tight">{selectedBooking.bookingCode}</h4>
                 </div>
                 <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  READY
+                  SẴN SÀNG
                 </span>
               </div>
 
@@ -1539,6 +1711,20 @@ export default function BookingManagement() {
                   <p className="font-bold text-carbon truncate">{getBookingDriverName(selectedBooking) || 'Nguyễn Văn Hùng'}</p>
                 </div>
               </div>
+
+              {selectedBooking.isReeferPowerRequired && (
+                <div className="pt-2 border-t border-orange-200/60 flex items-center justify-between text-xs">
+                  <div className="flex items-center gap-1.5 text-cyan-800 font-bold">
+                    <span className="material-symbols-outlined text-sm text-cyan-600 animate-pulse">ac_unit</span>
+                    <span>Kho Lạnh {selectedBooking.targetTemperature ? `${selectedBooking.targetTemperature}°C` : 'Cấp điện'}</span>
+                  </div>
+                  {selectedBooking.reeferPlugCode && (
+                    <span className="font-mono text-[11px] font-extrabold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded border border-emerald-300">
+                      ⚡ Trụ: {selectedBooking.reeferPlugCode}
+                    </span>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* QR Code Frame */}
@@ -1560,7 +1746,7 @@ export default function BookingManagement() {
             <div className="space-y-1">
               <p className="text-xs text-carbon font-bold flex items-center justify-center gap-1">
                 <span className="material-symbols-outlined text-sm text-emerald-600">check_circle</span>
-                Hợp lệ để vào Làn Cổng Gate-In
+                Hợp lệ để vào cổng cảng
               </p>
               <p className="text-[11px] text-slate-500 leading-tight">
                 Quét mã này tại đầu đọc tự động của trạm barrier cảng để kích hoạt cân và mở barie vào bãi.
@@ -1594,7 +1780,7 @@ export default function BookingManagement() {
       {/* ========================================================================= */}
       {showDetailModal && selectedBooking && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-paper border border-chalk rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl space-y-6 animate-in zoom-in-95 duration-200">
+          <div className="bg-paper border border-chalk rounded-3xl max-w-2xl max-h-[90vh] overflow-y-auto w-full p-6 sm:p-7 shadow-2xl space-y-6 animate-in zoom-in-95 duration-200">
 
             <div className="flex justify-between items-center border-b border-chalk pb-4">
               <div>
@@ -1629,7 +1815,7 @@ export default function BookingManagement() {
                       : 'bg-amber-50 text-amber-800 border-amber-300'
                   }`}>
                     <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                    {getBookingPaymentInfo(selectedBooking).status === 'Paid' ? 'Đã thanh toán (Paid)' : 'Chưa thanh toán (Unpaid)'}
+                    {getBookingPaymentInfo(selectedBooking).status === 'Paid' ? 'Đã thanh toán' : 'Chưa thanh toán'}
                   </span>
                 </div>
 
@@ -1655,7 +1841,7 @@ export default function BookingManagement() {
               <div className="grid grid-cols-2 gap-4 p-4 rounded-2xl border border-chalk bg-white">
                 <div>
                   <span className="text-slate-400 text-[11px]">Loại Booking:</span>
-                  <p className="font-bold text-carbon text-sm mt-0.5">{selectedBooking.bookingType}</p>
+                  <p className="font-bold text-carbon text-sm mt-0.5">{getOperationNameVi(selectedBooking.bookingType)}</p>
                 </div>
                 <div>
                   <span className="text-slate-400 text-[11px]">Ngày Khởi Tạo:</span>
@@ -1687,6 +1873,283 @@ export default function BookingManagement() {
                   {getBookingContainers(selectedBooking).join(', ') || 'Chưa cập nhật'}
                 </p>
               </div>
+
+              {/* HỒ SƠ CHỨNG TỪ DÙNG CHUNG CỦA ĐƠN HÀNG (Áp dụng cho nhiều container) */}
+              {selectedBooking.documents && selectedBooking.documents.length > 0 && (
+                <div className="p-4 rounded-2xl border border-blue-200 bg-blue-50/50 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-base text-blue-600">folder_shared</span>
+                      <span className="text-[11px] font-extrabold uppercase text-blue-900 tracking-wider">
+                        Chứng Từ Dùng Chung Đơn Hàng ({selectedBooking.documents.length} Tệp)
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-blue-700 bg-blue-100 font-bold px-2 py-0.5 rounded-full">
+                      Áp dụng chung toàn bộ container
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {selectedBooking.documents.map((doc, dIdx) => (
+                      <div key={doc.id || dIdx} className="flex items-center justify-between p-2.5 rounded-xl bg-white border border-blue-100 text-xs shadow-2xs">
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-sm text-blue-500">description</span>
+                          <div>
+                            <span className="font-bold text-carbon">{getDocTypeVi(doc.documentType)}</span>
+                            {doc.fileName && (
+                              <span className="text-[11px] text-slate-600 font-medium ml-1.5 font-mono">
+                                ({doc.fileName})
+                              </span>
+                            )}
+                            {doc.documentNumber && (
+                              <span className="text-[10px] text-slate-400 font-mono ml-2">#{doc.documentNumber}</span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            doc.verificationStatus === 'Verified' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                            doc.verificationStatus === 'Rejected' ? 'bg-rose-50 text-rose-700 border border-rose-200' :
+                            'bg-amber-50 text-amber-700 border border-amber-200'
+                          }`}>
+                            {doc.verificationStatus === 'Verified' ? '✓ Đã thẩm định' :
+                             doc.verificationStatus === 'Rejected' ? '✕ Bị từ chối' : '⏳ Chờ duyệt'}
+                          </span>
+                          {(doc.fileUrl || doc.fileReference) && (
+                            <a
+                              href={doc.fileUrl || doc.fileReference}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 text-[10px] font-bold flex items-center gap-1 transition-all"
+                              title="Xem tệp chứng từ"
+                            >
+                              <span className="material-symbols-outlined text-xs">open_in_new</span>
+                              <span>Xem tệp</span>
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* CHI TIẾT CÁC NGHIỆP VỤ & CHỨNG TỪ (NEXUSPORT TOS SMART GATE) */}
+              {selectedBooking.operations && selectedBooking.operations.length > 0 && (
+                <div className="space-y-3 pt-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-extrabold uppercase text-slate-500 tracking-wider">
+                      Danh Mục Nghiệp Vụ Cảng ({selectedBooking.operations.length} Nghiệp Vụ)
+                    </span>
+                    {selectedBooking.isCombined && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-extrabold bg-purple-100 text-purple-800">
+                        ⚡ Chuyến Xe Kết Hợp Hai Chiều
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-3">
+                    {selectedBooking.operations.map((op, opIdx) => (
+                      <div key={op.id || opIdx} className="p-4 rounded-2xl border border-chalk bg-white shadow-xs space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-chalk pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <span className={`w-6 h-6 rounded-lg flex items-center justify-center font-black text-xs ${
+                              op.expectedGateDirection === 'GateIn' ? 'bg-teal-100 text-teal-800' : 'bg-blue-100 text-blue-800'
+                            }`}>
+                              {opIdx + 1}
+                            </span>
+                            <span className="font-extrabold text-carbon text-sm">{getOperationNameVi(op.operationType)}</span>
+                            <span className="text-[10px] font-bold text-slate-500 font-mono">({getDirectionVi(op.expectedGateDirection)})</span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
+                              op.status === 'Approved' ? 'bg-emerald-100 text-emerald-800' :
+                              op.status === 'Completed' ? 'bg-slate-200 text-slate-800' :
+                              op.status === 'InProgress' ? 'bg-blue-100 text-blue-800' :
+                              op.status === 'OnHold' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                            }`}>
+                              {getOperationStatusVi(op.status)}
+                            </span>
+
+                            {op.status !== 'Approved' && op.status !== 'Completed' && (
+                              <button
+                                type="button"
+                                disabled={actionLoading}
+                                onClick={() => handleUpdateOperationStatus(selectedBooking.id, op.id, 'Approved')}
+                                className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] border border-emerald-200 transition-all cursor-pointer"
+                              >
+                                ✓ Duyệt nghiệp vụ
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                          <div>
+                            <span className="text-[10px] text-slate-400 block">Số Container:</span>
+                            <span className="font-mono font-extrabold text-signal-orange">{op.containerNumber || '—'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block">Trạng thái:</span>
+                            <span className="font-semibold text-carbon">{op.cargoStatus === 'Empty' ? 'Vỏ Rỗng' : 'Có Hàng'}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block">Loại hàng:</span>
+                            <span className="font-semibold text-carbon">{getCargoTypeVi(op.cargoType)}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block">Trọng lượng:</span>
+                            <span className="font-mono font-semibold text-carbon">{op.grossWeightKg ? `${op.grossWeightKg} Kg` : '—'}</span>
+                          </div>
+                        </div>
+
+                        {/* References */}
+                        <div className="flex flex-wrap gap-2 text-[11px] pt-1 border-t border-chalk/60">
+                          {op.carrierBookingNumber && (
+                            <span className="bg-fog px-2 py-0.5 rounded text-slate-600 font-mono">
+                              Booking Hãng: <b>{op.carrierBookingNumber}</b>
+                            </span>
+                          )}
+                          {op.billOfLadingNumber && (
+                            <span className="bg-fog px-2 py-0.5 rounded text-slate-600 font-mono">
+                              B/L: <b>{op.billOfLadingNumber}</b>
+                            </span>
+                          )}
+                          {op.deliveryOrderNumber && (
+                            <span className="bg-fog px-2 py-0.5 rounded text-slate-600 font-mono">
+                              eDO: <b>{op.deliveryOrderNumber}</b>
+                            </span>
+                          )}
+                          {op.customsDeclarationNumber && (
+                            <span className="bg-fog px-2 py-0.5 rounded text-slate-600 font-mono">
+                              Hải quan: <b>{op.customsDeclarationNumber}</b>
+                            </span>
+                          )}
+                          {op.emptyReleaseOrderNumber && (
+                            <span className="bg-fog px-2 py-0.5 rounded text-slate-600 font-mono">
+                              Lệnh cấp vỏ: <b>{op.emptyReleaseOrderNumber}</b>
+                            </span>
+                          )}
+                          {op.emptyReturnAuthNumber && (
+                            <span className="bg-fog px-2 py-0.5 rounded text-slate-600 font-mono">
+                              Lệnh trả rỗng: <b>{op.emptyReturnAuthNumber}</b>
+                            </span>
+                          )}
+                          {op.eirNumber && (
+                            <span className="bg-emerald-50 text-emerald-800 px-2 py-0.5 rounded border border-emerald-200 font-mono font-bold">
+                              Phiếu EIR: {op.eirNumber}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Documents */}
+                        {op.documents && op.documents.length > 0 && (
+                          <div className="space-y-1.5 pt-1 border-t border-chalk/60">
+                            <span className="text-[10px] font-bold text-slate-600 uppercase">Bộ chứng từ riêng của container này ({op.documents.length} tệp):</span>
+                            <div className="space-y-1">
+                              {op.documents.map((doc) => (
+                                <div key={doc.id} className="flex items-center justify-between p-2 rounded-xl bg-fog text-xs">
+                                  <div className="flex items-center gap-2">
+                                    <span className="material-symbols-outlined text-sm text-slate-500">description</span>
+                                    <div>
+                                      <span className="font-bold text-carbon">{getDocTypeVi(doc.documentType)}</span>
+                                      {doc.fileName && (
+                                        <span className="text-[11px] text-slate-600 font-medium ml-1.5 font-mono">
+                                          ({doc.fileName})
+                                        </span>
+                                      )}
+                                      <span className="text-[10px] text-slate-400 font-mono ml-2">{doc.documentNumber}</span>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    {(doc.fileUrl || doc.fileReference) && (
+                                      <a
+                                        href={doc.fileUrl || doc.fileReference}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="px-2 py-0.5 rounded bg-white hover:bg-slate-100 text-blue-600 border border-slate-200 text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer"
+                                        title="Xem tệp chứng từ"
+                                      >
+                                        <span className="material-symbols-outlined text-xs">open_in_new</span>
+                                        <span>Xem tệp</span>
+                                      </a>
+                                    )}
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                      doc.status === 'Verified' ? 'bg-emerald-100 text-emerald-800' :
+                                      doc.status === 'Rejected' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                                    }`}>
+                                      {getDocStatusVi(doc.status)}
+                                    </span>
+                                    {doc.status !== 'Verified' && (
+                                      <button
+                                        type="button"
+                                        disabled={actionLoading}
+                                        onClick={() => handleVerifyDocument(selectedBooking.id, doc.id)}
+                                        className="px-2 py-0.5 rounded bg-white hover:bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-bold transition-all cursor-pointer"
+                                      >
+                                        Duyệt
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Thông tin Cấp Điện Kho Lạnh Reefer */}
+              {selectedBooking.isReeferPowerRequired && (
+                <div className="p-4 rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50/60 to-blue-50/40 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-cyan-600">ac_unit</span>
+                      <span className="font-bold text-cyan-950 text-xs">Dịch Vụ Cấp Điện Kho Lạnh</span>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-100 text-cyan-800 border border-cyan-300">
+                      3 Pha 380V / 15kW
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 pt-2 border-t border-cyan-200/80 text-xs">
+                    <div className="bg-white/80 p-2.5 rounded-xl border border-cyan-100">
+                      <span className="text-slate-400 text-[10px] block font-medium">Nhiệt độ cài đặt</span>
+                      <span className="font-mono font-black text-cyan-800 text-sm">
+                        {selectedBooking.targetTemperature ?? -18}°{selectedBooking.temperatureUnit || 'C'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">±{selectedBooking.tempTolerance ?? 2.0}°C</span>
+                    </div>
+                    <div className="bg-white/80 p-2.5 rounded-xl border border-cyan-100">
+                      <span className="text-slate-400 text-[10px] block font-medium">Trụ / Ổ cấp điện</span>
+                      <span className="font-mono font-black text-emerald-700 text-sm">
+                        {selectedBooking.reeferPlugCode || 'Tự động phân bổ'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">Khu Vực Bãi Lạnh (Block R)</span>
+                    </div>
+                    <div className="bg-white/80 p-2.5 rounded-xl border border-cyan-100">
+                      <span className="text-slate-400 text-[10px] block font-medium">Trạng thái cấp điện</span>
+                      <span className="font-bold text-signal-orange text-xs block mt-0.5">
+                        {selectedBooking.reeferPowerStatus === 'POWERED_ON' ? '⚡ Đang cấp điện' : '⏳ Chờ cắm điện'}
+                      </span>
+                      <span className="text-[10px] text-slate-400 block mt-0.5">Hệ Thống Kho Lạnh</span>
+                    </div>
+                  </div>
+
+                  <div className="pt-1 flex justify-end">
+                    <a
+                      href="/yard/reefer"
+                      className="text-[11px] font-bold text-cyan-700 hover:text-cyan-900 flex items-center gap-1 hover:underline"
+                    >
+                      <span>Mở trung tâm quản lý kho lạnh</span>
+                      <span className="material-symbols-outlined text-xs">arrow_forward</span>
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end pt-2">
@@ -1867,7 +2330,7 @@ export default function BookingManagement() {
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400">
-                        Hệ Thống Thu Phí Cảng Điện Tử · e-Port TOS
+                        Hệ Thống Thu Phí Cảng Điện Tử
                       </span>
                       <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider border ${
                         isPaid
@@ -1875,7 +2338,7 @@ export default function BookingManagement() {
                           : 'bg-amber-50 text-amber-700 border-amber-300 animate-pulse'
                       }`}>
                         <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                        {isPaid ? 'Đã Thanh Toán (Paid)' : 'Chờ Thanh Toán (Unpaid)'}
+                        {isPaid ? 'Đã Thanh Toán' : 'Chờ Thanh Toán'}
                       </span>
                     </div>
                     <h3 className="font-mono font-black text-xl text-carbon mt-0.5">
@@ -1898,7 +2361,7 @@ export default function BookingManagement() {
                 <div className="flex items-center justify-between">
                   <h4 className="font-bold text-xs uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
                     <span className="material-symbols-outlined text-sm text-signal-orange">receipt</span>
-                    Bảng Kê Chi Tiết Biểu Phí Dịch Vụ Cảng (TOS Tariff Breakdown)
+                    Bảng Kê Chi Tiết Biểu Phí Dịch Vụ Cảng
                   </h4>
                   <span className="text-[11px] text-slate-400">Đơn vị tính: VNĐ</span>
                 </div>
@@ -1906,7 +2369,7 @@ export default function BookingManagement() {
                 <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white text-xs divide-y divide-slate-100">
                   <div className="p-3 flex justify-between items-center hover:bg-slate-50/50">
                     <div>
-                      <span className="font-bold text-carbon">1. Cước nâng / hạ vỏ và hàng (Lo-Lo Service)</span>
+                      <span className="font-bold text-carbon">1. Cước nâng / hạ vỏ và hàng</span>
                       <p className="text-[11px] text-slate-400">
                         {pInfo.baseHandling >= 650000 ? 'Áp dụng container tiêu chuẩn 40ft/45ft' : 'Áp dụng container tiêu chuẩn 20ft'}
                       </p>
@@ -1916,16 +2379,16 @@ export default function BookingManagement() {
 
                   <div className="p-3 flex justify-between items-center hover:bg-slate-50/50">
                     <div>
-                      <span className="font-bold text-carbon">2. Phí cân kiểm soát tải trọng tự động (Weighbridge Fee)</span>
-                      <p className="text-[11px] text-slate-400">Kiểm tra tải trọng trục xe tự động qua trạm cân Gate-In</p>
+                      <span className="font-bold text-carbon">2. Phí cân kiểm soát tải trọng tự động</span>
+                      <p className="text-[11px] text-slate-400">Kiểm tra tải trọng trục xe tự động qua trạm cân cổng vào</p>
                     </div>
                     <span className="font-mono font-bold text-carbon">{pInfo.weighFee.toLocaleString('vi-VN')} đ</span>
                   </div>
 
                   <div className="p-3 flex justify-between items-center hover:bg-slate-50/50">
                     <div>
-                      <span className="font-bold text-carbon">3. Phí an ninh bến cảng & tiện ích e-Port</span>
-                      <p className="text-[11px] text-slate-400">Hạ tầng công nghệ e-Pass, giám sát an ninh camera OCR</p>
+                      <span className="font-bold text-carbon">3. Phí an ninh bến cảng & tiện ích cổng điện tử</span>
+                      <p className="text-[11px] text-slate-400">Hạ tầng công nghệ vé điện tử, giám sát an ninh camera OCR</p>
                     </div>
                     <span className="font-mono font-bold text-carbon">{pInfo.securityFee.toLocaleString('vi-VN')} đ</span>
                   </div>
@@ -1971,7 +2434,7 @@ export default function BookingManagement() {
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs bg-white/80 backdrop-blur-sm p-4 rounded-xl border border-emerald-200/80">
                       <div>
-                        <span className="text-slate-400 text-[11px]">Mã Giao Dịch Quyết Toán (Txn ID):</span>
+                        <span className="text-slate-400 text-[11px]">Mã Giao Dịch Quyết Toán:</span>
                         <p className="font-mono font-black text-carbon mt-0.5">{pInfo.transactionId || `TXN-NP-${code}`}</p>
                       </div>
                       <div>
@@ -1985,7 +2448,7 @@ export default function BookingManagement() {
                         <p className="font-semibold text-carbon mt-0.5">{pInfo.method || 'VietQR Napas 247'}</p>
                       </div>
                       <div>
-                        <span className="text-slate-400 text-[11px]">Trạng Thái Kế Toán TOS:</span>
+                        <span className="text-slate-400 text-[11px]">Trạng Thái Kế Toán Cảng:</span>
                         <p className="font-bold text-emerald-600 mt-0.5 flex items-center gap-1">
                           <span className="material-symbols-outlined text-sm">done_all</span>
                           Đã Đối Soát & Xuất Vé
@@ -2017,7 +2480,7 @@ export default function BookingManagement() {
                         className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <span className="material-symbols-outlined text-sm">qr_code_2</span>
-                        Xem Vé Vào Cổng e-Pass
+                        Xem Vé Vào Cổng
                       </button>
 
                       <button
