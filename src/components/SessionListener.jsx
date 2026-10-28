@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { io } from 'socket.io-client'
+import { createSessionHeartbeat, SESSION_HEARTBEAT_MS } from '../services/sessionHeartbeat'
 
 const getRealtimeUrl = () => {
   if (import.meta.env.VITE_REALTIME_URL) {
@@ -41,8 +42,8 @@ const performKickout = (reason = 'SESSION_KICKED', isKicked = true) => {
  * SessionListener: Giám sát phiên đăng nhập duy nhất (Single Active Session).
  * Tích hợp 4 lớp bảo vệ:
  * 1. Lắng nghe trực tiếp sự kiện 'auth:session_kicked' từ Socket.IO
- * 2. Bắt sự kiện ngắt kết nối cưỡng chế ('io server disconnect') từ máy chủ
- * 3. Polling kiểm tra trạng thái phiên mỗi 2.5 giây
+ * 2. Phân biệt chính xác giữa ngắt kết nối mạng và bị đá do đăng nhập trùng lặp
+ * 3. Polling kiểm tra trạng thái phiên mỗi 2.5 giây (/api/auth/me)
  * 4. Kiểm tra ngay lập tức khi người dùng click chuột hoặc quay lại cửa sổ (window focus/visibilitychange)
  */
 export default function SessionListener() {
@@ -67,7 +68,11 @@ export default function SessionListener() {
 
     socket.on('auth:session_kicked', (data) => {
       console.warn('[SessionListener] auth:session_kicked received:', data)
-      performKickout('SOCKET_EVENT')
+      if (data?.reason === 'LOGGED_OUT') {
+        performKickout('LOGGED_OUT')
+      } else {
+        performKickout('DUPLICATE_LOGIN')
+      }
     })
 
     socket.on('disconnect', (reason) => {
@@ -77,22 +82,18 @@ export default function SessionListener() {
 
     socket.on('connect_error', (err) => {
       const msg = err?.message || ''
-      if (
-        msg.includes('Phiên làm việc đã bị kết thúc') ||
-        msg.includes('SESSION_KICKED') ||
-        msg.includes('không còn hợp lệ')
-      ) {
-        performKickout('CONNECT_ERROR')
+      if (msg.includes('Phiên làm việc đã bị kết thúc') || msg.includes('SESSION_KICKED')) {
+        performKickout('DUPLICATE_LOGIN')
       }
     })
 
-    // 3: Heartbeat liveness check (mỗi 2.5 giây)
-    const checkSessionLiveness = async () => {
-      const currentToken = getToken()
-      if (!currentToken) return
-
-      try {
-        const res = await fetch('/api/auth/me', {
+    // 3: Deduplicate polling/focus checks and ignore stale responses after cleanup.
+    const heartbeat = createSessionHeartbeat({
+      getToken,
+      isVisible: () => !document.hidden,
+      request: (currentToken,signal) => fetch(`${(import.meta.env.VITE_API_URL || '/api').replace(/\/$/,'')}/auth/me`, {
+          signal,
+          cache: 'no-store',
           headers: {
             Authorization: `Bearer ${currentToken}`,
             'Cache-Control': 'no-cache',
@@ -109,20 +110,21 @@ export default function SessionListener() {
       } catch (_) { }
     }
 
-    const heartbeatInterval = setInterval(checkSessionLiveness, 2500)
+    const heartbeatInterval = setInterval(() => void heartbeat.check(), SESSION_HEARTBEAT_MS)
 
     // 4: Kiểm tra ngay lập tức khi user focus / đổi tab
     const handleWindowFocus = () => {
-      checkSessionLiveness()
+      void heartbeat.check()
     }
 
     window.addEventListener('focus', handleWindowFocus)
-    window.addEventListener('visibilitychange', handleWindowFocus)
+    document.addEventListener('visibilitychange', handleWindowFocus)
 
     return () => {
       clearInterval(heartbeatInterval)
+      heartbeat.stop()
       window.removeEventListener('focus', handleWindowFocus)
-      window.removeEventListener('visibilitychange', handleWindowFocus)
+      document.removeEventListener('visibilitychange', handleWindowFocus)
       socket.off('auth:session_kicked')
       socket.off('disconnect')
       socket.off('connect_error')

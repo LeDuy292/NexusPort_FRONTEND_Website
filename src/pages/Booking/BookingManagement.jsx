@@ -5,6 +5,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { bookingService } from '../../services/bookingService'
 import driverService from '../../services/driverService'
 import vehicleService from '../../services/vehicleService'
+import { formatPlateNumber } from '../../utils/format'
 
 export default function BookingManagement() {
   const location = useLocation()
@@ -228,11 +229,11 @@ export default function BookingManagement() {
 
   // Helper lấy biển số xe chính xác cho từng booking
   const getBookingVehiclePlate = (bk) => {
-    if (bk.vehiclePlate) return bk.vehiclePlate
+    if (bk.vehiclePlate) return formatPlateNumber(bk.vehiclePlate)
     const cached = fleetCache[bk.bookingCode]
-    if (cached?.vehiclePlate) return cached.vehiclePlate
+    if (cached?.vehiclePlate) return formatPlateNumber(cached.vehiclePlate)
     const truck = (availableResources.trucks || []).find(t => t.id === bk.truckId || t.id === bk.vehicleId)
-    if (truck?.plateNumber) return truck.plateNumber
+    if (truck?.plateNumber) return formatPlateNumber(truck.plateNumber)
     return null
   }
 

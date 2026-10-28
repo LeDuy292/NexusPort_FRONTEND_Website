@@ -7,8 +7,19 @@ export default function Login() {
   const location = useLocation()
   const { loginWithToken } = useAuth()
 
-  // Kiểm tra cờ kicked từ query params
-  const isKicked = new URLSearchParams(location.search).get('kicked') === 'true'
+  // Kiểm tra cờ kicked từ query params (chỉ khi có giá trị duplicate hoặc true)
+  const kickedParam = new URLSearchParams(location.search).get('kicked')
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(
+    kickedParam === 'duplicate' || kickedParam === 'true'
+  )
+
+  // Tự động dọn sạch query param trên URL sau khi đã ghi nhận cờ bị kick
+  useEffect(() => {
+    if (kickedParam === 'duplicate' || kickedParam === 'true') {
+      setShowDuplicateWarning(true)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [kickedParam])
 
   // State form chính
   const [step, setStep] = useState(1)
@@ -133,6 +144,8 @@ export default function Login() {
   const handleSelectRole = (roleObj) => {
     setSelectedRole(roleObj)
     setErrors({ username: '', password: '', general: '' })
+    setShowDuplicateWarning(false)
+    window.history.replaceState({}, '', '/login')
     setTimeout(() => {
       setStep(2)
     }, 150)
@@ -464,8 +477,8 @@ export default function Login() {
             {/* Glass Card */}
             <div className="bg-white/[0.03] border border-white/10 backdrop-blur-2xl rounded-2xl p-8 shadow-2xl transition-all">
               
-              {/* Banner cảnh báo nếu phiên bị kick */}
-              {isKicked && (
+              {/* Banner cảnh báo phiên cũ đã bị đăng xuất vì có phiên mới đăng nhập */}
+              {showDuplicateWarning && (
                 <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-3 animate-fadeIn">
                   <span className="material-symbols-outlined text-amber-400 text-xl flex-shrink-0 mt-0.5">warning</span>
                   <div className="flex-1">
@@ -474,6 +487,17 @@ export default function Login() {
                       Tài khoản của bạn vừa được đăng nhập trên một thiết bị hoặc trình duyệt khác. Để bảo vệ an toàn tài khoản, phiên làm việc trước đó đã tự động đăng xuất.
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDuplicateWarning(false)
+                      window.history.replaceState({}, '', '/login')
+                    }}
+                    className="text-amber-400/60 hover:text-amber-200 p-1"
+                    title="Đóng thông báo"
+                  >
+                    <span className="material-symbols-outlined text-sm">close</span>
+                  </button>
                 </div>
               )}
 
