@@ -88,10 +88,12 @@ export default function SessionListener() {
     })
 
     // 3: Deduplicate polling/focus checks and ignore stale responses after cleanup.
+    let unauthorizedBody = {}
     const heartbeat = createSessionHeartbeat({
       getToken,
       isVisible: () => !document.hidden,
-      request: (currentToken,signal) => fetch(`${(import.meta.env.VITE_API_URL || '/api').replace(/\/$/,'')}/auth/me`, {
+      request: async (currentToken, signal) => {
+        const res = await fetch(`${(import.meta.env.VITE_API_URL || '/api').replace(/\/$/, '')}/auth/me`, {
           signal,
           cache: 'no-store',
           headers: {
@@ -100,15 +102,18 @@ export default function SessionListener() {
           },
         })
         if (res.status === 401) {
-          const body = await res.json().catch(() => ({}))
-          if (body.code === 'SESSION_KICKED') {
-            performKickout('HEARTBEAT_KICKED', true)
-          } else if (body.message?.includes('hết hạn') || body.message?.includes('không hợp lệ')) {
-            performKickout('TOKEN_EXPIRED', false)
-          }
+          unauthorizedBody = await res.clone().json().catch(() => ({}))
         }
-      } catch (_) { }
-    }
+        return res
+      },
+      onUnauthorized: () => {
+        if (unauthorizedBody.code === 'SESSION_KICKED') {
+          performKickout('HEARTBEAT_KICKED', true)
+        } else if (unauthorizedBody.message?.includes('hết hạn') || unauthorizedBody.message?.includes('không hợp lệ')) {
+          performKickout('TOKEN_EXPIRED', false)
+        }
+      },
+    })
 
     const heartbeatInterval = setInterval(() => void heartbeat.check(), SESSION_HEARTBEAT_MS)
 
