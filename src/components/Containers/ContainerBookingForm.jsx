@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { useEffect, useId, useRef, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { containerService } from '../../services/containerService'
 import { bookingService } from '../../services/bookingService'
-import reeferService from '../../services/reeferService'
+import BookingSourcePicker from './BookingSourcePicker'
+import BookingFleetDetails from './BookingFleetDetails'
+import { bookingWindow, suggestedBookingWindow, sourceOperation, retainAvailableFleet } from '../../features/booking-dispatch/bookingPlanning'
 
 const inputClass = 'w-full rounded-xl border border-chalk bg-fog px-4 py-2.5 text-xs outline-none focus:border-signal-orange focus:bg-white focus:ring-0 transition-all font-medium'
 const selectClass = 'w-full rounded-xl border border-chalk bg-fog px-3 py-2.5 text-xs outline-none focus:border-signal-orange focus:bg-white focus:ring-0 transition-all font-medium cursor-pointer'
@@ -83,7 +85,9 @@ export const getCargoTypeLabelVi = (type) => {
     case 'Reefer': return 'Hàng đông lạnh'
     case 'DangerousGoods': return 'Hàng nguy hiểm'
     case 'Oversized': return 'Hàng quá khổ'
-    default: return type || 'Hàng bách hóa'
+    case 'Perishable': return 'Hàng dễ hư hỏng'
+    case 'Overweight': return 'Hàng quá tải'
+    default: return type || 'Chưa xác định'
   }
 }
 
@@ -210,21 +214,25 @@ export const formatFileSize = (bytes) => {
 }
 
 export default function ContainerBookingForm({ onSaved, onClose }) {
+  const navigate = useNavigate()
   const { state: context } = useLocation()
 
   // Mode: 'single' | 'combined'
   const [bookingMode, setBookingMode] = useState('single')
-  const [selectedPrimaryOp, setSelectedPrimaryOp] = useState('Export')
+  const [selectedPrimaryOp, setSelectedPrimaryOp] = useState(context?.bookingType === 'Pickup' ? 'Import' : 'Export')
   const [combinedPair, setCombinedPair] = useState('Export_Import')
 
   // Operations state: array of 1 or 2 operations
   const [operations, setOperations] = useState([
     {
-      operationType: 'Export',
-      expectedGateDirection: 'GateIn',
+      operationType: context?.bookingType === 'Pickup' ? 'Import' : 'Export',
+      expectedGateDirection: context?.bookingType === 'Pickup' ? 'GateOut' : 'GateIn',
+      containerId: context?.containerId || null,
+      declarationId: context?.declarationId || null,
+      yardCode: context?.yardCode || '',
       cargoStatus: 'Loaded',
-      cargoType: 'General',
-      containerIsoSize: '40HC',
+      cargoType: '',
+      containerIsoSize: '',
       containerNumber: context?.containerNumber || '',
       carrierBookingNumber: '',
       billOfLadingNumber: '',
@@ -233,7 +241,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
       emptyReleaseOrderNumber: '',
       emptyReturnAuthNumber: '',
       sealNumber: '',
-      grossWeightKg: 24000,
+      grossWeightKg: null,
       temperatureSetPoint: null,
       dangerousGoodsClass: '',
       unNumber: '',
@@ -242,12 +250,17 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
   ])
 
   // Fleet & resources
-  const [fleet, setFleet] = useState({ trucks: [], drivers: [] })
-  const [availableContainers, setAvailableContainers] = useState([])
-  const [availablePlugs, setAvailablePlugs] = useState([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const errorDialogRef = useRef(null)
+  const errorTitleId = useId()
+  useEffect(() => {
+    const dialog = errorDialogRef.current
+    if (!dialog) return
+    if (error && !dialog.open) dialog.showModal()
+    else if (!error && dialog.open) dialog.close()
+  }, [error])
   const [saved, setSaved] = useState(null)
   const [step, setStep] = useState(1)
 
@@ -255,53 +268,89 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
   const [form, setForm] = useState({
     bookingCode: `BK-${crypto.randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()}`,
     truckId: '',
+    fleetSelectionMode: 'automatic',
     trailerNumber: '',
     driverId: '',
-    appointmentDate: new Date(Date.now() + 86400000).toISOString().split('T')[0],
+    appointmentDate: new Date(Date.now() + 86400000).toLocaleDateString('en-CA'),
     startTime: '08:00',
     endTime: '12:00',
     feeTermsAgreed: true,
     isReeferPowerRequired: false,
-    targetTemperature: -18,
+    targetTemperature: null,
     temperatureUnit: 'C',
     tempTolerance: 1.5,
-    requiredPowerKw: 15.0,
+    requiredPowerKw: null,
     reeferPlugId: '',
     specialColdInstructions: ''
   })
 
-  // Load resources
+  const [planResult, setPlanResult] = useState(null)
+  const [planError, setPlanError] = useState('')
+  const [planRevision, setPlanRevision] = useState(0)
+  const [scheduleNotice, setScheduleNotice] = useState('')
+  let planningRequest = null
+  try {
+    const op = operations[0]
+    if (op?.containerId && (op.declarationId || op.yardCode)) planningRequest = {
+      containerId: op.containerId, declarationId: op.declarationId || null, yardCode: op.yardCode || null,
+      bookingType: op.operationType === 'Import' ? 'Pickup' : 'Dropoff',
+      ...bookingWindow(form.appointmentDate, form.startTime, form.endTime),
+    }
+  } catch { /* Invalid schedule is shown before progressing or saving. */ }
+  const planningKey = JSON.stringify(planningRequest)
+  const currentPlan = planResult?.key === planningKey ? planResult.value : null
+  const currentFleet = currentPlan?.fleet || { trucks: [], drivers: [] }
+  const applySuggestedTime = (option) => {
+    try {
+      const window = suggestedBookingWindow(option)
+      setForm(previous => ({ ...previous, ...window, truckId: '', driverId: '', fleetSelectionMode: 'automatic' }))
+      setPlanResult(null)
+      setScheduleNotice(`Đã chuyển sang ${new Date(option.appointmentStart).toLocaleString('vi-VN')} – ${new Date(option.appointmentEnd).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} theo phương án gợi ý.`)
+      setError('')
+    } catch (error) { setError(error.message) }
+  }
+
   useEffect(() => {
     let live = true
+    setPlanError('')
+    if (!planningRequest) { setLoading(false); return }
     setLoading(true)
-    const load = async () => {
-      try {
-        const [resources, plugsData] = await Promise.all([
-          bookingService.getAvailableResources().catch(() => ({ trucks: [], drivers: [], containers: [] })),
-          reeferService.getPlugs({ usage_status: 'AVAILABLE', technical_status: 'HEALTHY' }).catch(() => [])
-        ])
+    const timer = setTimeout(() => {
+      bookingService.planBooking(JSON.parse(planningKey)).then(plan => {
+        if (!live) return
+        setPlanResult({ key: planningKey, value: plan })
+        setOperations(prev => prev.map((op, i) => i === 0 ? { ...op, ...sourceOperation(plan.source) } : op))
+        setForm(prev => ({ ...prev, ...retainAvailableFleet(prev, plan.fleet, prev.fleetSelectionMode === 'automatic'),
+          isReeferPowerRequired: JSON.parse(planningKey).bookingType === 'Dropoff' && plan.source.cargoType === 'reefer' && Number(plan.source.requiredPowerKw) > 0,
+          requiredPowerKw: plan.source.requiredPowerKw ?? null }))
+      }).catch(err => { if (live) { setPlanError(message(err)); setPlanResult(null) } })
+        .finally(() => { if (live) setLoading(false) })
+    }, 300)
+    return () => { live = false; clearTimeout(timer) }
+  }, [planningKey, planRevision])
 
-        if (live) {
-          setFleet({ trucks: resources?.trucks || [], drivers: resources?.drivers || [] })
-          setAvailableContainers(resources?.containers || [])
-          setAvailablePlugs(Array.isArray(plugsData) ? plugsData : (plugsData?.data || []))
-
-          if (context?.containerNumber) {
-            setOperations(prev => prev.map((op, idx) => idx === 0 ? { ...op, containerNumber: context.containerNumber } : op))
-          }
-        }
-      } catch (err) {
-        if (live) setError(message(err))
-      } finally {
-        if (live) setLoading(false)
-      }
-    }
-    load()
-    return () => { live = false }
-  }, [context?.containerNumber])
+  const selectSource = (selection) => {
+    const previous = operations[0]
+    if (selection && previous.containerId === selection.containerId &&
+      previous.declarationId === (selection.declarationId || null) &&
+      (previous.yardCode || '') === (selection.yardCode || '')) return
+    setPlanResult(null); setPlanError('')
+    setForm(prev => ({ ...prev, truckId: '', driverId: '', targetTemperature: null, fleetSelectionMode: 'automatic' }))
+    setOperations(prev => prev.map((op, i) => i !== 0 ? op : {
+      ...op, containerId: selection?.containerId || null, declarationId: selection?.declarationId || null,
+      yardCode: selection?.yardCode || '', containerNumber: selection?.containerNumber || '',
+      containerIsoSize: selection?.containerTypeCode || '', grossWeightKg: selection?.grossWeightKg ?? null,
+      cargoType: selection ? sourceOperation(selection).cargoType : '',
+      sealNumber: selection?.sealNumber || '', documents: [], carrierBookingNumber: '',
+      billOfLadingNumber: '', deliveryOrderNumber: '', customsDeclarationNumber: '',
+      temperatureSetPoint: null, dangerousGoodsClass: '', unNumber: '',
+    }))
+  }
 
   // Synchronize operations when mode or primary op changes
   const applySingleOperation = (opType) => {
+    setPlanResult(null)
+    setForm(prev => ({ ...prev, truckId: '', driverId: '' }))
     setSelectedPrimaryOp(opType)
     const def = PRIMARY_OPERATIONS.find(o => o.type === opType) || PRIMARY_OPERATIONS[0]
     setOperations([
@@ -309,8 +358,8 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
         operationType: def.type,
         expectedGateDirection: def.direction,
         cargoStatus: 'Loaded',
-        cargoType: 'General',
-        containerIsoSize: '40HC',
+        cargoType: '',
+        containerIsoSize: '',
         containerNumber: operations[0]?.containerNumber || '',
         carrierBookingNumber: '',
         billOfLadingNumber: '',
@@ -319,7 +368,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
         emptyReleaseOrderNumber: '',
         emptyReturnAuthNumber: '',
         sealNumber: '',
-        grossWeightKg: 25000,
+        grossWeightKg: null,
         temperatureSetPoint: null,
         dangerousGoodsClass: '',
         unNumber: '',
@@ -341,8 +390,8 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
         operationType: def1.type,
         expectedGateDirection: def1.direction,
         cargoStatus: 'Loaded',
-        cargoType: 'General',
-        containerIsoSize: '40HC',
+        cargoType: '',
+        containerIsoSize: '',
         containerNumber: operations[0]?.containerNumber || '',
         carrierBookingNumber: '',
         billOfLadingNumber: '',
@@ -351,7 +400,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
         emptyReleaseOrderNumber: '',
         emptyReturnAuthNumber: '',
         sealNumber: '',
-        grossWeightKg: 25000,
+        grossWeightKg: null,
         temperatureSetPoint: null,
         dangerousGoodsClass: '',
         unNumber: '',
@@ -361,8 +410,8 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
         operationType: def2.type,
         expectedGateDirection: def2.direction,
         cargoStatus: 'Loaded',
-        cargoType: 'General',
-        containerIsoSize: '40HC',
+        cargoType: '',
+        containerIsoSize: '',
         containerNumber: '',
         carrierBookingNumber: '',
         billOfLadingNumber: '',
@@ -371,7 +420,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
         emptyReleaseOrderNumber: '',
         emptyReturnAuthNumber: '',
         sealNumber: '',
-        grossWeightKg: 25000,
+        grossWeightKg: null,
         temperatureSetPoint: null,
         dangerousGoodsClass: '',
         unNumber: '',
@@ -418,10 +467,9 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
     try {
       const uploadPromises = files.map(async (file) => {
         const res = await bookingService.uploadDocumentFile(file)
-        const autoDocNum = `${docType.toUpperCase().slice(0, 4)}-${Math.floor(100000 + Math.random() * 900000)}`
         return {
           documentType: docType,
-          documentNumber: autoDocNum,
+          documentNumber: null,
           fileName: res.fileName || file.name,
           fileUrl: res.fileUrl,
           fileSizeBytes: res.fileSizeBytes || file.size,
@@ -468,6 +516,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
   const handleSave = async (e) => {
     e.preventDefault()
     setError('')
+    if (!currentPlan || loading) { setError(planError || 'Chọn container và chờ kiểm tra phương án theo giờ hẹn.'); return }
     if (step === 1) {
       // Validate step 1
       for (let i = 0; i < operations.length; i++) {
@@ -489,8 +538,13 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
 
     setBusy(true)
     try {
-      const start = new Date(`${form.appointmentDate}T${form.startTime}:00Z`)
-      const end = new Date(`${form.appointmentDate}T${form.endTime}:00Z`)
+      if (currentPlan.schedule?.isAvailable === false) throw new Error(currentPlan.schedule.message)
+      const window = bookingWindow(form.appointmentDate, form.startTime, form.endTime)
+      const start = new Date(window.appointmentStart)
+      const end = new Date(window.appointmentEnd)
+      if (!currentFleet.trucks.some(t => t.id === form.truckId) || !currentFleet.drivers.some(d => d.id === form.driverId)) {
+        throw new Error('Chọn xe và tài xế đang rảnh từ danh sách đã kiểm tra.')
+      }
       if (isNaN(start.getTime()) || isNaN(end.getTime()) || start >= end) {
         throw new Error('Khung giờ hẹn không hợp lệ (Giờ bắt đầu phải trước giờ kết thúc).')
       }
@@ -515,10 +569,11 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
 
       const payload = {
         bookingCode: form.bookingCode,
-        bookingType: bookingMode === 'combined' ? 'Combined' : operations[0].operationType,
+        bookingType: operations[0].operationType === 'Import' ? 'Pickup' : 'Dropoff',
         isCombined: bookingMode === 'combined',
         truckId: form.truckId || null,
         driverId: form.driverId || null,
+        trailerNumber: form.trailerNumber.trim().toUpperCase() || null,
         description: form.trailerNumber ? `Rơ-moóc: ${form.trailerNumber.trim().toUpperCase()}` : null,
         appointmentStart: start.toISOString(),
         appointmentEnd: end.toISOString(),
@@ -526,13 +581,15 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
         targetTemperature: form.isReeferPowerRequired ? Number(form.targetTemperature) : null,
         temperatureUnit: form.isReeferPowerRequired ? (form.temperatureUnit || 'C') : null,
         tempTolerance: form.isReeferPowerRequired ? Number(form.tempTolerance) : null,
-        requiredPowerKw: form.isReeferPowerRequired ? Number(form.requiredPowerKw || 15.0) : null,
+        requiredPowerKw: form.isReeferPowerRequired ? Number(form.requiredPowerKw) : null,
         reeferPlugId: form.isReeferPowerRequired && form.reeferPlugId ? form.reeferPlugId : null,
         specialColdInstructions: form.isReeferPowerRequired ? (form.specialColdInstructions || null) : null,
 
         // Legacy compatibility
         containerSelections: operations.map(o => ({
-          containerId: null,
+          containerId: o.containerId,
+          declarationId: o.declarationId || '00000000-0000-0000-0000-000000000000',
+          yardCode: o.yardCode || null,
           containerNumber: o.containerNumber,
           containerTypeCode: o.containerIsoSize || '40HC',
           cargoTypeName: o.cargoType,
@@ -544,6 +601,8 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
 
         operations: operations.map(o => ({
           operationType: o.operationType,
+          sequenceNumber: 1,
+          containerId: o.containerId,
           containerNumber: o.containerNumber.trim().toUpperCase(),
           containerIsoSize: o.containerIsoSize || '40HC',
           expectedGateDirection: o.expectedGateDirection,
@@ -555,9 +614,9 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
           customsDeclarationNumber: o.customsDeclarationNumber || null,
           sealNumber: o.sealNumber || null,
           grossWeightKg: o.grossWeightKg ? Number(o.grossWeightKg) : null,
-          temperatureSetPoint: o.cargoType === 'Reefer' ? (o.temperatureSetPoint ? Number(o.temperatureSetPoint) : -18) : null,
-          dangerousGoodsClass: o.cargoType === 'DangerousGoods' ? (o.dangerousGoodsClass || 'Class 3') : null,
-          unNumber: o.cargoType === 'DangerousGoods' ? (o.unNumber || 'UN1203') : null,
+          temperatureSetpoint: o.cargoType === 'Reefer' && o.temperatureSetPoint != null ? Number(o.temperatureSetPoint) : null,
+          dgClass: o.cargoType === 'DangerousGoods' ? (o.dangerousGoodsClass || null) : null,
+          unNumber: o.cargoType === 'DangerousGoods' ? (o.unNumber || null) : null,
           documents: (o.documents || []).map(d => ({
             documentType: d.documentType,
             documentNumber: d.documentNumber,
@@ -574,6 +633,10 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
       onSaved?.(res)
     } catch (err) {
       setError(message(err))
+      if ([409, 422].includes(err.response?.status)) {
+        setPlanResult(null)
+        setPlanRevision(value => value + 1)
+      }
     } finally {
       setBusy(false)
     }
@@ -700,7 +763,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
 
           <button
             type="button"
-            onClick={() => setStep(2)}
+            onClick={() => { if (currentPlan) setStep(2); else setError(planError || 'Chọn bản khai/lượt bãi hợp lệ trước khi tiếp tục.') }}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               step === 2
                 ? 'bg-gradient-to-r from-signal-orange to-orange-600 text-white shadow-md shadow-orange-500/25'
@@ -717,14 +780,27 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
         </div>
       </div>
 
-      {/* ERROR BANNER */}
-      {error && (
-        <div className="bg-rose-50 border-2 border-rose-300 rounded-2xl p-4 text-xs text-rose-900 flex items-center gap-3 animate-in fade-in">
-          <span className="material-symbols-outlined text-rose-600 text-xl shrink-0">error</span>
-          <div className="flex-1 font-semibold">{error}</div>
-          <button onClick={() => setError('')} className="text-rose-500 hover:text-rose-700 text-xs font-bold">Đóng</button>
+      <dialog
+        ref={errorDialogRef}
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby={errorTitleId}
+        aria-describedby={`${errorTitleId}-message`}
+        onCancel={(event) => { event.preventDefault(); setError('') }}
+        style={{ position: 'fixed', inset: 0, margin: 'auto', boxSizing: 'border-box', width: 'calc(100% - 2rem)', maxWidth: '36rem', maxHeight: 'calc(100dvh - 2rem)' }}
+        className="rounded-2xl border border-rose-200 bg-white p-0 text-slate-800 shadow-2xl backdrop:bg-slate-900/50"
+      >
+        <div className="space-y-5 p-5 sm:p-6">
+          <div className="flex items-center gap-3">
+            <span aria-hidden="true" className="material-symbols-outlined rounded-full bg-rose-50 p-2 text-rose-600">error</span>
+            <h4 id={errorTitleId} className="text-base font-extrabold">Không thể hoàn tất Booking</h4>
+          </div>
+          <p id={`${errorTitleId}-message`} className="max-h-[60dvh] overflow-y-auto whitespace-pre-wrap break-words text-sm leading-relaxed text-rose-800">{error}</p>
+          <div className="flex justify-end">
+            <button type="button" autoFocus onClick={() => setError('')} className="rounded-xl bg-rose-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-rose-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600">Đóng</button>
+          </div>
         </div>
-      )}
+      </dialog>
 
       <form onSubmit={handleSave} className="space-y-8">
         {step === 1 && (
@@ -759,8 +835,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
 
                 <div
                   onClick={() => {
-                    setBookingMode('combined')
-                    applyCombinedPair(combinedPair)
+                    setError('Chuyến kết hợp hai chiều chưa có hợp đồng lượt bãi tương ứng. Hãy đặt riêng lịch Giao và Nhận.')
                   }}
                   className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-center gap-4 ${
                     bookingMode === 'combined'
@@ -936,6 +1011,10 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                     </div>
                   </div>
 
+                  <BookingSourcePicker key={op.operationType} operation={op} onSelect={selectSource} />
+                  {currentPlan && <p className="text-xs text-emerald-700">Đã lấy thông tin từ bản khai/lượt bãi · {currentPlan.source.customerName || 'Chưa có khách hàng'}. Sửa thông tin hàng tại trang Khai báo container.</p>}
+                  {planError && <p role="alert" className="text-xs text-red-700">{planError}</p>}
+                  {loading && <p role="status" className="text-xs">Đang kiểm tra dữ liệu và lịch xe/tài xế…</p>}
                   {/* Container Number & Specs */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
                     <div>
@@ -948,7 +1027,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                         maxLength={16}
                         placeholder={op.operationType === 'Export' ? 'VD: MSKU9082103' : 'VD: CMAU1029384'}
                         value={op.containerNumber}
-                        onChange={(e) => updateOperation(idx, { containerNumber: e.target.value.toUpperCase() })}
+                        readOnly
                         className={`${inputClass} font-mono uppercase font-bold`}
                       />
                     </div>
@@ -956,10 +1035,11 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                     <div>
                       <label className="block text-[11px] font-bold text-slate-600 mb-1">Loại Container (ISO) *</label>
                       <select
-                        value={op.containerIsoSize || '40HC'}
-                        onChange={(e) => updateOperation(idx, { containerIsoSize: e.target.value })}
+                        value={op.containerIsoSize || ''}
+                        disabled
                         className={selectClass}
                       >
+                        <option value="">Chọn bản khai để lấy loại container</option>
                         {CONTAINER_ISO_SIZES.map(sz => (
                           <option key={sz.value} value={sz.value}>{sz.label}</option>
                         ))}
@@ -972,7 +1052,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                         type="text"
                         placeholder="VD: SEAL-MSK-9901"
                         value={op.sealNumber || ''}
-                        onChange={(e) => updateOperation(idx, { sealNumber: e.target.value.toUpperCase() })}
+                        readOnly
                         className={`${inputClass} font-mono`}
                       />
                     </div>
@@ -984,7 +1064,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                         min={1000}
                         max={45000}
                         value={op.grossWeightKg || ''}
-                        onChange={(e) => updateOperation(idx, { grossWeightKg: e.target.value ? Number(e.target.value) : 0 })}
+                        readOnly
                         className={`${inputClass} font-mono`}
                       />
                     </div>
@@ -993,13 +1073,16 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                       <label className="block text-[11px] font-bold text-slate-600 mb-1">Phân Loại Hàng Hóa</label>
                       <select
                         value={op.cargoType}
-                        onChange={(e) => updateOperation(idx, { cargoType: e.target.value })}
+                        disabled
                         className={selectClass}
                       >
+                        <option value="">Chưa xác định — chọn bản khai để lấy loại hàng</option>
                         <option value="General">Hàng Bách Hóa</option>
                         <option value="Reefer">Hàng Đông Lạnh</option>
                         <option value="DangerousGoods">Hàng Nguy Hiểm (Cháy nổ / Hóa chất)</option>
                         <option value="Oversized">Hàng Quá Khổ Quá Tải</option>
+                        <option value="Perishable">Hàng dễ hư hỏng</option>
+                        <option value="Overweight">Hàng quá tải</option>
                       </select>
                     </div>
                   </div>
@@ -1079,8 +1162,12 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                             type="number"
                             step="0.5"
                             placeholder="-18"
-                            value={op.temperatureSetPoint ?? -18}
-                            onChange={(e) => updateOperation(idx, { temperatureSetPoint: Number(e.target.value) })}
+                            value={op.temperatureSetPoint ?? ''}
+                            onChange={(e) => {
+                              const temperature = e.target.value === '' ? null : Number(e.target.value)
+                              updateOperation(idx, { temperatureSetPoint: temperature })
+                              setForm(prev => ({ ...prev, targetTemperature: temperature }))
+                            }}
                             className={inputClass}
                           />
                         </div>
@@ -1346,68 +1433,6 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
         {/* STEP 2: FLEET & SCHEDULE */}
         {step === 2 && (
           <div className="space-y-6">
-            {/* FLEET ASSIGNMENT: TRACTOR, TRAILER, DRIVER */}
-            <div className="bg-white border border-chalk rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
-              <div className="flex items-center gap-2 pb-3 border-b border-chalk">
-                <span className="material-symbols-outlined text-signal-orange text-lg">local_shipping</span>
-                <h4 className="text-xs font-extrabold uppercase text-carbon tracking-wider">
-                  Thông Tin Phương Tiện: Xe Đầu Kéo, Rơ-moóc & Tài Xế
-                </h4>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Biển Số Xe Đầu Kéo *</label>
-                  <select
-                    required
-                    value={form.truckId}
-                    onChange={(e) => {
-                      const tId = e.target.value
-                      const truck = fleet.trucks.find(t => t.id === tId)
-                      setForm(prev => ({ ...prev, truckId: tId, ...(truck?.driverId ? { driverId: truck.driverId } : {}) }))
-                    }}
-                    className={selectClass}
-                  >
-                    <option value="">-- Chọn xe đầu kéo từ đội xe --</option>
-                    {fleet.trucks.map(truck => (
-                      <option key={truck.id} value={truck.id}>
-                        {truck.plateNumber} (Tải tối đa: {truck.maxPayloadTon || 30}T) - {truck.status === 'Active' || !truck.status ? 'Sẵn sàng' : truck.status}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Biển Số Rơ-moóc (Moóc kéo) *</label>
-                  <input
-                    required
-                    type="text"
-                    placeholder="VD: 43R-089.21"
-                    value={form.trailerNumber}
-                    onChange={(e) => setForm(prev => ({ ...prev, trailerNumber: e.target.value.toUpperCase() }))}
-                    className={`${inputClass} font-mono uppercase font-bold`}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Tài Xế Phụ Trách *</label>
-                  <select
-                    required
-                    value={form.driverId}
-                    onChange={(e) => setForm(prev => ({ ...prev, driverId: e.target.value }))}
-                    className={selectClass}
-                  >
-                    <option value="">-- Chọn tài xế điều khiển --</option>
-                    {fleet.drivers.map(driver => (
-                      <option key={driver.id} value={driver.id}>
-                        {driver.fullName} ({driver.phoneNumber || driver.licenseNumber || 'Hạng FC'})
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-
             {/* APPOINTMENT SCHEDULE & GATE APPOINTMENT CODE */}
             <div className="bg-white border border-chalk rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-chalk">
@@ -1468,6 +1493,101 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
               </div>
             </div>
 
+            <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 space-y-2">
+              <p className="text-sm font-bold">Hệ thống tự chọn xe và tài xế theo container và khung giờ</p>
+              {currentPlan && <p className="text-xs">Đội xe công ty: {currentFleet.companyTruckCount ?? currentFleet.trucks.length} xe · {currentFleet.companyDriverCount ?? currentFleet.drivers.length} tài xế. Khả dụng: {currentFleet.trucks.length} xe rảnh · {currentFleet.drivers.length} tài xế rảnh.</p>}
+              <p role="status" className="text-xs">{loading ? 'Đang kiểm tra lại lịch…' : planError || currentPlan?.schedule?.message || currentPlan?.fleet.message || 'Chọn container và giờ hẹn để tìm phương án.'}</p>
+              <button type="button" disabled={!planningRequest || loading}
+                onClick={() => {
+                  if (currentPlan?.schedule?.alternatives?.length) applySuggestedTime(currentPlan.schedule.alternatives[0])
+                  else { setForm(prev => ({ ...prev, fleetSelectionMode: 'automatic' })); setPlanResult(null); setPlanRevision(value => value + 1) }
+                }}
+                className="rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Tối ưu lại theo dữ liệu mới nhất</button>
+              {scheduleNotice && <p className="text-xs text-teal-800">{scheduleNotice}</p>}
+              {currentPlan?.schedule?.isAvailable === false && <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2">
+                <p role="alert" className="text-xs font-semibold text-amber-900">{currentPlan.schedule.message}</p>
+                {currentPlan.schedule.existingBookingId && <button type="button" className="text-xs font-bold underline"
+                  onClick={() => navigate(`/booking?bookingId=${encodeURIComponent(currentPlan.schedule.existingBookingId)}`)}>Xem Booking hiện có {currentPlan.schedule.existingBookingCode}</button>}
+                {currentPlan.schedule.alternatives?.map(option => <button key={option.appointmentStart} type="button"
+                  onClick={() => applySuggestedTime(option)} className="block w-full rounded-xl border border-teal-200 bg-white p-3 text-left text-xs text-teal-900">
+                  <b>Chọn khung giờ {new Date(option.appointmentStart).toLocaleString('vi-VN')} – {new Date(option.appointmentEnd).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</b>
+                  <span className="mt-1 block">Xe {option.truckPlate} · Tài xế {option.driverName}</span>
+                </button>)}
+                {!currentPlan.schedule.alternatives?.length && <p className="text-xs text-amber-900">Chưa tìm được giờ thay thế hợp lệ trong 7 ngày tới. Kiểm tra Booking hiện có hoặc chọn container khác.</p>}
+              </div>}
+              <p className="text-xs">{!currentFleet.recommendedTruckId ? 'Chưa đủ điều kiện để tự chọn cặp xe và tài xế; xem nguyên nhân bên dưới.' : form.fleetSelectionMode === 'automatic' ? 'Đã tự chọn phương án theo lịch rảnh.' : 'Đang dùng lựa chọn của bạn trong danh sách đủ điều kiện.'} Đổi khung giờ sẽ kiểm tra lại.</p>
+              {!!currentFleet.unavailableReasons?.length && <ul className="list-disc space-y-1 pl-5 text-xs text-amber-900">{currentFleet.unavailableReasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
+              <button type="button" disabled={loading || !planningRequest}
+                onClick={() => { setPlanResult(null); setPlanRevision(value => value + 1) }}
+                className="text-xs font-bold underline disabled:opacity-50">Kiểm tra lại danh sách rảnh</button>
+            </div>
+            {/* FLEET ASSIGNMENT: TRACTOR, TRAILER, DRIVER */}
+            <div className="bg-white border border-chalk rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
+              <div className="flex items-center gap-2 pb-3 border-b border-chalk">
+                <span className="material-symbols-outlined text-signal-orange text-lg">local_shipping</span>
+                <h4 className="text-xs font-extrabold uppercase text-carbon tracking-wider">
+                  Thông Tin Phương Tiện: Xe Đầu Kéo, Rơ-moóc & Tài Xế
+                </h4>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Biển Số Xe Đầu Kéo *</label>
+                  <select
+                    required
+                    disabled={loading || !currentFleet.trucks.length}
+                    value={form.truckId}
+                    onChange={(e) => {
+                      const tId = e.target.value
+                      const truck = currentFleet.trucks.find(t => t.id === tId)
+                      setForm(prev => ({ ...prev, fleetSelectionMode: 'manual', truckId: tId, ...(currentFleet.drivers.some(d => d.id === truck?.driverId) ? { driverId: truck.driverId } : {}) }))
+                    }}
+                    className={selectClass}
+                  >
+                    <option value="">{loading ? 'Đang kiểm tra xe…' : planError ? 'Không tải được danh sách xe — xem lỗi ở trên' : !currentPlan ? 'Chọn container và khung giờ để tải danh sách xe' : currentFleet.trucks.length ? '-- Hệ thống đã đề xuất; có thể chọn xe khác --' : 'Chưa có xe rảnh trong khung giờ đã chọn'}</option>
+                    {currentFleet.trucks.map(truck => (
+                      <option key={truck.id} value={truck.id}>
+                        {truck.plateNumber} - {truck.status === 'Active' || truck.status === 'active' || !truck.status ? 'Sẵn sàng' : truck.status}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Biển Số Rơ-moóc (Moóc kéo) *</label>
+                  <input
+                    required
+                    type="text"
+                    placeholder="VD: 43R-089.21"
+                    value={form.trailerNumber}
+                    onChange={(e) => setForm(prev => ({ ...prev, trailerNumber: e.target.value.toUpperCase() }))}
+                    className={`${inputClass} font-mono uppercase font-bold`}
+                  />
+                  <p className="mt-1 text-xs text-slate-500">Nhập theo hồ sơ rơ-moóc. Hệ thống chưa có danh mục rơ-moóc để tự điền.</p>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1.5">Tài Xế Phụ Trách *</label>
+                  <select
+                    required
+                    disabled={loading || !currentFleet.drivers.length}
+                    value={form.driverId}
+                    onChange={(e) => setForm(prev => ({ ...prev, fleetSelectionMode: 'manual', driverId: e.target.value }))}
+                    className={selectClass}
+                  >
+                    <option value="">{loading ? 'Đang kiểm tra tài xế…' : currentFleet.drivers.length ? '-- Hệ thống đã đề xuất; có thể chọn tài xế khác --' : 'Chưa có tài xế rảnh — xem lý do ở trên'}</option>
+                    {currentFleet.drivers.map(driver => (
+                      <option key={driver.id} value={driver.id}>
+                        {driver.fullName} ({driver.phone || driver.licenseClass || ''})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <BookingFleetDetails vehicle={currentFleet.trucks.find(truck => truck.id === form.truckId)} driver={currentFleet.drivers.find(driver => driver.id === form.driverId)} />
+
             {/* REEFER MONITORING OPTION */}
             <div className="bg-white border border-chalk rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
               <div className="flex items-center justify-between pb-3 border-b border-chalk">
@@ -1481,7 +1601,8 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                   <input
                     type="checkbox"
                     checked={form.isReeferPowerRequired}
-                    onChange={(e) => setForm(prev => ({ ...prev, isReeferPowerRequired: e.target.checked }))}
+                    readOnly
+                    disabled
                     className="w-4 h-4 rounded text-signal-orange focus:ring-signal-orange"
                   />
                   <span className="text-xs font-bold text-carbon">Yêu cầu cấp điện 380V tại bãi</span>
@@ -1495,8 +1616,13 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                     <input
                       type="number"
                       step="0.5"
-                      value={form.targetTemperature}
-                      onChange={(e) => setForm(prev => ({ ...prev, targetTemperature: Number(e.target.value) }))}
+                      required
+                      value={form.targetTemperature ?? ''}
+                      onChange={(e) => {
+                        const temperature = e.target.value === '' ? null : Number(e.target.value)
+                        setForm(prev => ({ ...prev, targetTemperature: temperature }))
+                        updateOperation(0, { temperatureSetPoint: temperature })
+                      }}
                       className={inputClass}
                     />
                   </div>
@@ -1511,17 +1637,8 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Cây Cắm Điện Đề Xuất</label>
-                    <select
-                      value={form.reeferPlugId}
-                      onChange={(e) => setForm(prev => ({ ...prev, reeferPlugId: e.target.value }))}
-                      className={selectClass}
-                    >
-                      <option value="">Tự động phân bổ tại Kho Lạnh</option>
-                      {availablePlugs.map(plug => (
-                        <option key={plug.id} value={plug.id}>{plug.plug_code || plug.plugCode}</option>
-                      ))}
-                    </select>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Phân công ổ cắm</label>
+                    <p className="rounded-xl border bg-fog p-3 text-xs">Bãi phân công theo điều kiện phục vụ. Booking tạo yêu cầu chờ phân công, chưa giữ ổ cắm.</p>
                   </div>
                 </div>
               )}
@@ -1583,7 +1700,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
 
               <button
                 type="submit"
-                disabled={busy}
+                disabled={busy || loading || !currentPlan || currentPlan.schedule?.isAvailable === false || !currentFleet.trucks.length || !currentFleet.drivers.length}
                 className="px-8 py-3 rounded-xl bg-signal-orange text-white text-xs font-bold hover:bg-orange-600 disabled:opacity-50 transition-all shadow-md shadow-orange-500/20 flex items-center gap-2 cursor-pointer"
               >
                 {busy ? (

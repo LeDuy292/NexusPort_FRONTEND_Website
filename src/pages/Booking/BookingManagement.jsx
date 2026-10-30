@@ -1,4 +1,5 @@
 import ContainerBookingForm from '../../components/Containers/ContainerBookingForm'
+import BookingFleetDetails from '../../components/Containers/BookingFleetDetails'
 import ContainerJourneySearch from '../Containers/ContainerJourneySearch'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import React, { useState, useEffect, useMemo } from 'react'
@@ -1587,7 +1588,7 @@ export default function BookingManagement() {
                 >
                   {(availableResources.trucks || []).map((t) => (
                     <option key={t.id} value={t.id}>
-                      🚚 Biển số: {t.plateNumber} (Tải trọng {t.maxPayloadTon}T)
+                      🚚 Biển số: {t.plateNumber}
                     </option>
                   ))}
                 </select>
@@ -1801,6 +1802,9 @@ export default function BookingManagement() {
                 <span className="text-slate-600 font-bold">Trạng thái vận hành:</span>
                 {renderBookingStatusBadge(selectedBooking.status)}
               </div>
+
+              <BookingFleetDetails vehicle={selectedBooking.vehicleDetails} driver={selectedBooking.driverDetails} saved />
+              {selectedBooking.trailerNumber && <p className="text-xs font-bold">Biển số rơ-moóc: {selectedBooking.trailerNumber}</p>}
 
               {/* Thông tin Cước & Thanh Toán TOS */}
               <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">

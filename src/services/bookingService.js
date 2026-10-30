@@ -4,6 +4,8 @@ import apiClient from './apiClient'
 const get = async (path, params) => (await apiClient.get(`/v1/Booking${path}`, { params })).data
 const post = async (path, body) => (await apiClient.post(`/v1/Booking${path}`, body)).data
 export const bookingService = {
+  getContainerOptions: (search = '', bookingType = 'Dropoff') => get('/container-options', { search, bookingType }),
+  planBooking: data => post('/plan', data),
   completeGateOut: async (bookingId, gateId) => (await apiClient.post('/v1/Gate/complete-out', { bookingId, gateId })).data,
   getBookings: params => get('', params),
   getBookingById: id => get(`/${id}`),
