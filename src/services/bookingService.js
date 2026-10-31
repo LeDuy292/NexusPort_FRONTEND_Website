@@ -4,6 +4,12 @@ import apiClient from './apiClient'
 const get = async (path, params) => (await apiClient.get(`/v1/Booking${path}`, { params })).data
 const post = async (path, body) => (await apiClient.post(`/v1/Booking${path}`, body)).data
 export const bookingService = {
+  planBatch: data => post('/batches/plan', data),
+  getBatchContainerOptions: (bookingType, anchor) => get('/batches/container-options', { bookingType,
+    containerId: anchor?.containerId, declarationId: anchor?.declarationId, yardCode: anchor?.yardCode }),
+  createBatch: data => post('/batches', data),
+  getBatches: (page = 1) => get('/batches', { page }),
+  getBatch: id => get(`/batches/${id}`),
   getContainerOptions: (search = '', bookingType = 'Dropoff') => get('/container-options', { search, bookingType }),
   planBooking: data => post('/plan', data),
   completeGateOut: async (bookingId, gateId) => (await apiClient.post('/v1/Gate/complete-out', { bookingId, gateId })).data,
