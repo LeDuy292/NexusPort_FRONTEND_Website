@@ -1,4 +1,5 @@
 import ContainerBookingForm from '../../components/Containers/ContainerBookingForm'
+import BookingBatchWorkspace from '../../components/Containers/BookingBatchWorkspace'
 import BookingFleetDetails from '../../components/Containers/BookingFleetDetails'
 import ContainerJourneySearch from '../Containers/ContainerJourneySearch'
 import { useLocation, useSearchParams } from 'react-router-dom'
@@ -563,8 +564,7 @@ export default function BookingManagement() {
     setActionLoading(true)
     try {
       await bookingService.verifyDocument(bookingId, documentId, {
-        status: 'Verified',
-        verificationNotes: 'Duyệt chứng từ bởi điều độ cảng NexusPort'
+        isApproved: true
       })
       showNotification('Đã duyệt và xác thực chứng từ thành công!')
       const fresh = await bookingService.getBookingById(bookingId)
@@ -1061,6 +1061,7 @@ export default function BookingManagement() {
           {[
             { key: 'my_bookings', label: 'Danh Sách Lịch Hẹn', icon: 'format_list_bulleted', badge: totalCount },
             { key: 'create', label: 'Tạo Lịch Hẹn Mới', icon: 'add_circle' },
+            { key: 'batch', label: 'Booking Theo Lô', icon: 'view_list' },
             { key: 'container_status', label: 'Lộ Trình Container', icon: 'timeline' },
           ].map((tab) => (
             <button
@@ -1518,6 +1519,7 @@ export default function BookingManagement() {
       {/* TAB 2: CREATE BOOKING WIZARD */}
       {/* ========================================================================= */}
       {activeTab === 'create' && <ContainerBookingForm onClose={() => setActiveTab('my_bookings')} onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
+      {activeTab === 'batch' && <BookingBatchWorkspace onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
 
       {/* ========================================================================= */}
       {/* TAB 3: CONTAINER JOURNEY TRACKING */}
@@ -2079,12 +2081,12 @@ export default function BookingManagement() {
                                       </a>
                                     )}
                                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                      doc.status === 'Verified' ? 'bg-emerald-100 text-emerald-800' :
-                                      doc.status === 'Rejected' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                                      (doc.verificationStatus || doc.status) === 'Verified' ? 'bg-emerald-100 text-emerald-800' :
+                                      (doc.verificationStatus || doc.status) === 'Rejected' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
                                     }`}>
-                                      {getDocStatusVi(doc.status)}
+                                      {getDocStatusVi(doc.verificationStatus || doc.status)}
                                     </span>
-                                    {doc.status !== 'Verified' && (
+                                    {(doc.verificationStatus || doc.status) !== 'Verified' && (
                                       <button
                                         type="button"
                                         disabled={actionLoading}
