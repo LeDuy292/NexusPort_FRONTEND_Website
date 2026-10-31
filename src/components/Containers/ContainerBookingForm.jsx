@@ -229,6 +229,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
       expectedGateDirection: context?.bookingType === 'Pickup' ? 'GateOut' : 'GateIn',
       containerId: context?.containerId || null,
       declarationId: context?.declarationId || null,
+      containerVisitId: context?.containerVisitId || null,
       yardCode: context?.yardCode || '',
       cargoStatus: 'Loaded',
       cargoType: '',
@@ -255,6 +256,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
   const [error, setError] = useState('')
   const errorDialogRef = useRef(null)
   const errorTitleId = useId()
+  const appointmentDateRef = useRef(null)
   useEffect(() => {
     const dialog = errorDialogRef.current
     if (!dialog) return
@@ -276,6 +278,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
     endTime: '12:00',
     feeTermsAgreed: true,
     isReeferPowerRequired: false,
+    reeferPowerSelection: 'automatic',
     targetTemperature: null,
     temperatureUnit: 'C',
     tempTolerance: 1.5,
@@ -291,21 +294,27 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
   let planningRequest = null
   try {
     const op = operations[0]
-    if (op?.containerId && (op.declarationId || op.yardCode)) planningRequest = {
+    const legs = operations.map(item => ({ containerId: item.containerId, declarationId: item.declarationId || null,
+      yardCode: item.yardCode || null, bookingType: item.operationType === 'Import' ? 'Pickup' : 'Dropoff' }))
+    if (legs.every(leg => leg.containerId && (leg.declarationId || leg.yardCode))) planningRequest = {
       containerId: op.containerId, declarationId: op.declarationId || null, yardCode: op.yardCode || null,
       bookingType: op.operationType === 'Import' ? 'Pickup' : 'Dropoff',
+      ...(bookingMode === 'combined' ? { legs } : {}),
       ...bookingWindow(form.appointmentDate, form.startTime, form.endTime),
     }
   } catch { /* Invalid schedule is shown before progressing or saving. */ }
   const planningKey = JSON.stringify(planningRequest)
   const currentPlan = planResult?.key === planningKey ? planResult.value : null
   const currentFleet = currentPlan?.fleet || { trucks: [], drivers: [] }
+  const isReeferCargo = operations[0]?.cargoType === 'Reefer'
+  const isReeferDropoff = isReeferCargo && operations[0]?.operationType === 'Export'
+  const canRequestReeferPower = isReeferDropoff && Number(form.requiredPowerKw) > 0
   const applySuggestedTime = (option) => {
     try {
       const window = suggestedBookingWindow(option)
       setForm(previous => ({ ...previous, ...window, truckId: '', driverId: '', fleetSelectionMode: 'automatic' }))
       setPlanResult(null)
-      setScheduleNotice(`Đã chuyển sang ${new Date(option.appointmentStart).toLocaleString('vi-VN')} – ${new Date(option.appointmentEnd).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} theo phương án gợi ý.`)
+      setScheduleNotice('Đã áp dụng khung giờ gợi ý.')
       setError('')
     } catch (error) { setError(error.message) }
   }
@@ -319,9 +328,11 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
       bookingService.planBooking(JSON.parse(planningKey)).then(plan => {
         if (!live) return
         setPlanResult({ key: planningKey, value: plan })
-        setOperations(prev => prev.map((op, i) => i === 0 ? { ...op, ...sourceOperation(plan.source) } : op))
+        const sources = plan.sources || [plan.source]
+        setOperations(prev => prev.map((op, i) => sources[i] ? { ...op, ...sourceOperation(sources[i]) } : op))
         setForm(prev => ({ ...prev, ...retainAvailableFleet(prev, plan.fleet, prev.fleetSelectionMode === 'automatic'),
-          isReeferPowerRequired: JSON.parse(planningKey).bookingType === 'Dropoff' && plan.source.cargoType === 'reefer' && Number(plan.source.requiredPowerKw) > 0,
+          isReeferPowerRequired: JSON.parse(planningKey).bookingType === 'Dropoff' && plan.source.cargoType === 'reefer' && Number(plan.source.requiredPowerKw) > 0 &&
+            (prev.reeferPowerSelection !== 'manual' || prev.isReeferPowerRequired),
           requiredPowerKw: plan.source.requiredPowerKw ?? null }))
       }).catch(err => { if (live) { setPlanError(message(err)); setPlanResult(null) } })
         .finally(() => { if (live) setLoading(false) })
@@ -329,15 +340,16 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
     return () => { live = false; clearTimeout(timer) }
   }, [planningKey, planRevision])
 
-  const selectSource = (selection) => {
-    const previous = operations[0]
+  const selectSource = (selection, index = 0) => {
+    const previous = operations[index]
     if (selection && previous.containerId === selection.containerId &&
       previous.declarationId === (selection.declarationId || null) &&
       (previous.yardCode || '') === (selection.yardCode || '')) return
     setPlanResult(null); setPlanError('')
-    setForm(prev => ({ ...prev, truckId: '', driverId: '', targetTemperature: null, fleetSelectionMode: 'automatic' }))
-    setOperations(prev => prev.map((op, i) => i !== 0 ? op : {
-      ...op, containerId: selection?.containerId || null, declarationId: selection?.declarationId || null,
+    setForm(prev => ({ ...prev, truckId: '', driverId: '', fleetSelectionMode: 'automatic',
+      ...(index === 0 ? { targetTemperature: null, isReeferPowerRequired: false, requiredPowerKw: null, reeferPowerSelection: 'automatic' } : {}) }))
+    setOperations(prev => prev.map((op, i) => i !== index ? op : {
+      ...op, containerId: selection?.containerId || null, containerVisitId: selection?.containerVisitId || null, declarationId: selection?.declarationId || null,
       yardCode: selection?.yardCode || '', containerNumber: selection?.containerNumber || '',
       containerIsoSize: selection?.containerTypeCode || '', grossWeightKg: selection?.grossWeightKg ?? null,
       cargoType: selection ? sourceOperation(selection).cargoType : '',
@@ -350,7 +362,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
   // Synchronize operations when mode or primary op changes
   const applySingleOperation = (opType) => {
     setPlanResult(null)
-    setForm(prev => ({ ...prev, truckId: '', driverId: '' }))
+    setForm(prev => ({ ...prev, truckId: '', driverId: '', targetTemperature: null, isReeferPowerRequired: false, requiredPowerKw: null, reeferPowerSelection: 'automatic' }))
     setSelectedPrimaryOp(opType)
     const def = PRIMARY_OPERATIONS.find(o => o.type === opType) || PRIMARY_OPERATIONS[0]
     setOperations([
@@ -378,6 +390,9 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
   }
 
   const applyCombinedPair = (pairKey = 'Export_Import') => {
+    setPlanResult(null)
+    setForm(prev => ({ ...prev, truckId: '', driverId: '', targetTemperature: null, isReeferPowerRequired: false,
+      requiredPowerKw: null, reeferPowerSelection: 'automatic', fleetSelectionMode: 'automatic' }))
     setCombinedPair('Export_Import')
     const leg1Type = 'Export'
     const leg2Type = 'Import'
@@ -513,6 +528,14 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
   }
 
   // Handle Save
+  const continueToFleet = () => {
+    if (!currentPlan || loading) { setError(planError || 'Chọn đủ container và chờ hệ thống kiểm tra.'); return }
+    if (operations.some(op => op.cargoType === 'Reefer' && op.temperatureSetPoint == null)) {
+      setError('Nhập nhiệt độ bảo quản cho từng container hàng lạnh trước khi tiếp tục.'); return
+    }
+    setError('')
+    setStep(2)
+  }
   const handleSave = async (e) => {
     e.preventDefault()
     setError('')
@@ -532,13 +555,17 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
           return
         }
       }
-      setStep(2)
+      continueToFleet()
       return
     }
 
     setBusy(true)
     try {
       if (currentPlan.schedule?.isAvailable === false) throw new Error(currentPlan.schedule.message)
+      if (operations.some(operation => operation.cargoType === 'Reefer' &&
+        (operation.temperatureSetPoint == null || !Number.isFinite(Number(operation.temperatureSetPoint))))) {
+        throw new Error('Nhập nhiệt độ bảo quản theo chỉ dẫn hàng lạnh tại ô Nhiệt độ bảo quản hàng lạnh. Yêu cầu này áp dụng cả khi không đăng ký cấp điện tại bãi.')
+      }
       const window = bookingWindow(form.appointmentDate, form.startTime, form.endTime)
       const start = new Date(window.appointmentStart)
       const end = new Date(window.appointmentEnd)
@@ -553,17 +580,18 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
       if (bookingMode === 'combined' && operations.length > 1) {
         try {
           const compResult = await bookingService.validateCombination({
-            operations: operations.map(o => ({
+            operations: operations.map((o, index) => ({
               operationType: o.operationType,
               expectedGateDirection: o.expectedGateDirection,
-              containerNumber: o.containerNumber
+              containerNumber: o.containerNumber,
+              sequenceNumber: index + 1,
             }))
           })
-          if (compResult && !compResult.isCompatible) {
-            throw new Error(`Tổ hợp nghiệp vụ không tương thích: ${compResult.message || 'Lỗi quy tắc vận hành'}`)
+          if (compResult?.isValid === false || compResult?.isCompatible === false) {
+            throw new Error(`Tổ hợp nghiệp vụ không tương thích: ${compResult.errorMessage || compResult.message || 'Lỗi quy tắc vận hành'}`)
           }
         } catch (valErr) {
-          if (valErr.message.includes('không tương thích')) throw valErr
+          throw valErr
         }
       }
 
@@ -599,9 +627,9 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
 
         documents: [],
 
-        operations: operations.map(o => ({
+        operations: operations.map((o, index) => ({
           operationType: o.operationType,
-          sequenceNumber: 1,
+          sequenceNumber: index + 1,
           containerId: o.containerId,
           containerNumber: o.containerNumber.trim().toUpperCase(),
           containerIsoSize: o.containerIsoSize || '40HC',
@@ -763,7 +791,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
 
           <button
             type="button"
-            onClick={() => { if (currentPlan) setStep(2); else setError(planError || 'Chọn bản khai/lượt bãi hợp lệ trước khi tiếp tục.') }}
+            onClick={continueToFleet}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               step === 2
                 ? 'bg-gradient-to-r from-signal-orange to-orange-600 text-white shadow-md shadow-orange-500/25'
@@ -835,7 +863,8 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
 
                 <div
                   onClick={() => {
-                    setError('Chuyến kết hợp hai chiều chưa có hợp đồng lượt bãi tương ứng. Hãy đặt riêng lịch Giao và Nhận.')
+                    setBookingMode('combined')
+                    applyCombinedPair()
                   }}
                   className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-center gap-4 ${
                     bookingMode === 'combined'
@@ -1011,8 +1040,8 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                     </div>
                   </div>
 
-                  <BookingSourcePicker key={op.operationType} operation={op} onSelect={selectSource} />
-                  {currentPlan && <p className="text-xs text-emerald-700">Đã lấy thông tin từ bản khai/lượt bãi · {currentPlan.source.customerName || 'Chưa có khách hàng'}. Sửa thông tin hàng tại trang Khai báo container.</p>}
+                  <BookingSourcePicker key={op.operationType} operation={op} onSelect={selection => selectSource(selection, idx)} />
+                  {currentPlan && <p className="text-xs text-emerald-700">Công ty: {(currentPlan.sources?.[idx] || currentPlan.source).carrierName || 'Chưa có thông tin công ty'}</p>}
                   {planError && <p role="alert" className="text-xs text-red-700">{planError}</p>}
                   {loading && <p role="status" className="text-xs">Đang kiểm tra dữ liệu và lịch xe/tài xế…</p>}
                   {/* Container Number & Specs */}
@@ -1157,16 +1186,17 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                       {/* Reefer specific */}
                       {op.cargoType === 'Reefer' && (
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-600 mb-1">Nhiệt Độ Cài Đặt (°C)</label>
+                          <label className="block text-[10px] font-bold text-slate-600 mb-1">Nhiệt Độ Cài Đặt (°C) *</label>
                           <input
                             type="number"
+                            required
                             step="0.5"
                             placeholder="-18"
                             value={op.temperatureSetPoint ?? ''}
                             onChange={(e) => {
                               const temperature = e.target.value === '' ? null : Number(e.target.value)
                               updateOperation(idx, { temperatureSetPoint: temperature })
-                              setForm(prev => ({ ...prev, targetTemperature: temperature }))
+                              if (idx === 0) setForm(prev => ({ ...prev, targetTemperature: temperature }))
                             }}
                             className={inputClass}
                           />
@@ -1456,6 +1486,8 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                   <input
                     required
                     type="date"
+                    ref={appointmentDateRef}
+                    aria-label="Ngày hẹn cổng"
                     value={form.appointmentDate}
                     onChange={(e) => setForm(prev => ({ ...prev, appointmentDate: e.target.value }))}
                     className={inputClass}
@@ -1467,6 +1499,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                   <input
                     required
                     type="time"
+                    aria-label="Giờ bắt đầu khung hẹn"
                     value={form.startTime}
                     onChange={(e) => setForm(prev => ({ ...prev, startTime: e.target.value }))}
                     className={inputClass}
@@ -1478,6 +1511,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                   <input
                     required
                     type="time"
+                    aria-label="Giờ kết thúc khung hẹn"
                     value={form.endTime}
                     onChange={(e) => setForm(prev => ({ ...prev, endTime: e.target.value }))}
                     className={inputClass}
@@ -1494,18 +1528,28 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
             </div>
 
             <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 space-y-2">
-              <p className="text-sm font-bold">Hệ thống tự chọn xe và tài xế theo container và khung giờ</p>
-              {currentPlan && <p className="text-xs">Đội xe công ty: {currentFleet.companyTruckCount ?? currentFleet.trucks.length} xe · {currentFleet.companyDriverCount ?? currentFleet.drivers.length} tài xế. Khả dụng: {currentFleet.trucks.length} xe rảnh · {currentFleet.drivers.length} tài xế rảnh.</p>}
-              <p role="status" className="text-xs">{loading ? 'Đang kiểm tra lại lịch…' : planError || currentPlan?.schedule?.message || currentPlan?.fleet.message || 'Chọn container và giờ hẹn để tìm phương án.'}</p>
-              <button type="button" disabled={!planningRequest || loading}
-                onClick={() => {
-                  if (currentPlan?.schedule?.alternatives?.length) applySuggestedTime(currentPlan.schedule.alternatives[0])
-                  else { setForm(prev => ({ ...prev, fleetSelectionMode: 'automatic' })); setPlanResult(null); setPlanRevision(value => value + 1) }
-                }}
-                className="rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">Tối ưu lại theo dữ liệu mới nhất</button>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <p className="text-sm font-bold">Đề xuất xe & tài xế</p>
+                  <p className="text-xs">{form.appointmentDate.split('-').reverse().join('/')} · {form.startTime}–{form.endTime}
+                    <button type="button" className="ml-2 font-bold underline" onClick={() => {
+                      appointmentDateRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                      appointmentDateRef.current?.focus({ preventScroll: true })
+                    }}>Đổi ngày/giờ hẹn</button>
+                  </p>
+                  {currentPlan && <p className="text-xs">Khả dụng: {currentFleet.trucks.length} xe · {currentFleet.drivers.length} tài xế</p>}
+                </div>
+                <button type="button" disabled={!planningRequest || loading}
+                  onClick={() => {
+                    if (currentPlan?.schedule?.alternatives?.length) applySuggestedTime(currentPlan.schedule.alternatives[0])
+                    else { setForm(prev => ({ ...prev, fleetSelectionMode: 'automatic' })); setPlanResult(null); setPlanRevision(value => value + 1) }
+                  }}
+                  className="shrink-0 rounded-xl bg-orange-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-50">{loading ? 'Đang tối ưu…' : 'Tối ưu'}</button>
+              </div>
+              <p role="status" className="text-xs whitespace-pre-line">{loading ? 'Đang kiểm tra lịch…' : planError || (currentPlan?.schedule?.isAvailable === false ? 'Khung giờ chưa phù hợp — xem điều kiện bên dưới.' : !currentFleet.recommendedTruckId ? currentPlan?.fleet.message || 'Chọn container và giờ hẹn.' : form.fleetSelectionMode === 'automatic' ? 'Đã chọn xe và tài xế phù hợp.' : 'Đang dùng xe và tài xế bạn chọn.')}</p>
               {scheduleNotice && <p className="text-xs text-teal-800">{scheduleNotice}</p>}
               {currentPlan?.schedule?.isAvailable === false && <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 space-y-2">
-                <p role="alert" className="text-xs font-semibold text-amber-900">{currentPlan.schedule.message}</p>
+                <p role="alert" className="text-xs font-semibold text-amber-900 whitespace-pre-line">{currentPlan.schedule.message}</p>
                 {currentPlan.schedule.existingBookingId && <button type="button" className="text-xs font-bold underline"
                   onClick={() => navigate(`/booking?bookingId=${encodeURIComponent(currentPlan.schedule.existingBookingId)}`)}>Xem Booking hiện có {currentPlan.schedule.existingBookingCode}</button>}
                 {currentPlan.schedule.alternatives?.map(option => <button key={option.appointmentStart} type="button"
@@ -1513,13 +1557,11 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                   <b>Chọn khung giờ {new Date(option.appointmentStart).toLocaleString('vi-VN')} – {new Date(option.appointmentEnd).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}</b>
                   <span className="mt-1 block">Xe {option.truckPlate} · Tài xế {option.driverName}</span>
                 </button>)}
-                {!currentPlan.schedule.alternatives?.length && <p className="text-xs text-amber-900">Chưa tìm được giờ thay thế hợp lệ trong 7 ngày tới. Kiểm tra Booking hiện có hoặc chọn container khác.</p>}
+                {!currentPlan.schedule.alternatives?.length && <p className="text-xs text-amber-900">{currentPlan.schedule.requiresExistingBookingResolution
+                  ? 'Đổi giờ chưa giải quyết được lượt bãi đang mở. Xem Booking hiện có để xử lý lịch Giao/Nhận trước, hoặc chọn container Giao khác.'
+                  : 'Chưa tìm được giờ thay thế hợp lệ trong 7 ngày tới. Kiểm tra Booking hiện có hoặc chọn container khác.'}</p>}
               </div>}
-              <p className="text-xs">{!currentFleet.recommendedTruckId ? 'Chưa đủ điều kiện để tự chọn cặp xe và tài xế; xem nguyên nhân bên dưới.' : form.fleetSelectionMode === 'automatic' ? 'Đã tự chọn phương án theo lịch rảnh.' : 'Đang dùng lựa chọn của bạn trong danh sách đủ điều kiện.'} Đổi khung giờ sẽ kiểm tra lại.</p>
-              {!!currentFleet.unavailableReasons?.length && <ul className="list-disc space-y-1 pl-5 text-xs text-amber-900">{currentFleet.unavailableReasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
-              <button type="button" disabled={loading || !planningRequest}
-                onClick={() => { setPlanResult(null); setPlanRevision(value => value + 1) }}
-                className="text-xs font-bold underline disabled:opacity-50">Kiểm tra lại danh sách rảnh</button>
+              {!currentFleet.recommendedTruckId && !!currentFleet.unavailableReasons?.length && <ul className="list-disc space-y-1 pl-5 text-xs text-amber-900">{currentFleet.unavailableReasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
             </div>
             {/* FLEET ASSIGNMENT: TRACTOR, TRAILER, DRIVER */}
             <div className="bg-white border border-chalk rounded-3xl p-5 sm:p-6 space-y-4 shadow-xs">
@@ -1600,21 +1642,29 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
+                    aria-label="Yêu cầu cấp điện 380V tại bãi"
                     checked={form.isReeferPowerRequired}
-                    readOnly
-                    disabled
+                    disabled={loading || !canRequestReeferPower}
+                    onChange={event => setForm(previous => ({ ...previous, isReeferPowerRequired: event.target.checked, reeferPowerSelection: 'manual' }))}
                     className="w-4 h-4 rounded text-signal-orange focus:ring-signal-orange"
                   />
                   <span className="text-xs font-bold text-carbon">Yêu cầu cấp điện 380V tại bãi</span>
                 </label>
               </div>
 
-              {form.isReeferPowerRequired && (
+              <p className="text-xs text-slate-600">
+                {!isReeferCargo ? 'Chỉ container hàng lạnh mới đăng ký cấp điện tại bãi.'
+                  : !isReeferDropoff ? 'Booking Nhận container đưa hàng ra khỏi bãi nên không tạo yêu cầu cấp điện mới. Vẫn cần nhiệt độ bảo quản theo chỉ dẫn hàng lạnh.'
+                    : canRequestReeferPower ? `Công suất theo bản khai: ${form.requiredPowerKw} kW. Chọn yêu cầu nếu cần cảng cấp điện trong thời gian lưu bãi.`
+                      : 'Bản khai chưa có công suất cấp điện hợp lệ. Cập nhật công suất trong khai báo container trước khi yêu cầu cấp điện.'}
+              </p>
+              {isReeferCargo && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
                   <div>
-                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Nhiệt Độ Mục Tiêu (°C)</label>
+                    <label className="block text-[11px] font-bold text-slate-600 mb-1">Nhiệt độ bảo quản hàng lạnh (°C) *</label>
                     <input
                       type="number"
+                      aria-label="Nhiệt độ bảo quản hàng lạnh (°C)"
                       step="0.5"
                       required
                       value={form.targetTemperature ?? ''}
@@ -1630,6 +1680,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                     <label className="block text-[11px] font-bold text-slate-600 mb-1">Dung Sai Cho Phép (±°C)</label>
                     <input
                       type="number"
+                      min="0"
                       step="0.5"
                       value={form.tempTolerance}
                       onChange={(e) => setForm(prev => ({ ...prev, tempTolerance: Number(e.target.value) }))}
@@ -1638,7 +1689,9 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                   </div>
                   <div>
                     <label className="block text-[11px] font-bold text-slate-600 mb-1">Phân công ổ cắm</label>
-                    <p className="rounded-xl border bg-fog p-3 text-xs">Bãi phân công theo điều kiện phục vụ. Booking tạo yêu cầu chờ phân công, chưa giữ ổ cắm.</p>
+                    <p className="rounded-xl border bg-fog p-3 text-xs">{form.isReeferPowerRequired
+                      ? 'Bãi phân công theo điều kiện phục vụ. Booking tạo yêu cầu chờ phân công, chưa giữ ổ cắm.'
+                      : 'Booking này không tạo yêu cầu cấp điện mới tại bãi.'}</p>
                   </div>
                 </div>
               )}
