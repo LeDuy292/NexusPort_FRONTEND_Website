@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import apiClient from '../../services/apiClient';
+import expressApiClient from '../../services/expressApiClient';
+import YardLayoutMap from './YardLayoutMap';
 
 export default function MiniYardMap({ onReserve, selectedSlot }) {
   const [blocksData, setBlocksData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedBlock, setSelectedBlock] = useState(null);
   const [selectedBay, setSelectedBay] = useState(null);
+  const [layoutMessage, setLayoutMessage] = useState('');
 
   useEffect(() => {
     fetchYardMap();
@@ -13,8 +16,7 @@ export default function MiniYardMap({ onReserve, selectedSlot }) {
 
   const fetchYardMap = async () => {
     try {
-      const res = await apiClient.get('/v1/Yard/Map');
-      const blocks = Array.isArray(res) ? res : (res?.data || []);
+      const blocks = await expressApiClient.get('/yard/blocks');
       setBlocksData(blocks);
       
       // If a block is currently selected, refresh its data
@@ -51,11 +53,17 @@ export default function MiniYardMap({ onReserve, selectedSlot }) {
       <div className="space-y-3">
         {selectedSlot && (
           <div className="bg-green-50 border border-green-200 text-green-800 px-3 py-2 rounded-lg text-xs font-bold flex justify-between items-center">
-            <span>Đã giữ chỗ: Block {selectedSlot.blockCode} - Bay {selectedSlot.bay} / Row {selectedSlot.row} / Tier {selectedSlot.tier}</span>
+            <span>Đã giữ chỗ: Khu {selectedSlot.blockCode} - Dãy {selectedSlot.bay} / Hàng {selectedSlot.row} / Tầng {selectedSlot.tier}</span>
             <span className="material-symbols-outlined text-green-600 text-lg">check_circle</span>
           </div>
         )}
-        <div className="text-xs font-bold text-slate">Vui lòng chọn 1 Block:</div>
+        <div className="text-xs font-bold text-slate">Vui lòng chọn khu bãi:</div>
+        <YardLayoutMap compact slots={blocksData.flatMap(block => (block.slots || []).map(slot => ({ ...slot, block: block.blockCode })))} onSelectArea={area => {
+          const block = blocksData.find(item => item.blockCode === area.zone && item.slots?.some(slot => Number(slot.bay) === area.bay && area.rows.includes(Number(slot.row))));
+          if (block) { setSelectedBlock(block); setSelectedBay(String(area.bay)); setLayoutMessage(''); }
+          else setLayoutMessage(`${area.code}: chưa cấu hình vị trí vận hành. Vui lòng chọn khu bãi hiện có bên dưới.`);
+        }} />
+        {layoutMessage && <p role="status" className="text-xs text-slate">{layoutMessage}</p>}
         <div className="grid grid-cols-2 gap-3">
           {blocksData.map(block => {
             const totalSlots = (block.maxBays || 10) * (block.maxRows || 6) * (block.maxTiers || 4);
@@ -103,13 +111,13 @@ export default function MiniYardMap({ onReserve, selectedSlot }) {
         <button onClick={() => { setSelectedBlock(null); setSelectedBay(null); }} className="px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded text-xs font-bold text-slate-700 flex items-center">
           <span className="material-symbols-outlined text-[14px]">arrow_back</span> Trở lại
         </button>
-        <span className="font-extrabold text-carbon text-sm">Block {selectedBlock.blockCode}</span>
+        <span className="font-extrabold text-carbon text-sm">Khu {selectedBlock.blockCode}</span>
       </div>
 
       {!selectedBay ? (
         // VIEW 2: BAY SELECTION
         <div>
-          <div className="text-xs font-bold text-slate mb-2">Chọn 1 Bay (Dãy):</div>
+          <div className="text-xs font-bold text-slate mb-2">Chọn dãy:</div>
           <div className="grid grid-cols-5 gap-2">
             {bays.map(bayNum => {
               const baySlots = slotsByBay[bayNum];
@@ -121,7 +129,7 @@ export default function MiniYardMap({ onReserve, selectedSlot }) {
                   onClick={() => isEmpty && setSelectedBay(bayNum)}
                   className={`border rounded-lg p-2 text-center flex flex-col items-center justify-center ${isEmpty ? 'border-slate-200 hover:border-signal-orange cursor-pointer bg-white' : 'border-slate-100 bg-slate-50 opacity-60 cursor-not-allowed'}`}
                 >
-                  <span className="text-xs font-extrabold text-carbon">BAY {bayNum.padStart(2, '0')}</span>
+                  <span className="text-xs font-extrabold text-carbon">Dãy {bayNum.padStart(2, '0')}</span>
                   <span className="text-[9px] font-bold text-slate-500 mt-1">{emptySlots} trống</span>
                 </div>
               )
@@ -132,8 +140,8 @@ export default function MiniYardMap({ onReserve, selectedSlot }) {
         // VIEW 3: SLOT SELECTION
         <div>
           <div className="flex items-center justify-between mb-2">
-            <div className="text-xs font-bold text-slate">Chọn 1 Slot trong Bay {selectedBay.padStart(2, '0')}:</div>
-            <button onClick={() => setSelectedBay(null)} className="text-[10px] text-blue-600 font-bold hover:underline">Đổi Bay</button>
+            <div className="text-xs font-bold text-slate">Chọn vị trí trong dãy {selectedBay.padStart(2, '0')}:</div>
+            <button onClick={() => setSelectedBay(null)} className="text-[10px] text-blue-600 font-bold hover:underline">Đổi dãy</button>
           </div>
           
           <div className="border border-slate-200 rounded-xl p-3 bg-fog overflow-x-auto">
@@ -168,7 +176,7 @@ export default function MiniYardMap({ onReserve, selectedSlot }) {
                        <div 
                          key={slot.id} 
                          onClick={() => isClickable && handleReserveSpecificSlot(slot.id, selectedBlock.blockCode)}
-                         title={isClickable ? `Click để giữ chỗ Row ${row} - Tier ${tier}` : `Trạng thái: ${slot.status}`}
+                         title={isClickable ? `Chọn để giữ chỗ Hàng ${row} - Tầng ${tier}` : `Trạng thái: ${slot.status}`}
                          className={`w-10 h-10 border rounded flex items-center justify-center text-[10px] font-extrabold text-carbon ${bgColor}`}
                        >
                          {content || `R${row}`}
@@ -180,7 +188,7 @@ export default function MiniYardMap({ onReserve, selectedSlot }) {
                <div className="flex gap-1 items-center mt-1">
                  <div className="w-8"></div>
                  {Array.from({ length: selectedBlock.maxRows || 6 }, (_, i) => i + 1).map(row => (
-                   <div key={`lbl-r${row}`} className="w-10 text-[9px] font-bold text-slate-500 text-center">Row {row}</div>
+                   <div key={`lbl-r${row}`} className="w-10 text-[9px] font-bold text-slate-500 text-center">Hàng {row}</div>
                  ))}
                </div>
              </div>

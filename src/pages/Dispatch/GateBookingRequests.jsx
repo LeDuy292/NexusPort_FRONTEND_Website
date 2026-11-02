@@ -4,6 +4,7 @@ import { bookingService } from '../../services/bookingService'
 import { companyService } from '../../services/companyService'
 import { yardOperationService } from '../../services/yardOperationService'
 import apiClient from '../../services/apiClient'
+import expressApiClient from '../../services/expressApiClient'
 import MiniYardMap from '../../components/Yard/MiniYardMap'
 import DriverDetailModal from '../../components/Modals/DriverDetailModal'
 import VehicleDetailModal from '../../components/Modals/VehicleDetailModal'
@@ -130,8 +131,7 @@ export default function GateBookingRequests() {
 
   const fetchYardMap = async () => {
     try {
-      const res = await apiClient.get('/v1/Yard/Map')
-      const blocks = Array.isArray(res) ? res : (res?.data || [])
+      const blocks = await expressApiClient.get('/yard/blocks')
       setBlocksData(blocks)
       if (blocks.length > 0) {
         const firstCode = blocks[0].blockCode || blocks[0].description || 'A'
