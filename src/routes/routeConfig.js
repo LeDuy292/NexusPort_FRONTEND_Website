@@ -9,7 +9,8 @@ export const ROLES = {
   YARD_OPERATOR: 'Yard Operator',
   BERTH_STAFF: 'Berth Staff',
   ADMINISTRATOR: 'Administrator',
-  CARRIER_STAFF: 'Carrier Staff'
+  CARRIER_STAFF: 'Carrier Staff',
+  SHIPPING_LINE: 'Shipping Line'
 }
 
 export const routeConfig = [

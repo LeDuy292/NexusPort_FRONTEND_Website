@@ -66,17 +66,17 @@ export default function Login() {
   const roles = [
     {
       id: 'carrier',
-      title: 'Transport Company',
-      desc: 'Hãng tàu / doanh nghiệp vận tải biển',
+      title: 'Công ty vận tải',
+      desc: 'Doanh nghiệp vận tải / Quản lý đội xe container',
       roleName: 'Transport Company',
-      icon: 'directions_boat',
+      icon: 'corporate_fare',
       iconBg: 'rgba(99,179,237,0.12)',
       iconColor: '#63b3ed',
       redirect: '/carrier-portal'
     },
     {
       id: 'driver',
-      title: 'Driver',
+      title: 'Tài xế',
       desc: 'Tài xế container / vận chuyển hàng hóa',
       roleName: 'Driver',
       icon: 'local_shipping',
@@ -86,7 +86,7 @@ export default function Login() {
     },
     {
       id: 'gate',
-      title: 'Gate Officer',
+      title: 'Kiểm soát viên cổng',
       desc: 'Kiểm soát viên cổng vào ra',
       roleName: 'Gate Officer',
       icon: 'shield_with_heart',
@@ -96,7 +96,7 @@ export default function Login() {
     },
     {
       id: 'operator',
-      title: 'Dispatcher',
+      title: 'Điều phối viên',
       desc: 'Điều phối viên vận hành cảng',
       roleName: 'Dispatcher',
       icon: 'settings_suggest',
@@ -106,7 +106,7 @@ export default function Login() {
     },
     {
       id: 'yard',
-      title: 'Yard Operator',
+      title: 'Nhân viên vận hành bãi',
       desc: 'Nhân viên vận hành bãi container',
       roleName: 'Yard Operator',
       icon: 'forklift',
@@ -116,17 +116,17 @@ export default function Login() {
     },
     {
       id: 'berth',
-      title: 'Berth Staff',
-      desc: 'Nhân viên vận hành cầu tàu / bến cảng',
+      title: 'Hãng tàu',
+      desc: 'Hãng tàu / Doanh nghiệp vận tải biển',
       roleName: 'Berth Staff',
-      icon: 'anchor',
+      icon: 'directions_boat',
       iconBg: 'rgba(118,169,250,0.12)',
       iconColor: '#76a9fa',
-      redirect: '/berth-staff/dashboard'
+      redirect: '/shipping-line/overview'
     },
     {
       id: 'admin',
-      title: 'Administrator',
+      title: 'Quản trị viên',
       desc: 'Quản trị viên hệ thống',
       roleName: 'Administrator',
       icon: 'admin_panel_settings',
@@ -143,6 +143,9 @@ export default function Login() {
 
   const handleSelectRole = (roleObj) => {
     setSelectedRole(roleObj)
+    const defaultUsers = { carrier: 'carrier01', driver: 'driver01', gate: 'gate01', operator: 'dispatcher01', yard: 'yard01', berth: 'shipping01', admin: 'admin' }
+    setUsername(defaultUsers[roleObj.id] || '')
+    setPassword('NexusPort@2026')
     setErrors({ username: '', password: '', general: '' })
     setShowDuplicateWarning(false)
     window.history.replaceState({}, '', '/login')
@@ -250,9 +253,9 @@ export default function Login() {
         redirectPath = '/dashboard'
       } else if (normalizedRole === 'gate officer' || normalizedRole === 'gate') {
         redirectPath = '/gate'
-      } else if (normalizedRole === 'berth staff' || normalizedRole === 'berth') {
-        redirectPath = '/berth-staff/dashboard'
-      } else if (normalizedRole === 'transport company' || normalizedRole === 'carrier' || normalizedRole === 'carrier staff') {
+      } else if (normalizedRole === 'berth staff' || normalizedRole === 'berth' || normalizedRole === 'hãng tàu' || normalizedRole === 'shipping line') {
+        redirectPath = '/shipping-line/overview'
+      } else if (normalizedRole === 'transport company' || normalizedRole === 'carrier' || normalizedRole === 'carrier staff' || normalizedRole === 'công ty vận tải') {
         redirectPath = '/carrier-portal'
       } else if (normalizedRole === 'driver') {
         redirectPath = '/driver-portal'
