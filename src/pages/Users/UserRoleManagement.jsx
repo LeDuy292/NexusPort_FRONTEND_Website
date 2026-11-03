@@ -35,8 +35,8 @@ const ROLE_DESCS = {
   'Dispatcher':        'Quản lý điều độ phương tiện & theo dõi tàu biển',
   'Gate Officer':      'Nhận diện OCR AI & phê duyệt xe ra vào cổng',
   'Yard Operator':     'Quản lý sơ đồ xếp chồng container & điều phối thiết bị bãi',
-  'Berth Staff':       'Vận hành cầu tàu & kiểm soát lịch cập bến',
-  'Transport Company': 'Doanh nghiệp vận tải & Hãng tàu đăng ký booking',
+  'Berth Staff':       'Hãng tàu & kiểm soát lịch cập bến',
+  'Transport Company': 'Doanh nghiệp vận tải & quản lý đội xe container',
   'Driver':            'Tài xế container thực hiện chuyến hàng',
 }
 

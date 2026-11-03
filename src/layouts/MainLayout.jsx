@@ -153,19 +153,38 @@ const sidebarItems = [
     roles: [ROLES.GATE_OFFICER],
   },
 
-  // ── BERTH STAFF (Nhân Viên Cầu Bến) ──────────────────────
+  // ── SHIPPING LINE (Hãng Tàu - Nghiệp Vụ Xuất Nhập Khẩu & Cảng) ─
   {
-    path: '/berth-staff/vessel-operation-control',
-    label: 'Điều Hành Tác Nghiệp Tàu',
-    icon: 'anchor',
-    roles: [ROLES.BERTH_STAFF],
+    path: '/shipping-line/overview',
+    label: 'Tổng Quan',
+    icon: 'dashboard',
+    roles: [ROLES.BERTH_STAFF, ROLES.SHIPPING_LINE],
   },
   {
-    path: '/berth-staff/incident-reporting',
-    label: 'Báo Cáo Sự Cố Cầu Bến',
-    icon: 'report',
-    roles: [ROLES.BERTH_STAFF],
+    path: '/shipping-line/export-bookings',
+    label: 'Đặt Chỗ Xuất Khẩu',
+    icon: 'output',
+    roles: [ROLES.BERTH_STAFF, ROLES.SHIPPING_LINE],
   },
+  {
+    path: '/shipping-line/import-cargo',
+    label: 'Hàng Nhập Khẩu',
+    icon: 'input',
+    roles: [ROLES.BERTH_STAFF, ROLES.SHIPPING_LINE],
+  },
+  {
+    path: '/shipping-line/delivery-orders',
+    label: 'Lệnh Giao Hàng (D/O)',
+    icon: 'description',
+    roles: [ROLES.BERTH_STAFF, ROLES.SHIPPING_LINE],
+  },
+  {
+    path: '/shipping-line/containers',
+    label: 'Vỏ Container & Lưu Bãi',
+    icon: 'inventory_2',
+    roles: [ROLES.BERTH_STAFF, ROLES.SHIPPING_LINE],
+  },
+
 
 
   // ── ADMINISTRATOR (chỉ 4 trang riêng) ────────────────────────
@@ -208,13 +227,7 @@ const sidebarItems = [
     roles: [ROLES.ADMINISTRATOR],
   },
 
-  // ── BERTH STAFF ───────────────────────────────────────────────
-  {
-    path: '/berth',
-    label: 'Theo Dõi Dỡ Tàu',
-    icon: 'directions_boat',
-    roles: [ROLES.BERTH_STAFF],
-  },
+
 
   // ── TRANSPORT COMPANY (Doanh Nghiệp Vận Tải) ───────────────────
   {
@@ -334,22 +347,47 @@ export default function MainLayout() {
             NexusPort<span className="text-signal-orange text-3xl leading-none">.</span>
           </h1>
           <p className="text-[11px] text-slate mt-1.5 uppercase tracking-wider font-semibold">
-            {user.role} Portal
+            {user.role === 'Berth Staff' ? 'Cổng Hãng Tàu' : `${user.role} Portal`}
           </p>
         </div>
 
         {/* MENU LINKS */}
         <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
           {allowedItems.map((item) => {
-            const isActive = location.pathname === item.path
+            const isActive = location.pathname === item.path ||
+              (item.path === '/shipping-line/overview' && (location.pathname === '/overview' || location.pathname === '/shipping-line')) ||
+              (item.path === '/shipping-line/export-bookings' && (location.pathname.startsWith('/export-bookings') || location.pathname.startsWith('/shipping-line/export-bookings'))) ||
+              (item.path === '/shipping-line/import-cargo' && (location.pathname.startsWith('/import-cargo') || location.pathname.startsWith('/shipping-line/import-cargo'))) ||
+              (item.path === '/shipping-line/delivery-orders' && (location.pathname.startsWith('/delivery-orders') || location.pathname.startsWith('/shipping-line/delivery-orders'))) ||
+              (item.path === '/shipping-line/containers' && (location.pathname === '/shipping-line/containers' || location.pathname.startsWith('/containers')))
+
+            const linkClass = `flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${isActive
+              ? 'bg-[#FFF3E8] border-l-4 border-[#F97316] text-[#F97316] font-semibold'
+              : 'text-slate-700 hover:bg-slate-50 hover:text-slate-900'
+            }`
+
+            if (item.external) {
+              return (
+                <a
+                  key={item.path}
+                  href={item.path}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={linkClass}
+                >
+                  <span className="material-symbols-outlined mr-3 text-xl shrink-0 select-none flex items-center justify-center w-6 h-6">
+                    {item.icon}
+                  </span>
+                  <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis">{item.label}</span>
+                </a>
+              )
+            }
+
             return (
               <Link
                 key={item.path}
                 to={item.path}
-                className={`flex items-center px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${isActive
-                  ? 'bg-fog border-l-4 border-signal-orange text-[#ff682c] font-bold'
-                  : 'text-graphite hover:bg-mist hover:text-carbon'
-                  }`}
+                className={linkClass}
               >
                 {/* Material Icon */}
                 <span className="material-symbols-outlined mr-3 text-xl shrink-0 select-none flex items-center justify-center w-6 h-6">
@@ -374,7 +412,7 @@ export default function MainLayout() {
             </div>
             <div className="overflow-hidden">
               <div className="text-xs font-bold text-carbon truncate">{user.username}</div>
-              <div className="text-[10px] text-slate truncate">{user.role}</div>
+              <div className="text-[10px] text-slate truncate">{user.role === 'Berth Staff' ? 'Hãng tàu' : user.role}</div>
             </div>
           </div>
           <button
