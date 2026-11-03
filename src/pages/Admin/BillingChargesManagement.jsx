@@ -36,12 +36,176 @@ const INITIAL_RECEIVABLES = [
   { customer: 'Mediterranean Shipping Co.', totalBilled: 250000000, paid: 130000000, outstanding: 120000000, overdue: 0, daysOverdue: 0, status: 'Trong hạn' }
 ]
 
+// Mock Initial Storage Fee Records (Mục 7: Phí Lưu Bãi - Cán bộ chọn cho khách hàng)
+const INITIAL_STORAGE_RECORDS = [
+  {
+    id: 'STRG-2026-001',
+    containerNo: 'TCNU1234567',
+    containerType: '40FT HC',
+    customer: 'Evergreen Marine',
+    category: 'Carrier',
+    gateInDate: '2026-07-20',
+    gateOutDate: '2026-08-01',
+    totalDays: 12,
+    freeDays: 5,
+    overdueDays: 7,
+    dailyRate: 80000,
+    totalFee: 660000,
+    status: 'Chờ thanh toán',
+    invoiceId: 'INV-2026-002',
+    inspector: 'Nguyễn Văn Bãi (Yard Officer)',
+    notes: 'Container 40ft lưu bãi chờ hoàn tất thủ tục hải quan xuất khẩu'
+  },
+  {
+    id: 'STRG-2026-002',
+    containerNo: 'MSCU493021-9',
+    containerType: '20FT GP',
+    customer: 'Mediterranean Shipping Co.',
+    category: 'Carrier',
+    gateInDate: '2026-07-25',
+    gateOutDate: '2026-08-02',
+    totalDays: 8,
+    freeDays: 5,
+    overdueDays: 3,
+    dailyRate: 40000,
+    totalFee: 120000,
+    status: 'Chờ thanh toán',
+    invoiceId: null,
+    inspector: 'Trần Cán Bộ (Billing)',
+    notes: 'Quá hạn 3 ngày do tài xế trễ lịch điều xe nhận bãi'
+  },
+  {
+    id: 'STRG-2026-003',
+    containerNo: 'CAIU9910231',
+    containerType: '40FT Reefer (Lạnh)',
+    customer: 'Vận tải Thành Hưng',
+    category: 'Transport Company',
+    gateInDate: '2026-07-26',
+    gateOutDate: '2026-08-03',
+    totalDays: 8,
+    freeDays: 3,
+    overdueDays: 5,
+    dailyRate: 400000,
+    totalFee: 2000000,
+    status: 'Đã thanh toán',
+    invoiceId: 'INV-2026-004',
+    inspector: 'Lê Thu Ngân (Billing Staff)',
+    notes: 'Cont lạnh đã cắm điện 5 ngày quá hạn, khách thanh toán tiền mặt tại quầy'
+  }
+]
+
 export default function BillingChargesManagement() {
   const [activeTab, setActiveTab] = useState('Tổng quan') // 'Tổng quan' | 'Hóa đơn' | 'Bảng giá' | 'Thanh toán' | 'Công nợ'
   const [invoices, setInvoices] = useState(INITIAL_INVOICES)
   const [pricingRules, setPricingRules] = useState(INITIAL_PRICING)
   const [payments, setPayments] = useState(INITIAL_PAYMENTS)
   const [receivables, setReceivables] = useState(INITIAL_RECEIVABLES)
+  const [storageRecords, setStorageRecords] = useState(INITIAL_STORAGE_RECORDS)
+  const [storageSearch, setStorageSearch] = useState('')
+  const [storageStatusFilter, setStorageStatusFilter] = useState('Tất cả')
+
+  // Storage Fee Form state (Cán bộ chọn cho khách hàng)
+  const [calcForm, setCalcForm] = useState({
+    customer: 'Evergreen Marine',
+    category: 'Carrier',
+    containerNo: 'TCNU8822190',
+    containerType: '40FT HC',
+    dailyRate: 80000,
+    gateInDate: '2026-07-22',
+    gateOutDate: '2026-08-02',
+    freeDays: 5,
+    notes: 'Quá hạn lưu bãi - Cán bộ lập hóa đơn thu bổ sung'
+  })
+
+  // Calculation for Storage Fee (Mục 7)
+  const calculatedStorage = useMemo(() => {
+    const inDate = new Date(calcForm.gateInDate)
+    const outDate = new Date(calcForm.gateOutDate)
+    const diffTime = Math.max(0, outDate - inDate)
+    const totalDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) || 1
+    const freeDays = Number(calcForm.freeDays) || 0
+    const overdueDays = Math.max(0, totalDays - freeDays)
+
+    // Đơn giá phát sinh mỗi ngày quá hạn do cán bộ chọn / cấu hình
+    const dailyRate = Number(calcForm.dailyRate) >= 0 ? Number(calcForm.dailyRate) : 80000
+
+    // Tiền phát sinh quá hạn = Số ngày quá hạn * Đơn giá phát sinh mỗi ngày
+    const totalFee = overdueDays * dailyRate
+
+    return {
+      totalDays,
+      freeDays,
+      overdueDays,
+      baseRate: dailyRate,
+      totalFee
+    }
+  }, [calcForm])
+
+  const handleApplyStorageFee = (directPaid = false) => {
+    if (!calcForm.customer || !calcForm.containerNo) {
+      showToast('❌ Vui lòng nhập đầy đủ khách hàng và số hiệu container!')
+      return
+    }
+
+    if (calculatedStorage.overdueDays <= 0) {
+      showToast('ℹ️ Container vẫn trong thời gian miễn phí (Free time), phí lưu bãi = 0 VND.')
+      return
+    }
+
+    const newInvId = 'INV-STRG-' + Math.floor(1000 + Math.random() * 9000)
+    const strgRecordId = 'STRG-2026-' + String(storageRecords.length + 1).padStart(3, '0')
+
+    const newRecord = {
+      id: strgRecordId,
+      containerNo: calcForm.containerNo.toUpperCase(),
+      containerType: calcForm.containerType,
+      customer: calcForm.customer,
+      category: calcForm.category,
+      gateInDate: calcForm.gateInDate,
+      gateOutDate: calcForm.gateOutDate,
+      totalDays: calculatedStorage.totalDays,
+      freeDays: calculatedStorage.freeDays,
+      overdueDays: calculatedStorage.overdueDays,
+      dailyRate: calculatedStorage.baseRate,
+      totalFee: calculatedStorage.totalFee,
+      status: directPaid ? 'Đã thanh toán' : 'Chờ thanh toán',
+      invoiceId: newInvId,
+      inspector: 'Cán bộ Billing (Bạn)',
+      notes: calcForm.notes
+    }
+
+    setStorageRecords(prev => [newRecord, ...prev])
+
+    const newInv = {
+      id: newInvId,
+      customer: calcForm.customer,
+      type: 'Storage Fee (' + calcForm.containerNo.toUpperCase() + ' - Quá ' + calculatedStorage.overdueDays + ' ngày)',
+      date: new Date().toISOString().split('T')[0],
+      dueDate: calcForm.gateOutDate,
+      amount: calculatedStorage.totalFee,
+      status: directPaid ? 'Đã thanh toán' : 'Chờ thanh toán',
+      category: calcForm.category
+    }
+
+    setInvoices(prev => [newInv, ...prev])
+
+    if (directPaid) {
+      const payment = {
+        invoiceId: newInvId,
+        customer: calcForm.customer,
+        amount: calculatedStorage.totalFee,
+        date: new Date().toISOString().split('T')[0],
+        method: 'Tiền mặt / Quầy thu ngân cảng',
+        transactionId: 'CASH-' + Math.floor(100000000 + Math.random() * 900000000),
+        status: 'Thành công'
+      }
+      setPayments(prev => [payment, ...prev])
+      showToast('✅ Đã thu trực tiếp ' + calculatedStorage.totalFee.toLocaleString() + ' VND phí lưu bãi cho cont ' + calcForm.containerNo.toUpperCase() + '!')
+    } else {
+      showToast('📋 Cán bộ đã lập Hóa đơn ' + newInvId + ' (' + calculatedStorage.totalFee.toLocaleString() + ' VND) cho khách hàng ' + calcForm.customer + '!')
+    }
+  }
+
 
   // Filters state
   const [customerSearch, setCustomerSearch] = useState('')
@@ -240,8 +404,8 @@ export default function BillingChargesManagement() {
       </div>
 
       {/* TABS SELECTOR */}
-      <div className="flex border-b border-chalk gap-4 text-sm font-bold bg-white p-3 rounded-xl border border-chalk">
-        {['Tổng quan', 'Hóa đơn', 'Bảng giá', 'Thanh toán', 'Công nợ'].map((tab) => (
+      <div className="flex border-b border-chalk gap-2 md:gap-3 text-sm font-bold bg-white p-2.5 rounded-xl border border-chalk overflow-x-auto">
+        {['Tổng quan', 'Hóa đơn', 'Bảng giá', 'Thanh toán', 'Công nợ', 'Phí lưu bãi (Mục 7)'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -529,6 +693,395 @@ export default function BillingChargesManagement() {
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      
+      {/* TAB CONTENT 6: PHÍ LƯU BÃI (MỤC 7 - CÁN BỘ CHỌN CHO KHÁCH HÀNG) */}
+      {activeTab === 'Phí lưu bãi (Mục 7)' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          
+          {/* Header Policy Banner */}
+          <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-transparent border-2 border-amber-500/30 rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="flex items-start gap-3">
+              <span className="p-3 bg-amber-500 text-white rounded-xl font-bold text-xl shadow-md">📦</span>
+              <div>
+                <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-extrabold uppercase tracking-wider mb-1">
+                  Mục 7 • Nghiệp Vụ Cảng & Thu Phí Quá Hạn
+                </div>
+                <h3 className="text-xl font-extrabold text-carbon font-heading">
+                  Phí Lưu Bãi (Storage Fees — Cán Bộ Chọn Cho Khách Hàng)
+                </h3>
+                <p className="text-xs text-slate mt-1 max-w-3xl">
+                  Khi container hạ bãi quá thời hạn miễn phí (Free Time), cán bộ điều hành/thu ngân bãi chọn khách hàng, nhập số cont và số ngày quá hạn để áp biểu phí phạt lưu bãi tự động theo ngày & bậc thang. Khách hàng hoàn tất thanh toán trước khi Gate-Out.
+                </p>
+              </div>
+            </div>
+            <div className="bg-white border border-amber-200 rounded-xl px-4 py-2 text-right shrink-0 shadow-sm">
+              <span className="text-[10px] text-slate font-bold uppercase block">Đơn giá cơ sở / ngày</span>
+              <span className="text-sm font-extrabold text-amber-700 font-mono">20': 40k • 40': 80k • Lạnh: 400k</span>
+            </div>
+          </div>
+
+          {/* Grid Layout: Bộ Công Cụ Cán Bộ Chọn (Trái) & Bảng Lịch Sử Thu Phí (Phải) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+            
+            {/* Cột Trái: Form Cán bộ áp phí (5 cols) */}
+            <div className="lg:col-span-5 bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center justify-between border-b border-chalk pb-3">
+                <h4 className="font-extrabold text-carbon text-sm uppercase tracking-wider flex items-center gap-2">
+                  <span>🛠️</span> Cán bộ lập phiếu tính phí lưu bãi
+                </h4>
+                <span className="text-[10px] bg-blue-100 text-blue-800 font-bold px-2 py-0.5 rounded">
+                  Nhân viên Cảng
+                </span>
+              </div>
+
+              {/* Form Controls */}
+              <div className="space-y-3 text-xs">
+                
+                {/* 1. Khách hàng & Phân loại */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-slate font-bold">Khách hàng / Đối tác *</label>
+                    <select
+                      value={calcForm.customer}
+                      onChange={(e) => {
+                        const cust = e.target.value
+                        const cat = ['Maersk Line', 'Evergreen Marine', 'Mediterranean Shipping Co.', 'Ocean Network Express'].includes(cust) ? 'Carrier' : 'Transport Company'
+                        setCalcForm(prev => ({ ...prev, customer: cust, category: cat }))
+                      }}
+                      className="w-full bg-fog border border-chalk rounded-lg p-2 font-bold text-carbon focus:outline-none focus:border-signal-orange"
+                    >
+                      <option value="Evergreen Marine">Evergreen Marine (Hãng tàu)</option>
+                      <option value="Maersk Line">Maersk Line (Hãng tàu)</option>
+                      <option value="Mediterranean Shipping Co.">MSC (Hãng tàu)</option>
+                      <option value="Ocean Network Express">ONE Line (Hãng tàu)</option>
+                      <option value="Vận tải Thành Hưng">Vận tải Thành Hưng (Nhà xe)</option>
+                      <option value="Gemadept Logistics">Gemadept Logistics (Nhà xe)</option>
+                      <option value="Logistics Hoành Sơn">Logistics Hoành Sơn (Nhà xe)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-slate font-bold">Nhóm đối tác</label>
+                    <input
+                      type="text"
+                      disabled
+                      value={calcForm.category === 'Carrier' ? 'Hãng tàu (Carrier)' : 'Nhà xe ngoại cảng'}
+                      className="w-full bg-chalk/60 border border-chalk rounded-lg p-2 text-slate font-bold"
+                    />
+                  </div>
+                </div>
+
+                {/* 2. Container ID & Loại cont */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-slate font-bold">Số hiệu Container ID *</label>
+                    <input
+                      type="text"
+                      placeholder="VD: TCNU8822190"
+                      value={calcForm.containerNo}
+                      onChange={(e) => setCalcForm(prev => ({ ...prev, containerNo: e.target.value.toUpperCase() }))}
+                      className="w-full bg-fog border border-chalk rounded-lg p-2 font-mono uppercase font-bold text-carbon focus:outline-none focus:border-signal-orange"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-slate font-bold">Kích cỡ & Loại vỏ *</label>
+                    <select
+                      value={calcForm.containerType}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        let rate = 80000
+                        if (val.includes('Reefer') || val.includes('Lạnh')) rate = 400000
+                        else if (val.includes('20FT')) rate = 40000
+                        setCalcForm(prev => ({ ...prev, containerType: val, dailyRate: rate }))
+                      }}
+                      className="w-full bg-fog border border-chalk rounded-lg p-2 font-bold text-carbon focus:outline-none"
+                    >
+                      <option value="20FT GP">20FT GP — Cont khô (40k/ngày)</option>
+                      <option value="40FT HC">40FT HC — Cont cao (80k/ngày)</option>
+                      <option value="40FT Reefer (Lạnh)">40FT Reefer — Cont lạnh cắm điện (400k/ngày)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Container gợi ý nhanh */}
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  <span className="text-[10px] text-slate font-bold">Mẫu nhanh:</span>
+                  {['TCNU8822190', 'CAIU1234567', 'MSCU4930219', 'HLBU7781920'].map(cnt => (
+                    <button
+                      key={cnt}
+                      type="button"
+                      onClick={() => setCalcForm(prev => ({ ...prev, containerNo: cnt }))}
+                      className="text-[10px] px-2 py-0.5 rounded bg-fog hover:bg-chalk text-carbon font-mono font-bold border border-chalk transition-colors"
+                    >
+                      {cnt}
+                    </button>
+                  ))}
+                </div>
+
+                {/* 3. Ngày vào, ngày ra & Miễn phí */}
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-chalk">
+                  <div className="space-y-1">
+                    <label className="text-slate font-bold">Ngày hạ bãi (In) *</label>
+                    <input
+                      type="date"
+                      value={calcForm.gateInDate}
+                      onChange={(e) => setCalcForm(prev => ({ ...prev, gateInDate: e.target.value }))}
+                      className="w-full bg-fog border border-chalk rounded-lg p-2 font-mono text-carbon focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-slate font-bold">Ngày lấy ra (Out) *</label>
+                    <input
+                      type="date"
+                      value={calcForm.gateOutDate}
+                      onChange={(e) => setCalcForm(prev => ({ ...prev, gateOutDate: e.target.value }))}
+                      className="w-full bg-fog border border-chalk rounded-lg p-2 font-mono text-carbon focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-slate font-bold">Free time (Ngày)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      max="30"
+                      value={calcForm.freeDays}
+                      onChange={(e) => setCalcForm(prev => ({ ...prev, freeDays: e.target.value }))}
+                      className="w-full bg-fog border border-chalk rounded-lg p-2 font-mono text-carbon focus:outline-none font-bold"
+                    />
+                  </div>
+                </div>
+
+                {/* 4. ĐƠN GIÁ PHÁT SINH MỖI NGÀY QUÁ HẠN (CÁN BỘ CHỌN/NHẬP CHO KHÁCH HÀNG) */}
+                <div className="bg-amber-50/70 border border-amber-300 rounded-xl p-3.5 space-y-2.5">
+                  <div className="flex justify-between items-center">
+                    <label className="text-amber-950 font-extrabold text-[11px] uppercase flex items-center gap-1.5">
+                      <span className="text-base">💸</span> Đơn giá phát sinh mỗi ngày quá hạn (VND/ngày) *
+                    </label>
+                    <span className="text-[10px] text-amber-800 font-bold bg-amber-100 px-2 py-0.5 rounded">
+                      Cán bộ tùy chỉnh
+                    </span>
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="5000"
+                      min="0"
+                      value={calcForm.dailyRate}
+                      onChange={(e) => setCalcForm(prev => ({ ...prev, dailyRate: Number(e.target.value) || 0 }))}
+                      className="w-full bg-white border-2 border-amber-400 focus:border-amber-600 rounded-lg px-3 py-2 text-sm font-mono font-black text-carbon focus:outline-none shadow-inner"
+                      placeholder="VD: 80000"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate font-mono text-xs font-bold pointer-events-none">
+                      VND / ngày phát sinh
+                    </span>
+                  </div>
+
+                  {/* Nút chọn nhanh giá phát sinh mỗi ngày */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    <span className="text-[10px] text-slate font-bold">Mức đề xuất:</span>
+                    {[
+                      { label: "Cont 20': 40k", val: 40000 },
+                      { label: "Cont 40': 80k", val: 80000 },
+                      { label: "Mức phạt trễ: 150k", val: 150000 },
+                      { label: "Cont Lạnh: 400k", val: 400000 }
+                    ].map(btn => (
+                      <button
+                        key={btn.val}
+                        type="button"
+                        onClick={() => setCalcForm(prev => ({ ...prev, dailyRate: btn.val }))}
+                        className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold border transition-colors ${
+                          calcForm.dailyRate === btn.val
+                            ? 'bg-amber-600 text-white border-amber-600 shadow-sm'
+                            : 'bg-white hover:bg-chalk text-carbon border-chalk'
+                        }`}
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 4. Ghi chú */}
+                <div className="space-y-1">
+                  <label className="text-slate font-bold">Lý do / Ghi chú của Cán bộ</label>
+                  <input
+                    type="text"
+                    placeholder="VD: Chờ thủ tục hải quan, tài xế đến trễ..."
+                    value={calcForm.notes}
+                    onChange={(e) => setCalcForm(prev => ({ ...prev, notes: e.target.value }))}
+                    className="w-full bg-fog border border-chalk rounded-lg p-2 text-carbon focus:outline-none"
+                  />
+                </div>
+
+                {/* 5. BOX KẾT QUẢ TÍNH TOÁN REALTIME */}
+                <div className="bg-amber-500/10 border-2 border-amber-500/40 rounded-xl p-3.5 space-y-2 mt-2">
+                  <div className="flex justify-between items-center text-xs border-b border-amber-500/20 pb-2">
+                    <span className="font-bold text-amber-950">Thời gian lưu thực tế:</span>
+                    <span className="font-mono font-extrabold text-carbon">{calculatedStorage.totalDays} ngày</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate font-semibold">Thời hạn miễn phí (Free time):</span>
+                    <span className="font-mono font-bold text-green-700">{calculatedStorage.freeDays} ngày</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="font-bold text-red-700">Số ngày quá hạn tính tiền:</span>
+                    <span className="font-mono font-extrabold text-red-600 bg-red-100 px-2 py-0.5 rounded text-sm">
+                      {calculatedStorage.overdueDays} ngày quá hạn
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-slate font-semibold">Đơn giá phát sinh / ngày quá hạn:</span>
+                    <span className="font-mono font-extrabold text-amber-700 bg-amber-100/60 px-2 py-0.5 rounded">
+                      {calcForm.dailyRate.toLocaleString()} VND / ngày
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between items-center text-xs bg-white/90 p-2 rounded-lg border border-amber-300 font-mono">
+                    <span className="text-slate font-bold">Công thức:</span>
+                    <span className="text-carbon font-extrabold">
+                      {calculatedStorage.overdueDays} ngày × {calcForm.dailyRate.toLocaleString()}đ = {calculatedStorage.totalFee.toLocaleString()} VND
+                    </span>
+                  </div>
+
+                  <div className="pt-2 border-t border-amber-500/30 flex justify-between items-end">
+                    <div>
+                      <span className="text-[10px] text-slate font-bold uppercase block">TỔNG PHÍ LƯU BÃI THU THÊM</span>
+                      <span className="text-[10px] text-amber-700 font-medium">Đã bao gồm biểu phí bậc thang</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-xl font-black text-amber-900 font-mono block">
+                        {calculatedStorage.totalFee.toLocaleString()} VND
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 6. Buttons hành động */}
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => handleApplyStorageFee(false)}
+                    className="py-2.5 px-3 bg-carbon text-white rounded-xl font-bold text-xs hover:bg-black transition-colors shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    <span className="material-symbols-outlined text-sm">receipt_long</span>
+                    LẬP HÓA ĐƠN CHO KHÁCH
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleApplyStorageFee(true)}
+                    className="py-2.5 px-3 bg-emerald-600 text-white rounded-xl font-bold text-xs hover:bg-emerald-700 transition-colors shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    <span className="material-symbols-outlined text-sm">payments</span>
+                    THU TIỀN TẠI QUẦY (GATE-OUT)
+                  </button>
+                </div>
+
+              </div>
+            </div>
+
+            {/* Cột Phải: Bảng Danh Sách Phí Lưu Bãi Đã Lập (7 cols) */}
+            <div className="lg:col-span-7 bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-chalk pb-3">
+                <div>
+                  <h4 className="font-extrabold text-carbon text-sm uppercase tracking-wider">
+                    Danh sách Container Lưu Bãi Quá Hạn
+                  </h4>
+                  <p className="text-[11px] text-slate mt-0.5">Theo dõi các khoản phí lưu bãi do cán bộ chọn & phát hành</p>
+                </div>
+
+                {/* Filter */}
+                <div className="flex items-center gap-2">
+                  <select
+                    value={storageStatusFilter}
+                    onChange={(e) => setStorageStatusFilter(e.target.value)}
+                    className="bg-fog border border-chalk rounded-lg px-2.5 py-1 text-xs font-bold text-carbon focus:outline-none"
+                  >
+                    <option value="Tất cả">Tất cả trạng thái</option>
+                    <option value="Chờ thanh toán">Chờ thanh toán</option>
+                    <option value="Đã thanh toán">Đã thanh toán</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-fog border-b border-chalk font-mono font-bold text-slate text-[10px] uppercase">
+                      <th className="px-3 py-3">Mã phiếu / Cont ID</th>
+                      <th className="px-3 py-3">Khách hàng</th>
+                      <th className="px-3 py-3 text-center">Quá hạn</th>
+                      <th className="px-3 py-3 text-right">Tổng phí lưu</th>
+                      <th className="px-3 py-3">Trạng thái</th>
+                      <th className="px-3 py-3 text-right">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-chalk">
+                    {storageRecords
+                      .filter(r => storageStatusFilter === 'Tất cả' || r.status === storageStatusFilter)
+                      .map((rec) => (
+                        <tr key={rec.id} className="hover:bg-fog/50 transition-colors">
+                          <td className="px-3 py-3">
+                            <div className="font-mono font-bold text-carbon">{rec.containerNo}</div>
+                            <div className="text-[10px] text-slate font-mono">{rec.id} • {rec.containerType}</div>
+                          </td>
+                          <td className="px-3 py-3">
+                            <div className="font-bold text-carbon truncate max-w-[140px]">{rec.customer}</div>
+                            <div className="text-[10px] text-slate">{rec.notes}</div>
+                          </td>
+                          <td className="px-3 py-3 text-center">
+                            <span className="font-mono font-extrabold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded text-[11px]">
+                              +{rec.overdueDays} ngày
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            <span className="font-mono font-extrabold text-carbon text-xs">
+                              {rec.totalFee.toLocaleString()} VND
+                            </span>
+                          </td>
+                          <td className="px-3 py-3">
+                            <span className={'px-2 py-0.5 rounded text-[10px] font-bold border ' + (
+                              rec.status === 'Đã thanh toán'
+                                ? 'bg-green-50 text-green-700 border-green-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200 animate-pulse'
+                            )}>
+                              {rec.status}
+                            </span>
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            {rec.status === 'Chờ thanh toán' ? (
+                              <button
+                                onClick={() => {
+                                  setStorageRecords(prev => prev.map(s => s.id === rec.id ? { ...s, status: 'Đã thanh toán' } : s))
+                                  if (rec.invoiceId) handleMarkAsPaid(rec.invoiceId)
+                                  showToast('✅ Đã xác nhận thu phí lưu bãi cho cont ' + rec.containerNo)
+                                }}
+                                className="px-2.5 py-1 bg-emerald-600 text-white rounded font-bold text-[10px] hover:bg-emerald-700 transition-colors shadow-sm"
+                              >
+                                Thu tiền
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-slate font-mono font-bold">Hoàn tất</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+
+            </div>
+
+          </div>
+
         </div>
       )}
 
