@@ -30,7 +30,7 @@ import Login from './pages/Auth/Login'
 import Unauthorized from './pages/Auth/Unauthorized'
 import OperatorDashboard from './pages/Dashboard/OperatorDashboard'
 import BookingManagement from './pages/Booking/BookingManagement'
-import YardMap from './pages/Yard/YardMap'
+import YardDesignPreview from './pages/Yard/YardDesignPreview'
 import BillingPayment from './pages/Billing/BillingPayment'
 import UserRoleManagement from './pages/Users/UserRoleManagement'
 import CarrierPortal from './pages/Carrier/CarrierPortal'
@@ -132,6 +132,7 @@ function App() {
       <Routes>
         {/* Route Công khai */}
         <Route path="/login" element={<Login />} />
+        {import.meta.env.DEV && <Route element={<MainLayout previewUser={{username:'Bản xem trước',role:ROLES.DISPATCHER}} />}><Route path="/preview/yard" element={<YardDesignPreview />} /></Route>}
 
         {/* Tuyến đường được Bảo vệ (Yêu cầu Đăng nhập) */}
         <Route element={<ProtectedRoute />}>
@@ -186,9 +187,10 @@ function App() {
           <Route element={<RoleRoute allowedRoles={[ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
             <Route path="/dashboard" element={<DashboardIndex />} />
             <Route path="/yard-staff/dashboard" element={<YardOperationsDashboard />} />
-            <Route path="/yard" element={<YardMap />} />
-            <Route path="/yard/map" element={<YardMap />} />
-            <Route path="/yard-staff/map" element={<YardMap />} />
+            <Route path="/yard" element={<YardDesignPreview />} />
+            <Route path="/yard/map" element={<YardDesignPreview />} />
+            <Route path="/yard/design" element={<Navigate to="/yard" replace />} />
+            <Route path="/yard-staff/map" element={<YardDesignPreview />} />
             <Route path="/yard-ops" element={<YardOperations />} />
             <Route path="/yard/receiving" element={<YardReceiving />} />
             <Route path="/yard-staff/movement-operations" element={<YardMovementOperations />} />
