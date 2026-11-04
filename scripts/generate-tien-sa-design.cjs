@@ -197,12 +197,12 @@ const bounds = (points) => {
 };
 const sectors=[
   {code:'A',label:'Khu A · Sau cầu 4–5',count:4},
-  {code:'B',label:'Khu B · Bãi trung tâm',count:4},
-  {code:'C',label:'Khu C · Bãi sát biển',count:10},
-  {code:'D',label:'Khu D · Cạnh kho CFS',count:2},
+  {code:'B',label:'Khu B · Bãi container 1',count:4},
+  {code:'C',label:'Khu C · Bãi container 2',count:10},
+  {code:'D',label:'Khu D · Bãi container 3',count:2},
   {code:'E',label:'Khu E · Bãi tổng hợp 1',count:4},
   {code:'F',label:'Khu F · Bãi tổng hợp 2',count:4},
-  {code:'G',label:'Khu G · Bãi tổng hợp nhỏ',count:4},
+  {code:'G',label:'Khu G · Bãi tổng hợp 3',count:4},
 ];
 function blockIdentity(index){
   let offset=0;

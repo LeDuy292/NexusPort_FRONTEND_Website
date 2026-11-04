@@ -23,17 +23,17 @@
     },
     {
       "code": "B",
-      "label": "Khu B · Bãi trung tâm",
+      "label": "Khu B · Bãi container 1",
       "count": 4
     },
     {
       "code": "C",
-      "label": "Khu C · Bãi sát biển",
+      "label": "Khu C · Bãi container 2",
       "count": 10
     },
     {
       "code": "D",
-      "label": "Khu D · Cạnh kho CFS",
+      "label": "Khu D · Bãi container 3",
       "count": 2
     },
     {
@@ -48,7 +48,7 @@
     },
     {
       "code": "G",
-      "label": "Khu G · Bãi tổng hợp nhỏ",
+      "label": "Khu G · Bãi tổng hợp 3",
       "count": 4
     }
   ],
