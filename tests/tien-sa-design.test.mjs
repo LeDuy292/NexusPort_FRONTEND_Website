@@ -48,7 +48,12 @@ function overlaps(a, b) {
 test("32 numbered blocks in seven sectors preserve the source geometry", () => {
   assert.deepEqual(
     plan.areas.map((a) => a.code),
-    plan.sectors.flatMap(sector=>Array.from({length:sector.count},(_,i)=>sector.code+String(i+1).padStart(2,'0'))),
+    plan.sectors.flatMap((sector) =>
+      Array.from(
+        { length: sector.count },
+        (_, i) => sector.code + String(i + 1).padStart(2, "0"),
+      ),
+    ),
   );
   assert.equal(
     plan.areas.filter((a) => ["SOUTH", "RTG"].includes(a.zone)).length,
@@ -292,7 +297,8 @@ test("two-lane gate flares to five lanes only at office and narrows again", () =
       office.y - (gate.y + road.queue.width / 2) < 10,
   );
   assert.ok(customs.y < 1250);
-  const baseline = design.areas.find((a) => a.referenceCode === "E").polygon[2][1];
+  const baseline = design.areas.find((a) => a.referenceCode === "E")
+    .polygon[2][1];
   for (const code of [
     "E",
     "F",
@@ -314,37 +320,116 @@ test("two-lane gate flares to five lanes only at office and narrows again", () =
     );
 });
 
-test('Bay-axis access lanes occupy reserved gaps and avoid stacks and buildings',()=>{
- assert.ok(design.transferLanes.length>15)
- for(const lane of design.transferLanes){
-  assert.ok(lane.width>0)
-  const [a,b]=lane.points
-  if(lane.axis==='bay')assert.equal(a[0],b[0])
-  const length=Math.hypot(b[0]-a[0],b[1]-a[1]),offset=[-(b[1]-a[1])/length*lane.width/2,(b[0]-a[0])/length*lane.width/2]
-  const footprint=[[a[0]+offset[0],a[1]+offset[1]],[b[0]+offset[0],b[1]+offset[1]],[b[0]-offset[0],b[1]-offset[1]],[a[0]-offset[0],a[1]-offset[1]]]
-  for(const item of [...design.areas,...design.facilities])assert.equal(overlaps(footprint,item.polygon),false,lane.id+' crosses '+item.code)
- }
-})
+test("Bay-axis access lanes occupy reserved gaps and avoid stacks and buildings", () => {
+  assert.ok(design.transferLanes.length > 15);
+  for (const lane of design.transferLanes) {
+    assert.ok(lane.width > 0);
+    const [a, b] = lane.points;
+    if (lane.axis === "bay") assert.equal(a[0], b[0]);
+    const length = Math.hypot(b[0] - a[0], b[1] - a[1]),
+      offset = [
+        ((-(b[1] - a[1]) / length) * lane.width) / 2,
+        (((b[0] - a[0]) / length) * lane.width) / 2,
+      ];
+    const footprint = [
+      [a[0] + offset[0], a[1] + offset[1]],
+      [b[0] + offset[0], b[1] + offset[1]],
+      [b[0] - offset[0], b[1] - offset[1]],
+      [a[0] - offset[0], a[1] - offset[1]],
+    ];
+    for (const item of [...design.areas, ...design.facilities])
+      assert.equal(
+        overlaps(footprint, item.polygon),
+        false,
+        lane.id + " crosses " + item.code,
+      );
+  }
+});
 
-test('opposing strip columns align and every strip group has the same clear spacing',()=>{
- for(const [top,bottom]of [['E','I'],['F','J'],['G','K'],['H','L'],['U','M'],['V','N'],['W','O'],['X','P'],['Y','Q'],['Z','R'],['AA','S'],['AB','T']]){
-  const a=design.areas.find(a=>a.referenceCode===top),b=design.areas.find(a=>a.referenceCode===bottom)
-  assert.equal(a.x,b.x,top+' / '+bottom+' left edges')
-  assert.equal(a.width,b.width,top+' / '+bottom+' widths')
- }
- for(const codes of [['A','B','C','D'],['E','F','G','H','U','V','W','X','Y','Z','AA','AB'],['I','J','K','L','M','N','O','P','Q','R','S','T'],['AC','AD','AE','AF']]){
-  const items=codes.map(code=>design.areas.find(a=>a.referenceCode===code))
-  for(let i=1;i<items.length;i++)assert.equal(items[i].x-items[i-1].x-items[i-1].width,20,codes[i]+' spacing')
- }
-})
+test("opposing strip columns align and every strip group has the same clear spacing", () => {
+  for (const [top, bottom] of [
+    ["E", "I"],
+    ["F", "J"],
+    ["G", "K"],
+    ["H", "L"],
+    ["U", "M"],
+    ["V", "N"],
+    ["W", "O"],
+    ["X", "P"],
+    ["Y", "Q"],
+    ["Z", "R"],
+    ["AA", "S"],
+    ["AB", "T"],
+  ]) {
+    const a = design.areas.find((a) => a.referenceCode === top),
+      b = design.areas.find((a) => a.referenceCode === bottom);
+    assert.equal(a.x, b.x, top + " / " + bottom + " left edges");
+    assert.equal(a.width, b.width, top + " / " + bottom + " widths");
+  }
+  for (const codes of [
+    ["A", "B", "C", "D"],
+    ["E", "F", "G", "H", "U", "V", "W", "X", "Y", "Z", "AA", "AB"],
+    ["I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T"],
+    ["AC", "AD", "AE", "AF"],
+  ]) {
+    const items = codes.map((code) =>
+      design.areas.find((a) => a.referenceCode === code),
+    );
+    for (let i = 1; i < items.length; i++)
+      assert.equal(
+        items[i].x - items[i - 1].x - items[i - 1].width,
+        20,
+        codes[i] + " spacing",
+      );
+  }
+});
 
-test('G01–G04 form a separate sector aligned exactly with B01–B04',()=>{
- assert.equal(plan.areas.length,32);assert.equal(plan.sectors.length,7)
- assert.equal(new Set(plan.areas.map(a=>a.code)).size,32)
- for(const area of plan.areas)assert.match(area.code,/^[A-G]\d{2}$/)
- for(let i=1;i<=4;i++){
-  const suffix=String(i).padStart(2,'0'),g=design.areas.find(a=>a.code==='G'+suffix),b=design.areas.find(a=>a.code==='B'+suffix)
-  assert.equal(g.x,b.x);assert.equal(g.width,b.width)
-  assert.equal(g.sector,'G');assert.equal(g.sourceGroup,'mixed-3')
- }
-})
+test("G01–G04 form a separate sector aligned exactly with B01–B04", () => {
+  assert.equal(plan.areas.length, 32);
+  assert.equal(plan.sectors.length, 7);
+  assert.equal(new Set(plan.areas.map((a) => a.code)).size, 32);
+  for (const area of plan.areas) assert.match(area.code, /^[A-G]\d{2}$/);
+  for (let i = 1; i <= 4; i++) {
+    const suffix = String(i).padStart(2, "0"),
+      g = design.areas.find((a) => a.code === "G" + suffix),
+      b = design.areas.find((a) => a.code === "B" + suffix);
+    assert.equal(g.x, b.x);
+    assert.equal(g.width, b.width);
+    assert.equal(g.sector, "G");
+    assert.equal(g.sourceGroup, "mixed-3");
+  }
+});
+
+test("outer A aisles connect to the cross aisle, and E/F have no rear road", () => {
+  for (const code of ["A01", "A04"]) {
+    const area = design.areas.find((a) => a.code === code),
+      lane = design.transferLanes.find((l) => l.id === `outer-${code}`);
+    assert.ok(lane);
+    assert.equal(lane.bidirectional, true);
+    assert.ok(
+      code === "A01"
+        ? lane.points[0][0] < area.x
+        : lane.points[0][0] > area.x + area.width,
+    );
+    assert.equal(lane.points[1][1], 832);
+  }
+  assert.equal(
+    design.roads.some((r) => ["e-rear", "f-rear"].includes(r.id)),
+    false,
+  );
+  for (const lane of design.transferLanes.filter((l) =>
+    l.serves.some((code) => /^[EF]/.test(code)),
+  )) {
+    assert.equal(lane.bidirectional, true, lane.id);
+    assert.equal(lane.points[1][1], 1210);
+  }
+  // Both mixed-yard outlines must sit within the white terminal footprint.
+  for (const yard of design.mixedYards.filter((y) =>
+    ["mixed-1", "mixed-2"].includes(y.code),
+  ))
+    for (const point of yard.polygon)
+      assert.ok(
+        inside(point, design.terminal),
+        yard.code + " outside terminal",
+      );
+});

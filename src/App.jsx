@@ -132,7 +132,7 @@ function App() {
       <Routes>
         {/* Route Công khai */}
         <Route path="/login" element={<Login />} />
-        {import.meta.env.DEV && <Route element={<MainLayout previewUser={{username:'Bản xem trước',role:ROLES.DISPATCHER}} />}><Route path="/preview/yard" element={<YardDesignPreview />} /></Route>}
+        {import.meta.env.DEV && <Route element={<MainLayout previewUser={{username:'Bản xem trước',role:ROLES.DISPATCHER}} />}><Route path="/preview/yard" element={<YardDesignPreview previewOnly />} /></Route>}
 
         {/* Tuyến đường được Bảo vệ (Yêu cầu Đăng nhập) */}
         <Route element={<ProtectedRoute />}>

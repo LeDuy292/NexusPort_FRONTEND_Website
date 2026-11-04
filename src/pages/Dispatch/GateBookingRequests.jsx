@@ -5,7 +5,6 @@ import { companyService } from '../../services/companyService'
 import { yardOperationService } from '../../services/yardOperationService'
 import apiClient from '../../services/apiClient'
 import expressApiClient from '../../services/expressApiClient'
-import MiniYardMap from '../../components/Yard/MiniYardMap'
 import DriverDetailModal from '../../components/Modals/DriverDetailModal'
 import VehicleDetailModal from '../../components/Modals/VehicleDetailModal'
 import CompanyDetailModal from '../../components/Modals/CompanyDetailModal'
@@ -134,9 +133,10 @@ export default function GateBookingRequests() {
       const blocks = await expressApiClient.get('/yard/blocks')
       setBlocksData(blocks)
       if (blocks.length > 0) {
-        const firstCode = blocks[0].blockCode || blocks[0].description || 'A'
+        const firstBlock = blocks.find(block=>block.blockCode==='C01')||blocks[0]
+        const firstCode = firstBlock.blockCode || firstBlock.description
         setSelectedBlock(firstCode)
-        setSelectedBay('01')
+        setSelectedBay(firstBlock.slots?.length?String(Math.min(...firstBlock.slots.map(slot=>slot.bay))).padStart(2,'0'):'')
       }
     } catch (e) {
       console.error(e)
@@ -824,7 +824,7 @@ export default function GateBookingRequests() {
                       {blocksData.map(block => {
                         const code = block.blockCode || block.description || block.id;
                         const isSelected = selectedBlock === code;
-                        const totalSlots = (block.maxBays || 10) * (block.maxRows || 6) * (block.maxTiers || 4);
+                        const totalSlots = block.slots?.length || 0;
                         const occupied = block.slots?.filter(s => s.status === 'occupied').length || 0;
                         const reserved = block.slots?.filter(s => s.status === 'reserved').length || 0;
                         const isFull = totalSlots > 0 && occupied + reserved >= totalSlots;
@@ -832,7 +832,7 @@ export default function GateBookingRequests() {
                         return (
                           <button 
                             key={block.id} 
-                            onClick={() => { setSelectedBlock(code); setSelectedBay('01'); setSelectedTierRow('T1-R1'); }}
+                            onClick={() => { setSelectedBlock(code); setSelectedBay(block.slots?.length?String(Math.min(...block.slots.map(slot=>slot.bay))).padStart(2,'0'):''); setSelectedTierRow('T1-R1'); }}
                             className={`relative text-left p-4 rounded-xl transition-all ${isSelected ? 'border-2 border-orange-500 bg-orange-50/20 shadow-md ring-1 ring-orange-500/20' : 'border border-slate-200 bg-white hover:border-slate-300 hover:shadow'}`} 
                             type="button">
                             {isSelected && <div className="absolute -top-2.5 right-4 bg-orange-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">Đang chọn</div>}
@@ -866,25 +866,18 @@ export default function GateBookingRequests() {
                         </button>
                       </div>
                       <div className="text-xs text-slate-500">
-                        Tiêu chuẩn xếp: <span className="font-semibold text-slate-700">Cont 20ft → Bay Lẻ/Chẵn</span>
+                        <span className="font-semibold text-slate-700">Vị trí theo cấu hình tồn kho hiện tại</span>
                       </div>
                     </div>
                     
                     <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-2.5">
                       {(() => {
-                        const maxBays = selectedBlockObj.maxBays || 10;
                         const baysList = Object.keys(slotsByBay).sort((a,b) => parseInt(a) - parseInt(b));
-                        const baysToRender = baysList.length > 0 
-                          ? baysList.map(bayNum => ({
+                        const baysToRender = baysList.map(bayNum => ({
                               id: bayNum.toString().padStart(2, '0'),
-                              max: (selectedBlockObj.maxRows || 6) * (selectedBlockObj.maxTiers || 4),
+                              max: slotsByBay[bayNum].length,
                               empty: slotsByBay[bayNum].filter(s => s.status === 'empty').length
-                            }))
-                          : Array.from({ length: maxBays }, (_, i) => {
-                              const id = (i + 1).toString().padStart(2, '0');
-                              const seed = selectedBlock.charCodeAt(0) * (i + 1);
-                              return { id, empty: (seed * 17) % 49, max: 48 };
-                            });
+                            }));
                         
                         return baysToRender.map((bay) => {
                           const isSelected = bay.id === selectedBay;
@@ -972,17 +965,10 @@ export default function GateBookingRequests() {
                                 const baySlots = Object.keys(slotsByBay).length > 0 ? (slotsByBay[parseInt(selectedBay)] || slotsByBay[selectedBay] || []) : [];
                                 const slotData = baySlots.find(s => s.tier === tier && s.row === row);
                                 
-                                let isOccupied = false;
-                                if (slotData) {
-                                  isOccupied = slotData.status !== 'empty';
-                                } else if (Object.keys(slotsByBay).length === 0) {
-                                  // Fallback mock if no data
-                                  const seed = selectedBlock.charCodeAt(0) + parseInt(selectedBay);
-                                  isOccupied = ((seed * tier * row * 31) % 100) > 70;
-                                }
+                                const isOccupied = !slotData || slotData.status !== 'empty';
                                 
                                 if (isOccupied) {
-                                  const text = slotData && slotData.containerNumber ? slotData.containerNumber : 'Đã có Cont';
+                                  const text = !slotData?'Chưa cấu hình':slotData.containerNumber||slotData.reservedContainerNumber||(slotData.status==='maintenance'?'Bảo trì':'Đã giữ chỗ');
                                   return (
                                     <button key={slotId} className="h-11 rounded-lg bg-slate-200 border border-slate-300 text-slate-500 text-[10px] font-semibold flex flex-col items-center justify-center cursor-not-allowed overflow-hidden" title={text} type="button">
                                       <span className="material-symbols-outlined text-[14px] text-slate-400">inventory_2</span>

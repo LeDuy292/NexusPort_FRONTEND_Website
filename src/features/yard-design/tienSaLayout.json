@@ -33,7 +33,7 @@
     },
     {
       "code": "D",
-      "label": "Khu D · Bãi container 3",
+      "label": "Khu D · Bãi container lạnh",
       "count": 2
     },
     {
@@ -2229,7 +2229,8 @@
         "lengthBasis": "user-count",
         "rowTierBasis": "design-assumption"
       },
-      "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
+      "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort.",
+      "operationalRole": "reefer"
     },
     {
       "sector": "D",
@@ -2284,7 +2285,8 @@
         "lengthBasis": "user-count",
         "rowTierBasis": "design-assumption"
       },
-      "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
+      "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort.",
+      "operationalRole": "reefer"
     },
     {
       "sector": "E",

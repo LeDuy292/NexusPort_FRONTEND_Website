@@ -1,4 +1,7 @@
 export const padPosition = value => String(value).padStart(2,'0')
+export function slotCoveringModule(slots,moduleIndex,row,tier){
+ return slots?.find(slot=>slot.row===row&&slot.tier===tier&&Number.isInteger(slot.moduleStart)&&Number.isInteger(slot.moduleSpan)&&moduleIndex>=slot.moduleStart-1&&moduleIndex<slot.moduleStart-1+slot.moduleSpan)||null
+}
 export function slotAddress(area,moduleIndex,row,tier,size=20){
  const {bayModules,rows,tiers}=area.planning
  if(![20,40].includes(size)||![moduleIndex,row,tier].every(Number.isInteger)||moduleIndex<0||moduleIndex+(size===40?2:1)>bayModules||row<1||row>rows||tier<1||tier>tiers)return null

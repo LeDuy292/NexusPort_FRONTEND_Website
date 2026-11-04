@@ -2,8 +2,16 @@ import {test} from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import {cleanDesign,MODULE_PITCH} from '../src/features/yard-design/geometry.js'
-import {slotAddress} from '../src/features/yard-design/positions.js'
+import {slotAddress,slotCoveringModule} from '../src/features/yard-design/positions.js'
 const layout=cleanDesign(JSON.parse(fs.readFileSync(new URL('../src/features/yard-design/tienSaLayout.json',import.meta.url))))
+
+test('live footprints select every covered module, including the 45ft clearance envelope',()=>{
+ const slot={id:'45ft',moduleStart:5,moduleSpan:4,row:1,tier:1,bay:12,containerLengthFt:45}
+ for(const index of [4,5,6,7])assert.equal(slotCoveringModule([slot],index,1,1),slot)
+ for(const index of [3,8])assert.equal(slotCoveringModule([slot],index,1,1),null)
+ assert.equal(slotCoveringModule([slot],4,2,1),null)
+ assert.equal(slotCoveringModule([slot],4,1,2),null)
+})
 test('user length counts drive proportional block geometry and distinguish estimates',()=>{
  for(const area of layout.areas){
   const count=area.sector==='A'?[29,27,24,20][Number(area.code.slice(1))-1]:area.sector==='B'?28:area.sector==='C'?29:area.sector==='D'?16:null

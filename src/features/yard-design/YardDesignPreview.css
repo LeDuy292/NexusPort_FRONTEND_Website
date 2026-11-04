@@ -31,6 +31,9 @@
   .yard-design-preview .yard-block-group strong { flex:none; }
 }
 .yard-design-preview .yard-block-detail { border:1px solid #d2dde2; border-radius:8px; background:#fff; padding:20px; }
+.yard-design-preview .yard-detail-grid button.inventory-occupied { background:#c5e1ed; border-color:#4184a1; }
+.yard-design-preview .yard-detail-grid button.inventory-reserved { background:#f4e3ba; border-color:#c5a151; }
+.yard-design-preview .yard-detail-grid button.inventory-maintenance { background:#d9dde2; border-color:#84919c; }
 .yard-design-preview .yard-detail-heading { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; }
 .yard-design-preview .yard-detail-heading>div { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
 .yard-design-preview .yard-detail-heading h2 { margin:0; font-size:22px; }
