@@ -30,3 +30,58 @@
   .yard-design-preview .yard-block-group { align-items:start; flex-direction:column; gap:8px; }
   .yard-design-preview .yard-block-group strong { flex:none; }
 }
+.yard-design-preview .yard-block-detail { border:1px solid #d2dde2; border-radius:8px; background:#fff; padding:20px; }
+.yard-design-preview .yard-detail-heading { display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; }
+.yard-design-preview .yard-detail-heading>div { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.yard-design-preview .yard-detail-heading h2 { margin:0; font-size:22px; }
+.yard-design-preview .yard-detail-heading button { background:#fff; border:1px solid #cbd8de; color:#3e6171; border-radius:5px; padding:7px 10px; }
+.yard-design-preview .yard-detail-heading>strong { font-size:13px; color:#496c7c; }
+.yard-design-preview .count-source,.yard-design-preview .count-estimate { font-size:11px; padding:4px 8px; border-radius:4px; }
+.yard-design-preview .count-source { background:#eef5f2; color:#39745b; }
+.yard-design-preview .count-estimate { background:#faf2e5; color:#927039; }
+.yard-design-preview .yard-detail-metrics { display:flex; flex-wrap:wrap; gap:14px 30px; padding:20px 0 10px; }
+.yard-design-preview .yard-detail-metrics span { color:#85949b; font-size:12px; }
+.yard-design-preview .yard-detail-metrics strong { color:#294d5e; font-size:21px; margin-right:4px; }
+.yard-design-preview .yard-detail-basis { font-size:11px; color:#8b969a; margin:0 0 22px; }
+.yard-design-preview .yard-detail-workspace { display:grid; grid-template-columns:minmax(0,1fr) 240px; gap:22px; }
+.yard-design-preview .yard-detail-plan { min-width:0; }
+.yard-design-preview .yard-detail-plan-heading { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:18px; flex-wrap:wrap; }
+.yard-design-preview .yard-detail-plan-heading h3 { font-size:14px; margin:0; }
+.yard-design-preview .yard-detail-plan-heading>span { font-size:11px; color:#7c9099; }
+.yard-design-preview .yard-detail-grid-scroll { max-width:100%; overflow:auto; padding-bottom:10px; }
+.yard-design-preview .yard-detail-grid { display:grid; gap:4px; width:max-content; align-items:center; }
+.yard-design-preview .yard-grid-axis { font-size:9px; color:#8b9aa1; }
+.yard-design-preview .yard-grid-bay { font-size:10px; color:#5e7d8c; text-align:center; height:22px; }
+.yard-design-preview .yard-detail-row { display:contents; }
+.yard-design-preview .yard-grid-row { font-size:11px; color:#5e7d8c; }
+.yard-design-preview .yard-detail-row button { height:34px; border:1px solid #d7e3e7; background:#f4f8f9; border-radius:3px; padding:4px; }
+.yard-design-preview .yard-detail-row button>span { display:block; border:1px dashed #cfdee4; height:100%; border-radius:1px; }
+.yard-design-preview .yard-detail-row button.chosen-slot { background:#dbeaf1; border:2px solid #386e88; padding:3px; }
+.yard-design-preview .yard-detail-row button:disabled { opacity:.3; cursor:default; background:repeating-linear-gradient(135deg,#fafafa,#fafafa 4px,#eee 4px,#eee 5px); }
+.yard-design-preview .yard-detail-truck-lane { font-size:11px; text-align:center; padding:10px; border:1px dashed #c2cfd5; color:#768b96; background:#edf2f4; margin-top:8px; }
+.yard-design-preview .yard-detail-convention { font-size:11px; color:#7a8d97; line-height:1.7; margin-top:16px; }
+.yard-design-preview .yard-slot-detail { border-left:1px solid #e2e9ec; padding-left:20px; min-width:0; }
+.yard-design-preview .yard-detail-eyebrow { font-size:10px; color:#7f959f; letter-spacing:.7px; }
+.yard-design-preview .yard-slot-detail output { display:block; font-size:19px; font-weight:600; color:#315f77; margin:7px 0 14px; }
+.yard-design-preview .yard-size-switch { display:flex; gap:6px; margin-bottom:14px; }
+.yard-design-preview .yard-size-switch button { flex:1; border:1px solid #cedbe1; border-radius:4px; padding:7px; background:#fff; color:#496a7c; }
+.yard-design-preview .yard-size-switch button[aria-pressed=true] { background:#315e74; border-color:#315e74; color:#fff; }
+.yard-design-preview .yard-tier-select { display:flex; justify-content:space-between; align-items:center; gap:10px; font-size:12px; color:#728995; }
+.yard-design-preview .yard-tier-select select { padding:5px 8px; border:1px solid #cbd9e0; border-radius:4px; background:#fff; color:#315e74; }
+.yard-design-preview .yard-tier-profile { display:grid; gap:4px; margin:16px auto; width:110px; }
+.yard-design-preview .yard-tier-profile button { height:27px; background:#fafcfd; color:#8297a1; border:1px dashed #d5e0e6; border-radius:3px; font-size:10px; }
+.yard-design-preview .yard-tier-profile button[aria-pressed=true] { background:#e1edf3; border:1px solid #47778d; color:#315e74; }
+.yard-design-preview .yard-tier-profile>span { border-top:2px solid #afbdc3; font-size:9px; text-align:center; color:#9aa7ad; padding-top:3px; }
+.yard-design-preview .yard-slot-detail dl { margin:15px 0; }
+.yard-design-preview .yard-slot-detail dl>div { display:flex; justify-content:space-between; font-size:12px; padding:4px 0; }
+.yard-design-preview .yard-slot-detail dt { color:#8497a0; }
+.yard-design-preview .yard-slot-detail dd { margin:0; color:#365f73; }
+.yard-design-preview .yard-slot-detail p { font-size:11px; color:#85959d; }
+@media(max-width:1050px) { .yard-design-preview .yard-detail-workspace { grid-template-columns:minmax(0,1fr); }.yard-design-preview .yard-slot-detail { border-left:0; border-top:1px solid #e2e9ec; padding:16px 0 0; max-width:350px; } }
+/* Give the longest block the full available width; shorter blocks share its cell size. */
+.yard-design-preview .yard-detail-workspace { grid-template-columns:minmax(0,1fr); }
+.yard-design-preview .yard-slot-detail { border-left:0; border-top:1px solid #e2e9ec; padding:18px 0 0; display:grid; grid-template-columns:minmax(200px,1fr) 240px 160px; gap:24px; max-width:none; }
+.yard-design-preview .yard-slot-detail dl { display:flex; gap:26px; margin:8px 0; }
+.yard-design-preview .yard-slot-detail dl>div { gap:8px; }
+.yard-design-preview .yard-tier-profile { margin:0 auto; }
+@media(max-width:800px){.yard-design-preview .yard-slot-detail{grid-template-columns:minmax(0,1fr);gap:14px}.yard-design-preview .yard-position-controls{max-width:350px}.yard-design-preview .yard-tier-profile{margin:0}}

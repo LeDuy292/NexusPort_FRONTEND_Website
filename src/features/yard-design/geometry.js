@@ -6,6 +6,7 @@ export const pointInArea = (area,t,r) => {
 export const areaColor = (layout,area) => layout.zones.find(zone=>zone.code===area.zone)?.color || '#3b776d'
 
 // The nearest cardinal direction is vertical: +37.7 degrees, not -52.3.
+export const MODULE_PITCH = 7.5 // schematic units per 20-foot module; not metres
 export const STRAIGHT_ANGLE = Math.atan2(.61,.79)*180/Math.PI
 export const rotatePoint = ([x,y],angle) => {
   const radians=angle*Math.PI/180
@@ -55,16 +56,20 @@ export function cleanDesign(layout) {
     // Keep the stepped landward ends inside their sloped yard boundary.
     if(area.sourceGroup==='mixed-1')y=Math.max(y,Math.ceil(900+(x+width-498)*108/152)+8)
     if(area.sourceGroup==='mixed-2')y=Math.max(y,Math.ceil(1014+(x+width-654)*117/156)+8)
+    const bayModules=area.planning?.bayModules??Math.max(1,Math.floor((bottom-y)/MODULE_PITCH))
+    y=bottom-bayModules*MODULE_PITCH
     const polygon=rectangle(x,y,width,bottom-y)
-    return {...area,...bounds(polygon),polygon,label:center(polygon)}
+    const planning={...area.planning,bayModules,rows:area.planning?.rows||6,tiers:area.planning?.tiers||4,lengthBasis:area.planning?.lengthBasis||'estimated'}
+    return {...area,...bounds(polygon),polygon,label:center(polygon),planning}
   })
   const facilities=layout.facilities.filter(f=>!f.external).map(item=>{
     const p=rotate(item.polygon),c=center(p)
     const width=Math.round((Math.hypot(p[1][0]-p[0][0],p[1][1]-p[0][1])+Math.hypot(p[2][0]-p[3][0],p[2][1]-p[3][1]))/2)
-    const height=Math.round((Math.hypot(p[3][0]-p[0][0],p[3][1]-p[0][1])+Math.hypot(p[2][0]-p[1][0],p[2][1]-p[1][1]))/2)
+    let height=Math.round((Math.hypot(p[3][0]-p[0][0],p[3][1]-p[0][1])+Math.hypot(p[2][0]-p[1][0],p[2][1]-p[1][1]))/2)
     let y=Math.round(c[1]-height/2)
     if(item.code==='OFFICE')y=1232
     if(item.code==='CUSTOMS')y=1230
+    if(item.code==='CFS-02')height=Math.min(...areas.filter(area=>area.sector==='D').map(area=>area.y))-12-y
     const polygon=rectangle(Math.round(c[0]-width/2),y,width,height)
     return {...item,...bounds(polygon),polygon,labelPosition:center(polygon)}
   })
@@ -102,9 +107,9 @@ export function cleanDesign(layout) {
     terminal:[[74,510],[310,690],[310,850],[340,875],[480,890],[640,1015],[800,1138],[920,1180],[1032,1180],[1032,1552],[425,1552],[395,1580],[350,1705],[315,1705],[315,1300],[305,1280],[305,885],[74,885]],
     yardEnclosures:[
       {code:'cy45',polygon:[[90,528],[278,670],[278,824],[90,824]]},
-      {code:'central',polygon:rectangle(330,976,156,216)},
+      {code:'central',polygon:rectangle(330,970,156,222)},
       {code:'south',polygon:rectangle(338,1236,388,272)},
-      {code:'warehouse-yard',polygon:rectangle(738,1318,72,190)},
+      {code:'warehouse-yard',polygon:rectangle(738,1359,72,149)},
     ],
     aprons:[
       {code:'TS45',polygon:[[28,490],[74,490],[74,840],[300,840],[300,885],[28,885]],convexParts:[rectangle(28,490,46,350),rectangle(28,840,272,45)]},

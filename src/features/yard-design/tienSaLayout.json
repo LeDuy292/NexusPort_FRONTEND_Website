@@ -1232,10 +1232,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 29,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -1285,10 +1287,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 27,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -1341,7 +1345,9 @@
         "bayModules": 24,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -1391,10 +1397,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 20,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -1444,10 +1452,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 28,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -1497,10 +1507,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 28,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -1550,10 +1562,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 28,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -1603,10 +1617,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 28,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -1656,10 +1672,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 29,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -1709,10 +1727,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 29,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -1762,10 +1782,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 29,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -1815,10 +1837,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 29,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -1868,10 +1892,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 29,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -1921,10 +1947,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 29,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -1974,10 +2002,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 29,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -2027,10 +2057,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 29,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -2080,10 +2112,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 29,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -2133,10 +2167,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 29,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -2186,10 +2222,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 16,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -2239,10 +2277,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": 16,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "user-count",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort."
     },
@@ -2292,10 +2332,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": null,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "estimated",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Block container bổ sung trong bãi tổng hợp; cần xác nhận chuyển đổi công năng, tải nền và thiết bị."
     },
@@ -2345,10 +2387,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": null,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "estimated",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Block container bổ sung trong bãi tổng hợp; cần xác nhận chuyển đổi công năng, tải nền và thiết bị."
     },
@@ -2398,10 +2442,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": null,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "estimated",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Block container bổ sung trong bãi tổng hợp; cần xác nhận chuyển đổi công năng, tải nền và thiết bị."
     },
@@ -2451,10 +2497,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": null,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "estimated",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Block container bổ sung trong bãi tổng hợp; cần xác nhận chuyển đổi công năng, tải nền và thiết bị."
     },
@@ -2504,10 +2552,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": null,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "estimated",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Block container bổ sung trong bãi tổng hợp; cần xác nhận chuyển đổi công năng, tải nền và thiết bị."
     },
@@ -2557,10 +2607,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": null,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "estimated",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Block container bổ sung trong bãi tổng hợp; cần xác nhận chuyển đổi công năng, tải nền và thiết bị."
     },
@@ -2610,10 +2662,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": null,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "estimated",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Block container bổ sung trong bãi tổng hợp; cần xác nhận chuyển đổi công năng, tải nền và thiết bị."
     },
@@ -2663,10 +2717,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": null,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "estimated",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Block container bổ sung trong bãi tổng hợp; cần xác nhận chuyển đổi công năng, tải nền và thiết bị."
     },
@@ -2716,10 +2772,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": null,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "estimated",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Block container bổ sung trong bãi tổng hợp; cần xác nhận chuyển đổi công năng, tải nền và thiết bị."
     },
@@ -2769,10 +2827,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": null,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "estimated",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Block container bổ sung trong bãi tổng hợp; cần xác nhận chuyển đổi công năng, tải nền và thiết bị."
     },
@@ -2822,10 +2882,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": null,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "estimated",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Block container bổ sung trong bãi tổng hợp; cần xác nhận chuyển đổi công năng, tải nền và thiết bị."
     },
@@ -2875,10 +2937,12 @@
       ],
       "operationalBinding": null,
       "planning": {
-        "bayModules": 24,
+        "bayModules": null,
         "rows": 6,
         "tiers": 4,
-        "containerSize": 20
+        "containerSize": 20,
+        "lengthBasis": "estimated",
+        "rowTierBasis": "design-assumption"
       },
       "note": "Block container bổ sung trong bãi tổng hợp; cần xác nhận chuyển đổi công năng, tải nền và thiết bị."
     }

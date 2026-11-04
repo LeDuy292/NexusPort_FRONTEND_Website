@@ -87,10 +87,10 @@ export default function TienSaMap({layout=referenceLayout,selectedCode,onSelectA
           })}
           {visibleAreas.map(area=>{
             const shape=areaPolygon(area),center=area.label,proposed=area.geometryStatus==='proposed',active=selectedCode===area.code
-            const length=Math.hypot(shape[3][0]-shape[0][0],shape[3][1]-shape[0][1]),divisions=Math.max(3,Math.round(length/15))
+            const divisions=area.planning.bayModules,rows=area.planning.rows
             return <g key={area.code} className="design-area-hit" data-map-item="block" data-area-code={area.code} role="button" tabIndex={0} aria-label={`Block ${area.code}`} aria-pressed={active} onClick={()=>onSelectArea?.(area)} onKeyDown={activate(()=>onSelectArea?.(area))}>
               <polygon points={points(shape)} fill={proposed?'#f1e5cc':'#dcebe3'} stroke={active?'#173e48':proposed?'#b8995e':'#6e9e8a'} strokeWidth={active?2.5:1}/>
-              {Array.from({length:5},(_,i)=><path key={`row-${i}`} d={`M${pointInArea(area,0,(i+1)/6).join(' ')} L${pointInArea(area,1,(i+1)/6).join(' ')}`} stroke={proposed?'#ceb98c':'#a2c1af'} strokeWidth=".5"/>)}
+              {Array.from({length:rows-1},(_,i)=><path key={`row-${i}`} d={`M${pointInArea(area,0,(i+1)/rows).join(' ')} L${pointInArea(area,1,(i+1)/rows).join(' ')}`} stroke={proposed?'#ceb98c':'#a2c1af'} strokeWidth=".5"/>)}
               {Array.from({length:divisions-1},(_,i)=><path key={`bay-${i}`} d={`M${pointInArea(area,(i+1)/divisions,0).join(' ')} L${pointInArea(area,(i+1)/divisions,1).join(' ')}`} stroke={proposed?'#ceb98c':'#a2c1af'} strokeWidth=".5"/>)}
               <g transform={upright(...center)}><rect x={center[0]-16} y={center[1]-12} width="32" height="24" rx="3" fill={active?'#173e48':'#fffffff2'}/>
               <text x={center[0]} y={center[1]+5} textAnchor="middle" className={`yard-block-label ${active?'active':''}`}>{area.code}</text></g>

@@ -236,7 +236,11 @@ const areas = quads.map((polygon, i) => {
       (polygon[0][1] + polygon[2][1]) / 2,
     ],
     operationalBinding: null,
-    planning: { bayModules: 24, rows: 6, tiers: 4, containerSize: 20 },
+    planning: {
+      bayModules: i<4?[29,27,24,20][i]:i<8?28:i<18?29:i<20?16:null,
+      rows:6,tiers:4,containerSize:20,
+      lengthBasis:i<20?'user-count':'estimated',rowTierBasis:'design-assumption',
+    },
     note: proposed
       ? "Block container bổ sung trong bãi tổng hợp; cần xác nhận chuyển đổi công năng, tải nền và thiết bị."
       : "Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort.",
