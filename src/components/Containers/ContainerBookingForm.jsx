@@ -4,7 +4,7 @@ import { containerService } from '../../services/containerService'
 import { bookingService } from '../../services/bookingService'
 import BookingSourcePicker from './BookingSourcePicker'
 import BookingFleetDetails from './BookingFleetDetails'
-import { bookingWindow, suggestedBookingWindow, sourceOperation, retainAvailableFleet } from '../../features/booking-dispatch/bookingPlanning'
+import { bookingWindow, suggestedBookingWindow, sourceOperation, retainAvailableFleet, exportBookingWindow } from '../../features/booking-dispatch/bookingPlanning'
 
 const inputClass = 'w-full rounded-xl border border-chalk bg-fog px-4 py-2.5 text-xs outline-none focus:border-signal-orange focus:bg-white focus:ring-0 transition-all font-medium'
 const selectClass = 'w-full rounded-xl border border-chalk bg-fog px-3 py-2.5 text-xs outline-none focus:border-signal-orange focus:bg-white focus:ring-0 transition-all font-medium cursor-pointer'
@@ -188,7 +188,7 @@ export const getContainerRequiredDocs = (op) => {
     })
   }
 
-  return docs
+  return op.exportBookingId ? docs.filter(doc => !['CarrierBookingReference', 'VgmCertificate'].includes(doc.type)) : docs
 }
 
 export const getBookingStatusLabelVi = (status) => {
@@ -213,9 +213,11 @@ export const formatFileSize = (bytes) => {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
-export default function ContainerBookingForm({ onSaved, onClose }) {
+export default function ContainerBookingForm({ onSaved, onClose, exportContext, onExportBooking, pickupModeSelector }) {
   const navigate = useNavigate()
-  const { state: context } = useLocation()
+  const { state: locationContext } = useLocation()
+  const context = exportContext ? { ...exportContext.container, bookingType: 'Dropoff' } : { ...locationContext, bookingType: 'Pickup' }
+  const linkedSource = exportContext ? sourceOperation({ ...exportContext.container, grossWeightKg: exportContext.container.vgmKg, loadStatus: 'full' }) : null
 
   // Mode: 'single' | 'combined'
   const [bookingMode, setBookingMode] = useState('single')
@@ -232,21 +234,22 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
       containerVisitId: context?.containerVisitId || null,
       yardCode: context?.yardCode || '',
       cargoStatus: 'Loaded',
-      cargoType: '',
-      containerIsoSize: '',
+      cargoType: linkedSource?.cargoType || '',
+      containerIsoSize: context?.containerTypeCode || '',
       containerNumber: context?.containerNumber || '',
-      carrierBookingNumber: '',
+      exportBookingId: exportContext?.booking.id || null,
+      carrierBookingNumber: exportContext?.booking.bookingNumber || '',
       billOfLadingNumber: '',
       deliveryOrderNumber: '',
       customsDeclarationNumber: '',
       emptyReleaseOrderNumber: '',
       emptyReturnAuthNumber: '',
-      sealNumber: '',
-      grossWeightKg: null,
-      temperatureSetPoint: null,
-      dangerousGoodsClass: '',
-      unNumber: '',
-      documents: []
+      sealNumber: exportContext?.container.sealNumber || '',
+      grossWeightKg: exportContext?.container.vgmKg ?? null,
+      temperatureSetPoint: exportContext?.container.targetTemperature ?? null,
+      dangerousGoodsClass: exportContext?.container.dgClass || '',
+      unNumber: exportContext?.container.unNumber || '',
+      documents: exportContext?.container.customsDocumentUrl ? [{ documentType: 'CustomsDeclaration', fileUrl: exportContext.container.customsDocumentUrl, fileName: 'Hồ sơ hải quan đã khai' }] : []
     }
   ])
 
@@ -279,12 +282,13 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
     feeTermsAgreed: true,
     isReeferPowerRequired: false,
     reeferPowerSelection: 'automatic',
-    targetTemperature: null,
+    targetTemperature: exportContext?.container.targetTemperature ?? null,
     temperatureUnit: 'C',
     tempTolerance: 1.5,
     requiredPowerKw: null,
     reeferPlugId: '',
-    specialColdInstructions: ''
+    specialColdInstructions: '',
+    ...(exportBookingWindow(exportContext?.booking.voyage) || {})
   })
 
   const [planResult, setPlanResult] = useState(null)
@@ -299,6 +303,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
     if (legs.every(leg => leg.containerId && (leg.declarationId || leg.yardCode))) planningRequest = {
       containerId: op.containerId, declarationId: op.declarationId || null, yardCode: op.yardCode || null,
       bookingType: op.operationType === 'Import' ? 'Pickup' : 'Dropoff',
+      ...(exportContext ? { exportBookingId: exportContext.booking.id, exportContainerId: exportContext.container.id } : {}),
       ...(bookingMode === 'combined' ? { legs } : {}),
       ...bookingWindow(form.appointmentDate, form.startTime, form.endTime),
     }
@@ -361,6 +366,11 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
 
   // Synchronize operations when mode or primary op changes
   const applySingleOperation = (opType) => {
+    if (!exportContext && opType === 'Export') {
+      if (onExportBooking) onExportBooking()
+      else navigate('/booking', { state: { exportBooking: true } })
+      return
+    }
     setPlanResult(null)
     setForm(prev => ({ ...prev, truckId: '', driverId: '', targetTemperature: null, isReeferPowerRequired: false, requiredPowerKw: null, reeferPowerSelection: 'automatic' }))
     setSelectedPrimaryOp(opType)
@@ -390,6 +400,11 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
   }
 
   const applyCombinedPair = (pairKey = 'Export_Import') => {
+    if (!exportContext) {
+      if (onExportBooking) onExportBooking()
+      else navigate('/booking', { state: { exportBooking: true } })
+      return
+    }
     setPlanResult(null)
     setForm(prev => ({ ...prev, truckId: '', driverId: '', targetTemperature: null, isReeferPowerRequired: false,
       requiredPowerKw: null, reeferPowerSelection: 'automatic', fleetSelectionMode: 'automatic' }))
@@ -596,6 +611,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
       }
 
       const payload = {
+        ...(exportContext ? { exportBookingId: exportContext.booking.id, exportContainerId: exportContext.container.id } : {}),
         bookingCode: form.bookingCode,
         bookingType: operations[0].operationType === 'Import' ? 'Pickup' : 'Dropoff',
         isCombined: bookingMode === 'combined',
@@ -792,6 +808,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
           <button
             type="button"
             onClick={continueToFleet}
+            disabled={loading || !currentPlan}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
               step === 2
                 ? 'bg-gradient-to-r from-signal-orange to-orange-600 text-white shadow-md shadow-orange-500/25'
@@ -831,8 +848,15 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
       </dialog>
 
       <form onSubmit={handleSave} className="space-y-8">
+        {exportContext && <div className="rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900 space-y-1">
+          <p className="font-bold">Lịch xe giao container · Booking hãng tàu {exportContext.booking.bookingNumber}</p>
+          <p>{exportContext.container.containerNumber} · Seal {exportContext.container.sealNumber} · VGM {exportContext.container.vgmKg?.toLocaleString('vi-VN')} kg</p>
+          <p className="text-xs">Booking Note và VGM được đối chiếu từ dữ liệu hãng tàu đã tiếp nhận. Khung giờ giao phải nằm trong thời gian nhận container và trước CY cut-off.</p>
+        </div>}
         {step === 1 && (
           <>
+            {pickupModeSelector}
+            {!exportContext && !pickupModeSelector && <>
             {/* 1. SELECT MODE: SINGLE OR COMBINED */}
             <div className="space-y-3">
               <label className="block text-xs font-extrabold uppercase text-slate-400 tracking-wider">
@@ -1000,10 +1024,11 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
 
 
 
+            </>}
             {/* 3. DYNAMIC OPERATIONS DETAIL FORMS */}
             <div className="space-y-6">
               <label className="block text-xs font-extrabold uppercase text-slate-400 tracking-wider">
-                3. Chi tiết container và hồ sơ chứng từ điều kiện
+                {pickupModeSelector ? '2. Chi tiết container và hồ sơ chứng từ' : '3. Chi tiết container và hồ sơ chứng từ điều kiện'}
               </label>
 
               {operations.map((op, idx) => (
@@ -1040,7 +1065,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                     </div>
                   </div>
 
-                  <BookingSourcePicker key={op.operationType} operation={op} onSelect={selection => selectSource(selection, idx)} />
+                  {!exportContext && <BookingSourcePicker key={op.operationType} operation={op} onSelect={selection => selectSource(selection, idx)} />}
                   {currentPlan && <p className="text-xs text-emerald-700">Công ty: {(currentPlan.sources?.[idx] || currentPlan.source).carrierName || 'Chưa có thông tin công ty'}</p>}
                   {planError && <p role="alert" className="text-xs text-red-700">{planError}</p>}
                   {loading && <p role="status" className="text-xs">Đang kiểm tra dữ liệu và lịch xe/tài xế…</p>}
@@ -1131,6 +1156,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                               type="text"
                               placeholder="VD: BK-ONE-882910 hoặc REG-HA-0192"
                               value={op.carrierBookingNumber || ''}
+                              readOnly={Boolean(exportContext)}
                               onChange={(e) => updateOperation(idx, { carrierBookingNumber: e.target.value.toUpperCase() })}
                               className={inputClass}
                             />
@@ -1193,6 +1219,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                             step="0.5"
                             placeholder="-18"
                             value={op.temperatureSetPoint ?? ''}
+                            readOnly={Boolean(exportContext)}
                             onChange={(e) => {
                               const temperature = e.target.value === '' ? null : Number(e.target.value)
                               updateOperation(idx, { temperatureSetPoint: temperature })
@@ -1212,6 +1239,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                               type="text"
                               placeholder="VD: Nhóm 3 (Chất lỏng dễ cháy)"
                               value={op.dangerousGoodsClass || ''}
+                              readOnly={Boolean(exportContext)}
                               onChange={(e) => updateOperation(idx, { dangerousGoodsClass: e.target.value })}
                               className={inputClass}
                             />
@@ -1222,6 +1250,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                               type="text"
                               placeholder="VD: UN1203"
                               value={op.unNumber || ''}
+                              readOnly={Boolean(exportContext)}
                               onChange={(e) => updateOperation(idx, { unNumber: e.target.value.toUpperCase() })}
                               className={inputClass}
                             />
@@ -1242,7 +1271,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                           Chứng Từ Yêu Cầu Cho Nghiệp Vụ {getOperationLabelVi(op.operationType)}
                         </h5>
                         <p className="text-[11px] text-slate-500 mt-0.5">
-                          {op.operationType === 'Export'
+                          {exportContext ? 'Booking Note và VGM đã có dữ liệu được tiếp nhận; bổ sung hồ sơ hàng đặc biệt nếu cần.' : op.operationType === 'Export'
                             ? 'Chỉ nộp các chứng từ phục vụ hàng xuất khẩu (Booking Note, VGM, Hải quan xuất)'
                             : 'Chỉ nộp các chứng từ phục vụ hàng nhập khẩu (Vận đơn B/L, Lệnh eDO, Hải quan nhập)'}
                         </p>
@@ -1451,6 +1480,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
               </button>
               <button
                 type="submit"
+                disabled={loading || !currentPlan}
                 className="px-6 py-2.5 rounded-xl bg-signal-orange text-white text-xs font-bold hover:bg-orange-600 transition-all shadow-sm flex items-center gap-1.5"
               >
                 <span>Tiếp tục: Chọn Xe & Khung Giờ</span>
@@ -1668,6 +1698,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                       step="0.5"
                       required
                       value={form.targetTemperature ?? ''}
+                      readOnly={Boolean(exportContext)}
                       onChange={(e) => {
                         const temperature = e.target.value === '' ? null : Number(e.target.value)
                         setForm(prev => ({ ...prev, targetTemperature: temperature }))

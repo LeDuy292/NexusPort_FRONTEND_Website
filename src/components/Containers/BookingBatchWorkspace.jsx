@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { bookingService } from '../../services/bookingService'
-import { bookingWindow, sourceOperation } from '../../features/booking-dispatch/bookingPlanning'
+import { bookingWindow, sourceOperation, exportBookingWindow } from '../../features/booking-dispatch/bookingPlanning'
 import BookingFleetDetails from './BookingFleetDetails'
 
 const input = 'w-full rounded-xl border border-chalk bg-white px-3 py-2 text-sm'
@@ -32,15 +32,15 @@ const documentView = (spec, direction) => ({
   DangerousGoodsDeclaration: { title: 'Khai Báo Hàng Nguy Hiểm (IMO)', icon: 'warning' },
 }[spec.documentType] || { title: spec.nameVi, icon: 'description' })
 
-export default function BookingBatchWorkspace({ onSaved }) {
+export default function BookingBatchWorkspace({ onSaved, exportContext, onExportBooking, pickupModeSelector }) {
   const navigate = useNavigate()
-  const [direction, setDirection] = useState('Dropoff')
+  const [direction, setDirection] = useState(exportContext ? 'Dropoff' : 'Pickup')
   const [options, setOptions] = useState([])
   const [catalog, setCatalog] = useState([])
   const [trips, setTrips] = useState([])
-  const [date, setDate] = useState(localDate)
-  const [startTime, setStartTime] = useState('08:00')
-  const [endTime, setEndTime] = useState('12:00')
+  const [date, setDate] = useState(() => exportBookingWindow(exportContext?.booking.voyage)?.appointmentDate || localDate())
+  const [startTime, setStartTime] = useState(() => exportBookingWindow(exportContext?.booking.voyage)?.startTime || '08:00')
+  const [endTime, setEndTime] = useState(() => exportBookingWindow(exportContext?.booking.voyage)?.endTime || '12:00')
   const [documents, setDocuments] = useState([])
   const [requirements, setRequirements] = useState([])
   const [confirmed, setConfirmed] = useState(false)
@@ -76,9 +76,13 @@ export default function BookingBatchWorkspace({ onSaved }) {
     let live = true
     bookingService.getBatchContainerOptions(direction, trips[0]?.selection).then(data => {
       if (live) {
-        setOptions(data)
-        if (!anchorKey) setCatalog(data)
-        else setCatalog(previous => [...previous.filter(row => row.cargoType !== trips[0].source.cargoType), ...data])
+        const sources = exportContext ? data.flatMap(source => {
+          const record = exportContext.containers.find(row => row.containerId === source.containerId && row.declarationId === source.declarationId)
+          return record ? [{ ...source, sealNumber: record.sealNumber, grossWeightKg: record.vgmKg, exportContainer: record }] : []
+        }) : data
+        setOptions(sources)
+        if (!anchorKey) setCatalog(sources)
+        else setCatalog(previous => [...previous.filter(row => row.cargoType !== trips[0].source.cargoType), ...sources])
       }
     }).catch(err => { if (live) setError(errorMessage(err)) })
     return () => { live = false }
@@ -103,7 +107,10 @@ export default function BookingBatchWorkspace({ onSaved }) {
       if (existing) return existing
       const source = candidates.find(row => sourceKey(row) === key)
       return { key, selection: { containerId: source.containerId, declarationId: direction === 'Dropoff' ? source.declarationId : emptyId, yardCode: source.yardCode || null }, source,
-        date, start: startTime, end: endTime, truckId: '', driverId: '', trailerNumber: '', temperature: '', power: false }
+        date, start: startTime, end: endTime, truckId: '', driverId: '', trailerNumber: '',
+        exportContainerId: source.exportContainer?.id || null, temperature: source.exportContainer?.targetTemperature ?? '',
+        unNumber: source.exportContainer?.unNumber || '', dgClass: source.exportContainer?.dgClass || '',
+        power: Boolean(exportContext && source.cargoType === 'reefer' && Number(source.requiredPowerKw) > 0) }
     })
     if (new Set(selected.map(trip => trip.selection.containerId)).size !== selected.length) { setError('Chỉ chọn một bản khai/lượt bãi cho mỗi container.'); return }
     if (selected.some(trip => !trip.source.cargoType || trip.source.cargoType !== selected[0].source.cargoType)) { setError('Chỉ chọn container cùng loại hàng với container đầu tiên.'); return }
@@ -125,6 +132,7 @@ export default function BookingBatchWorkspace({ onSaved }) {
   const payload = () => ({ bookingType: direction, description: description || null, sharedDocumentsConfirmed: confirmed,
     allowUnassignedTrips: allowUnassigned, sharedDocuments: documents,
     trips: trips.map(trip => ({ selection: trip.selection, ...bookingWindow(trip.date, trip.start, trip.end),
+      ...(exportContext ? { exportBookingId: exportContext.booking.id, exportContainerId: trip.exportContainerId } : {}),
       truckId: trip.truckId || null, driverId: trip.driverId || null, trailerNumber: trip.trailerNumber || null,
       isReeferPowerRequired: !!trip.power, tempTolerance: 2,
       operation: { temperatureSetpoint: trip.temperature === '' || trip.temperature == null ? null : Number(trip.temperature), temperatureUnit: 'C',
@@ -149,7 +157,7 @@ export default function BookingBatchWorkspace({ onSaved }) {
       if (result.validationMessages?.length) return
       const specs = await bookingService.getOperationRequirements({ operationType: direction === 'Dropoff' ? 'Export' : 'Import', cargoStatus: 'Loaded', cargoType: sourceOperation({ cargoType: result.cargoType }).cargoType })
       if (!active.current || version.current !== requestedVersion) return
-      setRequirements(specs)
+      setRequirements(exportContext ? specs.filter(spec => !['CarrierBookingReference', 'VgmCertificate'].includes(spec.documentType)) : specs)
     } catch (err) { if (active.current && version.current === requestedVersion) setError(errorMessage(err)) }
     finally { if (active.current && version.current === requestedVersion) setBusy(false) }
   }
@@ -233,13 +241,21 @@ export default function BookingBatchWorkspace({ onSaved }) {
   const orderedRequirements = [...requirements].sort((a, b) =>
     (documentOrder.includes(a.documentType) ? documentOrder.indexOf(a.documentType) : 99) - (documentOrder.includes(b.documentType) ? documentOrder.indexOf(b.documentType) : 99))
   return <div className="space-y-6">
+    {exportContext && <div className="rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900"><p className="font-bold">Lịch xe theo lô · Booking hãng tàu {exportContext.booking.bookingNumber}</p><p className="mt-1">Chỉ hiển thị container hãng tàu đã khai và cảng đã tiếp nhận. Booking Note và VGM được đối chiếu từ hồ sơ từng container.</p></div>}
     {error && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">{error}</div>}
     <form onSubmit={save} className="space-y-5 rounded-2xl border border-chalk bg-white p-5">
       <div><h3 className="text-lg font-bold">Booking theo lô</h3><p className="text-sm text-slate-600">Cùng loại hàng, cùng bộ hồ sơ. Mỗi container có chuyến xe, tài xế, giờ hẹn và lượt qua cổng riêng.</p></div>
       <fieldset disabled={busy || uploading} className="space-y-5 disabled:opacity-70">
-        <div className="max-w-md">
-          <label className="text-sm font-semibold">Nghiệp vụ<select aria-label="Nghiệp vụ của lô" className={input} value={direction} onChange={event => { invalidate(); setDirection(event.target.value) }}><option value="Dropoff">Giao container vào cảng</option><option value="Pickup">Nhận container ra cảng</option></select></label>
-        </div>
+        {pickupModeSelector || <div className="max-w-md">
+          <label className="text-sm font-semibold">Nghiệp vụ<select aria-label="Nghiệp vụ của lô" disabled={Boolean(exportContext)} className={input} value={direction} onChange={event => {
+            if (event.target.value === 'Dropoff' && !exportContext) {
+              if (onExportBooking) onExportBooking()
+              else navigate('/booking', { state: { exportBooking: true } })
+              return
+            }
+            invalidate(); setDirection(event.target.value)
+          }}><option value="Dropoff">Giao container vào cảng</option><option value="Pickup">Nhận container ra cảng</option></select></label>
+        </div>}
         <div role="group" aria-label="Container trong lô" className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-bold">Chọn container theo nhóm</h4>{trips.length > 0 && <button type="button" className="text-sm font-semibold underline" onClick={() => selectSources([])}>Bỏ chọn tất cả</button>}</div>
           <p className="text-xs text-slate-600">Tích chọn từng container hoặc chọn cả nhóm, tối đa 50 container. Cùng màu là cùng loại hàng; chứng từ dùng chung vẫn cần đối chiếu.</p>
@@ -301,9 +317,9 @@ export default function BookingBatchWorkspace({ onSaved }) {
               }}><option value="">{fleet && !trucks.length ? 'Chưa có xe rảnh trong khung giờ' : 'Chọn xe rảnh'}</option>{trucks.map(truck => <option key={truck.id} value={truck.id}>{truck.plateNumber} · {truck.currentLocation || truck.vehicleType}</option>)}</select></label>
               <label className="text-sm">Tài xế<select aria-label={`Tài xế chuyến ${index + 1}`} disabled={!fleet} className={input} value={trip.driverId} onChange={event => patchTrip(index, event.target.value ? { driverId: event.target.value } : { truckId: '', driverId: '', trailerNumber: '' })}><option value="">{fleet && !drivers.length ? 'Chưa có tài xế rảnh trong khung giờ' : 'Chọn tài xế rảnh'}</option>{drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.fullName}{driver.phone ? ` · ${driver.phone}` : ''}</option>)}</select></label>
               <label className="text-sm">Rơ-moóc<input aria-label={`Rơ-moóc chuyến ${index + 1}`} maxLength={50} className={input} value={trip.trailerNumber} onChange={event => patchTrip(index, { trailerNumber: event.target.value.toUpperCase() })} /><span className="mt-1 block text-xs text-slate-500">{trip.trailerNumber && recommendation?.trailerSuggestions?.some(row => row.truckId === trip.truckId && row.trailerNumber === trip.trailerNumber) ? 'Gợi ý từ lịch sử xe; kiểm tra đúng moóc đang sử dụng.' : 'Chưa có gợi ý phù hợp; nhập biển theo hồ sơ moóc thực tế.'}</span></label>
-              {cold && <label className="text-sm">Nhiệt độ (°C)<input required type="number" step="0.5" aria-label={`Nhiệt độ chuyến ${index + 1}`} className={input} value={trip.temperature} onChange={event => patchTrip(index, { temperature: event.target.value })} /></label>}
+              {cold && <label className="text-sm">Nhiệt độ (°C)<input required type="number" step="0.5" readOnly={Boolean(exportContext)} aria-label={`Nhiệt độ chuyến ${index + 1}`} className={input} value={trip.temperature} onChange={event => patchTrip(index, { temperature: event.target.value })} /></label>}
               {cold && direction === 'Dropoff' && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={trip.power} disabled={!(trip.source.requiredPowerKw > 0)} onChange={event => patchTrip(index, { power: event.target.checked })} />Yêu cầu cấp điện ({trip.source.requiredPowerKw || 0} kW)</label>}
-              {dangerous && <><label className="text-sm">Mã UN<input required aria-label={`Mã UN chuyến ${index + 1}`} className={input} value={trip.unNumber || ''} onChange={event => patchTrip(index, { unNumber: event.target.value })} /></label><label className="text-sm">Phân lớp nguy hiểm<input required aria-label={`Phân lớp chuyến ${index + 1}`} className={input} value={trip.dgClass || ''} onChange={event => patchTrip(index, { dgClass: event.target.value })} /></label></>}
+              {dangerous && <><label className="text-sm">Mã UN<input required readOnly={Boolean(exportContext)} aria-label={`Mã UN chuyến ${index + 1}`} className={input} value={trip.unNumber || ''} onChange={event => patchTrip(index, { unNumber: event.target.value })} /></label><label className="text-sm">Phân lớp nguy hiểm<input required readOnly={Boolean(exportContext)} aria-label={`Phân lớp chuyến ${index + 1}`} className={input} value={trip.dgClass || ''} onChange={event => patchTrip(index, { dgClass: event.target.value })} /></label></>}
             </div>
             <BookingFleetDetails vehicle={trucks.find(truck => truck.id === trip.truckId)} driver={drivers.find(driver => driver.id === trip.driverId)} />
             {recommendation && <p role={recommendation.cargoAvailable ? 'status' : 'alert'} className={`text-sm ${recommendation.cargoAvailable ? 'text-slate-600' : 'text-rose-700'}`}>{recommendation.plan.schedule.message}</p>}
@@ -334,7 +350,7 @@ export default function BookingBatchWorkspace({ onSaved }) {
               })}</div>
             </fieldset>}
           </article>})}</div>
-          <label className="flex items-start gap-2 text-sm"><input type="checkbox" required checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />Tôi xác nhận chứng từ chung hợp lệ và áp dụng cho tất cả container trong lô.</label>
+          <label className="flex items-start gap-2 text-sm"><input type="checkbox" required checked={confirmed} onChange={event => setConfirmed(event.target.checked)} />{exportContext ? 'Tôi xác nhận dữ liệu từng container và phạm vi các chứng từ bổ sung dùng chung trong lô.' : 'Tôi xác nhận chứng từ chung hợp lệ và áp dụng cho tất cả container trong lô.'}</label>
         </div>}
         <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={allowUnassigned} onChange={event => setAllowUnassigned(event.target.checked)} />Cho phép lưu chuyến chưa đủ xe/tài xế để phân công sau. Các chuyến này chưa có quyền qua cổng.</label>
         <label className="block text-sm">Ghi chú chung<textarea maxLength={1000} className={input} value={description} onChange={event => setDescription(event.target.value)} /></label>
