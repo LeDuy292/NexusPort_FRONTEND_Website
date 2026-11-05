@@ -68,10 +68,10 @@ export default function SessionListener() {
 
     socket.on('auth:session_kicked', (data) => {
       console.warn('[SessionListener] auth:session_kicked received:', data)
-      if (data?.reason === 'LOGGED_OUT') {
-        performKickout('LOGGED_OUT')
-      } else {
+      if (data?.reason === 'CONCURRENT_LOGIN') {
         performKickout('DUPLICATE_LOGIN')
+      } else {
+        performKickout('LOGGED_OUT')
       }
     })
 
@@ -82,8 +82,10 @@ export default function SessionListener() {
 
     socket.on('connect_error', (err) => {
       const msg = err?.message || ''
-      if (msg.includes('Phiên làm việc đã bị kết thúc') || msg.includes('SESSION_KICKED')) {
+      if (msg.includes('SESSION_KICKED')) {
         performKickout('DUPLICATE_LOGIN')
+      } else if (msg.includes('SESSION_LOGGED_OUT') || msg.includes('SESSION_EXPIRED')) {
+        performKickout('AUTH_EXPIRED')
       }
     })
 

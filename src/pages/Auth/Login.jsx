@@ -7,17 +7,26 @@ export default function Login() {
   const location = useLocation()
   const { loginWithToken } = useAuth()
 
-  // Kiểm tra cờ kicked từ query params (chỉ khi có giá trị duplicate hoặc true)
+  // Kiểm tra cờ kicked từ query params (chỉ khi có giá trị chính xác là 'duplicate')
   const kickedParam = new URLSearchParams(location.search).get('kicked')
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(
-    kickedParam === 'duplicate' || kickedParam === 'true'
+    kickedParam === 'duplicate'
   )
 
-  // Tự động dọn sạch query param trên URL sau khi đã ghi nhận cờ bị kick
+  // Dọn dẹp token cũ khi đang ở trang login và xử lý cờ duplicate warning
   useEffect(() => {
-    if (kickedParam === 'duplicate' || kickedParam === 'true') {
+    try {
+      localStorage.removeItem('user')
+      localStorage.removeItem('token')
+      sessionStorage.removeItem('user')
+      sessionStorage.removeItem('token')
+    } catch (_) {}
+
+    if (kickedParam === 'duplicate') {
       setShowDuplicateWarning(true)
       window.history.replaceState({}, '', window.location.pathname)
+    } else {
+      setShowDuplicateWarning(false)
     }
   }, [kickedParam])
 
