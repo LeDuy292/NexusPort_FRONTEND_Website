@@ -88,7 +88,6 @@ export default function CompanyDetailModal({ companyId, isOpen, onClose }) {
                   {company.code}
                 </div>
                 <div className="flex-1">
-                  <div className="text-sm text-slate font-mono mb-1">ID: {company.id}</div>
                   <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold border mt-1 ${company.status === 'Hoạt động' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
                     {company.status}
                   </span>

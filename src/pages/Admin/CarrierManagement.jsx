@@ -3,6 +3,8 @@ import AddressAutocomplete from '../../components/AddressAutocomplete'
 import { companyService } from '../../services/companyService'
 import driverService from '../../services/driverService'
 
+const DEFAULT_SYSTEM_PASSWORD = 'NexusPort@2026'
+
 export default function CarrierManagement() {
   const [carriers, setCarriers] = useState([])
   const [searchTerm, setSearchTerm] = useState('')
@@ -14,6 +16,11 @@ export default function CarrierManagement() {
   const [editFormData, setEditFormData] = useState({})
   const [companyDrivers, setCompanyDrivers] = useState([])
   const [loadingDrivers, setLoadingDrivers] = useState(false)
+
+  // Password & Account States
+  const [showAddPassword, setShowAddPassword] = useState(false)
+  const [modalShowPassword, setModalShowPassword] = useState(false)
+  const [createdAccountModal, setCreatedAccountModal] = useState(null)
 
   // Form State for new carrier
   const [newCarrier, setNewCarrier] = useState({
@@ -56,14 +63,14 @@ export default function CarrierManagement() {
       const mapped = companiesArray.map(c => ({
         id: c.id,
         name: c.companyName,
-        code: c.taxCode || c.id.substring(0, 8),
+        code: c.taxCode || (c.id ? c.id.substring(0, 8) : 'CARRIER'),
         contact: c.contactPerson || 'Chưa cập nhật',
         email: c.email || 'Chưa cập nhật',
         phone: c.phone || 'Chưa cập nhật',
         bookings: 0,
         containers: 0,
         status: c.status === 'active' ? 'Hoạt động' : (c.status === 'suspended' ? 'Tạm khóa' : 'Chờ duyệt'),
-        regDate: new Date().toISOString().split('T')[0], // Placeholder if no date from API
+        regDate: c.createdAt ? new Date(c.createdAt).toISOString().split('T')[0] : '2026-01-15',
         country: c.country || 'Việt Nam',
         website: c.website || 'N/A',
         address: c.address || 'N/A',
@@ -106,8 +113,8 @@ export default function CarrierManagement() {
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(newCarrier.email)) {
-      showToast('❌ Email không hợp lệ!');
+    if (!emailRegex.test(newCarrier.email.trim())) {
+      showToast('❌ Email không đúng định dạng!');
       return;
     }
 
@@ -118,20 +125,60 @@ export default function CarrierManagement() {
     }
 
     try {
-      await companyService.create({
+      const createdComp = await companyService.create({
         companyName: newCarrier.name,
         taxCode: newCarrier.code,
         contactPerson: newCarrier.contact,
-        email: newCarrier.email,
+        email: newCarrier.email.trim(),
         phone: newCarrier.phone,
         address: newCarrier.address,
       });
-      setShowAddModal(false)
-      setNewCarrier({ name: '', code: '', contact: '', email: '', phone: '', country: '', website: '', address: '' })
-      showToast('➕ Đăng ký hãng tàu mới thành công!')
+
+      const carrierId = createdComp?.id || createdComp?.Id || null;
+      let accountProvisioned = false;
+
+      // Cấp tài khoản với Email và Mật khẩu mặc định hệ thống NexusPort@2026
+      try {
+        const cleanEmail = newCarrier.email.trim();
+        await companyService.provisionAccount({
+          email: cleanEmail,
+          username: cleanEmail.includes('@') ? cleanEmail.split('@')[0] : cleanEmail,
+          password: DEFAULT_SYSTEM_PASSWORD,
+          fullName: newCarrier.contact || newCarrier.name,
+          companyName: newCarrier.name,
+          carrierId: carrierId,
+        });
+        accountProvisioned = true;
+        setCreatedAccountModal({
+          companyName: newCarrier.name,
+          fullName: newCarrier.contact,
+          email: cleanEmail,
+          password: DEFAULT_SYSTEM_PASSWORD,
+          role: 'Transport Company',
+          regDate: new Date().toLocaleDateString('vi-VN'),
+        });
+      } catch (accErr) {
+        console.error('Lỗi cấp tài khoản:', accErr);
+        showToast('⚠️ Đã tạo công ty, nhưng lỗi cấp tài khoản: ' + (accErr.response?.data?.message || accErr.message));
+      }
+
+      setShowAddModal(false);
+      setNewCarrier({
+        name: '',
+        code: '',
+        contact: '',
+        email: '',
+        phone: '',
+        country: '',
+        website: '',
+        address: ''
+      });
+      if (!accountProvisioned) {
+        showToast('➕ Đăng ký đối tác mới thành công!');
+      }
       fetchCarriers();
     } catch (err) {
-      const errorMsg = err.response?.data?.message || err.response?.data?.Message || 'Lỗi khi thêm hãng tàu!';
+      const errorMsg = err.response?.data?.message || err.response?.data?.Message || 'Lỗi khi thêm hãng tàu / đối tác!';
       showToast('❌ ' + errorMsg);
     }
   }
@@ -168,8 +215,31 @@ export default function CarrierManagement() {
 
   const handleUpdateCarrier = async () => {
     try {
-      await companyService.update(selectedCarrier.id, editFormData);
-      showToast('✅ Cập nhật thông tin thành công!');
+      await companyService.update(selectedCarrier.id, {
+        companyName: editFormData.companyName,
+        taxCode: editFormData.taxCode,
+        contactPerson: editFormData.contactPerson,
+        email: editFormData.email,
+        phone: editFormData.phone,
+        address: editFormData.address,
+        website: editFormData.website
+      });
+
+      // Nếu email bị đổi, đồng bộ email tài khoản (mật khẩu không đổi, giữ nguyên cho chủ sở hữu tự đổi)
+      if (editFormData.email && editFormData.email.trim() !== selectedCarrier.email) {
+        try {
+          const cleanEmail = editFormData.email.trim();
+          await companyService.provisionAccount({
+            email: cleanEmail,
+            username: cleanEmail.includes('@') ? cleanEmail.split('@')[0] : cleanEmail,
+            fullName: editFormData.contactPerson || editFormData.companyName,
+            companyName: editFormData.companyName,
+            carrierId: selectedCarrier.id,
+          });
+        } catch (_) {}
+      }
+
+      showToast('✅ Cập nhật thông tin đối tác thành công!');
       setIsEditingDetail(false);
       fetchCarriers();
       setSelectedCarrier({
@@ -198,12 +268,19 @@ export default function CarrierManagement() {
         </div>
       )}
 
+      {/* Warning business rule banner */}
+      <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex gap-3 text-xs text-orange-800">
+        <span className="material-symbols-outlined text-signal-orange text-lg">shield</span>
+        <div>
+          <strong className="font-bold">Quản lý Đối tác & Hãng vận tải:</strong> Khi tạo đối tác mới, tài khoản sẽ được cấp tự động với <strong>Email công ty làm tên đăng nhập</strong> và <strong>mật khẩu mặc định hệ thống ({DEFAULT_SYSTEM_PASSWORD})</strong> dùng chung như tài khoản Admin. Quản trị viên không sửa mật khẩu của đối tác — chủ tài khoản sẽ tự đổi mật khẩu sau khi đăng nhập.
+        </div>
+      </div>
 
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-extrabold text-carbon font-heading">Quản lý Hãng tàu & Vận tải</h2>
-          <p className="text-xs text-slate mt-1">Quản lý danh sách, trạng thái phê duyệt hãng tàu (Carrier) và nhà vận chuyển ngoại cảng kết nối với hệ thống cảng.</p>
+          <p className="text-xs text-slate mt-1">Quản lý danh sách, trạng thái phê duyệt hãng tàu (Carrier) và cấp tài khoản đối tác vận tải (Transport Company).</p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
@@ -216,8 +293,6 @@ export default function CarrierManagement() {
 
       {/* KPI STATS CARD GRID */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-
-        {/* KPI: Total */}
         <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-2 relative overflow-hidden">
           <span className="text-[10px] font-bold text-slate uppercase tracking-wider block">TỔNG ĐỐI TÁC</span>
           <div className="text-3xl font-extrabold text-carbon font-mono">{kpis.total}</div>
@@ -230,7 +305,6 @@ export default function CarrierManagement() {
           </div>
         </div>
 
-        {/* KPI: Active */}
         <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-2 relative overflow-hidden">
           <span className="text-[10px] font-bold text-slate uppercase tracking-wider block">ĐANG HOẠT ĐỘNG</span>
           <div className="text-3xl font-extrabold text-green-600 font-mono">{kpis.active}</div>
@@ -240,7 +314,6 @@ export default function CarrierManagement() {
           </div>
         </div>
 
-        {/* KPI: Pending */}
         <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-2 relative overflow-hidden">
           <span className="text-[10px] font-bold text-slate uppercase tracking-wider block">CHỜ PHÊ DUYỆT</span>
           <div className="text-3xl font-extrabold text-signal-orange font-mono">{kpis.pending}</div>
@@ -250,7 +323,6 @@ export default function CarrierManagement() {
           </div>
         </div>
 
-        {/* KPI: Locked */}
         <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-2 relative overflow-hidden">
           <span className="text-[10px] font-bold text-slate uppercase tracking-wider block">BỊ KHÓA</span>
           <div className="text-3xl font-extrabold text-red-600 font-mono">{kpis.locked}</div>
@@ -259,16 +331,11 @@ export default function CarrierManagement() {
             <span className="material-symbols-outlined text-4xl">lock</span>
           </div>
         </div>
-
       </div>
 
       {/* FILTER & TABLE SECTION */}
       <div className="bg-white border border-chalk rounded-2xl shadow-sm overflow-hidden">
-
-        {/* Filters Top Bar */}
         <div className="p-5 border-b border-chalk flex flex-col md:flex-row md:items-center justify-between gap-4">
-
-          {/* Search Box */}
           <div className="relative flex-1 max-w-sm">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-slate text-sm">search</span>
             <input
@@ -280,7 +347,6 @@ export default function CarrierManagement() {
             />
           </div>
 
-          {/* Filters Select */}
           <div className="flex items-center gap-3">
             <span className="text-xs text-slate font-bold">Trạng thái:</span>
             <div className="flex border border-chalk rounded-lg overflow-hidden bg-fog text-xs font-semibold">
@@ -295,7 +361,6 @@ export default function CarrierManagement() {
               ))}
             </div>
           </div>
-
         </div>
 
         {/* Responsive Table */}
@@ -306,7 +371,7 @@ export default function CarrierManagement() {
                 <th className="px-6 py-4">Tên Công ty</th>
                 <th className="px-6 py-4">Mã số thuế</th>
                 <th className="px-6 py-4">Người liên hệ</th>
-                <th className="px-6 py-4">Email & SĐT</th>
+                <th className="px-6 py-4">Email Đăng nhập & SĐT</th>
                 <th className="px-6 py-4">Trạng thái</th>
                 <th className="px-6 py-4">Ngày đăng ký</th>
                 <th className="px-6 py-4 text-right">Thao tác</th>
@@ -328,7 +393,7 @@ export default function CarrierManagement() {
                   <td className="px-6 py-4 font-mono font-bold text-slate">{carrier.code}</td>
                   <td className="px-6 py-4 font-semibold text-carbon">{carrier.contact}</td>
                   <td className="px-6 py-4 font-mono text-slate">
-                    <div>{carrier.email}</div>
+                    <div className="font-bold text-carbon">{carrier.email}</div>
                     <div className="text-[10px] mt-0.5">{carrier.phone}</div>
                   </td>
                   <td className="px-6 py-4">
@@ -347,7 +412,7 @@ export default function CarrierManagement() {
                       onClick={() => openDetailModal(carrier)}
                       className="px-2.5 py-1 bg-white border border-chalk rounded text-carbon font-bold hover:bg-chalk transition-colors"
                     >
-                      Chi tiết
+                      Chi tiết / Sửa
                     </button>
                     {carrier.status === 'Chờ duyệt' && (
                       <button
@@ -378,15 +443,14 @@ export default function CarrierManagement() {
               ))}
               {filteredCarriers.length === 0 && (
                 <tr>
-                  <td colSpan="9" className="text-center py-8 text-slate font-medium">
-                    Không tìm thấy hãng tàu nào khớp với điều kiện lọc.
+                  <td colSpan="7" className="text-center py-8 text-slate font-medium">
+                    Không tìm thấy đối tác nào khớp với điều kiện lọc.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
-
       </div>
 
       {/* DETAIL MODAL PANEL */}
@@ -396,11 +460,10 @@ export default function CarrierManagement() {
             className="w-full max-w-2xl bg-white max-h-[90vh] rounded-3xl flex flex-col shadow-2xl relative animate-in zoom-in-95 duration-200 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
-
             {/* Drawer Header */}
             <div className="p-6 border-b border-chalk flex justify-between items-center bg-fog">
               <div>
-                <span className="text-[10px] font-bold text-slate uppercase tracking-wider block">CHI TIẾT HÃNG TÀU</span>
+                <span className="text-[10px] font-bold text-slate uppercase tracking-wider block">HỒ SƠ ĐỐI TÁC VẬN TẢI</span>
                 <h3 className="text-xl font-extrabold text-carbon mt-0.5">{selectedCarrier.name}</h3>
               </div>
               <div className="flex gap-2">
@@ -408,7 +471,7 @@ export default function CarrierManagement() {
                   <button
                     onClick={() => setIsEditingDetail(true)}
                     className="w-8 h-8 rounded-full bg-white hover:bg-chalk border border-chalk flex items-center justify-center transition-colors text-signal-orange"
-                    title="Chỉnh sửa"
+                    title="Chỉnh sửa thông tin đối tác"
                   >
                     <span className="material-symbols-outlined text-sm">edit</span>
                   </button>
@@ -434,11 +497,11 @@ export default function CarrierManagement() {
                   <div className="text-xs text-slate font-mono">ID: {selectedCarrier.id}</div>
                   {isEditingDetail ? (
                     <div className="mt-1 flex items-center gap-2">
-                      <span className="text-xs font-bold">Tên Cty:</span>
+                      <span className="text-xs font-bold whitespace-nowrap">Tên Cty:</span>
                       <input
                         type="text"
                         className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full font-bold focus:outline-none focus:border-signal-orange"
-                        value={editFormData.companyName}
+                        value={editFormData.companyName || ''}
                         onChange={(e) => setEditFormData({ ...editFormData, companyName: e.target.value })}
                       />
                     </div>
@@ -457,17 +520,30 @@ export default function CarrierManagement() {
                 </h4>
                 <div className="grid grid-cols-2 gap-4 text-xs">
                   <div>
+                    <span className="text-slate block">Mã số thuế:</span>
+                    {isEditingDetail ? (
+                      <input
+                        type="text"
+                        className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full font-mono uppercase focus:outline-none focus:border-signal-orange mt-1 font-bold"
+                        value={editFormData.taxCode || ''}
+                        onChange={(e) => setEditFormData({ ...editFormData, taxCode: e.target.value.toUpperCase() })}
+                      />
+                    ) : (
+                      <span className="font-mono font-semibold text-carbon">{selectedCarrier.code}</span>
+                    )}
+                  </div>
+                  <div>
                     <span className="text-slate block">Ngày tham gia:</span>
                     <span className="font-mono font-semibold text-carbon">{selectedCarrier.regDate}</span>
                   </div>
 
                   <div className="col-span-2">
-                    <span className="text-slate block">Địa chỉ:</span>
+                    <span className="text-slate block">Địa chỉ văn phòng:</span>
                     {isEditingDetail ? (
                       <textarea
-                        className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full focus:outline-none focus:border-signal-orange"
+                        className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full focus:outline-none focus:border-signal-orange mt-1"
                         rows="2"
-                        value={editFormData.address}
+                        value={editFormData.address || ''}
                         onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
                       />
                     ) : (
@@ -477,10 +553,10 @@ export default function CarrierManagement() {
                 </div>
               </div>
 
-              {/* Contact Information */}
+              {/* Contact Information & Login Account */}
               <div className="space-y-3">
                 <h4 className="font-bold text-xs uppercase tracking-wider text-carbon border-b border-chalk pb-1">
-                  Người đại diện liên hệ
+                  Người đại diện & Tài khoản đăng nhập
                 </h4>
                 <div className="grid grid-cols-2 gap-4 text-xs">
                   <div>
@@ -488,8 +564,8 @@ export default function CarrierManagement() {
                     {isEditingDetail ? (
                       <input
                         type="text"
-                        className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full focus:outline-none focus:border-signal-orange"
-                        value={editFormData.contactPerson}
+                        className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full focus:outline-none focus:border-signal-orange mt-1 font-semibold"
+                        value={editFormData.contactPerson || ''}
                         onChange={(e) => setEditFormData({ ...editFormData, contactPerson: e.target.value })}
                       />
                     ) : (
@@ -501,26 +577,49 @@ export default function CarrierManagement() {
                     {isEditingDetail ? (
                       <input
                         type="text"
-                        className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full font-mono focus:outline-none focus:border-signal-orange"
-                        value={editFormData.phone}
+                        className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full font-mono focus:outline-none focus:border-signal-orange mt-1"
+                        value={editFormData.phone || ''}
                         onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
                       />
                     ) : (
                       <span className="font-mono font-semibold text-carbon">{selectedCarrier.phone}</span>
                     )}
                   </div>
-                  <div className="col-span-2">
-                    <span className="text-slate block">Email làm việc chính:</span>
-                    {isEditingDetail ? (
-                      <input
-                        type="email"
-                        className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full font-mono focus:outline-none focus:border-signal-orange"
-                        value={editFormData.email}
-                        onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
-                      />
-                    ) : (
-                      <span className="font-mono font-semibold text-carbon">{selectedCarrier.email}</span>
-                    )}
+
+                  {/* KHỐI TÀI KHOẢN: EMAIL ĐĂNG NHẬP & BẢO MẬT MẬT KHẨU */}
+                  <div className="col-span-2 p-4 bg-orange-50/70 rounded-2xl border border-orange-200 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-signal-orange text-lg">admin_panel_settings</span>
+                      <span className="font-extrabold text-xs text-carbon">Tài khoản đăng nhập Transport Company</span>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="space-y-1">
+                        <label className="text-slate font-bold block">Email liên hệ & Tên đăng nhập *</label>
+                        {isEditingDetail ? (
+                          <input
+                            type="email"
+                            required
+                            className="bg-white border border-chalk rounded-lg p-2 text-xs w-full font-mono focus:outline-none focus:border-signal-orange font-bold text-carbon"
+                            value={editFormData.email || ''}
+                            onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                          />
+                        ) : (
+                          <div className="font-mono font-bold text-sm text-carbon bg-white p-2 rounded-lg border border-chalk">
+                            {selectedCarrier.email}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Thông báo bảo mật: Admin không được sửa mật khẩu của chủ nhân */}
+                      <div className="bg-white p-3 rounded-xl border border-chalk flex items-start gap-2.5 text-slate">
+                        <span className="material-symbols-outlined text-signal-orange text-base flex-shrink-0 mt-0.5">lock</span>
+                        <div className="text-[11px] leading-relaxed">
+                          <strong className="text-carbon font-bold block">Mật khẩu bảo mật cá nhân:</strong>
+                          Tài khoản ban đầu được cấp với mật khẩu hệ thống mặc định (<code className="bg-fog px-1.5 py-0.5 rounded text-carbon font-mono font-bold">{DEFAULT_SYSTEM_PASSWORD}</code>). Quản trị viên <strong>không thể can thiệp hoặc thay đổi mật khẩu</strong> của đối tác; chủ tài khoản sẽ tự đổi mật khẩu riêng sau khi đăng nhập.
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -574,9 +673,9 @@ export default function CarrierManagement() {
                   </button>
                   <button
                     onClick={handleUpdateCarrier}
-                    className="px-4 py-2 bg-signal-orange text-white rounded-lg text-xs font-bold hover:bg-orange-600 transition-colors"
+                    className="px-4 py-2 bg-signal-orange text-white rounded-lg text-xs font-bold hover:bg-orange-600 transition-colors shadow-md"
                   >
-                    LƯU THÔNG TIN
+                    LƯU THÔNG TIN ĐỐI TÁC
                   </button>
                 </>
               ) : (
@@ -592,23 +691,23 @@ export default function CarrierManagement() {
                       onClick={() => handleApprove(selectedCarrier.id)}
                       className="px-4 py-2 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 transition-colors"
                     >
-                      PHÊ DUYỆT TÀI KHOẢN
+                      Duyệt
                     </button>
                   )}
                   {selectedCarrier.status === 'Hoạt động' && (
                     <button
                       onClick={() => handleSuspend(selectedCarrier.id)}
-                      className="px-4 py-2 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 transition-colors"
+                      className="px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded font-bold hover:bg-red-100 transition-colors"
                     >
-                      TẠM KHÓA TÀI KHOẢN
+                      Khóa
                     </button>
                   )}
                   {selectedCarrier.status === 'Tạm khóa' && (
                     <button
                       onClick={() => handleActivate(selectedCarrier.id)}
-                      className="px-4 py-2 bg-green-600 text-white rounded-lg text-xs font-bold hover:bg-green-700 transition-colors"
+                      className="px-2.5 py-1 bg-green-50 text-green-700 border border-green-200 rounded font-bold hover:bg-green-100 transition-colors"
                     >
-                      MỞ KHÓA TÀI KHOẢN
+                      Mở khóa
                     </button>
                   )}
                 </>
@@ -619,12 +718,144 @@ export default function CarrierManagement() {
         </div>
       )}
 
+      {/* CREATED ACCOUNT SUCCESS POPUP MODAL */}
+      {createdAccountModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-carbon/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-chalk overflow-hidden transform transition-all animate-scale-in">
+            <div className="bg-gradient-to-r from-orange-600 to-amber-600 p-6 text-white text-center relative">
+              <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner">
+                <span className="material-symbols-outlined text-3xl">corporate_fare</span>
+              </div>
+              <h3 className="text-lg font-black tracking-tight">ĐÃ CẤP TÀI KHOẢN TRANSPORT COMPANY!</h3>
+              <p className="text-xs text-orange-100 mt-1">Thông tin đăng nhập Cổng Hãng Vận Tải (Carrier Portal)</p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-fog rounded-xl p-4 border border-chalk space-y-3">
+                <div className="flex justify-between items-center text-xs pb-2 border-b border-chalk">
+                  <span className="text-slate font-medium">Đơn vị vận tải:</span>
+                  <span className="font-bold text-carbon text-sm">{createdAccountModal.companyName}</span>
+                </div>
+
+                {createdAccountModal.fullName && (
+                  <div className="flex justify-between items-center text-xs pb-2 border-b border-chalk">
+                    <span className="text-slate font-medium">Người đại diện:</span>
+                    <span className="font-bold text-carbon">{createdAccountModal.fullName}</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-center text-xs pb-2 border-b border-chalk">
+                  <span className="text-slate font-medium">Email đăng nhập:</span>
+                  <div className="flex items-center gap-1.5 font-mono font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded">
+                    <span>{createdAccountModal.email}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(createdAccountModal.email);
+                        showToast('📋 Đã sao chép Email đăng nhập vào clipboard!');
+                      }}
+                      className="hover:text-orange-950 p-0.5"
+                      title="Sao chép"
+                    >
+                      <span className="material-symbols-outlined text-xs">content_copy</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center text-xs pb-2 border-b border-chalk">
+                  <span className="text-slate font-medium">Mật khẩu khởi tạo:</span>
+                  <div className="flex items-center gap-2 font-mono font-bold text-carbon bg-slate-100 px-2.5 py-1 rounded border border-chalk">
+                    <span className="tracking-wider">
+                      {modalShowPassword ? createdAccountModal.password : '••••••••••••'}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setModalShowPassword(v => !v)}
+                      className="text-slate-600 hover:text-carbon p-0.5 ml-1 transition-colors"
+                      title={modalShowPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                    >
+                      <span className="material-symbols-outlined text-sm">
+                        {modalShowPassword ? 'visibility_off' : 'visibility'}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(createdAccountModal.password);
+                        showToast('📋 Đã sao chép Mật khẩu vào clipboard!');
+                      }}
+                      className="hover:text-carbon p-0.5 transition-colors"
+                      title="Sao chép"
+                    >
+                      <span className="material-symbols-outlined text-xs">content_copy</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-slate font-medium">Vai trò hệ thống:</span>
+                  <span className="px-2 py-0.5 bg-orange-100 text-orange-800 font-bold rounded-full text-[10px]">Transport Company</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2">
+                <span className="material-symbols-outlined text-amber-600 text-base flex-shrink-0 mt-0.5">info</span>
+                <span>Tài khoản dùng mật khẩu khởi tạo chung của hệ thống (<strong className="font-mono">{DEFAULT_SYSTEM_PASSWORD}</strong>). Chủ doanh nghiệp vui lòng tự đổi mật khẩu sau khi đăng nhập vào hệ thống.</span>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const text = `NEXUSPORT - THÔNG TIN TÀI KHOẢN ĐƠN VỊ VẬN TẢI (TRANSPORT COMPANY)\n=========================================================\nĐơn vị vận tải: ${createdAccountModal.companyName}\nĐại diện: ${createdAccountModal.fullName || 'N/A'}\nEmail đăng nhập: ${createdAccountModal.email}\nMật khẩu khởi tạo: ${createdAccountModal.password}\nVai trò: Transport Company (Hãng vận tải / Đối tác)\nCổng đăng nhập: ${window.location.origin}/login\nThời gian cấp: ${new Date().toLocaleString('vi-VN')}\n* Lưu ý: Chủ sở hữu vui lòng đổi mật khẩu sau lần đăng nhập đầu tiên.\n`;
+                    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `TaiKhoan_TransportCompany_${createdAccountModal.email.replace(/[^a-zA-Z0-9]/g, '_')}.txt`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    showToast('💾 Đã lưu thông tin tài khoản về máy!');
+                  }}
+                  className="flex-1 h-11 border border-orange-400 bg-orange-50 text-orange-900 rounded-xl text-xs font-bold hover:bg-orange-100 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-sm text-orange-700">save_alt</span>
+                  Lưu file tài khoản
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const text = `Tài khoản Transport Company NexusPort:\n- Đơn vị: ${createdAccountModal.companyName}\n- Email đăng nhập: ${createdAccountModal.email}\n- Mật khẩu khởi tạo: ${createdAccountModal.password}\n- Vai trò: Transport Company\n- Đăng nhập tại: ${window.location.origin}/login\n(Chủ doanh nghiệp tự đổi mật khẩu sau khi đăng nhập)`;
+                    navigator.clipboard.writeText(text);
+                    showToast('📋 Đã sao chép toàn bộ thông tin tài khoản!');
+                  }}
+                  className="h-11 px-3 border border-chalk bg-white text-carbon rounded-xl text-xs font-bold hover:bg-fog transition-colors flex items-center justify-center gap-1"
+                  title="Sao chép toàn bộ"
+                >
+                  <span className="material-symbols-outlined text-sm">content_copy</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCreatedAccountModal(null)}
+                  className="flex-1 h-11 bg-carbon text-white rounded-xl text-xs font-bold hover:bg-black transition-colors"
+                >
+                  Xong & Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ADD CARRIER MODAL */}
       {showAddModal && (
         <div className="fixed inset-0 bg-carbon/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 max-w-lg w-full shadow-2xl relative space-y-5 animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center border-b border-chalk pb-3">
-              <h3 className="font-extrabold text-carbon text-lg">Đăng ký Hãng tàu mới (Carrier)</h3>
+              <div>
+                <h3 className="font-extrabold text-carbon text-lg">Đăng ký Đối tác / Hãng vận tải mới</h3>
+                <p className="text-[11px] text-slate mt-0.5">Tạo hồ sơ và cấp tài khoản đăng nhập Cổng vận tải</p>
+              </div>
               <button
                 onClick={() => setShowAddModal(false)}
                 className="w-8 h-8 rounded-full bg-fog hover:bg-chalk flex items-center justify-center"
@@ -636,18 +867,18 @@ export default function CarrierManagement() {
             <form onSubmit={handleAddCarrier} className="space-y-4 text-xs">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-slate font-bold">Tên hãng tàu *</label>
+                  <label className="text-slate font-bold">Tên công ty / Hãng vận tải *</label>
                   <input
                     type="text"
                     required
                     value={newCarrier.name}
                     onChange={(e) => setNewCarrier({ ...newCarrier, name: e.target.value })}
-                    placeholder="VD: Maersk Việt Nam"
-                    className="w-full bg-fog border border-chalk rounded-lg p-2.5 focus:outline-none focus:border-signal-orange"
+                    placeholder="VD: Maersk Logistics Việt Nam"
+                    className="w-full bg-fog border border-chalk rounded-lg p-2.5 focus:outline-none focus:border-signal-orange font-bold text-carbon"
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-slate font-bold">Mã hãng tàu / Mã số thuế *</label>
+                  <label className="text-slate font-bold">Mã đối tác / Mã số thuế *</label>
                   <input
                     type="text"
                     required
@@ -658,7 +889,7 @@ export default function CarrierManagement() {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-slate font-bold">Người liên hệ đại diện *</label>
+                  <label className="text-slate font-bold">Người đại diện liên hệ *</label>
                   <input
                     type="text"
                     required
@@ -675,21 +906,55 @@ export default function CarrierManagement() {
                     value={newCarrier.phone}
                     onChange={(e) => setNewCarrier({ ...newCarrier, phone: e.target.value })}
                     placeholder="VD: 0901 234 567"
-                    className="w-full bg-fog border border-chalk rounded-lg p-2.5 focus:outline-none focus:border-signal-orange"
-                  />
-                </div>
-                <div className="space-y-1 col-span-2">
-                  <label className="text-slate font-bold">Email đăng ký tài khoản *</label>
-                  <input
-                    type="email"
-                    required
-                    value={newCarrier.email}
-                    onChange={(e) => setNewCarrier({ ...newCarrier, email: e.target.value })}
-                    placeholder="VD: contact@company.com"
                     className="w-full bg-fog border border-chalk rounded-lg p-2.5 focus:outline-none focus:border-signal-orange font-mono"
                   />
                 </div>
 
+                {/* KHỐI EMAIL & MẬT KHẨU MẶC ĐỊNH HỆ THỐNG */}
+                <div className="space-y-3 p-4 bg-orange-50/80 rounded-2xl border border-orange-200 col-span-2">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-signal-orange text-lg">admin_panel_settings</span>
+                    <span className="font-extrabold text-xs text-carbon">Tài khoản đăng nhập Transport Company (Dùng chung Email)</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                    <div className="space-y-1">
+                      <label className="text-slate font-bold">Email đăng nhập hệ thống *</label>
+                      <input
+                        type="email"
+                        required
+                        value={newCarrier.email}
+                        onChange={(e) => setNewCarrier({ ...newCarrier, email: e.target.value })}
+                        placeholder="VD: contact@carrier.com"
+                        className="w-full bg-white border border-chalk rounded-lg p-2.5 font-mono text-carbon focus:outline-none focus:border-signal-orange font-bold text-xs"
+                      />
+                      <span className="text-[10px] text-slate block">Email công ty dùng làm tài khoản đăng nhập.</span>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-slate font-bold">Mật khẩu khởi tạo hệ thống</label>
+                      <div className="relative">
+                        <input
+                          type={showAddPassword ? 'text' : 'password'}
+                          readOnly
+                          value={DEFAULT_SYSTEM_PASSWORD}
+                          className="w-full bg-slate-100 border border-chalk rounded-lg p-2.5 pr-10 font-mono tracking-wider text-carbon cursor-not-allowed select-none font-bold text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowAddPassword(!showAddPassword)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate hover:text-carbon p-1"
+                          title={showAddPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
+                        >
+                          <span className="material-symbols-outlined text-base">
+                            {showAddPassword ? 'visibility_off' : 'visibility'}
+                          </span>
+                        </button>
+                      </div>
+                      <span className="text-[10px] text-slate block">Dùng chung mật khẩu mặc định ({DEFAULT_SYSTEM_PASSWORD}), đối tác sẽ tự đổi sau khi đăng nhập.</span>
+                    </div>
+                  </div>
+                </div>
 
                 <div className="space-y-1 col-span-2">
                   <label className="text-slate font-bold">Địa chỉ văn phòng tại Việt Nam</label>
@@ -697,7 +962,7 @@ export default function CarrierManagement() {
                     value={newCarrier.address}
                     onChange={(val) => setNewCarrier({ ...newCarrier, address: val })}
                     placeholder="Tìm kiếm địa chỉ tại Việt Nam..."
-                    inputClassName="w-full bg-fog border border-chalk rounded-lg p-2.5 focus:outline-none focus:border-signal-orange"
+                    inputClassName="w-full bg-fog border border-chalk rounded-lg p-2.5 focus:outline-none focus:border-signal-orange text-xs"
                   />
                 </div>
               </div>
@@ -712,9 +977,10 @@ export default function CarrierManagement() {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2.5 bg-signal-orange text-white rounded-lg font-bold hover:bg-orange-600 transition-colors shadow-md"
+                  className="px-4 py-2.5 bg-signal-orange text-white rounded-lg font-bold hover:bg-orange-600 transition-colors shadow-md flex items-center gap-1.5"
                 >
-                  ĐĂNG KÝ HÃNG TÀU
+                  <span className="material-symbols-outlined text-sm">how_to_reg</span>
+                  ĐĂNG KÝ & CẤP TÀI KHOẢN
                 </button>
               </div>
             </form>
