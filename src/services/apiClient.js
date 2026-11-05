@@ -13,7 +13,7 @@ const handleUnauthorized = async (res) => {
   const isKicked = errorData?.code === 'SESSION_KICKED'
   if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
     if (isKicked) {
-      window.location.href = '/login?kicked=true'
+      window.location.href = '/login?kicked=duplicate'
     } else {
       window.location.href = '/login'
     }
