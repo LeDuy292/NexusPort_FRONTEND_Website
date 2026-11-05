@@ -1,10 +1,10 @@
-import ExportBookingWorkspace from '../../components/Containers/ExportBookingWorkspace'
+import ContainerBookingForm from '../../components/Containers/ContainerBookingForm'
+import BookingBatchWorkspace from '../../components/Containers/BookingBatchWorkspace'
 import BookingFleetDetails from '../../components/Containers/BookingFleetDetails'
 import ContainerJourneySearch from '../Containers/ContainerJourneySearch'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import React, { useState, useEffect, useMemo } from 'react'
 import { bookingService } from '../../services/bookingService'
-import { calculatePortStorageFee, PORT_STORAGE_TIERS } from '../../utils/portStorageFee'
 import driverService from '../../services/driverService'
 import vehicleService from '../../services/vehicleService'
 import { formatPlateNumber } from '../../utils/format'
@@ -13,11 +13,7 @@ export default function BookingManagement() {
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const detailBookingId = searchParams.get('bookingId')
-  const exportBookingId = searchParams.get('exportBookingId')
-  const [activeTab, setActiveTab] = useState(detailBookingId ? 'my_bookings' : 'export')
-  const [createRequest, setCreateRequest] = useState(0)
-  useEffect(() => { if (exportBookingId && !detailBookingId) setActiveTab('export') }, [exportBookingId, detailBookingId])
-  useEffect(() => { if (location.state?.exportBooking && !detailBookingId) setActiveTab('export') }, [location.state, detailBookingId])
+  const [activeTab, setActiveTab] = useState(!detailBookingId && location.state?.containerNumber ? 'create' : 'my_bookings')
 
   // Data States for My Bookings
   const [bookings, setBookings] = useState([])
@@ -92,9 +88,6 @@ export default function BookingManagement() {
         baseHandling: 450000,
         weighFee: 50000,
         securityFee: 40000,
-        storageFee: 0,
-        storageDays: 0,
-        overdueDailyRate: 150000,
         subtotal: 540000,
         vat: 43200,
         amount: 583200,
@@ -104,44 +97,16 @@ export default function BookingManagement() {
       }
     }
 
+    // 1. Kiểm tra cache đã lưu (theo bookingCode hoặc theo id)
     const code = booking.bookingCode || booking.id
-
-    // Kiểm tra xem Booking này đã được cán bộ chấp thuận (Accept / Approve) hay chưa
-    const statusLower = (booking.status || '').toLowerCase()
-    const isAccepted = statusLower === 'approved' ||
-                       statusLower === 'ready' ||
-                       statusLower === 'checkedin' ||
-                       statusLower === 'completed' ||
-                       Boolean(booking.approvedBy || booking.approvedAt)
-
-    let storageDays = 0
-    let storageFee = 0
-    let tierLabel = 'Từ ngày thứ 6 đến ngày thứ 11'
-    let containerLabel = "40' có hàng"
-
-    // CHỈ KHI NÀO ACCEPT BOOKING RỒI MỚI THÊM PHÍ LƯU BÃI:
-    if (isAccepted) {
-      storageDays = 7
-      const contType = booking.containerType || (is40ft ? '40HC' : '20GP')
-      const calc = calculatePortStorageFee(7, contType)
-      storageFee = calc.fee
-      storageDays = calc.days
-      tierLabel = calc.tier.label
-      containerLabel = calc.containerLabel
-
-      try {
-        const storedFees = JSON.parse(localStorage.getItem('NEXUSPORT_STORAGE_FEES') || '{}')
-        const sInfo = storedFees[booking.id] ||
-                      (booking.bookingCode && storedFees[booking.bookingCode]) ||
-                      (code && storedFees[code]) ||
-                      (booking.containerNumbers && booking.containerNumbers.find(c => storedFees[c]) && storedFees[booking.containerNumbers.find(c => storedFees[c])])
-        if (sInfo) {
-          storageFee = sInfo.fee !== undefined ? sInfo.fee : storageFee
-          storageDays = sInfo.days || storageDays
-          tierLabel = sInfo.tierLabel || tierLabel
-          containerLabel = sInfo.containerLabel || containerLabel
-        }
-      } catch (e) {}
+    if (booking.bookingCode && paymentCache[booking.bookingCode]) {
+      return paymentCache[booking.bookingCode]
+    }
+    if (booking.id && paymentCache[booking.id]) {
+      return paymentCache[booking.id]
+    }
+    if (code && paymentCache[code]) {
+      return paymentCache[code]
     }
 
     const is40ft = booking.containerSize === 'ft40' ||
@@ -150,34 +115,15 @@ export default function BookingManagement() {
     const baseHandling = is40ft ? 650000 : 450000
     const weighFee = 50000
     const securityFee = 40000
-    // Nếu chưa accept: storageFee = 0 -> Giữ nguyên giá bình thường
-    const subtotal = baseHandling + weighFee + securityFee + storageFee
+    const subtotal = baseHandling + weighFee + securityFee
     const vat = Math.round(subtotal * 0.08)
     const amount = subtotal + vat
 
-    // 1. Kiểm tra cache đã lưu (theo bookingCode hoặc theo id)
-    let cached = null
-    if (booking.bookingCode && paymentCache[booking.bookingCode]) cached = paymentCache[booking.bookingCode]
-    else if (booking.id && paymentCache[booking.id]) cached = paymentCache[booking.id]
-    else if (code && paymentCache[code]) cached = paymentCache[code]
-
-    if (cached) {
-      return {
-        ...cached,
-        baseHandling,
-        weighFee,
-        securityFee,
-        storageFee,
-        storageDays,
-        tierLabel,
-        containerLabel,
-        overdueDailyRate,
-        subtotal,
-        vat,
-        amount
-      }
-    }
-
+    // Nhận diện trạng thái đã thanh toán:
+    // - Khi booking.paymentStatus là 'Paid' / 'paid'
+    // - HOẶC khi booking đạt trạng thái 'Ready' (sẵn sàng vào cổng sau khi đã đóng cước/phê duyệt)
+    // - HOẶC khi đã vào cổng 'CheckedIn' hoặc đã xong 'Completed'
+    const statusLower = (booking.status || '').toLowerCase()
     const paymentStatusLower = (booking.paymentStatus || '').toLowerCase()
     const isSystemPaid = paymentStatusLower === 'paid' ||
                          statusLower === 'ready' ||
@@ -189,9 +135,6 @@ export default function BookingManagement() {
       baseHandling,
       weighFee,
       securityFee,
-      storageFee,
-      storageDays,
-      overdueDailyRate,
       subtotal,
       vat,
       amount,
@@ -1052,12 +995,12 @@ export default function BookingManagement() {
           <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => {
-                setActiveTab('export'); setCreateRequest(value => value + 1)
+                setActiveTab('create')
               }}
               className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 group cursor-pointer"
             >
               <span className="material-symbols-outlined text-base group-hover:rotate-90 transition-transform">add_circle</span>
-              Tạo Booking
+              Tạo Lịch Hẹn Mới
             </button>
           </div>
         </div>
@@ -1117,7 +1060,8 @@ export default function BookingManagement() {
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none w-full sm:w-auto">
           {[
             { key: 'my_bookings', label: 'Danh Sách Lịch Hẹn', icon: 'format_list_bulleted', badge: totalCount },
-            { key: 'export', label: 'Tạo Booking', icon: 'add_circle' },
+            { key: 'create', label: 'Tạo Lịch Hẹn Mới', icon: 'add_circle' },
+            { key: 'batch', label: 'Booking Theo Lô', icon: 'view_list' },
             { key: 'container_status', label: 'Lộ Trình Container', icon: 'timeline' },
           ].map((tab) => (
             <button
@@ -1284,7 +1228,7 @@ export default function BookingManagement() {
                 </div>
                 <button
                   onClick={() => {
-                    setActiveTab('export'); setCreateRequest(value => value + 1)
+                    setActiveTab('create')
                   }}
                   className="px-5 py-2.5 rounded-xl bg-signal-orange text-white font-bold text-xs hover:bg-orange-600 transition-all inline-flex items-center gap-2 cursor-pointer shadow-sm"
                 >
@@ -1574,7 +1518,8 @@ export default function BookingManagement() {
       {/* ========================================================================= */}
       {/* TAB 2: CREATE BOOKING WIZARD */}
       {/* ========================================================================= */}
-      {activeTab === 'export' && <ExportBookingWorkspace initialBookingId={exportBookingId} initialSource={location.state} initialDirection={location.state?.bookingType} createRequest={createRequest} onGateSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
+      {activeTab === 'create' && <ContainerBookingForm onClose={() => setActiveTab('my_bookings')} onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
+      {activeTab === 'batch' && <BookingBatchWorkspace onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
 
       {/* ========================================================================= */}
       {/* TAB 3: CONTAINER JOURNEY TRACKING */}
@@ -1886,35 +1831,6 @@ export default function BookingManagement() {
                     {getBookingPaymentInfo(selectedBooking).amount.toLocaleString('vi-VN')} VNĐ
                   </span>
                 </div>
-
-                {/* THÔNG TIN PHỤ THU NÂNG CONTAINER BÃI => ÔTÔ / LƯU BÃI (THEO BIỂU GIÁ CẢNG) */}
-                {(() => {
-                  const p = getBookingPaymentInfo(selectedBooking);
-                  if (p.storageFee >= 0 && (selectedBooking.status === 'Approved' || selectedBooking.approvedAt || selectedBooking.approvedBy)) {
-                    return (
-                      <div className="p-3 bg-amber-50/90 border-2 border-amber-300 rounded-xl space-y-2 text-xs">
-                        <div className="flex justify-between items-center">
-                          <span className="text-amber-950 font-bold flex items-center gap-1.5">
-                            <span>📦</span> Phụ thu Nâng container Bãi ➔ Ôtô ({p.containerLabel || "40' có hàng"}):
-                          </span>
-                          <span className="font-mono font-black text-amber-900 text-sm">
-                            {p.storageFee > 0 ? `${p.storageFee.toLocaleString('vi-VN')} VNĐ` : '0 VNĐ (Miễn phí)'}
-                          </span>
-                        </div>
-                        <div className="p-2 bg-white border border-amber-200 rounded-lg text-[11px] text-amber-900 font-mono flex items-center justify-between">
-                          <span>Khung tính phí: <strong>{p.tierLabel || 'Từ ngày thứ 6 đến ngày thứ 11'}</strong> ({p.storageDays || 7} ngày)</span>
-                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 font-bold rounded">Đúng Biểu Giá Cảng</span>
-                        </div>
-                      </div>
-                    );
-                  }
-                  return (
-                    <div className="p-2.5 bg-slate-100 rounded-xl text-[11px] text-slate-500 font-medium flex items-center gap-2">
-                      <span className="material-symbols-outlined text-sm text-slate-400">schedule</span>
-                      <span>Booking chưa được duyệt. Giá cước hiện tại là giá thông thường, phí lưu bãi sẽ được cộng khi Cán bộ duyệt (Accept).</span>
-                    </div>
-                  );
-                })()}
 
                 <button
                   type="button"
@@ -2482,26 +2398,6 @@ export default function BookingManagement() {
                     </div>
                     <span className="font-mono font-bold text-carbon">{pInfo.securityFee.toLocaleString('vi-VN')} đ</span>
                   </div>
-
-                  {/* 4. PHỤ THU NÂNG CONTAINER BÃI => ÔTÔ (CHỈ HIỂN THỊ KHI ĐÃ ĐƯỢC DUYỆT ACCEPT) */}
-                  {pInfo.storageFee > 0 && (
-                    <div className="p-3 flex justify-between items-center hover:bg-slate-50/50 bg-amber-50/40 border-l-4 border-amber-500">
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-carbon">4. Phụ thu giá Nâng container Bãi ➔ Ôtô (Biểu giá cảng: {pInfo.containerLabel || "40' có hàng"})</span>
-                          <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-black rounded font-mono">
-                            {pInfo.storageDays} NGÀY
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          Khung thời hạn: {pInfo.tierLabel || 'Từ ngày thứ 6 đến ngày thứ 11'} • ĐVT: đồng/container
-                        </p>
-                      </div>
-                      <span className="font-mono font-black text-amber-900 text-sm">
-                        {pInfo.storageFee.toLocaleString('vi-VN')} đ
-                      </span>
-                    </div>
-                  )}
 
                   <div className="p-3 flex justify-between items-center bg-slate-50/40">
                     <span className="text-slate-500">Cộng tiền dịch vụ trước thuế:</span>

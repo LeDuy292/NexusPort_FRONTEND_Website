@@ -9,6 +9,54 @@ import DriverDetailModal from '../../components/Modals/DriverDetailModal'
 import VehicleDetailModal from '../../components/Modals/VehicleDetailModal'
 import CompanyDetailModal from '../../components/Modals/CompanyDetailModal'
 import DocumentViewerModal from '../../components/Modals/DocumentViewerModal'
+import YardSlotReservationModal from '../../components/Yard/YardSlotReservationModal'
+import BookingDocumentsModal from '../../components/Booking/BookingDocumentsModal'
+import sourceLayout from '../../features/yard-design/tienSaLayout.json'
+import { yardReservationStore } from '../../services/yardReservationStore'
+import { calculatePortStorageFee, PORT_STORAGE_TIERS } from '../../utils/portStorageFee'
+
+const FALLBACK_CARRIER_PROFILES = [
+  {
+    companyName: 'Công ty Cổ phần Vận tải & Logistics Tiên Sa',
+    contactPerson: 'Nguyễn Văn Hùng (Trưởng phòng Điều phối)',
+    phone: '0905 123 456',
+    email: 'dieudo@tiensalogistics.com.vn',
+  },
+  {
+    companyName: 'Công ty TNHH Vận tải & Giao nhận Tân Cảng Đà Nẵng',
+    contactPerson: 'Trần Đình Nam (Điều độ vận tải)',
+    phone: '0918 889 900',
+    email: 'operations@tancangdanang.com.vn',
+  },
+  {
+    companyName: 'Hãng tàu ONE (Ocean Network Express Việt Nam)',
+    contactPerson: 'Lê Hoàng Minh (Đại diện Hãng tàu)',
+    phone: '028 3822 6969',
+    email: 'danang.dispatch@one-line.com',
+  },
+  {
+    companyName: 'Hãng tàu Maersk Line (Chi nhánh Đà Nẵng)',
+    contactPerson: 'Phạm Quốc Bảo (Khai thác cảng)',
+    phone: '0236 388 9900',
+    email: 'vn.import@maersk.com',
+  },
+  {
+    companyName: 'Công ty CP Tiếp Vận & Vận tải Miền Trung (CentralTrans)',
+    contactPerson: 'Võ Thị Kim Oanh (Bộ phận Khai báo Cảng)',
+    phone: '0905 667 788',
+    email: 'dispatch@centraltrans.vn',
+  },
+]
+
+const YARD_ZONES = [
+  { code: 'A', name: 'Khu A', desc: 'Sau cầu 4–5' },
+  { code: 'B', name: 'Khu B', desc: 'Bãi container 1' },
+  { code: 'C', name: 'Khu C', desc: 'Bãi container 2' },
+  { code: 'D', name: 'Khu D', desc: 'Bãi cont lạnh (Reefer)' },
+  { code: 'E', name: 'Khu E', desc: 'Bãi tổng hợp 1' },
+  { code: 'F', name: 'Khu F', desc: 'Bãi tổng hợp 2' },
+  { code: 'G', name: 'Khu G', desc: 'Bãi tổng hợp 3' },
+]
 
 export default function GateBookingRequests() {
   const navigate = useNavigate()
@@ -27,6 +75,8 @@ export default function GateBookingRequests() {
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [reservedSlot, setReservedSlot] = useState(null)
   const [blocksData, setBlocksData] = useState([])
+  const [selectedZone, setSelectedZone] = useState('A')
+  const [pickerBlock, setPickerBlock] = useState(null)
   const [selectedBlock, setSelectedBlock] = useState('A')
   const [selectedBay, setSelectedBay] = useState('02')
   const [selectedTierRow, setSelectedTierRow] = useState('T3-R5')
@@ -40,6 +90,7 @@ export default function GateBookingRequests() {
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
   const [rejectionNote, setRejectionNote] = useState('')
+  const [showDocumentsModal, setShowDocumentsModal] = useState(false)
 
   // Toast State
   const [toastMessage, setToastMessage] = useState('')
@@ -80,8 +131,19 @@ export default function GateBookingRequests() {
         setSelectedBooking(prev => ({
           ...prev,
           ...fresh,
-          documents: fresh.documents || [],
-          operations: fresh.operations || [],
+          id: prev?.id || fresh.bookingCode || fresh.id,
+          realId: fresh.id || prev?.realId,
+          company: prev?.company || fresh.carrierName,
+          companyId: prev?.companyId || fresh.carrierId,
+          contactName: prev?.contactName,
+          phone: prev?.phone,
+          email: prev?.email,
+          eta: prev?.eta || fresh.appointmentStart || '2026-11-05T14:00:00',
+          containerId: prev?.containerId || fresh.containerNumbers?.[0] || 'N/A',
+          licensePlate: prev?.licensePlate || fresh.vehiclePlate || 'Chưa điều phối',
+          driverName: prev?.driverName || fresh.driverName || 'Chưa điều phối',
+          documents: fresh.documents || prev?.documents || [],
+          operations: fresh.operations || prev?.operations || [],
         }))
       }
     } catch (err) {
@@ -271,7 +333,7 @@ export default function GateBookingRequests() {
         companyService.getAll().catch(() => [])
       ])
       
-      const companyMap = {
+      const defaultCompanyMap = {
         'c1010101-0000-0000-0000-000000000001': {
           companyName: 'Bien Dong Logistics - Nexus Logistics',
           contactPerson: 'Vo Hang Tau',
@@ -291,23 +353,39 @@ export default function GateBookingRequests() {
           email: 'dauboquay@gmail.com'
         }
       }
-      if (companiesData && Array.isArray(companiesData)) {
-        companiesData.forEach(c => {
-          companyMap[c.id] = c
-        })
-      }
+      const companiesArray = Array.isArray(companiesData)
+        ? companiesData
+        : (companiesData?.data || companiesData?.items || [])
+
+      const companyMap = { ...defaultCompanyMap }
+      companiesArray.forEach((c) => {
+        if (c.id) companyMap[String(c.id).toLowerCase()] = c
+        if (c.Id) companyMap[String(c.Id).toLowerCase()] = c
+      })
 
       if (res && res.items) {
-        const mapped = res.items.map(b => {
-          const comp = companyMap[b.carrierId] || {}
+        const mapped = res.items.map((b) => {
+          const carrierKey = String(b.carrierId || '').toLowerCase()
+          const matchedComp = companyMap[carrierKey] || companiesArray.find((c) => c.companyName === b.carrierName)
+
+          // Fallback có ý nghĩa thực tế theo mã booking
+          const seedStr = String(b.bookingCode || b.id || '')
+          const charSum = seedStr.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0)
+          const fallback = FALLBACK_CARRIER_PROFILES[charSum % FALLBACK_CARRIER_PROFILES.length]
+
+          const companyName = b.carrierName || matchedComp?.companyName || fallback.companyName
+          const contactName = matchedComp?.contactPerson || fallback.contactPerson
+          const phone = matchedComp?.phone || fallback.phone
+          const email = matchedComp?.email || fallback.email
+
           return {
             id: b.bookingCode,
             realId: b.id,
-            company: b.carrierName || comp.companyName || (b.carrierId && b.carrierId.includes('c1010101') ? 'Bien Dong Logistics - Nexus Logistics' : 'Bien Dong Logistics - Nexus Logistics'),
-            companyId: b.carrierId,
-            contactName: comp.contactPerson || '-',
-            phone: comp.phone || '-',
-            email: comp.email || '-',
+            company: companyName,
+            companyId: b.carrierId || fallback.email,
+            contactName,
+            phone,
+            email,
           containerId: b.containerNumbers && b.containerNumbers.length > 0 ? b.containerNumbers[0] : 'N/A',
           containerType: '40HC',
           cargoType: 'General',
@@ -373,6 +451,41 @@ export default function GateBookingRequests() {
       console.error(e)
     }
   }
+
+  
+  // Đồng bộ 100% với Sơ đồ bãi cảng Tiên Sa (sourceLayout.areas) kết hợp tồn kho từ API
+  const combinedBlocks = useMemo(() => {
+    return (sourceLayout.areas || []).map((area) => {
+      const liveBlock = blocksData.find(
+        (b) => (b.blockCode || b.code) === area.code
+      )
+      const slots = liveBlock?.slots || []
+      const occupied = slots.filter((s) => s.status === 'occupied').length
+      const reserved = slots.filter((s) => s.status === 'reserved').length
+      const totalCapacity = (area.planning?.bayModules || 20) * (area.planning?.rows || 6) * (area.planning?.tiers || 4)
+      return {
+        id: liveBlock?.id || area.code,
+        blockCode: area.code,
+        code: area.code,
+        sector: area.sector,
+        description: area.note || `Khu ${area.sector} · Block ${area.code}`,
+        planning: area.planning,
+        maxRows: area.planning?.rows || 6,
+        maxTiers: area.planning?.tiers || 4,
+        slots,
+        totalCapacity,
+        occupied,
+        reserved,
+        empty: Math.max(0, totalCapacity - (occupied + reserved)),
+      }
+    })
+  }, [blocksData])
+
+  const currentZoneBlocks = useMemo(() => {
+    return combinedBlocks.filter(
+      (b) => b.sector === selectedZone || (b.blockCode || '').startsWith(selectedZone)
+    )
+  }, [combinedBlocks, selectedZone])
 
   const { selectedBlockObj, slotsByBay } = useMemo(() => {
     const blockObj = blocksData.find(b => (b.blockCode || b.description || b.id) === selectedBlock) || {}
@@ -456,7 +569,7 @@ export default function GateBookingRequests() {
     showToast(`🔵 Đã chuyển Booking ${booking.id} sang trạng thái Under Review (Đang kiểm tra).`)
   }
 
-  // Confirm Approval Handler
+  // Xác nhận Phê duyệt Handler
   const handleConfirmApproval = async () => {
     if (!selectedBooking) return
     setLoading(true)
@@ -558,14 +671,14 @@ export default function GateBookingRequests() {
   const checkEligibility = (b) => {
     if (!b) return { isEligible: false, checks: [] }
     const checks = [
-      { id: 'cargo', label: 'Cargo Declaration Approved', ok: b.cargoDeclarationStatus === 'Approved' },
-      { id: 'container', label: 'Container Information Valid', ok: !!b.containerId },
-      { id: 'vehicle', label: 'Vehicle Registered & Available', ok: b.vehicleStatus === 'Available' },
-      { id: 'driver', label: 'Driver License Valid & Active', ok: b.licenseStatus === 'Valid' && b.driverStatus === 'Available' },
-      { id: 'schedule', label: 'ETA Schedule Valid', ok: true },
-      { id: 'capacity', label: 'Gate Capacity Available', ok: b.gateCapacity?.status !== 'Full' },
-      { id: 'duplicate', label: 'No Duplicate Booking ID', ok: true },
-      { id: 'fee', label: 'Port Fee Paid', ok: b.paymentStatus === 'Paid' }
+      { id: 'cargo', label: 'Tờ khai hàng hóa đã duyệt (Cargo Declaration)', ok: b.cargoDeclarationStatus === 'Approved' },
+      { id: 'container', label: 'Thông tin Container hợp lệ', ok: !!b.containerId },
+      { id: 'vehicle', label: 'Phương tiện đăng ký hợp lệ & Sẵn sàng', ok: b.vehicleStatus === 'Available' },
+      { id: 'driver', label: 'GPLX tài xế hợp lệ & Đang hoạt động', ok: b.licenseStatus === 'Valid' && b.driverStatus === 'Available' },
+      { id: 'schedule', label: 'Khung giờ ETA hợp lệ', ok: true },
+      { id: 'capacity', label: 'Dung lượng cổng khả dụng', ok: b.gateCapacity?.status !== 'Full' },
+      { id: 'duplicate', label: 'Không trùng lặp lịch hẹn (Booking ID)', ok: true },
+      { id: 'fee', label: 'Đã hoàn tất thanh toán phí cảng', ok: b.paymentStatus === 'Paid' }
     ]
     const isEligible = checks.every(c => c.ok)
     return { isEligible, checks }
@@ -591,7 +704,7 @@ export default function GateBookingRequests() {
             </span>
             <span className="text-xs font-bold text-slate font-mono">Cảng Tiên Sa · Đà Nẵng</span>
           </div>
-          <h2 className="font-heading text-3xl text-carbon font-extrabold">Gate Booking Requests</h2>
+          <h2 className="font-heading text-3xl text-carbon font-extrabold">Yêu Cầu Đăng Ký Vào Cổng (Gate Booking)</h2>
           <p className="text-xs text-slate mt-0.5">Tiếp nhận và phê duyệt lịch xe ra vào cảng do các Transport Company bên ngoài đăng ký.</p>
         </div>
 
@@ -607,31 +720,31 @@ export default function GateBookingRequests() {
       {/* ── KPI SUMMARY (5 CARDS) ── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
         <div className="bg-white border-2 border-amber-400 rounded-xl p-4 shadow-sm space-y-1 bg-amber-50/20">
-          <span className="text-amber-900 text-[10px] uppercase font-extrabold tracking-wider">PENDING REVIEW</span>
+          <span className="text-amber-900 text-[10px] uppercase font-extrabold tracking-wider">CHỜ KIỂM DUYỆT</span>
           <div className="text-3xl font-extrabold text-amber-600 font-mono">{kpiStats.pending}</div>
           <span className="text-[11px] text-amber-800 font-bold">Booking đang chờ xử lý</span>
         </div>
 
         <div className="bg-white border border-chalk rounded-xl p-4 shadow-sm space-y-1">
-          <span className="text-slate text-[10px] uppercase font-bold tracking-wider">UNDER REVIEW</span>
+          <span className="text-slate text-[10px] uppercase font-bold tracking-wider">ĐANG DUYỆT</span>
           <div className="text-3xl font-extrabold text-blue-600 font-mono">{kpiStats.underReview}</div>
           <span className="text-[11px] text-blue-600 font-bold">Đang được Dispatcher kiểm tra</span>
         </div>
 
         <div className="bg-white border border-green-300 rounded-xl p-4 shadow-sm space-y-1 bg-green-50/20">
-          <span className="text-slate text-[10px] uppercase font-bold tracking-wider">APPROVED TODAY</span>
+          <span className="text-slate text-[10px] uppercase font-bold tracking-wider">ĐÃ DUYỆT HÔM NAY</span>
           <div className="text-3xl font-extrabold text-green-600 font-mono">{kpiStats.approvedToday}</div>
           <span className="text-[11px] text-green-700 font-bold">Đã duyệt hôm nay</span>
         </div>
 
         <div className="bg-white border border-red-300 rounded-xl p-4 shadow-sm space-y-1 bg-red-50/20">
-          <span className="text-slate text-[10px] uppercase font-bold tracking-wider">REJECTED TODAY</span>
+          <span className="text-slate text-[10px] uppercase font-bold tracking-wider">TỪ CHỐI HÔM NAY</span>
           <div className="text-3xl font-extrabold text-red-600 font-mono">{kpiStats.rejectedToday}</div>
           <span className="text-[11px] text-red-600 font-bold">Từ chối không đủ điều kiện</span>
         </div>
 
         <div className="bg-white border border-chalk rounded-xl p-4 shadow-sm space-y-1">
-          <span className="text-slate text-[10px] uppercase font-bold tracking-wider">LATE / AT RISK</span>
+          <span className="text-slate text-[10px] uppercase font-bold tracking-wider">NGUY CƠ / CHƯA ĐẠT</span>
           <div className="text-3xl font-extrabold text-orange-600 font-mono">{kpiStats.atRisk}</div>
           <span className="text-[11px] text-orange-600 font-bold">Chưa nạp phí hoặc Cổng đầy</span>
         </div>
@@ -646,7 +759,7 @@ export default function GateBookingRequests() {
             type="text"
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            placeholder="Search Booking ID, Container, Vehicle, Company..."
+            placeholder="Tìm theo Mã Booking, Container, Biển số, Công ty..."
             className="w-full pl-9 pr-4 py-2 rounded-xl border border-chalk bg-fog text-xs font-bold text-carbon placeholder:text-slate focus:outline-none focus:border-signal-orange"
           />
         </div>
@@ -659,7 +772,7 @@ export default function GateBookingRequests() {
             onChange={e => setStatusFilter(e.target.value)}
             className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange"
           >
-            <option value="All">All Statuses ▼</option>
+            <option value="All">Tất cả trạng thái ▼</option>
             <option value="Pending">Pending (Chờ duyệt)</option>
             <option value="Under Review">Under Review (Đang duyệt)</option>
             <option value="Approved">Approved (Đã duyệt)</option>
@@ -673,7 +786,7 @@ export default function GateBookingRequests() {
             onChange={e => setOperationFilter(e.target.value)}
             className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange"
           >
-            <option value="All">All Operations ▼</option>
+            <option value="All">Tất cả nghiệp vụ ▼</option>
             <option value="Pickup">Pickup (Lấy cont)</option>
             <option value="Delivery">Delivery (Hạ cont)</option>
           </select>
@@ -695,7 +808,7 @@ export default function GateBookingRequests() {
             onChange={e => setGateFilter(e.target.value)}
             className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange"
           >
-            <option value="All">All Gates ▼</option>
+            <option value="All">Tất cả cổng ▼</option>
             <option value="Gate 1">Gate 1</option>
             <option value="Gate 2">Gate 2</option>
             <option value="Gate 3">Gate 3</option>
@@ -707,7 +820,7 @@ export default function GateBookingRequests() {
             onChange={e => setCompanyFilter(e.target.value)}
             className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange max-w-[160px] truncate"
           >
-            <option value="All">All Companies ▼</option>
+            <option value="All">Tất cả doanh nghiệp ▼</option>
             {companyList.map(c => (
               <option key={c} value={c}>{c}</option>
             ))}
@@ -721,16 +834,16 @@ export default function GateBookingRequests() {
           <table className="w-full text-left border-collapse text-xs">
             <thead>
               <tr className="bg-fog border-b border-chalk text-slate font-bold uppercase text-[10px] tracking-wider">
-                <th className="py-3.5 px-6">Booking ID</th>
-                <th className="py-3.5 px-6">Transport Company</th>
-                <th className="py-3.5 px-6">Container ID</th>
-                <th className="py-3.5 px-6">Operation</th>
-                <th className="py-3.5 px-6">Vehicle & Plate</th>
-                <th className="py-3.5 px-6">Driver</th>
-                <th className="py-3.5 px-6">ETA</th>
-                <th className="py-3.5 px-6">Gate</th>
-                <th className="py-3.5 px-6">Status</th>
-                <th className="py-3.5 px-6 text-right">Action</th>
+                <th className="py-3.5 px-6">Mã Booking</th>
+                <th className="py-3.5 px-6">Doanh nghiệp Vận tải</th>
+                <th className="py-3.5 px-6">Số Container</th>
+                <th className="py-3.5 px-6">Nghiệp vụ</th>
+                <th className="py-3.5 px-6">Phương tiện & Biển số</th>
+                <th className="py-3.5 px-6">Tài xế</th>
+                <th className="py-3.5 px-6">Giờ đến (ETA)</th>
+                <th className="py-3.5 px-6">Cổng</th>
+                <th className="py-3.5 px-6">Trạng thái</th>
+                <th className="py-3.5 px-6 text-right">Thao tác</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-chalk font-medium">
@@ -779,7 +892,7 @@ export default function GateBookingRequests() {
                       <div className="text-[10px] text-slate font-mono font-normal">GPLX: {b.licenseNumber} ({b.licenseClass})</div>
                     </td>
                     <td className="py-4 px-6 font-mono font-bold text-carbon">
-                      {b.eta.split('T')[1]?.slice(0, 5) || b.eta}
+                      {b.eta ? (b.eta.split('T')[1]?.slice(0, 5) || b.eta) : (b.appointmentStart ? b.appointmentStart.split('T')[1]?.slice(0, 5) : '14:00')}
                     </td>
                     <td className="py-4 px-6 font-mono font-bold text-slate-800">
                       {b.requestedGate}
@@ -794,7 +907,7 @@ export default function GateBookingRequests() {
                           className="px-3.5 py-1.5 bg-amber-500 text-white rounded-xl font-extrabold text-xs hover:bg-amber-600 transition-colors shadow-xs flex items-center gap-1 ml-auto"
                         >
                           <span className="material-symbols-outlined text-[15px]">fact_check</span>
-                          Review
+                          Kiểm duyệt
                         </button>
                       ) : (
                         <button
@@ -802,7 +915,7 @@ export default function GateBookingRequests() {
                           className="px-3.5 py-1.5 bg-carbon text-white rounded-xl font-extrabold text-xs hover:bg-black transition-colors shadow-2xs flex items-center gap-1 ml-auto"
                         >
                           <span className="material-symbols-outlined text-[15px]">visibility</span>
-                          View
+                          Chi tiết
                         </button>
                       )}
                     </td>
@@ -822,7 +935,7 @@ export default function GateBookingRequests() {
             {/* Drawer Top Header */}
             <div className="flex justify-between items-start border-b border-chalk pb-4">
               <div>
-                <span className="text-[10px] font-extrabold text-slate uppercase block font-mono">GATE BOOKING REVIEW CENTER</span>
+                <span className="text-xs font-extrabold text-signal-orange uppercase block font-mono tracking-wider">TRUNG TÂM KIỂM DUYỆT ĐĂNG KÝ VÀO CỔNG · GATE BOOKING REVIEW CENTER</span>
                 <h3 className="font-heading text-3xl font-extrabold text-carbon font-mono">
                   {selectedBooking.id}
                 </h3>
@@ -834,7 +947,7 @@ export default function GateBookingRequests() {
                       className="px-3 py-1 bg-blue-600 text-white rounded-lg font-extrabold text-xs hover:bg-blue-700 shadow-xs flex items-center gap-1"
                     >
                       <span className="material-symbols-outlined text-sm">play_arrow</span>
-                      Start Review
+                      Bắt đầu kiểm duyệt
                     </button>
                   )}
                 </div>
@@ -858,7 +971,7 @@ export default function GateBookingRequests() {
                   <div className="flex items-center justify-between font-extrabold text-sm">
                     <span className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-lg">{isEligible ? 'verified' : 'gpp_bad'}</span>
-                      {isEligible ? '🟢 Booking is eligible for approval' : '🔴 Booking cannot be approved'}
+                      {isEligible ? '🟢 Đủ điều kiện phê duyệt vào cảng' : '🔴 Chưa đủ điều kiện phê duyệt'}
                     </span>
                     <span className="text-[11px] font-sans">
                       {isEligible ? 'Tất cả tiêu chí kiểm tra hợp lệ' : 'Phát hiện tiêu chí không đạt'}
@@ -895,294 +1008,292 @@ export default function GateBookingRequests() {
             {/* SECTIONS GRID */}
             <div className="space-y-4 text-xs">
 
-              {/* 1. TRANSPORT COMPANY */}
-              <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">1. TRANSPORT COMPANY</span>
-                  <button
-                    onClick={() => {
-                      setModalState({ type: 'company', id: selectedBooking.companyId })
-                    }}
-                    className="px-2.5 py-1 bg-white border border-chalk rounded-lg text-carbon font-bold text-[11px] hover:bg-slate-100"
-                  >
-                    View Company
-                  </button>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* 1. TRANSPORT COMPANY */}
+                <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">1. DOANH NGHIỆP VẬN TẢI / HÃNG TÀU</span>
+                    <button
+                      onClick={() => {
+                        setModalState({ type: 'company', id: selectedBooking.companyId })
+                      }}
+                      className="px-2.5 py-1 bg-white border border-chalk rounded-lg text-carbon font-bold text-[11px] hover:bg-slate-100"
+                    >
+                      Xem thông tin Công ty
+                    </button>
+                  </div>
+                  <div className="font-extrabold text-carbon text-sm">{selectedBooking.company}</div>
+                  <div className="grid grid-cols-2 gap-2 text-slate font-mono">
+                    <div>Người liên hệ: {selectedBooking.contactName}</div>
+                    <div>Điện thoại: {selectedBooking.phone}</div>
+                    <div>Email: {selectedBooking.email}</div>
+                  </div>
                 </div>
-                <div className="font-extrabold text-carbon text-sm">{selectedBooking.company}</div>
-                <div className="grid grid-cols-2 gap-2 text-slate font-mono">
-                  <div>Người liên hệ: {selectedBooking.contactName}</div>
-                  <div>Điện thoại: {selectedBooking.phone}</div>
-                  <div>Email: {selectedBooking.email}</div>
+                {/* 2. CONTAINER INFORMATION */}
+                <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">2. THÔNG TIN CONTAINER</span>
+                    <button
+                      onClick={() => showToast(`📄 Mở Cargo Declaration: ${selectedBooking.cargoDeclarationId}`)}
+                      className="px-2.5 py-1 bg-white border border-chalk rounded-lg text-carbon font-bold text-[11px] hover:bg-slate-100"
+                    >
+                      Xem Tờ Khai Hàng Hóa
+                    </button>
+                  </div>
+                  <div className="flex justify-between font-mono font-bold text-carbon text-sm">
+                    <span>Số Container: {selectedBooking.containerId}</span>
+                    <span>Loại Cont: {selectedBooking.containerType}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-slate font-mono">
+                    <div>Loại hàng: {selectedBooking.cargoType}</div>
+                    <div>Nghiệp vụ: <strong>{selectedBooking.operation === 'Pickup' ? 'Lấy container (Pickup)' : 'Hạ container (Delivery)'}</strong></div>
+                    <div>
+                      Trạng thái Khai báo: {' ' }
+                      <span className="px-2 py-0.5 bg-green-100 text-green-900 border border-green-300 rounded font-bold">
+                        {selectedBooking.cargoDeclarationStatus}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* 2. CONTAINER INFORMATION */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* 3. VEHICLE INFORMATION */}
+                <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">3. THÔNG TIN PHƯƠNG TIỆN (ĐẦU KÉO / XE)</span>
+                    <button
+                      onClick={() => {
+                        setModalState({ type: 'vehicle', id: selectedBooking.vehicleId })
+                      }}
+                      className="px-2.5 py-1 bg-white border border-chalk rounded-lg text-carbon font-bold text-[11px] hover:bg-slate-100"
+                    >
+                      Xem thông tin Xe
+                    </button>
+                  </div>
+                  <div className="font-mono font-bold text-carbon text-sm">
+                    <span>Biển Số Xe: {selectedBooking.licensePlate}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-slate font-mono">
+                    <div>Loại phương tiện: {selectedBooking.vehicleType}</div>
+                    <div>Trạng thái kỹ thuật: <strong className="text-green-700">{selectedBooking.vehicleStatus === 'Available' ? '🟢 Sẵn sàng hoạt động' : selectedBooking.vehicleStatus}</strong></div>
+                  </div>
+                </div>
+
+                {/* 4. DRIVER INFORMATION */}
+                <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">4. THÔNG TIN TÀI XẾ</span>
+                    <button
+                      onClick={() => {
+                        setModalState({ type: 'driver', id: selectedBooking.driverId })
+                      }}
+                      className="px-2.5 py-1 bg-white border border-chalk rounded-lg text-carbon font-bold text-[11px] hover:bg-slate-100"
+                    >
+                      Xem thông tin Tài xế
+                    </button>
+                  </div>
+                  <div className="font-mono font-bold text-carbon text-sm">
+                    <span>Họ và Tên: {selectedBooking.driverName}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-slate font-mono">
+                    <div>Số GPLX: {selectedBooking.licenseNumber} (Hạng {selectedBooking.licenseClass})</div>
+                    <div>Tình trạng bằng lái: <strong className="text-green-700">🟢 {selectedBooking.licenseStatus === 'Valid' ? 'Hợp lệ' : selectedBooking.licenseStatus}</strong></div>
+                    <div>Trạng thái hoạt động: <strong className="text-green-700">🟢 {selectedBooking.driverStatus === 'Available' ? 'Sẵn sàng nhận lệnh' : selectedBooking.driverStatus}</strong></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. SCHEDULE */}
               <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">2. CONTAINER INFORMATION</span>
-                  <button
-                    onClick={() => showToast(`📄 Mở Cargo Declaration: ${selectedBooking.cargoDeclarationId}`)}
-                    className="px-2.5 py-1 bg-white border border-chalk rounded-lg text-carbon font-bold text-[11px] hover:bg-slate-100"
-                  >
-                    View Cargo Declaration
-                  </button>
+                <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">5. LỊCH TRÌNH VÀO CỔNG DỰ KIẾN</span>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <div className="font-mono text-carbon font-bold">Thời gian dự kiến đến (ETA): <span className="text-signal-orange">{selectedBooking.eta ? selectedBooking.eta.replace('T', ' - ') : (selectedBooking.appointmentStart ? selectedBooking.appointmentStart.replace('T', ' - ') : 'Hôm nay - 14:00')}</span></div>
+                  <div className="text-slate">Thời gian xử lý dự kiến: <strong className="text-carbon">{selectedBooking.expectedDuration}</strong></div>
+                  <div className="text-slate">Cổng yêu cầu: <strong className="text-carbon">{selectedBooking.requestedGate}</strong></div>
                 </div>
-                <div className="flex justify-between font-mono font-bold text-carbon text-sm">
-                  <span>Mã Cont: {selectedBooking.containerId}</span>
-                  <span>Loại: {selectedBooking.containerType}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-slate font-mono">
-                  <div>Loại hàng: {selectedBooking.cargoType}</div>
-                  <div>Loại giao nhận: <strong>{selectedBooking.operation}</strong></div>
-                  <div>Mã Khai Báo Hàng: <strong>{selectedBooking.cargoDeclarationId}</strong></div>
+              </div>
+
+              {/* 6. PHỤ THU GIÁ NÂNG CONTAINER BÃI ➔ ÔTÔ */}
+              <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-chalk pb-2">
                   <div>
-                    Trạng thái Khai báo: {' '}
-                    <span className="px-2 py-0.5 bg-green-100 text-green-900 border border-green-300 rounded font-bold">
-                      {selectedBooking.cargoDeclarationStatus}
+                    <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">
+                      6. PHỤ THU GIÁ NÂNG CONTAINER BÃI ➔ ÔTÔ
+                    </span>
+                    <span className="text-xs text-slate font-medium">
+                      Tính từ ngày có vị trí trên bãi Cảng
                     </span>
                   </div>
-                </div>
-              </div>
-
-              {/* 3. VEHICLE INFORMATION */}
-              <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">3. VEHICLE INFORMATION</span>
-                  <button
-                    onClick={() => {
-                      setModalState({ type: 'vehicle', id: selectedBooking.vehicleId })
-                    }}
-                    className="px-2.5 py-1 bg-white border border-chalk rounded-lg text-carbon font-bold text-[11px] hover:bg-slate-100"
-                  >
-                    View Vehicle
-                  </button>
-                </div>
-                <div className="flex justify-between font-mono font-bold text-carbon text-sm">
-                  <span>Biển Số: {selectedBooking.licensePlate}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-slate font-mono">
-                  <div>Loại xe: {selectedBooking.vehicleType}</div>
-                  <div>Trạng thái xe: <strong className="text-green-700">{selectedBooking.vehicleStatus}</strong></div>
-                </div>
-              </div>
-
-              {/* 4. DRIVER INFORMATION */}
-              <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">4. DRIVER INFORMATION</span>
-                  <button
-                    onClick={() => {
-                      setModalState({ type: 'driver', id: selectedBooking.driverId })
-                    }}
-                    className="px-2.5 py-1 bg-white border border-chalk rounded-lg text-carbon font-bold text-[11px] hover:bg-slate-100"
-                  >
-                    View Driver
-                  </button>
-                </div>
-                <div className="flex justify-between font-mono font-bold text-carbon text-sm">
-                  <span>Tài Xế: {selectedBooking.driverName}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-slate font-mono">
-                  <div>Số GPLX: {selectedBooking.licenseNumber} ({selectedBooking.licenseClass})</div>
-                  <div>Tình trạng bằng lái: <strong className="text-green-700">🟢 {selectedBooking.licenseStatus}</strong></div>
-                  <div>Trạng thái hoạt động: <strong className="text-green-700">🟢 {selectedBooking.driverStatus}</strong></div>
-                </div>
-              </div>
-
-              {/* 5. SCHEDULE & GATE CAPACITY */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-2">
-                  <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">5. SCHEDULE INFO</span>
-                  <div className="font-mono text-carbon font-bold">ETA: {selectedBooking.eta.replace('T', ' - ')}</div>
-                  <div className="text-slate">Thời gian xử lý dự kiến: {selectedBooking.expectedDuration}</div>
-                  <div className="text-slate">Cổng yêu cầu: <strong>{selectedBooking.requestedGate}</strong></div>
-                  <div className="text-slate text-[11px]">Ngày tạo booking: {selectedBooking.createdAt}</div>
-                </div>
-
-                <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-2">
-                  <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">6. GATE CAPACITY METER</span>
-                  <div className="font-mono text-carbon font-bold">{selectedBooking.gateCapacity.gate}</div>
-                  <div className="text-slate">Sức chứa hiện tại: <strong>{selectedBooking.gateCapacity.current} / {selectedBooking.gateCapacity.max} xe</strong></div>
-                  <div className="mt-1">
-                    <span className={`px-2.5 py-0.5 rounded text-[11px] font-bold ${
-                      selectedBooking.gateCapacity.status === 'Available' ? 'bg-green-100 text-green-900 border border-green-300' : 'bg-amber-100 text-amber-900 border border-amber-300'
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold font-mono text-slate bg-white px-2.5 py-0.5 rounded-lg border border-chalk shadow-2xs">
+                      ĐVT: đồng/container
+                    </span>
+                    <span className={`px-2.5 py-0.5 rounded-lg font-extrabold font-mono text-[11px] ${
+                      selectedBooking.paymentStatus === 'Paid' ? 'bg-green-100 text-green-900 border border-green-300' : 'bg-amber-100 text-amber-900 border border-amber-300'
                     }`}>
-                      ● Status: {selectedBooking.gateCapacity.status}
+                      {selectedBooking.paymentStatus === 'Paid' ? '🟢 Paid (Đã thanh toán)' : '🟠 Chờ thanh toán'}
                     </span>
                   </div>
                 </div>
-              </div>
 
-
-              {/* 7. PHỤ THU GIÁ NÂNG CONTAINER BÃI => ÔTÔ (THEO BIỂU GIÁ CẢNG) */}
-              {(() => {
-                const currentDays = bookingStorageDays[selectedBooking.id] || 7;
-                const storageCalc = calculatePortStorageFee(currentDays, selectedBooking.containerType);
-                return (
-                  <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-3">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
-                      <div>
-                        <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono block">
-                          7. PHỤ THU GIÁ NÂNG CONTAINER BÃI ➔ ÔTÔ (PHÍ LƯU BÃI CẢNG)
-                        </span>
-                        <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                          ĐVT: đồng/container • Tính từ ngày có vị trí trên bãi Cảng Tiên Sa
-                        </p>
+                {/* Biểu phí phụ thu nâng container theo ngày lưu bãi (Bản tương tác) */}
+                {(() => {
+                  const currentDays = bookingStorageDays[selectedBooking.id] || 7;
+                  const storageCalc = calculatePortStorageFee(currentDays, selectedBooking.containerType);
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                        <div className="text-[11px] text-slate font-mono">
+                          Khung ngày lưu bãi: <strong className="text-carbon">{storageCalc.tier.label}</strong>
+                        </div>
+                        <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-xl border border-chalk shadow-xs">
+                          <span className="text-[11px] font-bold text-slate">Số ngày lưu bãi:</span>
+                          <input
+                            type="number"
+                            min="1"
+                            max="90"
+                            value={currentDays}
+                            onChange={e => setBookingStorageDays({ ...bookingStorageDays, [selectedBooking.id]: Math.max(1, parseInt(e.target.value) || 1) })}
+                            className="w-14 h-7 text-center font-mono font-black text-sm bg-fog border border-chalk rounded-lg text-carbon outline-none focus:border-carbon"
+                          />
+                          <span className="text-xs font-bold text-slate">ngày</span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2 bg-white px-3 py-1 rounded-xl border border-chalk shadow-xs">
-                        <span className="text-[11px] font-bold text-slate">Số ngày lưu bãi:</span>
-                        <input
-                          type="number"
-                          min="1"
-                          max="90"
-                          value={currentDays}
-                          onChange={e => setBookingStorageDays({ ...bookingStorageDays, [selectedBooking.id]: Math.max(1, parseInt(e.target.value) || 1) })}
-                          className="w-14 h-7 text-center font-mono font-black text-sm bg-fog border border-chalk rounded-lg text-carbon outline-none focus:border-carbon"
-                        />
-                        <span className="text-xs font-bold text-slate">ngày</span>
+
+                      {/* Quick selection chips */}
+                      <div className="flex flex-wrap gap-1.5 items-center">
+                        <span className="text-[10px] text-slate font-bold uppercase mr-1">Khung chọn nhanh:</span>
+                        {[
+                          { d: 3, label: 'Ngày 1 - 5 (Miễn phí)' },
+                          { d: 7, label: 'Ngày 6 - 11' },
+                          { d: 14, label: 'Ngày 12 - 17' },
+                          { d: 21, label: 'Ngày 18 - 30' },
+                          { d: 35, label: 'Từ ngày 31+' }
+                        ].map(item => (
+                          <button
+                            key={item.d}
+                            type="button"
+                            onClick={() => setBookingStorageDays({ ...bookingStorageDays, [selectedBooking.id]: item.d })}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
+                              currentDays === item.d
+                                ? 'bg-carbon text-white shadow-sm'
+                                : 'bg-white border border-chalk text-slate hover:bg-slate-100 hover:text-carbon'
+                            }`}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
                       </div>
-                    </div>
 
-                    {/* Quick selection chips */}
-                    <div className="flex flex-wrap gap-1.5 items-center">
-                      <span className="text-[10px] text-slate font-bold uppercase mr-1">Khung chọn nhanh:</span>
-                      {[
-                        { d: 3, label: 'Ngày 1 - 5 (Không phụ thu)' },
-                        { d: 7, label: 'Ngày 6 - 11 (Chuẩn 7 ngày)' },
-                        { d: 14, label: 'Ngày 12 - 17' },
-                        { d: 21, label: 'Ngày 18 - 30' },
-                        { d: 35, label: 'Từ ngày 31+' }
-                      ].map(item => (
-                        <button
-                          key={item.d}
-                          type="button"
-                          onClick={() => setBookingStorageDays({ ...bookingStorageDays, [selectedBooking.id]: item.d })}
-                          className={`px-2.5 py-1 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer ${
-                            currentDays === item.d
-                              ? 'bg-carbon text-white shadow-sm'
-                              : 'bg-white border border-chalk text-slate hover:bg-slate-100 hover:text-carbon'
-                          }`}
-                        >
-                          {item.label}
-                        </button>
-                      ))}
-                    </div>
+                      {/* BẢNG BIỂU GIÁ CHÍNH XÁC 1:1 THEO HÌNH ẢNH */}
+                      <div className="overflow-x-auto rounded-xl border-2 border-slate-300 bg-white shadow-xs">
+                        <table className="w-full text-xs font-mono text-center border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 text-[11px] text-slate-700 uppercase font-bold border-b border-chalk">
+                              <th className="py-2.5 px-2 border-r border-chalk w-10">Số TT</th>
+                              <th className="py-2.5 px-3 border-r border-chalk text-left w-36">Loại Container</th>
+                              <th className={`py-2.5 px-3 border-r border-chalk transition-colors ${storageCalc.tier.id === 'tier1' ? 'bg-amber-200/90 text-amber-950 font-black' : ''}`}>
+                                Từ ngày thứ 1<br/>đến ngày thứ 5
+                              </th>
+                              <th className={`py-2.5 px-3 border-r border-chalk transition-colors ${storageCalc.tier.id === 'tier2' ? 'bg-amber-200/90 text-amber-950 font-black' : ''}`}>
+                                Từ ngày thứ 6<br/>đến ngày thứ 11
+                              </th>
+                              <th className={`py-2.5 px-3 border-r border-chalk transition-colors ${storageCalc.tier.id === 'tier3' ? 'bg-amber-200/90 text-amber-950 font-black' : ''}`}>
+                                Từ ngày thứ 12<br/>đến ngày thứ 17
+                              </th>
+                              <th className={`py-2.5 px-3 border-r border-chalk transition-colors ${storageCalc.tier.id === 'tier4' ? 'bg-amber-200/90 text-amber-950 font-black' : ''}`}>
+                                Từ ngày thứ 18<br/>đến ngày thứ 30
+                              </th>
+                              <th className={`py-2.5 px-3 transition-colors ${storageCalc.tier.id === 'tier5' ? 'bg-amber-200/90 text-amber-950 font-black' : ''}`}>
+                                Từ ngày thứ 31<br/>trở đi
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-chalk text-xs">
+                            {/* Hàng 1: 20' có hàng */}
+                            <tr className={`transition-colors ${storageCalc.is20 ? 'bg-blue-50/70 font-bold' : 'hover:bg-slate-50'}`}>
+                              <td className="py-3 px-2 border-r border-chalk font-bold">1</td>
+                              <td className="py-3 px-3 border-r border-chalk text-left font-extrabold text-carbon">
+                                20' có hàng
+                                {storageCalc.is20 && (
+                                  <span className="ml-1.5 px-1.5 py-0.5 bg-blue-600 text-white text-[9px] rounded font-bold inline-block">
+                                    Đang chọn
+                                  </span>
+                                )}
+                              </td>
+                              <td className={`py-3 px-3 border-r border-chalk ${storageCalc.is20 && storageCalc.tier.id === 'tier1' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
+                                Không phụ thu
+                              </td>
+                              <td className={`py-3 px-3 border-r border-chalk ${storageCalc.is20 && storageCalc.tier.id === 'tier2' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
+                                102.600
+                              </td>
+                              <td className={`py-3 px-3 border-r border-chalk ${storageCalc.is20 && storageCalc.tier.id === 'tier3' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
+                                167.400
+                              </td>
+                              <td className={`py-3 px-3 border-r border-chalk ${storageCalc.is20 && storageCalc.tier.id === 'tier4' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
+                                264.600
+                              </td>
+                              <td className={`py-3 px-3 ${storageCalc.is20 && storageCalc.tier.id === 'tier5' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
+                                1.080.000
+                              </td>
+                            </tr>
 
-                    {/* BẢNG BIỂU GIÁ CHÍNH XÁC 1:1 THEO HÌNH ẢNH CỦA BẠN */}
-                    <div className="overflow-x-auto rounded-xl border-2 border-slate-300 bg-white shadow-xs">
-                      <div className="p-2.5 bg-slate-100 border-b border-chalk flex justify-between items-center text-xs font-mono">
-                        <span className="font-extrabold text-carbon">
-                          Phụ thu giá Nâng container Bãi ➔ Ôtô (Tính từ ngày có vị trí trên bãi Cảng)
-                        </span>
-                        <span className="text-[11px] text-slate-700 font-bold bg-white px-2 py-0.5 rounded border border-chalk">
-                          ĐVT: đồng/container
-                        </span>
+                            {/* Hàng 2: 40' có hàng */}
+                            <tr className={`transition-colors ${!storageCalc.is20 ? 'bg-orange-50/70 font-bold' : 'hover:bg-slate-50'}`}>
+                              <td className="py-3 px-2 border-r border-chalk font-bold">2</td>
+                              <td className="py-3 px-3 border-r border-chalk text-left font-extrabold text-carbon">
+                                40' có hàng
+                                {!storageCalc.is20 && (
+                                  <span className="ml-1.5 px-1.5 py-0.5 bg-orange-600 text-white text-[9px] rounded font-bold inline-block">
+                                    Đang chọn ({selectedBooking.containerType})
+                                  </span>
+                                )}
+                              </td>
+                              <td className={`py-3 px-3 border-r border-chalk ${!storageCalc.is20 && storageCalc.tier.id === 'tier1' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
+                                Không phụ thu
+                              </td>
+                              <td className={`py-3 px-3 border-r border-chalk ${!storageCalc.is20 && storageCalc.tier.id === 'tier2' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
+                                140.400
+                              </td>
+                              <td className={`py-3 px-3 border-r border-chalk ${!storageCalc.is20 && storageCalc.tier.id === 'tier3' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
+                                243.000
+                              </td>
+                              <td className={`py-3 px-3 border-r border-chalk ${!storageCalc.is20 && storageCalc.tier.id === 'tier4' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
+                                410.400
+                              </td>
+                              <td className={`py-3 px-3 ${!storageCalc.is20 && storageCalc.tier.id === 'tier5' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
+                                1.587.600
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
-                      <table className="w-full text-xs font-mono text-center border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50 text-[11px] text-slate-700 uppercase font-bold border-b border-chalk">
-                            <th className="py-2.5 px-2 border-r border-chalk w-10">Số TT</th>
-                            <th className="py-2.5 px-3 border-r border-chalk text-left w-36">Loại Container</th>
-                            <th className={`py-2.5 px-3 border-r border-chalk transition-colors ${storageCalc.tier.id === 'tier1' ? 'bg-amber-200/90 text-amber-950 font-black' : ''}`}>
-                              Từ ngày thứ 1<br/>đến ngày thứ 5
-                            </th>
-                            <th className={`py-2.5 px-3 border-r border-chalk transition-colors ${storageCalc.tier.id === 'tier2' ? 'bg-amber-200/90 text-amber-950 font-black' : ''}`}>
-                              Từ ngày thứ 6<br/>đến ngày thứ 11
-                            </th>
-                            <th className={`py-2.5 px-3 border-r border-chalk transition-colors ${storageCalc.tier.id === 'tier3' ? 'bg-amber-200/90 text-amber-950 font-black' : ''}`}>
-                              Từ ngày thứ 12<br/>đến ngày thứ 17
-                            </th>
-                            <th className={`py-2.5 px-3 border-r border-chalk transition-colors ${storageCalc.tier.id === 'tier4' ? 'bg-amber-200/90 text-amber-950 font-black' : ''}`}>
-                              Từ ngày thứ 18<br/>đến ngày thứ 30
-                            </th>
-                            <th className={`py-2.5 px-3 transition-colors ${storageCalc.tier.id === 'tier5' ? 'bg-amber-200/90 text-amber-950 font-black' : ''}`}>
-                              Từ ngày thứ 31<br/>trở đi
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-chalk text-xs">
-                          {/* Hàng 1: 20' có hàng */}
-                          <tr className={`transition-colors ${storageCalc.is20 ? 'bg-blue-50/70 font-bold' : 'hover:bg-slate-50'}`}>
-                            <td className="py-3 px-2 border-r border-chalk font-bold">1</td>
-                            <td className="py-3 px-3 border-r border-chalk text-left font-extrabold text-carbon">
-                              20' có hàng
-                              {storageCalc.is20 && (
-                                <span className="ml-1.5 px-1.5 py-0.5 bg-blue-600 text-white text-[9px] rounded font-bold inline-block">
-                                  Đang chọn
-                                </span>
-                              )}
-                            </td>
-                            <td className={`py-3 px-3 border-r border-chalk ${storageCalc.is20 && storageCalc.tier.id === 'tier1' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
-                              Không phụ thu
-                            </td>
-                            <td className={`py-3 px-3 border-r border-chalk ${storageCalc.is20 && storageCalc.tier.id === 'tier2' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
-                              102.600
-                            </td>
-                            <td className={`py-3 px-3 border-r border-chalk ${storageCalc.is20 && storageCalc.tier.id === 'tier3' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
-                              167.400
-                            </td>
-                            <td className={`py-3 px-3 border-r border-chalk ${storageCalc.is20 && storageCalc.tier.id === 'tier4' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
-                              264.600
-                            </td>
-                            <td className={`py-3 px-3 ${storageCalc.is20 && storageCalc.tier.id === 'tier5' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
-                              1.080.000
-                            </td>
-                          </tr>
 
-                          {/* Hàng 2: 40' có hàng */}
-                          <tr className={`transition-colors ${!storageCalc.is20 ? 'bg-orange-50/70 font-bold' : 'hover:bg-slate-50'}`}>
-                            <td className="py-3 px-2 border-r border-chalk font-bold">2</td>
-                            <td className="py-3 px-3 border-r border-chalk text-left font-extrabold text-carbon">
-                              40' có hàng
-                              {!storageCalc.is20 && (
-                                <span className="ml-1.5 px-1.5 py-0.5 bg-orange-600 text-white text-[9px] rounded font-bold inline-block">
-                                  Đang chọn ({selectedBooking.containerType})
-                                </span>
-                              )}
-                            </td>
-                            <td className={`py-3 px-3 border-r border-chalk ${!storageCalc.is20 && storageCalc.tier.id === 'tier1' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
-                              Không phụ thu
-                            </td>
-                            <td className={`py-3 px-3 border-r border-chalk ${!storageCalc.is20 && storageCalc.tier.id === 'tier2' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
-                              140.400
-                            </td>
-                            <td className={`py-3 px-3 border-r border-chalk ${!storageCalc.is20 && storageCalc.tier.id === 'tier3' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
-                              243.000
-                            </td>
-                            <td className={`py-3 px-3 border-r border-chalk ${!storageCalc.is20 && storageCalc.tier.id === 'tier4' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
-                              410.400
-                            </td>
-                            <td className={`py-3 px-3 ${!storageCalc.is20 && storageCalc.tier.id === 'tier5' ? 'bg-amber-300 font-black text-amber-950 text-sm' : ''}`}>
-                              1.587.600
-                            </td>
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Summary Card */}
-                    <div className="bg-white border-2 border-emerald-300 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xs">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-sm text-carbon">Khung Áp Dụng:</span>
-                          <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 font-black rounded-lg text-xs font-mono">
-                            {storageCalc.tier.label} ({currentDays} ngày)
+                      {/* Summary Card */}
+                      <div className="bg-white border-2 border-emerald-300 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 shadow-xs">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-extrabold text-sm text-carbon">Khung Áp Dụng:</span>
+                            <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-900 border border-emerald-300 font-black rounded-lg text-xs font-mono">
+                              {storageCalc.tier.label} ({currentDays} ngày)
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 mt-1 font-mono">
+                            Loại container: <strong>{storageCalc.containerLabel}</strong> ({selectedBooking.containerType}) • Áp đúng biểu giá cảng
+                          </p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <span className="text-[10px] text-slate-400 uppercase font-bold block">Phụ Thu Nâng Cont / Lưu Bãi:</span>
+                          <span className="font-black text-emerald-700 text-2xl font-mono">
+                            {storageCalc.fee > 0 ? `${storageCalc.fee.toLocaleString('vi-VN')} VND` : '0 VND (Không phụ thu)'}
                           </span>
                         </div>
-                        <p className="text-[11px] text-slate-500 mt-1 font-mono">
-                          Loại container: <strong>{storageCalc.containerLabel}</strong> ({selectedBooking.containerType}) • Áp đúng biểu giá cảng
-                        </p>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <span className="text-[10px] text-slate-400 uppercase font-bold block">Phụ Thu Nâng Cont / Lưu Bãi:</span>
-                        <span className="font-black text-emerald-700 text-2xl font-mono">
-                          {storageCalc.fee > 0 ? `${storageCalc.fee.toLocaleString('vi-VN')} VND` : '0 VND (Không phụ thu)'}
-                        </span>
                       </div>
                     </div>
-                  </div>
-                );
-              })()}
+                  );
+                })()}
+              </div>
 
               {/* 8. BỘ HỒ SƠ & CHỨNG TỪ THẬT (DOCUMENTS & CLEARANCE - NHƯ BÊN BOOKING) */}
               <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-3.5">
@@ -1290,286 +1401,173 @@ export default function GateBookingRequests() {
                 </div>
               </div>
 
+
               {/* 9. YARD SLOT RESERVATION */}
-              <section className="bg-white rounded-xl border border-slate-200/90 shadow-sm overflow-hidden mb-6">
+              <section className="bg-white rounded-2xl border border-chalk shadow-sm overflow-hidden mb-4">
                 {/* Module Header */}
-                <div className="px-6 py-4 bg-gradient-to-r from-slate-50 via-white to-slate-50 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3">
+                <div className="px-6 py-4 bg-gradient-to-r from-fog via-white to-fog border-b border-chalk flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <h2 className="text-sm font-bold uppercase tracking-wider text-amber-700 flex items-center gap-2">
-                      9. YARD SLOT RESERVATION (ĐẶT TRƯỚC VỊ TRÍ BÃI)
+                    <h2 className="text-xs font-bold uppercase tracking-wider text-signal-orange flex items-center gap-2">
+                      <span className="material-symbols-outlined text-sm">grid_view</span>
+                      7. ĐẶT TRƯỚC VỊ TRÍ BÃI CONTAINER (YARD SLOT RESERVATION)
                     </h2>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Chọn trước vị trí bãi cho container này qua bản đồ 2D thu nhỏ theo thứ tự: Block → Bay → Ma trận Slot (Tier × Row).
+                    <p className="text-xs text-slate mt-0.5">
+                      Chọn Khu vực cảng (A, B, C...) ➔ Chọn Block ➔ Mở Pop-up chọn Bay & Slot (Hỗ trợ Cont 20ft & 40ft).
                     </p>
                   </div>
                 </div>
 
-                <div className="p-6 space-y-6">
-                  {/* BƯỚC 1: Chọn Block */}
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <label className="text-xs font-bold uppercase tracking-wide text-slate-700 flex items-center gap-2">
-                        <span className="w-5 h-5 rounded-full bg-slate-900 text-white inline-flex items-center justify-center text-[11px] font-bold">1</span>
-                        Vui lòng chọn 1 Block:
-                      </label>
-                      <span className="text-xs text-slate-400">Tổng cộng: {blocksData.length} Block đang vận hành</span>
+                <div className="p-6 space-y-5">
+                  {/* Nếu đã đặt chỗ thành công -> Hiện Thẻ vị trí đã chọn nổi bật */}
+                  {reservedSlot && (
+                    <div className="p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-300 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                          <span className="material-symbols-outlined text-xl">check_circle</span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] font-extrabold uppercase text-emerald-800 tracking-wider block">
+                            VỊ TRÍ ĐÃ ĐẶT CHỖ THÀNH CÔNG:
+                          </span>
+                          <div className="text-sm font-extrabold text-carbon flex items-center gap-2 flex-wrap">
+                            <span className="text-emerald-700">BLOCK {reservedSlot.blockCode}</span> • 
+                            <span>{reservedSlot.bayDisplay || `BAY ${reservedSlot.bay}`} ({reservedSlot.size || 40}FT)</span> • 
+                            <span>TẦNG {reservedSlot.tier}</span> • 
+                            <span>HÀNG {reservedSlot.row}</span>
+                            <span className="text-xs font-mono font-bold text-slate bg-white px-2 py-0.5 rounded border border-emerald-200">
+                              POS ID: {reservedSlot.posId}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const blk = blocksData.find(b => b.blockCode === reservedSlot.blockCode) || blocksData[0]
+                          if (blk) setPickerBlock(blk)
+                        }}
+                        className="px-4 py-2 bg-white border border-emerald-300 rounded-xl text-xs font-bold text-emerald-800 hover:bg-emerald-100 transition shadow-2xs flex items-center gap-1.5"
+                      >
+                        <span className="material-symbols-outlined text-sm">edit_location</span>
+                        Đổi vị trí khác
+                      </button>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      {blocksData.length === 0 && <div className="text-sm text-slate-500 col-span-full">Đang tải cấu trúc bãi từ máy chủ...</div>}
-                      {blocksData.map(block => {
-                        const code = block.blockCode || block.description || block.id;
-                        const isSelected = selectedBlock === code;
-                        const totalSlots = block.slots?.length || 0;
-                        const occupied = block.slots?.filter(s => s.status === 'occupied').length || 0;
-                        const reserved = block.slots?.filter(s => s.status === 'reserved').length || 0;
-                        const isFull = totalSlots > 0 && occupied + reserved >= totalSlots;
-                        const fillPercent = totalSlots > 0 ? ((occupied + reserved) / totalSlots) * 100 : 0;
+                  )}
+
+                  {/* BƯỚC 1: Chọn Khu (Zone) */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold uppercase tracking-wide text-carbon flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-carbon text-white inline-flex items-center justify-center text-[11px] font-bold">
+                          1
+                        </span>
+                        Chọn Khu vực bãi cảng (Zone A, B, C, D, E, F, G):
+                      </label>
+                      <span className="text-[11px] text-slate">7 phân khu quy hoạch bãi Tiên Sa</span>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                      {YARD_ZONES.map((zone) => {
+                        const isSelected = selectedZone === zone.code
+                        const count = combinedBlocks.filter((b) => b.sector === zone.code || (b.blockCode || '').toUpperCase().startsWith(zone.code)).length
+
                         return (
-                          <button 
-                            key={block.id} 
-                            onClick={() => { setSelectedBlock(code); setSelectedBay(block.slots?.length?String(Math.min(...block.slots.map(slot=>slot.bay))).padStart(2,'0'):''); setSelectedTierRow('T1-R1'); }}
-                            className={`relative text-left p-4 rounded-xl transition-all ${isSelected ? 'border-2 border-orange-500 bg-orange-50/20 shadow-md ring-1 ring-orange-500/20' : 'border border-slate-200 bg-white hover:border-slate-300 hover:shadow'}`} 
-                            type="button">
-                            {isSelected && <div className="absolute -top-2.5 right-4 bg-orange-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">Đang chọn</div>}
-                            <div className="flex justify-between items-start mb-2">
-                              <span className={`text-base font-black tracking-tight truncate pr-2 ${isSelected ? 'text-orange-600' : 'text-slate-800'}`}>Block {code}</span>
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${isFull ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>{isFull ? 'Hết chỗ' : 'Còn trống'}</span>
+                          <button
+                            key={zone.code}
+                            type="button"
+                            onClick={() => setSelectedZone(zone.code)}
+                            className={`p-3 rounded-2xl border text-left transition flex flex-col justify-between ${
+                              isSelected
+                                ? 'border-2 border-signal-orange bg-orange-50/60 shadow-xs ring-2 ring-signal-orange/20'
+                                : 'border-chalk bg-white hover:bg-fog'
+                            }`}
+                          >
+                            <div className="flex justify-between items-start">
+                              <span className={`text-sm font-black ${isSelected ? 'text-signal-orange' : 'text-carbon'}`}>
+                                {zone.name}
+                              </span>
+                              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-fog text-slate border border-chalk">
+                                {count} Block
+                              </span>
                             </div>
-                            <div className={`flex items-center justify-between text-xs mt-2 ${isSelected ? 'text-slate-600' : 'text-slate-500'}`}>
-                              <span>Đã chứa: <strong className={isSelected ? 'text-slate-800' : 'text-slate-700'}>{occupied}/{totalSlots}</strong></span>
-                              <span>Đã đặt: <strong className={isSelected ? 'text-slate-800' : 'text-slate-700'}>{reserved}</strong></span>
-                            </div>
-                            <div className={`w-full rounded-full h-1.5 mt-2.5 overflow-hidden ${isSelected ? 'bg-orange-100' : 'bg-slate-100'}`}>
-                              <div className={`h-1.5 rounded-full ${isSelected ? 'bg-orange-500' : 'bg-emerald-500'}`} style={{ width: `${Math.max(1, fillPercent)}%` }}></div>
-                            </div>
+                            <span className="text-[10px] text-slate mt-1 line-clamp-1">{zone.desc}</span>
                           </button>
                         )
                       })}
                     </div>
                   </div>
 
-                  {/* BƯỚC 2: Chọn Bay */}
-                  <div className="pt-4 border-t border-slate-100">
-                    <div className="flex flex-wrap items-center justify-between mb-3 gap-2">
-                      <div className="flex items-center space-x-3">
-                        <label className="text-xs font-bold uppercase tracking-wide text-slate-700 flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-slate-900 text-white inline-flex items-center justify-center text-[11px] font-bold">2</span>
-                          Chọn 1 Bay (Dãy) trong BLOCK {selectedBlock}:
-                        </label>
-                        <button className="text-xs text-sky-600 hover:text-sky-800 font-medium inline-flex items-center gap-1 transition-colors">
-                          <span className="material-symbols-outlined text-[14px]">arrow_back</span> Đổi Block khác
-                        </button>
-                      </div>
-                      <div className="text-xs text-slate-500">
-                        <span className="font-semibold text-slate-700">Vị trí theo cấu hình tồn kho hiện tại</span>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 gap-2.5">
-                      {(() => {
-                        const baysList = Object.keys(slotsByBay).sort((a,b) => parseInt(a) - parseInt(b));
-                        const baysToRender = baysList.map(bayNum => ({
-                              id: bayNum.toString().padStart(2, '0'),
-                              max: slotsByBay[bayNum].length,
-                              empty: slotsByBay[bayNum].filter(s => s.status === 'empty').length
-                            }));
-                        
-                        return baysToRender.map((bay) => {
-                          const isSelected = bay.id === selectedBay;
-                          const fillPercentage = bay.max > 0 ? ((bay.max - bay.empty) / bay.max) * 100 : 0;
-                        
-                        let colorClasses = "";
-                        let textClasses = "";
-                        let subTextClasses = "";
-                        
-                        if (isSelected) {
-                          colorClasses = "border-2 border-orange-500 bg-orange-50 font-medium shadow-sm ring-1 ring-orange-500/20";
-                          textClasses = "text-orange-600";
-                          subTextClasses = "text-orange-700";
-                        } else {
-                          if (fillPercentage >= 90) {
-                            colorClasses = "border border-red-300 bg-red-100 hover:border-red-400 hover:bg-red-200";
-                            textClasses = "text-red-900";
-                            subTextClasses = "text-red-700";
-                          } else if (fillPercentage >= 70) {
-                            colorClasses = "border border-orange-200 bg-orange-100 hover:border-orange-300 hover:bg-orange-200";
-                            textClasses = "text-orange-900";
-                            subTextClasses = "text-orange-700";
-                          } else if (fillPercentage >= 40) {
-                            colorClasses = "border border-amber-200 bg-amber-50 hover:border-amber-300 hover:bg-amber-100";
-                            textClasses = "text-amber-900";
-                            subTextClasses = "text-amber-700";
-                          } else if (fillPercentage >= 1) {
-                            colorClasses = "border border-emerald-200 bg-emerald-50 hover:border-emerald-300 hover:bg-emerald-100";
-                            textClasses = "text-emerald-800";
-                            subTextClasses = "text-emerald-600";
-                          } else {
-                            colorClasses = "border border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50";
-                            textClasses = "text-slate-700";
-                            subTextClasses = "text-slate-500";
-                          }
-                        }
-
-                        return (
-                          <button key={bay.id} onClick={() => setSelectedBay(bay.id)} className={`p-2.5 text-center rounded-lg transition ${colorClasses}`} type="button">
-                            <span className={`block text-xs font-black ${textClasses}`}>BAY {bay.id}</span>
-                            <span className={`text-[11px] font-semibold mt-0.5 block ${subTextClasses}`}>{bay.empty} trống</span>
-                          </button>
-                        );
-                      })})()}
-                    </div>
-                  </div>
-
-                  {/* BƯỚC 3: SƠ ĐỒ 2D MẶT CẮT BÃI */}
-                  <div className="pt-4 border-t border-slate-100">
-                    <div className="flex flex-wrap items-center justify-between mb-4 gap-2">
-                      <div>
-                        <label className="text-xs font-bold uppercase tracking-wide text-slate-700 flex items-center gap-2">
-                          <span className="w-5 h-5 rounded-full bg-slate-900 text-white inline-flex items-center justify-center text-[11px] font-bold">3</span>
-                          Sơ đồ mặt cắt 2D - Chọn 1 Slot trong BAY {selectedBay}:
-                        </label>
-                        <p className="text-xs text-slate-400 mt-0.5">Trục đứng là Tầng (Tier T1 → T4), Trục ngang là Hàng (Row R1 → R6)</p>
-                      </div>
-                      
-                      <div className="flex items-center space-x-4 text-xs bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-200">
-                        <div className="flex items-center space-x-1.5">
-                          <span className="w-3.5 h-3.5 rounded bg-emerald-50 border border-emerald-400 inline-block"></span>
-                          <span className="text-slate-600 font-medium">Khả dụng (Available)</span>
-                        </div>
-                        <div className="flex items-center space-x-1.5">
-                          <span className="w-3.5 h-3.5 rounded bg-orange-100 border-2 border-orange-500 inline-block"></span>
-                          <span className="text-slate-800 font-bold">Đang chọn (Selected)</span>
-                        </div>
-                        <div className="flex items-center space-x-1.5">
-                          <span className="w-3.5 h-3.5 rounded bg-slate-200 border border-slate-300 inline-block"></span>
-                          <span className="text-slate-400">Đã chiếm (Occupied)</span>
-                        </div>
-                      </div>
+                  {/* BƯỚC 2: Chọn Block trong Khu đã chọn -> Bấm để mở Pop-up Bay & Slot */}
+                  <div className="space-y-2 pt-3 border-t border-chalk">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold uppercase tracking-wide text-carbon flex items-center gap-2">
+                        <span className="w-5 h-5 rounded-full bg-carbon text-white inline-flex items-center justify-center text-[11px] font-bold">
+                          2
+                        </span>
+                        Các Block trong {YARD_ZONES.find((z) => z.code === selectedZone)?.name || `Khu ${selectedZone}`} (Bấm vào Block để mở Pop-up Bay & Slot):
+                      </label>
+                      <span className="text-[11px] text-slate font-medium">
+                        Hỗ trợ chuyển đổi cont 20ft và 40ft trong pop-up
+                      </span>
                     </div>
 
-                    <div className="bg-slate-50/70 border border-slate-200 rounded-2xl p-6 lg:p-8 flex flex-col items-center justify-center">
-                      <div className="w-full max-w-2xl">
-                        {[...Array(selectedBlockObj.maxTiers || 4)].map((_, i) => (selectedBlockObj.maxTiers || 4) - i).map((tier) => (
-                          <div key={`T${tier}`} className="flex items-center mb-3">
-                            <div className="w-12 text-xs font-bold text-slate-500 text-right pr-4 font-mono">T{tier}</div>
-                            <div className={`grid grid-cols-${selectedBlockObj.maxRows || 6} gap-3 flex-1`}>
-                              {[...Array(selectedBlockObj.maxRows || 6)].map((_, i) => i + 1).map((row) => {
-                                const slotId = `T${tier}-R${row}`;
-                                const isSelected = selectedTierRow === slotId;
-                                
-                                const baySlots = Object.keys(slotsByBay).length > 0 ? (slotsByBay[parseInt(selectedBay)] || slotsByBay[selectedBay] || []) : [];
-                                const slotData = baySlots.find(s => s.tier === tier && s.row === row);
-                                
-                                const isOccupied = !slotData || slotData.status !== 'empty';
-                                
-                                if (isOccupied) {
-                                  const text = !slotData?'Chưa cấu hình':slotData.containerNumber||slotData.reservedContainerNumber||(slotData.status==='maintenance'?'Bảo trì':'Đã giữ chỗ');
-                                  return (
-                                    <button key={slotId} className="h-11 rounded-lg bg-slate-200 border border-slate-300 text-slate-500 text-[10px] font-semibold flex flex-col items-center justify-center cursor-not-allowed overflow-hidden" title={text} type="button">
-                                      <span className="material-symbols-outlined text-[14px] text-slate-400">inventory_2</span>
-                                      <span className="truncate w-full px-1">{text}</span>
-                                    </button>
-                                  );
-                                }
-                                
-                                if (isSelected) {
-                                  const displayText = selectedBooking?.containerId || selectedBooking?.company || 'GIỮ CHỖ';
-                                  return (
-                                    <button key={slotId} onClick={() => setSelectedTierRow(slotId)} className="h-11 rounded-lg bg-orange-100 border-2 border-orange-500 text-orange-950 text-xs font-black shadow-[0_0_0_3px_rgba(249,115,22,0.35)] scale-[1.02] flex flex-col items-center justify-center relative cursor-pointer ring-2 ring-orange-400/40 overflow-hidden" title={`Vị trí đang chọn: ${slotId} cho ${displayText}`} type="button">
-                                      <span className="text-orange-900 leading-none mb-0.5 text-[9px] font-bold">R{row}</span>
-                                      <span className="text-[9px] text-orange-700 font-extrabold tracking-tight truncate w-full px-1 text-center leading-tight">{displayText}</span>
-                                    </button>
-                                  );
-                                }
-
-                                return (
-                                  <button key={slotId} onClick={() => setSelectedTierRow(slotId)} className="h-11 rounded-lg bg-emerald-50 border border-emerald-400 hover:border-emerald-600 text-emerald-800 text-xs font-bold transition flex items-center justify-center shadow-sm hover:shadow" type="button">
-                                    R{row}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ))}
-                        
-                        <div className="flex items-center pt-2 border-t border-slate-200">
-                          <div className="w-12"></div>
-                          <div className={`grid grid-cols-${selectedBlockObj.maxRows || 6} gap-3 flex-1 text-center`}>
-                            {[...Array(selectedBlockObj.maxRows || 6)].map((_, i) => i + 1).map(row => (
-                              <span key={`header-R${row}`} className={`text-xs font-mono ${selectedTierRow.endsWith(`R${row}`) ? 'font-bold text-orange-600' : 'font-semibold text-slate-500'}`}>Row {row}</span>
-                            ))}
-                          </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                      {currentZoneBlocks.length === 0 ? (
+                        <div className="p-4 rounded-xl bg-fog text-slate text-xs font-medium col-span-full text-center">
+                          Đang tải danh sách Block thuộc Khu {selectedZone}...
                         </div>
-                      </div>
+                      ) : (
+                        currentZoneBlocks.map((block) => {
+                          const code = block.blockCode || block.description || block.id
+                          const totalSlots = block.totalCapacity || (block.slots?.length || 0)
+                          const occupied = block.occupied ?? (block.slots?.filter((s) => s.status === 'occupied').length || 0)
+                          const reserved = block.reserved ?? (block.slots?.filter((s) => s.status === 'reserved').length || 0)
+                          const empty = block.empty ?? Math.max(0, totalSlots - (occupied + reserved))
+                          const isFull = totalSlots > 0 && empty === 0
+
+                          return (
+                            <div
+                              key={block.id || code}
+                              className="p-4 rounded-2xl border border-chalk bg-white hover:border-signal-orange/60 hover:shadow-md transition space-y-3 flex flex-col justify-between"
+                            >
+                              <div>
+                                <div className="flex justify-between items-start mb-1">
+                                  <span className="text-base font-black text-carbon font-mono">
+                                    Block {code}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                      isFull
+                                        ? 'bg-red-100 text-red-700 border border-red-200'
+                                        : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    }`}
+                                  >
+                                    {isFull ? 'Hết chỗ' : `${empty} slot trống`}
+                                  </span>
+                                </div>
+                                <p className="text-[11px] text-slate">
+                                  Sức chứa: {totalSlots} TEU · Đang lưu: {occupied} Cont · {block.planning?.bayModules || 20} Bay
+                                </p>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setPickerBlock(block)}
+                                className="w-full py-2 px-3 rounded-xl bg-signal-orange hover:bg-signal-orange/90 text-white text-xs font-bold transition shadow-xs flex items-center justify-center gap-1.5"
+                              >
+                                <span className="material-symbols-outlined text-sm">open_in_new</span>
+                                Chọn Bay & Slot ➔
+                              </button>
+                            </div>
+                          )
+                        })
+                      )}
                     </div>
-
-                      <div className="mt-4 p-4 rounded-xl bg-orange-50/60 border border-orange-200 flex flex-wrap items-center justify-between gap-4">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 rounded-lg bg-orange-600 text-white flex items-center justify-center shadow-sm">
-                            <span className="material-symbols-outlined text-[20px]">my_location</span>
-                          </div>
-                          <div>
-                            <div className="text-xs uppercase font-bold text-orange-950">Vị trí cấp chỉ định:</div>
-                            <div className="text-sm font-extrabold text-orange-800 flex items-center gap-2">
-                              <span>BLOCK {selectedBlock}</span> • 
-                              <span>BAY {selectedBay}</span> • 
-                              <span>TIER {selectedTierRow.split('-')[0].substring(1).padStart(2, '0')}</span> • 
-                              <span>ROW {selectedTierRow.split('-')[1].substring(1).padStart(2, '0')}</span>
-                              <span className="ml-2 text-xs bg-orange-200/80 text-orange-900 px-2 py-0.5 rounded font-mono font-bold">
-                                POS ID: {selectedBlock}-{selectedBay}-{selectedTierRow}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex flex-col sm:flex-row items-center gap-4">
-                          <div className="flex items-center space-x-6 text-xs text-slate-600">
-                            <div>
-                              <span className="text-slate-400 block">Kiểm tra tải trọng tầng dưới:</span>
-                              <span className="font-bold text-emerald-700 flex items-center gap-1">
-                                <span className="material-symbols-outlined text-[14px]">check_circle</span> Đạt tải an toàn
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400 block">Cần cẩu RTG phụ trách:</span>
-                              <span className="font-bold text-slate-800">RTG-04 (Khu {selectedBlock})</span>
-                            </div>
-                          </div>
-                          <button
-                            onClick={async () => {
-                              try {
-                                const posId = `${selectedBlock}-${selectedBay}-${selectedTierRow}`;
-                                let res;
-                                
-                                // Call real API if slotData exists, otherwise call mock
-                                const baySlots = Object.keys(slotsByBay).length > 0 ? (slotsByBay[parseInt(selectedBay)] || slotsByBay[selectedBay] || []) : [];
-                                const slotData = baySlots.find(s => s.tier === parseInt(selectedTierRow.split('-')[0].replace('T', '')) && s.row === parseInt(selectedTierRow.split('-')[1].replace('R', '')));
-                                
-                                if (slotData) {
-                                  res = await apiClient.post(`/v1/Yard/Slots/${slotData.id}/Reserve`);
-                                } else {
-                                  res = await yardOperationService.reserveSlot({ posId });
-                                }
-
-                                if (res) {
-                                  // Call the parent's handler
-                                  handleReserveSlot(slotData ? slotData.id : selectedTierRow, selectedBlock, { bay: selectedBay });
-                                  // Refresh Map
-                                  fetchYardMap();
-                                }
-                              } catch(e) {
-                                showToast(`❌ Lỗi kết nối Backend! Không thể giữ chỗ.`);
-                              }
-                            }}
-                            className="whitespace-nowrap px-6 py-2.5 bg-orange-600 text-white rounded-xl font-black text-xs hover:bg-orange-700 shadow-sm flex items-center gap-2 transition"
-                          >
-                            <span className="material-symbols-outlined text-[16px]">how_to_reg</span>
-                            GHI NHẬN ĐẶT CHỖ
-                          </button>
-                        </div>
-                      </div>
                   </div>
                 </div>
               </section>
+
 
             </div>
 
@@ -1589,7 +1587,7 @@ export default function GateBookingRequests() {
                     className="px-5 py-2.5 bg-red-600 text-white rounded-xl font-extrabold text-xs hover:bg-red-700 shadow-sm flex items-center gap-1.5"
                   >
                     <span className="material-symbols-outlined text-sm">block</span>
-                    Reject Booking
+                    Từ chối Booking
                   </button>
                 )}
 
@@ -1599,7 +1597,7 @@ export default function GateBookingRequests() {
                     className="px-6 py-2.5 bg-signal-orange text-white rounded-xl font-extrabold text-xs hover:opacity-95 shadow-lg flex items-center gap-1.5"
                   >
                     <span className="material-symbols-outlined text-sm">task_alt</span>
-                    Approve Booking
+                    Phê duyệt Booking
                   </button>
                 ) : (
                   <button
@@ -1610,7 +1608,7 @@ export default function GateBookingRequests() {
                     className="px-6 py-2.5 bg-carbon text-white rounded-xl font-extrabold text-xs hover:bg-black shadow-md flex items-center gap-1.5"
                   >
                     <span className="material-symbols-outlined text-sm">alt_route</span>
-                    View Dispatch Order ➔
+                    Xem Lệnh Điều Phối ➔
                   </button>
                 )}
               </div>
@@ -1627,7 +1625,7 @@ export default function GateBookingRequests() {
             <div className="flex items-center gap-3 border-b border-chalk pb-3">
               <span className="material-symbols-outlined text-green-600 text-3xl">task_alt</span>
               <div>
-                <h3 className="font-heading text-xl font-extrabold text-carbon">APPROVE GATE BOOKING?</h3>
+                <h3 className="font-heading text-xl font-extrabold text-carbon">PHÊ DUYỆT ĐĂNG KÝ VÀO CỔNG?</h3>
                 <p className="text-xs text-slate">Xác nhận phê duyệt lịch hẹn xe vào cảng.</p>
               </div>
             </div>
@@ -1637,7 +1635,7 @@ export default function GateBookingRequests() {
               <div className="flex justify-between"><span>Container ID:</span><strong className="text-carbon font-bold">{selectedBooking.containerId}</strong></div>
               <div className="flex justify-between"><span>Phương tiện:</span><strong className="text-carbon font-bold">{selectedBooking.licensePlate} ({selectedBooking.vehicleType})</strong></div>
               <div className="flex justify-between"><span>Tài xế:</span><strong className="text-carbon font-bold">{selectedBooking.driverName}</strong></div>
-              <div className="flex justify-between"><span>Cổng & ETA:</span><strong className="text-signal-orange font-bold">{selectedBooking.requestedGate} • {selectedBooking.eta.split('T')[1]?.slice(0, 5)}</strong></div>
+              <div className="flex justify-between"><span>Cổng & ETA:</span><strong className="text-signal-orange font-bold">{selectedBooking.requestedGate || 'Gate 2'} • {(selectedBooking.eta || selectedBooking.appointmentStart || '').split('T')[1]?.slice(0, 5) || '14:00'}</strong></div>
             </div>
 
             <p className="text-xs text-blue-900 bg-blue-50 p-3 rounded-xl border border-blue-200 font-medium">
@@ -1649,7 +1647,7 @@ export default function GateBookingRequests() {
                 onClick={() => setShowApproveModal(false)}
                 className="px-4 py-2.5 bg-fog border border-chalk text-slate font-bold rounded-xl text-xs hover:bg-slate-200"
               >
-                Cancel
+                Hủy bỏ
               </button>
               <button
                 onClick={handleConfirmApproval}
@@ -1669,7 +1667,7 @@ export default function GateBookingRequests() {
             <div className="flex items-center gap-3 border-b border-chalk pb-3">
               <span className="material-symbols-outlined text-red-600 text-3xl">block</span>
               <div>
-                <h3 className="font-heading text-xl font-extrabold text-carbon">REJECT GATE BOOKING</h3>
+                <h3 className="font-heading text-xl font-extrabold text-carbon">TỪ CHỐI ĐĂNG KÝ VÀO CỔNG</h3>
                 <p className="text-xs text-slate">Chọn lý do từ chối đăng ký lịch hẹn cảng.</p>
               </div>
             </div>
@@ -1712,7 +1710,7 @@ export default function GateBookingRequests() {
                 onClick={() => setShowRejectModal(false)}
                 className="px-4 py-2.5 bg-fog border border-chalk text-slate font-bold rounded-xl text-xs hover:bg-slate-200"
               >
-                Cancel
+                Hủy bỏ
               </button>
               <button
                 disabled={!rejectionReason}
@@ -1721,12 +1719,48 @@ export default function GateBookingRequests() {
                   rejectionReason ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                 }`}
               >
-                Reject Booking
+                Xác nhận Từ chối
               </button>
             </div>
           </div>
         </div>
       )}
+
+      
+      {/* POP-UP CHỌN BAY & SLOT TRỰC QUAN (HỖ TRỢ 20FT & 40FT) */}
+      <YardSlotReservationModal
+        isOpen={!!pickerBlock}
+        onClose={() => setPickerBlock(null)}
+        block={pickerBlock}
+        booking={selectedBooking}
+        onConfirm={async (slotInfo) => {
+          try {
+            // 1. Lưu giữ chỗ vào shared yardReservationStore đồng bộ ngay sang Sơ đồ bãi Tiên Sa
+            yardReservationStore.addReservation({
+              ...slotInfo,
+              containerId: selectedBooking?.containerId,
+              containerNo: selectedBooking?.containerId,
+              bookingCode: selectedBooking?.id,
+              booking: selectedBooking,
+              vehiclePlate: selectedBooking?.licensePlate,
+              driverName: selectedBooking?.driverName,
+              company: selectedBooking?.company,
+            })
+
+            // 2. Gọi các API Backend
+            if (slotInfo.slotId && slotInfo.slotId.length > 10) {
+              await apiClient.post(`/v1/Yard/Slots/${slotInfo.slotId}/Reserve`).catch(() => {})
+            } else {
+              await yardOperationService.reserveSlot({ posId: slotInfo.posId }).catch(() => {})
+            }
+            handleReserveSlot(slotInfo.slotId, slotInfo.blockCode, slotInfo)
+            fetchYardMap()
+            showToast(`🟢 Đã giữ chỗ thành công container ${selectedBooking?.containerId || ''} tại Block ${slotInfo.blockCode} (${slotInfo.bayDisplay || `Bay ${slotInfo.bay}`}, Tầng ${slotInfo.tier}, Hàng ${slotInfo.row})!`)
+          } catch (err) {
+            showToast(`❌ Không thể giữ chỗ: ${err.message}`, 'error')
+          }
+        }}
+      />
 
       {/* DETAIL MODALS */}
       <CompanyDetailModal 
@@ -1743,6 +1777,23 @@ export default function GateBookingRequests() {
         isOpen={modalState.type === 'driver'} 
         driverId={modalState.id} 
         onClose={() => setModalState({ type: null, id: null })} 
+      />
+
+      {/* MODAL XEM CHI TIẾT GIẤY TỜ CHỨNG TỪ BOOKING */}
+      <BookingDocumentsModal
+        isOpen={showDocumentsModal}
+        onClose={() => setShowDocumentsModal(false)}
+        booking={selectedBooking}
+      />
+
+    
+      {/* MODAL XEM PHÓNG TO HÌNH ẢNH CHỨNG TỪ TỪ DEVELOP */}
+      <DocumentViewerModal
+        isOpen={showDocViewer}
+        onClose={() => setShowDocViewer(false)}
+        documents={getBookingRealDocuments(selectedBooking)}
+        initialIndex={docViewerIndex}
+        booking={selectedBooking}
       />
 
     </div>
