@@ -20,6 +20,19 @@ export function suggestedBookingWindow(option) {
     startTime: `${pad(start.getHours())}:${pad(start.getMinutes())}`, endTime: `${pad(end.getHours())}:${pad(end.getMinutes())}` }
 }
 
+export function exportBookingWindow(voyage) {
+  if (!voyage) return null
+  const receiveFrom = new Date(voyage.receiveFrom).getTime()
+  const cutoff = new Date(voyage.cyCutoff).getTime()
+  const start = Math.ceil(Math.max(Date.now() + 10 * 60000, receiveFrom || 0) / (15 * 60000)) * 15 * 60000
+  const endOfDay = new Date(start)
+  endOfDay.setHours(23, 59, 0, 0)
+  const end = Math.min(start + 60 * 60000, cutoff, endOfDay.getTime())
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null
+  try { return suggestedBookingWindow({ appointmentStart: new Date(start).toISOString(), appointmentEnd: new Date(end).toISOString() }) }
+  catch { return null }
+}
+
 export function sourceOperation(source) {
   const cargoType = ({ general: 'General', reefer: 'Reefer', dangerous: 'DangerousGoods', dangerous_goods: 'DangerousGoods', oversized: 'Oversized', perishable: 'Perishable', overweight: 'Overweight' })[source.cargoType] || ''
   return { containerNumber: source.containerNumber, containerIsoSize: source.containerTypeCode,
