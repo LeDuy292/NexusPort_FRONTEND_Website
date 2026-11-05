@@ -158,9 +158,8 @@ export default function Login() {
 
   const handleSelectRole = (roleObj) => {
     setSelectedRole(roleObj)
-    const defaultUsers = { carrier: 'carrier01', driver: 'driver01', gate: 'gate01', operator: 'dispatcher01', yard: 'yard01', berth: 'shipping01', admin: 'admin' }
-    setUsername(defaultUsers[roleObj.id] || '')
-    setPassword('NexusPort@2026')
+    setUsername('')
+    setPassword('')
     setErrors({ username: '', password: '', general: '' })
     setShowDuplicateWarning(false)
     window.history.replaceState({}, '', '/login')
@@ -938,46 +937,22 @@ export default function Login() {
               </div>
             )}
 
-            {/* Danh sách tài khoản Whitelist gợi ý */}
-            <div className="mb-4">
-              <div className="text-white/60 text-[12px] font-semibold mb-2">Tài khoản Whitelist được cấp phép:</div>
-              <div className="space-y-2">
-                {[
-                  { email: 'driver01@gmail.com', name: 'Nguyễn Văn A', role: 'Tài xế (Driver)' },
-                  { email: 'inspector01@gmail.com', name: 'Trần Văn B', role: 'Kiểm tra viên (Gate Officer)' },
-                  { email: 'manager01@gmail.com', name: 'Lê Văn C', role: 'Quản lý cổng cảng (Admin)' },
-                ].map((acc) => (
-                  <button
-                    key={acc.email}
-                    type="button"
-                    disabled={googleLoading}
-                    onClick={() => handleGoogleLogin({ email: acc.email })}
-                    className="w-full text-left p-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-[#ff682c]/40 transition-all flex items-center justify-between group disabled:opacity-50"
-                  >
-                    <div>
-                      <div className="text-white text-[13px] font-medium group-hover:text-[#ff682c] transition-colors">{acc.email}</div>
-                      <div className="text-white/40 text-[11px] mt-0.5">{acc.name} • <span className="text-[#ff682c]/90">{acc.role}</span></div>
-                    </div>
-                    <span className="material-symbols-outlined text-white/30 group-hover:text-[#ff682c] text-[18px] transition-colors">login</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Kiểm tra email Google bất kỳ */}
-            <div className="pt-3 border-t border-white/10">
-              <div className="text-white/60 text-[12px] font-semibold mb-2">Hoặc kiểm tra email Google khác:</div>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  if (!customGoogleEmail.trim()) {
-                    setGoogleError('Vui lòng nhập địa chỉ email Google.')
-                    return
-                  }
-                  handleGoogleLogin({ email: customGoogleEmail.trim() })
-                }}
-                className="space-y-3"
-              >
+            {/* Nhập email Google để xác thực Whitelist */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (!customGoogleEmail.trim()) {
+                  setGoogleError('Vui lòng nhập địa chỉ email Google.')
+                  return
+                }
+                handleGoogleLogin({ email: customGoogleEmail.trim() })
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-white/70 text-[12.5px] font-medium mb-1.5">
+                  Nhập Email Google của bạn
+                </label>
                 <div className="relative">
                   <input
                     type="email"
@@ -986,29 +961,34 @@ export default function Login() {
                       setCustomGoogleEmail(e.target.value)
                       if (googleError) setGoogleError('')
                     }}
-                    placeholder="ví dụ: stranger@gmail.com..."
-                    className="w-full bg-white/5 border border-white/15 focus:border-[#ff682c] focus:bg-white/10 text-white text-[13px] rounded-lg px-3.5 py-2.5 outline-none transition-colors"
+                    placeholder="name@gmail.com"
+                    autoFocus
+                    className="w-full bg-white/5 border border-white/15 focus:border-[#ff682c] focus:bg-white/10 text-white text-[13.5px] rounded-xl px-4 py-3 outline-none transition-all placeholder:text-white/30"
                   />
                 </div>
-                <button
-                  type="submit"
-                  disabled={googleLoading}
-                  className="w-full bg-[#ff682c] hover:bg-[#e05520] text-white font-semibold text-[13px] py-2.5 px-4 rounded-lg transition-all shadow-md hover:shadow-[#ff682c]/20 flex items-center justify-center gap-2 disabled:opacity-50"
-                >
-                  {googleLoading ? (
-                    <span className="flex items-center gap-2">
-                      <svg className="animate-spin w-4 h-4 text-white" viewBox="0 0 24 24" fill="none">
-                        <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40" strokeDashoffset="10" opacity="0.4"/>
-                        <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3"/>
-                      </svg>
-                      Đang kiểm tra Whitelist...
-                    </span>
-                  ) : (
-                    'Kiểm tra Whitelist & Đăng nhập'
-                  )}
-                </button>
-              </form>
-            </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={googleLoading}
+                className="w-full bg-[#ff682c] hover:bg-[#e05520] text-white font-semibold text-[13.5px] py-3 px-4 rounded-xl transition-all shadow-md hover:shadow-[#ff682c]/20 flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.99]"
+              >
+                {googleLoading ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin w-4 h-4 text-white" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40" strokeDashoffset="10" opacity="0.4"/>
+                      <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3"/>
+                    </svg>
+                    Đang xác thực tài khoản Whitelist...
+                  </span>
+                ) : (
+                  <>
+                    <span>Đăng nhập với Google</span>
+                    <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                  </>
+                )}
+              </button>
+            </form>
           </div>
         </div>
       )}
