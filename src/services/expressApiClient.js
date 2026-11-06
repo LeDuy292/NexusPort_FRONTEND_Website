@@ -34,7 +34,7 @@ const request = async (method, path, body = null) => {
     } catch (_) {}
     if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
       if (data?.code === 'SESSION_KICKED') {
-        window.location.href = '/login?kicked=true'
+        window.location.href = '/login?kicked=duplicate'
       } else {
         window.location.href = '/login'
       }

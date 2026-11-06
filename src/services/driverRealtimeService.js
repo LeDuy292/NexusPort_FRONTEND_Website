@@ -50,7 +50,7 @@ export function subscribeDriverTripEvents(handlers = {}) {
       reconnectionDelay: 1000,
     });
 
-    const handleKickout = () => {
+    const handleKickout = (isDuplicate = false) => {
       try {
         localStorage.removeItem('user');
         localStorage.removeItem('token');
@@ -58,7 +58,7 @@ export function subscribeDriverTripEvents(handlers = {}) {
         sessionStorage.removeItem('token');
       } catch (_) {}
       if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-        window.location.href = '/login?kicked=true';
+        window.location.href = isDuplicate ? '/login?kicked=duplicate' : '/login';
       }
     };
 
@@ -73,18 +73,16 @@ export function subscribeDriverTripEvents(handlers = {}) {
     socket.on('connect_error', (err) => {
       if (onConnectionError) onConnectionError(err);
       const msg = err?.message || '';
-      if (
-        msg.includes('Phiên làm việc đã bị kết thúc') ||
-        msg.includes('SESSION_KICKED') ||
-        msg.includes('không còn hợp lệ')
-      ) {
-        handleKickout();
+      if (msg.includes('SESSION_KICKED')) {
+        handleKickout(true);
+      } else if (msg.includes('SESSION_LOGGED_OUT') || msg.includes('SESSION_EXPIRED')) {
+        handleKickout(false);
       }
     });
 
     socket.on('auth:session_kicked', (data) => {
       console.warn('[DriverRealtime] auth:session_kicked event received:', data);
-      handleKickout();
+      handleKickout(data?.reason === 'CONCURRENT_LOGIN');
     });
 
     if (onTripAssigned) {

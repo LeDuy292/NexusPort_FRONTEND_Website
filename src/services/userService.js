@@ -22,6 +22,16 @@ export async function getUserById(id) {
  * Tạo tài khoản người dùng mới.
  * @param {Object} data - { username, email, password, role, fullName, isActive }
  */
+
+/**
+ * Tạo tài khoản và cấp mật khẩu cho tài xế (vai trò Driver)
+ * @param {Object} data - { email, password, fullName, driverId, carrierId }
+ */
+export async function createDriverAccount(data) {
+  const response = await apiClient.post('/users/driver-account', data)
+  return response.data
+}
+
 export async function createUser(data) {
   const response = await apiClient.post('/users', data)
   return response.data

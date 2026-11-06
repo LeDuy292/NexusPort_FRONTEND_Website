@@ -1,4 +1,5 @@
-import ExportBookingWorkspace from '../../components/Containers/ExportBookingWorkspace'
+import ContainerBookingForm from '../../components/Containers/ContainerBookingForm'
+import BookingBatchWorkspace from '../../components/Containers/BookingBatchWorkspace'
 import BookingFleetDetails from '../../components/Containers/BookingFleetDetails'
 import ContainerJourneySearch from '../Containers/ContainerJourneySearch'
 import { useLocation, useSearchParams } from 'react-router-dom'
@@ -12,11 +13,7 @@ export default function BookingManagement() {
   const location = useLocation()
   const [searchParams, setSearchParams] = useSearchParams()
   const detailBookingId = searchParams.get('bookingId')
-  const exportBookingId = searchParams.get('exportBookingId')
-  const [activeTab, setActiveTab] = useState(detailBookingId ? 'my_bookings' : 'export')
-  const [createRequest, setCreateRequest] = useState(0)
-  useEffect(() => { if (exportBookingId && !detailBookingId) setActiveTab('export') }, [exportBookingId, detailBookingId])
-  useEffect(() => { if (location.state?.exportBooking && !detailBookingId) setActiveTab('export') }, [location.state, detailBookingId])
+  const [activeTab, setActiveTab] = useState(!detailBookingId && location.state?.containerNumber ? 'create' : 'my_bookings')
 
   // Data States for My Bookings
   const [bookings, setBookings] = useState([])
@@ -998,12 +995,12 @@ export default function BookingManagement() {
           <div className="flex items-center gap-3 shrink-0">
             <button
               onClick={() => {
-                setActiveTab('export'); setCreateRequest(value => value + 1)
+                setActiveTab('create')
               }}
               className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 group cursor-pointer"
             >
               <span className="material-symbols-outlined text-base group-hover:rotate-90 transition-transform">add_circle</span>
-              Tạo Booking
+              Tạo Lịch Hẹn Mới
             </button>
           </div>
         </div>
@@ -1063,7 +1060,8 @@ export default function BookingManagement() {
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none w-full sm:w-auto">
           {[
             { key: 'my_bookings', label: 'Danh Sách Lịch Hẹn', icon: 'format_list_bulleted', badge: totalCount },
-            { key: 'export', label: 'Tạo Booking', icon: 'add_circle' },
+            { key: 'create', label: 'Tạo Lịch Hẹn Mới', icon: 'add_circle' },
+            { key: 'batch', label: 'Booking Theo Lô', icon: 'view_list' },
             { key: 'container_status', label: 'Lộ Trình Container', icon: 'timeline' },
           ].map((tab) => (
             <button
@@ -1230,7 +1228,7 @@ export default function BookingManagement() {
                 </div>
                 <button
                   onClick={() => {
-                    setActiveTab('export'); setCreateRequest(value => value + 1)
+                    setActiveTab('create')
                   }}
                   className="px-5 py-2.5 rounded-xl bg-signal-orange text-white font-bold text-xs hover:bg-orange-600 transition-all inline-flex items-center gap-2 cursor-pointer shadow-sm"
                 >
@@ -1520,7 +1518,8 @@ export default function BookingManagement() {
       {/* ========================================================================= */}
       {/* TAB 2: CREATE BOOKING WIZARD */}
       {/* ========================================================================= */}
-      {activeTab === 'export' && <ExportBookingWorkspace initialBookingId={exportBookingId} initialSource={location.state} initialDirection={location.state?.bookingType} createRequest={createRequest} onGateSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
+      {activeTab === 'create' && <ContainerBookingForm onClose={() => setActiveTab('my_bookings')} onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
+      {activeTab === 'batch' && <BookingBatchWorkspace onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
 
       {/* ========================================================================= */}
       {/* TAB 3: CONTAINER JOURNEY TRACKING */}

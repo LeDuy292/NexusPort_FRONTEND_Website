@@ -4,7 +4,7 @@ import { containerService } from '../../services/containerService'
 import { bookingService } from '../../services/bookingService'
 import BookingSourcePicker from './BookingSourcePicker'
 import BookingFleetDetails from './BookingFleetDetails'
-import { bookingWindow, suggestedBookingWindow, sourceOperation, retainAvailableFleet, exportBookingWindow } from '../../features/booking-dispatch/bookingPlanning'
+import { bookingWindow, suggestedBookingWindow, sourceOperation, retainAvailableFleet } from '../../features/booking-dispatch/bookingPlanning'
 
 const inputClass = 'w-full rounded-xl border border-chalk bg-fog px-4 py-2.5 text-xs outline-none focus:border-signal-orange focus:bg-white focus:ring-0 transition-all font-medium'
 const selectClass = 'w-full rounded-xl border border-chalk bg-fog px-3 py-2.5 text-xs outline-none focus:border-signal-orange focus:bg-white focus:ring-0 transition-all font-medium cursor-pointer'
@@ -38,7 +38,7 @@ const PRIMARY_OPERATIONS = [
 
 export const DOCUMENT_TYPE_OPTIONS = [
   { value: 'CarrierBookingReference', label: 'Mã đặt chỗ Hãng tàu (Booking Note)' },
-  { value: 'BillOfLading', label: 'Vận đơn đường biển (B/L)' },
+  { value: 'BillOfLading', label: 'Vận đơn đường biển. (B/L)' },
   { value: 'DeliveryOrder', label: 'Lệnh giao hàng điện tử (eDO)' },
   { value: 'CustomsDeclaration', label: 'Tờ khai Hải quan thông quan' },
   { value: 'VgmCertificate', label: 'Phiếu xác nhận khối lượng toàn bộ (VGM)' },
@@ -188,7 +188,7 @@ export const getContainerRequiredDocs = (op) => {
     })
   }
 
-  return op.exportBookingId ? docs.filter(doc => !['CarrierBookingReference', 'VgmCertificate'].includes(doc.type)) : docs
+  return docs
 }
 
 export const getBookingStatusLabelVi = (status) => {
@@ -213,11 +213,9 @@ export const formatFileSize = (bytes) => {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
-export default function ContainerBookingForm({ onSaved, onClose, exportContext, onExportBooking, pickupModeSelector }) {
+export default function ContainerBookingForm({ onSaved, onClose }) {
   const navigate = useNavigate()
-  const { state: locationContext } = useLocation()
-  const context = exportContext ? { ...exportContext.container, bookingType: 'Dropoff' } : { ...locationContext, bookingType: 'Pickup' }
-  const linkedSource = exportContext ? sourceOperation({ ...exportContext.container, grossWeightKg: exportContext.container.vgmKg, loadStatus: 'full' }) : null
+  const { state: context } = useLocation()
 
   // Mode: 'single' | 'combined'
   const [bookingMode, setBookingMode] = useState('single')
@@ -234,11 +232,10 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
       containerVisitId: context?.containerVisitId || null,
       yardCode: context?.yardCode || '',
       cargoStatus: 'Loaded',
-      cargoType: linkedSource?.cargoType || '',
-      containerIsoSize: context?.containerTypeCode || '',
+      cargoType: '',
+      containerIsoSize: '',
       containerNumber: context?.containerNumber || '',
-      exportBookingId: exportContext?.booking.id || null,
-      carrierBookingNumber: exportContext?.booking.bookingNumber || '',
+      carrierBookingNumber: '',
       billOfLadingNumber: '',
       deliveryOrderNumber: '',
       customsDeclarationNumber: '',
@@ -282,13 +279,12 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
     feeTermsAgreed: true,
     isReeferPowerRequired: false,
     reeferPowerSelection: 'automatic',
-    targetTemperature: exportContext?.container.targetTemperature ?? null,
+    targetTemperature: null,
     temperatureUnit: 'C',
     tempTolerance: 1.5,
     requiredPowerKw: null,
     reeferPlugId: '',
-    specialColdInstructions: '',
-    ...(exportBookingWindow(exportContext?.booking.voyage) || {})
+    specialColdInstructions: ''
   })
 
   const [planResult, setPlanResult] = useState(null)
@@ -298,12 +294,13 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
   let planningRequest = null
   try {
     const op = operations[0]
-    const legs = operations.map(item => ({ containerId: item.containerId, declarationId: item.declarationId || null,
-      yardCode: item.yardCode || null, bookingType: item.operationType === 'Import' ? 'Pickup' : 'Dropoff' }))
+    const legs = operations.map(item => ({
+      containerId: item.containerId, declarationId: item.declarationId || null,
+      yardCode: item.yardCode || null, bookingType: item.operationType === 'Import' ? 'Pickup' : 'Dropoff'
+    }))
     if (legs.every(leg => leg.containerId && (leg.declarationId || leg.yardCode))) planningRequest = {
       containerId: op.containerId, declarationId: op.declarationId || null, yardCode: op.yardCode || null,
       bookingType: op.operationType === 'Import' ? 'Pickup' : 'Dropoff',
-      ...(exportContext ? { exportBookingId: exportContext.booking.id, exportContainerId: exportContext.container.id } : {}),
       ...(bookingMode === 'combined' ? { legs } : {}),
       ...bookingWindow(form.appointmentDate, form.startTime, form.endTime),
     }
@@ -335,10 +332,12 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
         setPlanResult({ key: planningKey, value: plan })
         const sources = plan.sources || [plan.source]
         setOperations(prev => prev.map((op, i) => sources[i] ? { ...op, ...sourceOperation(sources[i]) } : op))
-        setForm(prev => ({ ...prev, ...retainAvailableFleet(prev, plan.fleet, prev.fleetSelectionMode === 'automatic'),
+        setForm(prev => ({
+          ...prev, ...retainAvailableFleet(prev, plan.fleet, prev.fleetSelectionMode === 'automatic'),
           isReeferPowerRequired: JSON.parse(planningKey).bookingType === 'Dropoff' && plan.source.cargoType === 'reefer' && Number(plan.source.requiredPowerKw) > 0 &&
             (prev.reeferPowerSelection !== 'manual' || prev.isReeferPowerRequired),
-          requiredPowerKw: plan.source.requiredPowerKw ?? null }))
+          requiredPowerKw: plan.source.requiredPowerKw ?? null
+        }))
       }).catch(err => { if (live) { setPlanError(message(err)); setPlanResult(null) } })
         .finally(() => { if (live) setLoading(false) })
     }, 300)
@@ -351,8 +350,10 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
       previous.declarationId === (selection.declarationId || null) &&
       (previous.yardCode || '') === (selection.yardCode || '')) return
     setPlanResult(null); setPlanError('')
-    setForm(prev => ({ ...prev, truckId: '', driverId: '', fleetSelectionMode: 'automatic',
-      ...(index === 0 ? { targetTemperature: null, isReeferPowerRequired: false, requiredPowerKw: null, reeferPowerSelection: 'automatic' } : {}) }))
+    setForm(prev => ({
+      ...prev, truckId: '', driverId: '', fleetSelectionMode: 'automatic',
+      ...(index === 0 ? { targetTemperature: null, isReeferPowerRequired: false, requiredPowerKw: null, reeferPowerSelection: 'automatic' } : {})
+    }))
     setOperations(prev => prev.map((op, i) => i !== index ? op : {
       ...op, containerId: selection?.containerId || null, containerVisitId: selection?.containerVisitId || null, declarationId: selection?.declarationId || null,
       yardCode: selection?.yardCode || '', containerNumber: selection?.containerNumber || '',
@@ -366,11 +367,6 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
 
   // Synchronize operations when mode or primary op changes
   const applySingleOperation = (opType) => {
-    if (!exportContext && opType === 'Export') {
-      if (onExportBooking) onExportBooking()
-      else navigate('/booking', { state: { exportBooking: true } })
-      return
-    }
     setPlanResult(null)
     setForm(prev => ({ ...prev, truckId: '', driverId: '', targetTemperature: null, isReeferPowerRequired: false, requiredPowerKw: null, reeferPowerSelection: 'automatic' }))
     setSelectedPrimaryOp(opType)
@@ -400,14 +396,11 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
   }
 
   const applyCombinedPair = (pairKey = 'Export_Import') => {
-    if (!exportContext) {
-      if (onExportBooking) onExportBooking()
-      else navigate('/booking', { state: { exportBooking: true } })
-      return
-    }
     setPlanResult(null)
-    setForm(prev => ({ ...prev, truckId: '', driverId: '', targetTemperature: null, isReeferPowerRequired: false,
-      requiredPowerKw: null, reeferPowerSelection: 'automatic', fleetSelectionMode: 'automatic' }))
+    setForm(prev => ({
+      ...prev, truckId: '', driverId: '', targetTemperature: null, isReeferPowerRequired: false,
+      requiredPowerKw: null, reeferPowerSelection: 'automatic', fleetSelectionMode: 'automatic'
+    }))
     setCombinedPair('Export_Import')
     const leg1Type = 'Export'
     const leg2Type = 'Import'
@@ -611,7 +604,6 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
       }
 
       const payload = {
-        ...(exportContext ? { exportBookingId: exportContext.booking.id, exportContainerId: exportContext.container.id } : {}),
         bookingCode: form.bookingCode,
         bookingType: operations[0].operationType === 'Import' ? 'Pickup' : 'Dropoff',
         isCombined: bookingMode === 'combined',
@@ -727,9 +719,8 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
             {operations.map((op, idx) => (
               <div key={idx} className="p-4 rounded-2xl border border-chalk bg-white flex items-center justify-between shadow-xs">
                 <div className="flex items-center gap-3">
-                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs ${
-                    op.expectedGateDirection === 'GateIn' ? 'bg-teal-50 text-teal-700' : 'bg-blue-50 text-blue-700'
-                  }`}>
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs ${op.expectedGateDirection === 'GateIn' ? 'bg-teal-50 text-teal-700' : 'bg-blue-50 text-blue-700'
+                    }`}>
                     {idx + 1}
                   </div>
                   <div>
@@ -789,15 +780,13 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
           <button
             type="button"
             onClick={() => setStep(1)}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              step === 1
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${step === 1
                 ? 'bg-gradient-to-r from-signal-orange to-orange-600 text-white shadow-md shadow-orange-500/25'
                 : 'text-slate-600 hover:text-carbon'
-            }`}
+              }`}
           >
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
-              step === 1 ? 'bg-white/20 text-white font-black' : 'bg-slate-200 text-slate-700'
-            }`}>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${step === 1 ? 'bg-white/20 text-white font-black' : 'bg-slate-200 text-slate-700'
+              }`}>
               1
             </span>
             <span>Nghiệp Vụ & Container</span>
@@ -808,16 +797,13 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
           <button
             type="button"
             onClick={continueToFleet}
-            disabled={loading || !currentPlan}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-              step === 2
+            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${step === 2
                 ? 'bg-gradient-to-r from-signal-orange to-orange-600 text-white shadow-md shadow-orange-500/25'
                 : 'text-slate-600 hover:text-carbon'
-            }`}
+              }`}
           >
-            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
-              step === 2 ? 'bg-white/20 text-white font-black' : 'bg-slate-200 text-slate-700'
-            }`}>
+            <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${step === 2 ? 'bg-white/20 text-white font-black' : 'bg-slate-200 text-slate-700'
+              }`}>
               2
             </span>
             <span>Phương Tiện & Khung Giờ</span>
@@ -848,15 +834,8 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
       </dialog>
 
       <form onSubmit={handleSave} className="space-y-8">
-        {exportContext && <div className="rounded-2xl border border-teal-200 bg-teal-50 p-4 text-sm text-teal-900 space-y-1">
-          <p className="font-bold">Lịch xe giao container · Booking hãng tàu {exportContext.booking.bookingNumber}</p>
-          <p>{exportContext.container.containerNumber} · Seal {exportContext.container.sealNumber} · VGM {exportContext.container.vgmKg?.toLocaleString('vi-VN')} kg</p>
-          <p className="text-xs">Booking Note và VGM được đối chiếu từ dữ liệu hãng tàu đã tiếp nhận. Khung giờ giao phải nằm trong thời gian nhận container và trước CY cut-off.</p>
-        </div>}
         {step === 1 && (
           <>
-            {pickupModeSelector}
-            {!exportContext && !pickupModeSelector && <>
             {/* 1. SELECT MODE: SINGLE OR COMBINED */}
             <div className="space-y-3">
               <label className="block text-xs font-extrabold uppercase text-slate-400 tracking-wider">
@@ -868,15 +847,13 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
                     setBookingMode('single')
                     applySingleOperation(selectedPrimaryOp)
                   }}
-                  className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-center gap-4 ${
-                    bookingMode === 'single'
+                  className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-center gap-4 ${bookingMode === 'single'
                       ? 'border-signal-orange bg-orange-50/40 shadow-sm ring-2 ring-orange-500/10'
                       : 'border-chalk hover:border-slate-300 bg-white'
-                  }`}
+                    }`}
                 >
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
-                    bookingMode === 'single' ? 'bg-signal-orange text-white' : 'bg-fog text-slate-600'
-                  }`}>
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${bookingMode === 'single' ? 'bg-signal-orange text-white' : 'bg-fog text-slate-600'
+                    }`}>
                     <span className="material-symbols-outlined text-2xl">local_shipping</span>
                   </div>
                   <div>
@@ -890,15 +867,13 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
                     setBookingMode('combined')
                     applyCombinedPair()
                   }}
-                  className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-center gap-4 ${
-                    bookingMode === 'combined'
+                  className={`p-4 rounded-2xl border-2 transition-all cursor-pointer flex items-center gap-4 ${bookingMode === 'combined'
                       ? 'border-signal-orange bg-orange-50/40 shadow-sm ring-2 ring-orange-500/10'
                       : 'border-chalk hover:border-slate-300 bg-white'
-                  }`}
+                    }`}
                 >
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
-                    bookingMode === 'combined' ? 'bg-signal-orange text-white' : 'bg-fog text-indigo-600'
-                  }`}>
+                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${bookingMode === 'combined' ? 'bg-signal-orange text-white' : 'bg-fog text-indigo-600'
+                    }`}>
                     <span className="material-symbols-outlined text-2xl">sync_alt</span>
                   </div>
                   <div>
@@ -925,16 +900,14 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
                     <div
                       key={op.type}
                       onClick={() => applySingleOperation(op.type)}
-                      className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between h-36 ${
-                        selectedPrimaryOp === op.type
+                      className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between h-36 ${selectedPrimaryOp === op.type
                           ? 'border-signal-orange bg-orange-50/40 shadow-sm ring-2 ring-orange-500/10'
                           : 'border-chalk hover:border-slate-300 bg-white'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between">
-                        <span className={`material-symbols-outlined p-2 rounded-xl text-lg ${
-                          selectedPrimaryOp === op.type ? 'bg-signal-orange text-white' : 'bg-fog text-slate-600'
-                        }`}>
+                        <span className={`material-symbols-outlined p-2 rounded-xl text-lg ${selectedPrimaryOp === op.type ? 'bg-signal-orange text-white' : 'bg-fog text-slate-600'
+                          }`}>
                           {op.icon}
                         </span>
                         <span className={`px-2.5 py-1 rounded text-[10px] font-extrabold uppercase ${op.badge}`}>
@@ -961,11 +934,10 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
                     <div
                       key={pair.key}
                       onClick={() => applyCombinedPair(pair.key)}
-                      className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between h-32 ${
-                        combinedPair === pair.key
+                      className={`p-5 rounded-2xl border-2 transition-all cursor-pointer flex flex-col justify-between h-32 ${combinedPair === pair.key
                           ? 'border-signal-orange bg-orange-50/40 shadow-sm ring-2 ring-orange-500/10'
                           : 'border-chalk hover:border-slate-300 bg-white'
-                      }`}
+                        }`}
                     >
                       <div className="flex items-center justify-between">
                         <span className="font-extrabold text-carbon text-sm">{pair.label}</span>
@@ -1024,28 +996,25 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
 
 
 
-            </>}
             {/* 3. DYNAMIC OPERATIONS DETAIL FORMS */}
             <div className="space-y-6">
               <label className="block text-xs font-extrabold uppercase text-slate-400 tracking-wider">
-                {pickupModeSelector ? '2. Chi tiết container và hồ sơ chứng từ' : '3. Chi tiết container và hồ sơ chứng từ điều kiện'}
+                3. Chi tiết container và hồ sơ chứng từ điều kiện
               </label>
 
               {operations.map((op, idx) => (
                 <div key={idx} className="bg-white border border-chalk rounded-3xl p-5 sm:p-6 space-y-5 shadow-xs">
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-chalk pb-4">
                     <div className="flex items-center gap-3">
-                      <span className={`w-8 h-8 rounded-xl flex items-center justify-center font-extrabold text-xs ${
-                        op.expectedGateDirection === 'GateIn' ? 'bg-teal-50 text-teal-700' : 'bg-blue-50 text-blue-700'
-                      }`}>
+                      <span className={`w-8 h-8 rounded-xl flex items-center justify-center font-extrabold text-xs ${op.expectedGateDirection === 'GateIn' ? 'bg-teal-50 text-teal-700' : 'bg-blue-50 text-blue-700'
+                        }`}>
                         #{idx + 1}
                       </span>
                       <div>
                         <div className="flex items-center gap-2">
                           <h4 className="font-heading font-extrabold text-carbon text-sm">{getOperationLabelVi(op.operationType)}</h4>
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${
-                            op.expectedGateDirection === 'GateIn' ? 'bg-teal-50 text-teal-700 border border-teal-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
-                          }`}>
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase ${op.expectedGateDirection === 'GateIn' ? 'bg-teal-50 text-teal-700 border border-teal-200' : 'bg-blue-50 text-blue-700 border border-blue-200'
+                            }`}>
                             {getGateDirectionLabelVi(op.expectedGateDirection)}
                           </span>
                         </div>
@@ -1057,15 +1026,14 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
 
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-slate-500 font-semibold">Tình trạng:</span>
-                      <span className={`px-2.5 py-1 rounded-xl text-xs font-extrabold ${
-                        op.cargoStatus === 'Empty' ? 'bg-slate-100 text-slate-700' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      }`}>
+                      <span className={`px-2.5 py-1 rounded-xl text-xs font-extrabold ${op.cargoStatus === 'Empty' ? 'bg-slate-100 text-slate-700' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                        }`}>
                         {op.cargoStatus === 'Empty' ? 'Vỏ Rỗng' : 'Có Hàng'}
                       </span>
                     </div>
                   </div>
 
-                  {!exportContext && <BookingSourcePicker key={op.operationType} operation={op} onSelect={selection => selectSource(selection, idx)} />}
+                  <BookingSourcePicker key={op.operationType} operation={op} onSelect={selection => selectSource(selection, idx)} />
                   {currentPlan && <p className="text-xs text-emerald-700">Công ty: {(currentPlan.sources?.[idx] || currentPlan.source).carrierName || 'Chưa có thông tin công ty'}</p>}
                   {planError && <p role="alert" className="text-xs text-red-700">{planError}</p>}
                   {loading && <p role="status" className="text-xs">Đang kiểm tra dữ liệu và lịch xe/tài xế…</p>}
@@ -1156,7 +1124,6 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
                               type="text"
                               placeholder="VD: BK-ONE-882910 hoặc REG-HA-0192"
                               value={op.carrierBookingNumber || ''}
-                              readOnly={Boolean(exportContext)}
                               onChange={(e) => updateOperation(idx, { carrierBookingNumber: e.target.value.toUpperCase() })}
                               className={inputClass}
                             />
@@ -1219,7 +1186,6 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
                             step="0.5"
                             placeholder="-18"
                             value={op.temperatureSetPoint ?? ''}
-                            readOnly={Boolean(exportContext)}
                             onChange={(e) => {
                               const temperature = e.target.value === '' ? null : Number(e.target.value)
                               updateOperation(idx, { temperatureSetPoint: temperature })
@@ -1239,7 +1205,6 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
                               type="text"
                               placeholder="VD: Nhóm 3 (Chất lỏng dễ cháy)"
                               value={op.dangerousGoodsClass || ''}
-                              readOnly={Boolean(exportContext)}
                               onChange={(e) => updateOperation(idx, { dangerousGoodsClass: e.target.value })}
                               className={inputClass}
                             />
@@ -1250,7 +1215,6 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
                               type="text"
                               placeholder="VD: UN1203"
                               value={op.unNumber || ''}
-                              readOnly={Boolean(exportContext)}
                               onChange={(e) => updateOperation(idx, { unNumber: e.target.value.toUpperCase() })}
                               className={inputClass}
                             />
@@ -1271,7 +1235,7 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
                           Chứng Từ Yêu Cầu Cho Nghiệp Vụ {getOperationLabelVi(op.operationType)}
                         </h5>
                         <p className="text-[11px] text-slate-500 mt-0.5">
-                          {exportContext ? 'Booking Note và VGM đã có dữ liệu được tiếp nhận; bổ sung hồ sơ hàng đặc biệt nếu cần.' : op.operationType === 'Export'
+                          {op.operationType === 'Export'
                             ? 'Chỉ nộp các chứng từ phục vụ hàng xuất khẩu (Booking Note, VGM, Hải quan xuất)'
                             : 'Chỉ nộp các chứng từ phục vụ hàng nhập khẩu (Vận đơn B/L, Lệnh eDO, Hải quan nhập)'}
                         </p>
@@ -1309,13 +1273,12 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
                         return (
                           <div
                             key={spec.type}
-                            className={`p-3.5 rounded-2xl border transition-all space-y-2 flex flex-col justify-between ${
-                              isUploaded
+                            className={`p-3.5 rounded-2xl border transition-all space-y-2 flex flex-col justify-between ${isUploaded
                                 ? 'bg-emerald-50/30 border-emerald-200 shadow-2xs'
                                 : spec.mandatory
-                                ? 'bg-white border-amber-200/90 hover:border-signal-orange/60'
-                                : 'bg-fog/40 border-chalk hover:border-slate-300'
-                            }`}
+                                  ? 'bg-white border-amber-200/90 hover:border-signal-orange/60'
+                                  : 'bg-fog/40 border-chalk hover:border-slate-300'
+                              }`}
                           >
                             <div className="space-y-1.5">
                               <div className="flex items-center justify-between gap-1">
@@ -1327,13 +1290,12 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
                                     {spec.title}
                                   </span>
                                 </div>
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase shrink-0 ${
-                                  isUploaded
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase shrink-0 ${isUploaded
                                     ? 'bg-emerald-100 text-emerald-800'
                                     : spec.mandatory
-                                    ? 'bg-rose-100 text-rose-700'
-                                    : 'bg-slate-100 text-slate-600'
-                                }`}>
+                                      ? 'bg-rose-100 text-rose-700'
+                                      : 'bg-slate-100 text-slate-600'
+                                  }`}>
                                   {isUploaded ? '✓ Đã có' : spec.mandatory ? 'Bắt buộc' : 'Khuyến nghị'}
                                 </span>
                               </div>
@@ -1397,11 +1359,10 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
                                 <button
                                   type="button"
                                   onClick={() => triggerFileUpload(idx, spec.type)}
-                                  className={`w-full py-1.5 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs ${
-                                    spec.mandatory
+                                  className={`w-full py-1.5 px-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-2xs ${spec.mandatory
                                       ? 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200'
                                       : 'bg-white hover:bg-slate-50 text-slate-700 border border-chalk'
-                                  }`}
+                                    }`}
                                 >
                                   <span className="material-symbols-outlined text-xs">upload</span>
                                   <span>Tải lên tệp chứng từ</span>
@@ -1480,7 +1441,6 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
               </button>
               <button
                 type="submit"
-                disabled={loading || !currentPlan}
                 className="px-6 py-2.5 rounded-xl bg-signal-orange text-white text-xs font-bold hover:bg-orange-600 transition-all shadow-sm flex items-center gap-1.5"
               >
                 <span>Tiếp tục: Chọn Xe & Khung Giờ</span>
@@ -1698,7 +1658,6 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
                       step="0.5"
                       required
                       value={form.targetTemperature ?? ''}
-                      readOnly={Boolean(exportContext)}
                       onChange={(e) => {
                         const temperature = e.target.value === '' ? null : Number(e.target.value)
                         setForm(prev => ({ ...prev, targetTemperature: temperature }))

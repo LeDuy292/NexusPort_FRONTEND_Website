@@ -7,17 +7,26 @@ export default function Login() {
   const location = useLocation()
   const { loginWithToken } = useAuth()
 
-  // Kiểm tra cờ kicked từ query params (chỉ khi có giá trị duplicate hoặc true)
+  // Kiểm tra cờ kicked từ query params (chỉ khi có giá trị chính xác là 'duplicate')
   const kickedParam = new URLSearchParams(location.search).get('kicked')
   const [showDuplicateWarning, setShowDuplicateWarning] = useState(
-    kickedParam === 'duplicate' || kickedParam === 'true'
+    kickedParam === 'duplicate'
   )
 
-  // Tự động dọn sạch query param trên URL sau khi đã ghi nhận cờ bị kick
+  // Dọn dẹp token cũ khi đang ở trang login và xử lý cờ duplicate warning
   useEffect(() => {
-    if (kickedParam === 'duplicate' || kickedParam === 'true') {
+    try {
+      localStorage.removeItem('user')
+      localStorage.removeItem('token')
+      sessionStorage.removeItem('user')
+      sessionStorage.removeItem('token')
+    } catch (_) {}
+
+    if (kickedParam === 'duplicate') {
       setShowDuplicateWarning(true)
       window.history.replaceState({}, '', window.location.pathname)
+    } else {
+      setShowDuplicateWarning(false)
     }
   }, [kickedParam])
 
@@ -37,6 +46,12 @@ export default function Login() {
     password: '',
     general: '',
   })
+
+  // State Đăng nhập bằng Google & Whitelist
+  const [showGoogleModal, setShowGoogleModal] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [customGoogleEmail, setCustomGoogleEmail] = useState('')
+  const [googleError, setGoogleError] = useState('')
 
   // State Quên mật khẩu Modal
   const [showForgotModal, setShowForgotModal] = useState(false)
@@ -143,9 +158,8 @@ export default function Login() {
 
   const handleSelectRole = (roleObj) => {
     setSelectedRole(roleObj)
-    const defaultUsers = { carrier: 'carrier01', driver: 'driver01', gate: 'gate01', operator: 'dispatcher01', yard: 'yard01', berth: 'shipping01', admin: 'admin' }
-    setUsername(defaultUsers[roleObj.id] || '')
-    setPassword('NexusPort@2026')
+    setUsername('')
+    setPassword('')
     setErrors({ username: '', password: '', general: '' })
     setShowDuplicateWarning(false)
     window.history.replaceState({}, '', '/login')
@@ -273,6 +287,90 @@ export default function Login() {
       setErrors((prev) => ({ ...prev, general: 'Không thể kết nối đến máy chủ backend!' }))
       showToastMessage('Không thể kết nối đến máy chủ backend!', 'error', 'error')
       setLoading(false)
+    }
+  }
+
+  // Hàm điều hướng theo vai trò được cấp phép từ Backend
+  const handleRedirectByRole = (user) => {
+    const normalizedRole = (user.role || '').trim().toLowerCase()
+    let redirectPath = '/dashboard'
+    if (normalizedRole === 'yard operator' || normalizedRole === 'yard staff' || normalizedRole === 'yard') {
+      redirectPath = '/yard-staff/dashboard'
+    } else if (normalizedRole === 'dispatcher' || normalizedRole === 'operator') {
+      redirectPath = '/dashboard'
+    } else if (normalizedRole === 'gate officer' || normalizedRole === 'gate') {
+      redirectPath = '/gate'
+    } else if (normalizedRole === 'berth staff' || normalizedRole === 'berth' || normalizedRole === 'hãng tàu' || normalizedRole === 'shipping line') {
+      redirectPath = '/shipping-line/overview'
+    } else if (normalizedRole === 'transport company' || normalizedRole === 'carrier' || normalizedRole === 'carrier staff' || normalizedRole === 'công ty vận tải') {
+      redirectPath = '/carrier-portal'
+    } else if (normalizedRole === 'driver') {
+      redirectPath = '/driver-portal'
+    } else if (normalizedRole === 'administrator' || normalizedRole === 'admin') {
+      redirectPath = '/dashboard'
+    }
+    return redirectPath
+  }
+
+  // Xử lý đăng nhập bằng tài khoản Google (kiểm tra Whitelist từ Backend)
+  const handleGoogleLogin = async ({ credential, idToken, email }) => {
+    setGoogleLoading(true)
+    setGoogleError('')
+    setErrors({ username: '', password: '', general: '' })
+
+    try {
+      const apiBase = import.meta.env.VITE_API_URL || '/api'
+      const response = await fetch(`${apiBase}/auth/google`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          credential,
+          idToken,
+          email,
+          expectedRole: selectedRole?.roleName || undefined,
+          rememberMe,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        setGoogleLoading(false)
+        const errorMsg = result.message || 'Đăng nhập Google thất bại.'
+        setGoogleError(errorMsg)
+        showToastMessage(errorMsg, 'error', 'error')
+        return
+      }
+
+      const { token, user } = result.data
+      showToastMessage(`Chào mừng ${user.fullName || user.username}! Đang chuyển hướng...`, 'check_circle', 'success')
+
+      const authUser = { ...user, token }
+      localStorage.setItem('user', JSON.stringify(authUser))
+      sessionStorage.setItem('user', JSON.stringify(authUser))
+      if (token) {
+        localStorage.setItem('token', token)
+        sessionStorage.setItem('token', token)
+      }
+      if (loginWithToken) {
+        loginWithToken(user, token, rememberMe)
+      }
+
+      setShowGoogleModal(false)
+      const redirectPath = handleRedirectByRole(user)
+
+      setTimeout(() => {
+        setGoogleLoading(false)
+        navigate(redirectPath, { replace: true })
+      }, 350)
+    } catch (err) {
+      console.error('Google login error:', err)
+      setGoogleLoading(false)
+      const msg = 'Không thể kết nối đến máy chủ backend!'
+      setGoogleError(msg)
+      showToastMessage(msg, 'wifi_off', 'error')
     }
   }
 
@@ -569,6 +667,32 @@ export default function Login() {
                   </div>
 
                   <p className="text-center text-white/20 text-[11px] mt-4 font-medium">Nhấn vào vai trò để tiếp tục</p>
+
+                  <div className="relative my-4 flex items-center justify-center">
+                    <div className="border-t border-white/10 w-full" />
+                    <span className="bg-[#121212] px-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                      hoặc
+                    </span>
+                    <div className="border-t border-white/10 w-full" />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedRole(null)
+                      setGoogleError('')
+                      setShowGoogleModal(true)
+                    }}
+                    className="w-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 text-white font-medium text-[13px] py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-3 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0"
+                  >
+                    <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                      <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                    </svg>
+                    <span>Đăng nhập nhanh với Google</span>
+                  </button>
                 </div>
               )}
 
@@ -732,6 +856,31 @@ export default function Login() {
                         )}
                       </button>
                     </div>
+
+                    <div className="relative my-4 flex items-center justify-center">
+                      <div className="border-t border-white/10 w-full" />
+                      <span className="bg-[#121212] px-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                        hoặc
+                      </span>
+                      <div className="border-t border-white/10 w-full" />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGoogleError('')
+                        setShowGoogleModal(true)
+                      }}
+                      className="w-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 text-white font-medium text-[13px] py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-3 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0"
+                    >
+                      <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                        <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                      </svg>
+                      <span>Đăng nhập bằng Google</span>
+                    </button>
                   </form>
                 </div>
               )}
@@ -742,6 +891,107 @@ export default function Login() {
         </div>
 
       </div>
+
+      {/* MODAL ĐĂNG NHẬP BẰNG GOOGLE (WHITELIST CHECK) */}
+      {showGoogleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-[480px] bg-[#121212] border border-white/15 rounded-2xl p-6 shadow-2xl relative">
+            <button
+              onClick={() => {
+                setShowGoogleModal(false)
+                setGoogleError('')
+              }}
+              className="absolute right-4 top-4 w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-white/50 hover:text-white transition-colors"
+            >
+              <span className="material-symbols-outlined text-[18px]">close</span>
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center">
+                <svg className="w-5 h-5" viewBox="0 0 24 24">
+                  <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                  <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                  <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                  <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-white font-bold text-[17px] leading-tight">Đăng nhập với Google</h3>
+                <p className="text-white/40 text-[12px] mt-0.5">Xác thực danh tính & kiểm tra quyền Whitelist</p>
+              </div>
+            </div>
+
+            {/* Thông báo Whitelist Policy */}
+            <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-300 text-xs flex items-start gap-2.5 mb-4">
+              <span className="material-symbols-outlined text-amber-400 text-[18px] flex-shrink-0 mt-0.5">verified_user</span>
+              <div className="leading-relaxed text-[11.5px]">
+                <strong className="text-amber-200">Quy tắc Whitelist:</strong> Chỉ các email đã được Quản trị viên cấp phép trước mới có thể truy cập hệ thống NexusPort.
+              </div>
+            </div>
+
+            {/* Thông báo lỗi nếu có */}
+            {googleError && (
+              <div className="p-3.5 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs flex items-start gap-2.5 mb-4 font-medium animate-fadeIn">
+                <span className="material-symbols-outlined text-red-400 text-base flex-shrink-0 mt-0.5">error</span>
+                <span>{googleError}</span>
+              </div>
+            )}
+
+            {/* Nhập email Google để xác thực Whitelist */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (!customGoogleEmail.trim()) {
+                  setGoogleError('Vui lòng nhập địa chỉ email Google.')
+                  return
+                }
+                handleGoogleLogin({ email: customGoogleEmail.trim() })
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-white/70 text-[12.5px] font-medium mb-1.5">
+                  Nhập Email Google của bạn
+                </label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    value={customGoogleEmail}
+                    onChange={(e) => {
+                      setCustomGoogleEmail(e.target.value)
+                      if (googleError) setGoogleError('')
+                    }}
+                    placeholder="name@gmail.com"
+                    autoFocus
+                    className="w-full bg-white/5 border border-white/15 focus:border-[#ff682c] focus:bg-white/10 text-white text-[13.5px] rounded-xl px-4 py-3 outline-none transition-all placeholder:text-white/30"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={googleLoading}
+                className="w-full bg-[#ff682c] hover:bg-[#e05520] text-white font-semibold text-[13.5px] py-3 px-4 rounded-xl transition-all shadow-md hover:shadow-[#ff682c]/20 flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[0.99]"
+              >
+                {googleLoading ? (
+                  <span className="flex items-center gap-2">
+                    <svg className="animate-spin w-4 h-4 text-white" viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40" strokeDashoffset="10" opacity="0.4"/>
+                      <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3"/>
+                    </svg>
+                    Đang xác thực tài khoản Whitelist...
+                  </span>
+                ) : (
+                  <>
+                    <span>Đăng nhập với Google</span>
+                    <span className="material-symbols-outlined text-[18px]">arrow_forward</span>
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* MODAL QUÊN MẬT KHẨU */}
       {showForgotModal && (
