@@ -68,7 +68,7 @@ export default function BookingBatchWorkspace({ onSaved }) {
   }
   useEffect(() => { reloadBatches() }, [page])
   useEffect(() => {
-    setOptions([]); setCatalog([]); setTrips([]); setPlan(null); setDocuments([]); setRequirements([]); setConfirmed(false)
+    setOptions([]); setCatalog([]); setTrips([]); setPlan(null); setDocuments(exportContext?.booking.preparation?.sharedDocuments || []); setRequirements([]); setConfirmed(false)
     version.current++
   }, [direction])
   const anchorKey = trips[0]?.key || ''
@@ -110,7 +110,7 @@ export default function BookingBatchWorkspace({ onSaved }) {
     if (new Set(selected.map(trip => trip.selection.containerId)).size !== selected.length) { setError('Chỉ chọn một bản khai/lượt bãi cho mỗi container.'); return }
     if (selected.some(trip => !trip.source.cargoType || trip.source.cargoType !== selected[0].source.cargoType)) { setError('Chỉ chọn container cùng loại hàng với container đầu tiên.'); return }
     invalidate(); setTrips(selected); setConfirmed(false)
-    if (!selected.length) { setDocuments([]); setRequirements([]) }
+    if (!selected.length) { setDocuments(exportContext?.booking.preparation?.sharedDocuments || []); setRequirements([]) }
   }
 
   const shapeKey = JSON.stringify({ direction, trips: trips.map(trip => ({ id: trip.selection.containerId, declarationId: trip.selection.declarationId, yardCode: trip.selection.yardCode, date: trip.date, start: trip.start, end: trip.end })) })
@@ -131,12 +131,10 @@ export default function BookingBatchWorkspace({ onSaved }) {
       selection: trip.selection, ...bookingWindow(trip.date, trip.start, trip.end),
       truckId: trip.truckId || null, driverId: trip.driverId || null, trailerNumber: trip.trailerNumber || null,
       isReeferPowerRequired: !!trip.power, tempTolerance: 2,
-      operation: {
-        temperatureSetpoint: trip.temperature === '' || trip.temperature == null ? null : Number(trip.temperature), temperatureUnit: 'C',
-        unNumber: trip.unNumber || null, dgClass: trip.dgClass || null, documents: []
-      }
-    }))
-  })
+      operation: { temperatureSetpoint: trip.temperature === '' || trip.temperature == null ? null : Number(trip.temperature), temperatureUnit: 'C',
+        unNumber: trip.unNumber || null, dgClass: trip.dgClass || null,
+        documents: (trip.source.exportContainer?.documents || []).filter(doc => !documents.some(shared =>
+          (doc.documentId && doc.documentId === shared.documentId) || (doc.documentType === shared.documentType && doc.fileUrl === shared.fileUrl))) } })) })
 
   const optimize = async () => {
     setError('')
@@ -151,8 +149,7 @@ export default function BookingBatchWorkspace({ onSaved }) {
       const result = await bookingService.planBatch(data)
       if (!active.current || version.current !== requestedVersion) return
       setPlan(result); setPlannedKey(shapeKey)
-      setTrips(previous => previous.map((trip, index) => ({
-        ...trip, source: result.trips[index].plan.source.containerNumber ? result.trips[index].plan.source : trip.source,
+      setTrips(previous => previous.map((trip, index) => ({ ...trip, source: result.trips[index].plan.source.containerNumber ? { ...trip.source, ...result.trips[index].plan.source } : trip.source,
         truckId: result.trips[index].truckId || '', driverId: result.trips[index].driverId || '',
         trailerNumber: result.trips[index].trailerNumber || ''
       })))
@@ -192,7 +189,7 @@ export default function BookingBatchWorkspace({ onSaved }) {
       if (!currentPlan) throw new Error('Bấm Tối ưu để kiểm tra lại toàn bộ chuyến trước khi tạo lô.')
       if (currentPlan.validationMessages?.length) throw new Error(currentPlan.validationMessages.join(' '))
       if (currentPlan.trips.some(trip => !trip.cargoAvailable)) throw new Error('Có container chưa đủ điều kiện theo giờ hẹn. Đổi giờ hoặc chọn container khác rồi Tối ưu lại.')
-      if (requirements.some(spec => spec.isMandatory && !documents.some(doc => doc.documentType === spec.documentType))) throw new Error('Bổ sung đủ chứng từ bắt buộc dùng chung cho lô.')
+      if (requirements.some(spec => spec.isMandatory && !documents.some(doc => doc.documentType === spec.documentType) && !trips.every(trip => trip.source.exportContainer?.documents?.some(doc => doc.documentType === spec.documentType)))) throw new Error('Bổ sung chứng từ bắt buộc dùng chung hoặc hồ sơ riêng của từng container.')
       const expectedNumbers = trips.map(trip => trip.source.containerNumber.toUpperCase()).sort()
       if (documents.some(doc => !doc.fileUrl || new Set(doc.containerNumbers || []).size !== (doc.containerNumbers || []).length || !expectedNumbers.every(number => doc.containerNumbers?.includes(number)))) {
         throw new Error('Mỗi chứng từ dùng chung cần tệp gốc và danh sách số container bao gồm toàn bộ lô, không trùng số. Đối chiếu nội dung chứng từ rồi bổ sung phạm vi.')
