@@ -26,7 +26,7 @@ const groupSelectionSources = (rows, trips) => {
   })
 }
 
-export default function BookingRequestComposer({ options, initialSource, existing, onSubmitted, onClose, onBusyChange, combined = false, modeSelector }) {
+export default function BookingRequestComposer({ options, sourcesLoading = false, sourcesError = false, initialSource, existing, onSubmitted, onClose, onBusyChange, combined = false, modeSelector }) {
   const initial = existing?.submission
   const [shippingLineId, setShippingLineId] = useState(initial?.shippingLineId || (options.shippingLines.length === 1 ? options.shippingLines[0].id : ''))
   const [voyageId, setVoyageId] = useState(initial?.voyageId || '')
@@ -55,6 +55,7 @@ export default function BookingRequestComposer({ options, initialSource, existin
   const voyages = useMemo(() => options.voyages.filter(row => row.shippingLineId === shippingLineId), [options.voyages, shippingLineId])
   const sources = useMemo(() => [...new Map([...options.sources, ...(existing?.containers || [])].map(row => [sourceKey(row), row])).values()], [options.sources, existing])
   const groups = [...sources.reduce((map, row) => { if (!map.has(row.cargoType)) map.set(row.cargoType, []); map.get(row.cargoType).push(row); return map }, new Map())]
+  const availableContainerCount = new Set(options.sources.map(source => source.containerId)).size
   const allGroupsExpanded = groups.length > 0 && groups.every(([type]) => expandedGroups.has(type))
   const cargo = trips[0]?.cargoType
   const pickupCargo = pickup?.cargoType
@@ -189,7 +190,7 @@ export default function BookingRequestComposer({ options, initialSource, existin
     } catch (cause) { if (alive.current) setError(errorText(cause)) }
     finally { submitLock.current = false; if (alive.current) setSending(false) }
   }
-  const disabled = sending || Boolean(uploading)
+  const disabled = sending || Boolean(uploading) || sourcesLoading || sourcesError
   return <form onSubmit={submit} className="space-y-5" aria-label="Tạo Booking hợp nhất">
     {modeSelector}
     <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 text-sm text-orange-950">
@@ -210,7 +211,8 @@ export default function BookingRequestComposer({ options, initialSource, existin
       </section>
       <section className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
         <div className="flex flex-wrap justify-between gap-2"><h3 className="font-bold">2. {combined ? 'Chọn container Giao' : 'Chọn container'} của {options.companyName || 'công ty'}</h3><span className="text-sm font-semibold text-teal-700">{combined ? 'Hai chiều · 1 Giao + 1 Nhận' : trips.length ? trips.length === 1 ? 'Booking riêng · 1 container' : `Booking theo lô · ${trips.length} container` : 'Chưa chọn container'}</span></div>
-        {!sources.length && <p className="text-sm text-slate-500">Chưa có bản khai container có hàng chưa được Booking. Khai báo container trước để chọn tại đây.</p>}
+        <p role={sourcesLoading ? 'status' : undefined} className="text-sm font-semibold text-teal-700">{sourcesLoading ? 'Đang cập nhật container có thể Booking…' : sourcesError ? 'Chưa tải được danh sách container. Bấm Làm mới để thử lại.' : `${availableContainerCount} container có thể đặt Booking mới.`}{!sourcesLoading && !sourcesError && existing && ' Container trong hồ sơ đang sửa được giữ lại để chỉnh sửa.'}</p>
+        {!sourcesLoading && !sourcesError && !sources.length && <p className="text-sm text-slate-500">Chưa có bản khai container có hàng chưa được Booking. Khai báo container trước để chọn tại đây.</p>}
         {groups.length > 0 && <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-xs text-slate-500">Bấm vào nhóm hàng để xem và chọn container.</p>
           <button type="button" className="text-sm font-semibold text-teal-700 underline underline-offset-2" onClick={() => setExpandedGroups(allGroupsExpanded ? new Set() : new Set(groups.map(([type]) => type)))}>{allGroupsExpanded ? 'Thu gọn tất cả' : 'Mở tất cả'}</button>

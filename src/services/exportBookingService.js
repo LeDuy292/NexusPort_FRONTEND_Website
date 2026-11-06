@@ -7,6 +7,18 @@ const post = async (path, body) => (await apiClient.post(`${base}${path}`, body)
 
 export const exportBookingService = {
   getOptions: () => get('/options'),
+  getDrafts: () => get('/drafts'),
+  getDraft: id => get(`/drafts/${id}`),
+  saveDraft: async (id, data) => (await apiClient.put(`${base}/drafts/${id}`, data)).data,
+  submitPreparation: data => post('/requests', data),
+  checkPreparation: data => post('/preparation/readiness', data),
+  confirmPreparation: (id, data) => post(`/${id}/preparation/confirm`, data),
+  getSiSuggestions: id => get(`/${id}/si-suggestions`),
+  uploadPreparationDocument: file => {
+    const form = new FormData()
+    form.append('file', file)
+    return post('/documents', form)
+  },
   planSubmission: data => post('/submissions/plan', data),
   submitBooking: data => post('/submissions', data),
   getBookings: params => get('', params),

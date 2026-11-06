@@ -249,7 +249,7 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext, 
       temperatureSetPoint: exportContext?.container.targetTemperature ?? null,
       dangerousGoodsClass: exportContext?.container.dgClass || '',
       unNumber: exportContext?.container.unNumber || '',
-      documents: exportContext?.container.customsDocumentUrl ? [{ documentType: 'CustomsDeclaration', fileUrl: exportContext.container.customsDocumentUrl, fileName: 'Hồ sơ hải quan đã khai' }] : []
+      documents: exportContext?.container.documents || (exportContext?.container.customsDocumentUrl ? [{ documentType: 'CustomsDeclaration', fileUrl: exportContext.container.customsDocumentUrl, fileName: 'Hồ sơ hải quan đã khai' }] : [])
     }
   ])
 
