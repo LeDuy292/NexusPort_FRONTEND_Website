@@ -14,6 +14,28 @@ export const ROLES = {
 }
 
 export const routeConfig = [
+  // Phân hệ Hãng tàu (Shipping Line)
+  {
+    path: '/shipping-line/dashboard',
+    allowedRoles: [ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/shipping-line/voyages',
+    allowedRoles: [ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/shipping-line/manifest',
+    allowedRoles: [ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/shipping-line/bills-of-lading',
+    allowedRoles: [ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/shipping-line/delivery-orders',
+    allowedRoles: [ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR],
+  },
+
   // Public Routes
   {
     path: '/login',
@@ -23,7 +45,7 @@ export const routeConfig = [
   // Protected Routes
   {
     path: '/',
-    allowedRoles: Object.values(ROLES), // Tất cả các vai trò sau khi đăng nhập đều truy cập được trang Landing điều hướng
+    allowedRoles: Object.values(ROLES),
   },
   {
     path: '/dashboard',

@@ -12,6 +12,7 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 const VALID_ROLES = [
   'Administrator',
+  'Shipping Line',
   'Transport Company',
   'Driver',
   'Dispatcher',
@@ -22,20 +23,22 @@ const VALID_ROLES = [
 
 const ROLE_COLORS = {
   'Administrator':     'bg-purple-100 text-purple-800 border-purple-200',
+  'Shipping Line':     'bg-cyan-100 text-cyan-800 border-cyan-200',
   'Dispatcher':        'bg-blue-100 text-blue-800 border-blue-200',
   'Gate Officer':      'bg-green-100 text-green-800 border-green-200',
   'Yard Operator':     'bg-orange-100 text-orange-800 border-orange-200',
-  'Berth Staff':       'bg-cyan-100 text-cyan-800 border-cyan-200',
+  'Berth Staff':       'bg-teal-100 text-teal-800 border-teal-200',
   'Transport Company': 'bg-yellow-100 text-yellow-800 border-yellow-200',
   'Driver':            'bg-red-100 text-red-800 border-red-200',
 }
 
 const ROLE_DESCS = {
   'Administrator':     'Quyền quản trị cao nhất toàn bộ hệ thống cảng',
+  'Shipping Line':     'Hãng tàu điều phối booking xuất khẩu, container và vận đơn B/L',
   'Dispatcher':        'Quản lý điều độ phương tiện & theo dõi tàu biển',
   'Gate Officer':      'Nhận diện OCR AI & phê duyệt xe ra vào cổng',
   'Yard Operator':     'Quản lý sơ đồ xếp chồng container & điều phối thiết bị bãi',
-  'Berth Staff':       'Hãng tàu & kiểm soát lịch cập bến',
+  'Berth Staff':       'Nhân viên kiểm soát cầu tàu bến cảng',
   'Transport Company': 'Doanh nghiệp vận tải & quản lý đội xe container',
   'Driver':            'Tài xế container thực hiện chuyến hàng',
 }

@@ -1,15 +1,3 @@
-// Shipping Line Import & Export Module
-import ShippingLineWrapper from './shipping-line/ShippingLineWrapper'
-import { OverviewPage } from './shipping-line/pages/overview/OverviewPage'
-import { BookingListPage } from './shipping-line/pages/export-booking/BookingListPage'
-import { BookingDetailPage } from './shipping-line/pages/export-booking/BookingDetailPage'
-import { VoyageListPage } from './shipping-line/pages/import-cargo/VoyageListPage'
-import { ManifestPage } from './shipping-line/pages/import-cargo/ManifestPage'
-import { BLDetailPage } from './shipping-line/pages/import-cargo/BLDetailPage'
-import { DeliveryOrderPage } from './shipping-line/pages/delivery-order/DeliveryOrderPage'
-import { ContainerSearchPage } from './shipping-line/pages/container/ContainerSearchPage'
-import { PortSyncPage } from './shipping-line/pages/port-sync/PortSyncPage'
-
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './routes/ProtectedRoute'
 import RoleRoute from './routes/RoleRoute'
@@ -25,7 +13,7 @@ import ContainerManagement from './pages/Containers/ContainerManagement'
 import CarrierProfile from './pages/Ships/CarrierProfile'
 import EquipmentDispatch from './pages/Dispatch/EquipmentDispatch'
 
-// Import các trang mới tạo
+// Import các trang hệ thống
 import Login from './pages/Auth/Login'
 import Unauthorized from './pages/Auth/Unauthorized'
 import OperatorDashboard from './pages/Dashboard/OperatorDashboard'
@@ -61,7 +49,7 @@ import DischargingProgress from './pages/BerthStaff/DischargingProgress'
 import OperationControl from './pages/BerthStaff/OperationControl'
 import BerthIncidentReporting from './pages/BerthStaff/BerthIncidentReporting'
 
-// Import các trang Dispatcher Control Center mới
+// Import các trang Dispatcher Control Center
 import VehicleDispatch from './pages/Dispatch/VehicleDispatch'
 import VehicleManagement from './pages/Fleet/VehicleManagement'
 import TrafficManagement from './pages/Traffic/TrafficManagement'
@@ -71,12 +59,19 @@ import DispatchHistory from './pages/Dispatch/DispatchHistory'
 import CameraMonitoring from './pages/Camera/CameraMonitoring'
 import GateBookingRequests from './pages/Dispatch/GateBookingRequests'
 
-// Import các trang Admin Portal mới
+// Import các trang Admin Portal
 import CarrierManagement from './pages/Admin/CarrierManagement'
 import BerthManagement from './pages/Admin/BerthManagement'
 import GateManagement from './pages/Admin/GateManagement'
 import EquipmentManagement from './pages/Admin/EquipmentManagement'
 import BillingChargesManagement from './pages/Admin/BillingChargesManagement'
+
+// Import phân hệ Hãng tàu (Shipping Line)
+import ShippingDashboard from './pages/ShippingLine/ShippingDashboard'
+import VesselVoyagePage from './pages/ShippingLine/VesselVoyagePage'
+import ManifestManagementPage from './pages/ShippingLine/ManifestManagementPage'
+import BillOfLadingPage from './pages/ShippingLine/BillOfLadingPage'
+import DeliveryOrderPage from './pages/ShippingLine/DeliveryOrderPage'
 
 // Component chuyển hướng trang chủ dựa trên vai trò (Role-based Home Redirect)
 function HomeRedirect() {
@@ -106,8 +101,11 @@ function HomeRedirect() {
   if (role === 'yard operator' || role === 'yard staff' || role === 'yard') {
     return <Navigate to="/yard-staff/dashboard" replace />
   }
-  if (role === 'berth staff' || role === 'berth' || role === 'shipping line') {
-    return <Navigate to="/shipping-line/overview" replace />
+  if (role === 'berth staff' || role === 'berth') {
+    return <Navigate to="/berth-staff/dashboard" replace />
+  }
+  if (role === 'shipping line' || role === 'shipping') {
+    return <Navigate to="/shipping-line/dashboard" replace />
   }
   if (role === 'administrator' || role === 'admin') {
     return <Navigate to="/dashboard" replace />
@@ -155,7 +153,7 @@ function App() {
             <Route path="/transport/cargo-declarations" element={<CargoDeclaration />} />
           </Route>
           
-          {/* 1. Nhóm Hãng tàu / Doanh nghiệp ngoài cảng (Transport Company) */}
+          {/* 1. Nhóm Doanh nghiệp vận tải (Transport Company) */}
           <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
             <Route path="/carrier-profile" element={<CarrierProfile />} />
             <Route path="/carrier-portal" element={<CarrierPortal />} />
@@ -178,9 +176,24 @@ function App() {
             <Route path="/dispatcher/cameras" element={<CameraMonitoring />} />
           </Route>
 
-          {/* Nhóm Nhân viên Cầu tàu (Berth Staff) */}
-          <Route element={<RoleRoute allowedRoles={[ROLES.BERTH_STAFF, ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR]} />}>
+          {/* Nhóm Nhân viên Cầu bến (Berth Staff) */}
+          <Route element={<RoleRoute allowedRoles={[ROLES.BERTH_STAFF, ROLES.ADMINISTRATOR]} />}>
             <Route path="/berth" element={<BerthOps />} />
+            <Route path="/berth-staff/dashboard" element={<BerthOperationsDashboard />} />
+            <Route path="/berth-staff/vessel-operation-control" element={<VesselOperationControl />} />
+            <Route path="/berth-staff/discharging-progress" element={<DischargingProgress />} />
+            <Route path="/berth-staff/operation-control" element={<OperationControl />} />
+            <Route path="/berth-staff/incident-reporting" element={<BerthIncidentReporting />} />
+          </Route>
+
+          {/* Phân hệ Hãng tàu (Shipping Line) */}
+          <Route element={<RoleRoute allowedRoles={[ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR]} />}>
+            <Route path="/shipping-line" element={<Navigate to="/shipping-line/dashboard" replace />} />
+            <Route path="/shipping-line/dashboard" element={<ShippingDashboard />} />
+            <Route path="/shipping-line/voyages" element={<VesselVoyagePage />} />
+            <Route path="/shipping-line/manifest" element={<ManifestManagementPage />} />
+            <Route path="/shipping-line/bills-of-lading" element={<BillOfLadingPage />} />
+            <Route path="/shipping-line/delivery-orders" element={<DeliveryOrderPage />} />
           </Route>
 
           {/* 3. Nhóm Vận hành Bãi (Yard Operator) */}
@@ -208,37 +221,6 @@ function App() {
             <Route path="/gate/incidents" element={<GateIncidents />} />
             <Route path="/gate/history" element={<GateHistory />} />
             <Route path="/gate/camera" element={<GateCameras />} />
-          </Route>
-
-          {/* Nhóm Hãng Tàu - Toàn Bộ Nghiệp Vụ Xuất Nhập Khẩu & Tác Nghiệp Bến */}
-          <Route element={<RoleRoute allowedRoles={[ROLES.BERTH_STAFF, ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR]} />}>
-            <Route element={<ShippingLineWrapper />}>
-              <Route path="/overview" element={<OverviewPage />} />
-              <Route path="/shipping-line" element={<Navigate to="/shipping-line/overview" replace />} />
-              <Route path="/shipping-line/overview" element={<OverviewPage />} />
-              <Route path="/export-bookings" element={<BookingListPage />} />
-              <Route path="/shipping-line/export-bookings" element={<BookingListPage />} />
-              <Route path="/export-bookings/:id" element={<BookingDetailPage />} />
-              <Route path="/shipping-line/export-bookings/:id" element={<BookingDetailPage />} />
-              <Route path="/import-cargo" element={<VoyageListPage />} />
-              <Route path="/shipping-line/import-cargo" element={<VoyageListPage />} />
-              <Route path="/import-cargo/manifest/:voyageNumber" element={<ManifestPage />} />
-              <Route path="/shipping-line/import-cargo/manifest/:voyageNumber" element={<ManifestPage />} />
-              <Route path="/import-cargo/bl/:blNumber" element={<BLDetailPage />} />
-              <Route path="/shipping-line/import-cargo/bl/:blNumber" element={<BLDetailPage />} />
-              <Route path="/delivery-orders" element={<DeliveryOrderPage />} />
-              <Route path="/shipping-line/delivery-orders" element={<DeliveryOrderPage />} />
-              <Route path="/shipping-line/containers" element={<ContainerSearchPage />} />
-              <Route path="/port-sync" element={<PortSyncPage />} />
-              <Route path="/shipping-line/port-sync" element={<PortSyncPage />} />
-            </Route>
-
-            {/* Giám Sát Cầu Bến & Sự Cố */}
-            <Route path="/berth-staff/dashboard" element={<Navigate to="/shipping-line/overview" replace />} />
-            <Route path="/berth-staff/vessel-operation-control" element={<Navigate to="/shipping-line/overview" replace />} />
-            <Route path="/berth-staff/incident-reporting" element={<Navigate to="/shipping-line/overview" replace />} />
-            <Route path="/berth-staff/*" element={<Navigate to="/shipping-line/overview" replace />} />
-            <Route path="/berth" element={<Navigate to="/shipping-line/overview" replace />} />
           </Route>
 
           {/* Nhóm Tài xế Container (Driver Portal) */}
@@ -283,4 +265,3 @@ function App() {
 }
 
 export default App
-
