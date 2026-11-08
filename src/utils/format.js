@@ -24,15 +24,22 @@ export function formatCurrency(value) {
   }).format(value)
 }
 
-// Chuẩn hóa biển số xe: 29c12345 -> 29C-123.45
+// Identity for comparisons/searches is independent of separators used by OCR or bookings.
+export function normalizePlate(plate) {
+  return String(plate ?? '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+}
+
+export function matchesPlateSearch(plate, query) {
+  const key = normalizePlate(query)
+  return Boolean(key) && normalizePlate(plate).includes(key)
+}
+
+// Keep the entire series (C, LD, Y3...) before the five-digit serial number.
 export function formatPlateNumber(plate) {
   if (!plate) return ''
-  const cleaned = plate.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
-  if (cleaned.length >= 7) {
-    const head = cleaned.substring(0, 3)
-    const mid = cleaned.substring(3, 6)
-    const tail = cleaned.substring(6)
-    return `${head}-${mid}.${tail}`
-  }
-  return cleaned
+  const cleaned = normalizePlate(plate)
+  const match = cleaned.match(/^(\d{2})([A-Z]{1,2}|[A-Z]\d)(\d{3})(\d{2})$/)
+  if (match) return `${match[1]}${match[2]}-${match[3]}.${match[4]}`
+  // Do not invent punctuation for older, foreign or unrecognized formats.
+  return String(plate).trim().toUpperCase()
 }

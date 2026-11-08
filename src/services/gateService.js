@@ -34,6 +34,18 @@ const aiClient = {
 }
 
 export const gateService = {
+  async getBookings(params={}) {
+    return (await apiClient.get('/v1/Gate/bookings',{params})).data;
+  },
+  async getEntryOrders() {
+    return (await apiClient.get('/v1/Gate/entry-orders')).data;
+  },
+  async commandBarrier(payload) {
+    return (await apiClient.post('/v1/Gate/barrier-commands',payload)).data;
+  },
+  async recordPassageIn(payload) {
+    return (await apiClient.post('/v1/Gate/passage-in',{...payload,passageConfirmed:true})).data;
+  },
   // ── AI CAMERA & RECOGNITION (Python FastAPI microservice) ───────────────
 
   /**

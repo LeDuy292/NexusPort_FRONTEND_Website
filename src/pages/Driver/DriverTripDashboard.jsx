@@ -5,6 +5,10 @@ import {
   acknowledgeTrip,
   pickupVehicle,
   pickupContainer,
+  confirmGateIn,
+  confirmArrivedAtYard,
+  confirmContainerDelivery,
+  confirmGateOut,
   confirmVehicleReturn,
 } from '../../services/tripService'
 import { subscribeDriverTripEvents } from '../../services/driverRealtimeService'
@@ -38,10 +42,15 @@ const STEPS = [
 ]
 
 const ACTION_CONFIG = {
-  'Assigned':           { label: 'Xác nhận nhận chuyến',    fn: acknowledgeTrip,           icon: '✋', color: 'bg-blue-600 hover:bg-blue-700' },
-  'Acknowledged':       { label: 'Xác nhận đã lấy xe',      fn: pickupVehicle,             icon: '🚛', color: 'bg-indigo-600 hover:bg-indigo-700' },
-  'Vehicle Picked Up':  { label: 'Xác nhận đã lấy container',fn: pickupContainer,          icon: '📦', color: 'bg-amber-600 hover:bg-amber-700' },
-  'Gate Out Completed': { label: 'Xác nhận trả xe',         fn: confirmVehicleReturn,      icon: '🔑', color: 'bg-green-600 hover:bg-green-700' },
+  'Assigned':           { label: 'Xác nhận nhận chuyến',        fn: acknowledgeTrip,           icon: '✋', color: 'bg-blue-600 hover:bg-blue-700' },
+  'Acknowledged':       { label: 'Xác nhận đã lấy xe',          fn: pickupVehicle,             icon: '🚛', color: 'bg-indigo-600 hover:bg-indigo-700' },
+  'Vehicle Picked Up':  { label: 'Xác nhận đã lấy container',   fn: pickupContainer,          icon: '📦', color: 'bg-amber-600 hover:bg-amber-700' },
+  'Container Picked Up':{ label: 'Xác nhận Gate In qua cổng',   fn: confirmGateIn,             icon: '🚧', color: 'bg-orange-600 hover:bg-orange-700' },
+  'Gate In':            { label: 'Xác nhận đã đến bãi (Yard)',  fn: confirmArrivedAtYard,       icon: '🏭', color: 'bg-teal-600 hover:bg-teal-700' },
+  'In Transit':         { label: 'Xác nhận đã đến bãi (Yard)',  fn: confirmArrivedAtYard,       icon: '🏭', color: 'bg-teal-600 hover:bg-teal-700' },
+  'Arrived at Yard':    { label: 'Xác nhận giao container',     fn: confirmContainerDelivery,  icon: '🤝', color: 'bg-emerald-600 hover:bg-emerald-700' },
+  'Container Delivered':{ label: 'Xác nhận Gate Out rời cảng',  fn: confirmGateOut,             icon: '🏁', color: 'bg-lime-600 hover:bg-lime-700' },
+  'Gate Out Completed': { label: 'Xác nhận trả xe & hoàn tất',  fn: confirmVehicleReturn,      icon: '🔑', color: 'bg-green-600 hover:bg-green-700' },
 }
 
 const NEXT_STEP_LABELS = {
@@ -207,7 +216,8 @@ function TripDetail({ trip, onBack, onTripUpdated, onOpenNavigation }) {
       const result = await action.fn(trip.id, payload)
       setNote('')
       setToast({ message: result.message || 'Thao tác thành công!', type: 'success' })
-      onTripUpdated(result.data.trip)
+      const updated = result.data?.trip || result.data || result
+      onTripUpdated(updated)
     } catch (err) {
       setToast({ message: err.response?.data?.message || err.message || 'Có lỗi xảy ra.', type: 'error' })
     } finally {
@@ -310,11 +320,18 @@ function TripDetail({ trip, onBack, onTripUpdated, onOpenNavigation }) {
         </div>
       )}
 
-      {/* Action Button */}
-      {['Container Picked Up', 'Container Delivered', 'Gate In', 'In Transit', 'Arrived at Yard'].includes(trip.status) && <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 space-y-3">
-        <p className="text-xs text-amber-900 leading-relaxed">{trip.status === 'Container Picked Up' ? 'Đến cổng vào và xuất trình booking. Gate Officer sẽ kiểm tra và ghi nhận xe đã qua cổng.' : 'Mở Smart Route để xác nhận đã đến và giao nhận đúng container của booking. Trạng thái qua cổng được cập nhật sau khi Gate Officer xác nhận.'}</p>
-        <button type="button" onClick={() => onOpenNavigation(trip)} className="w-full py-3 bg-teal-700 text-white font-bold rounded-xl text-xs">Xem bản đồ và trạng thái qua cổng</button>
-      </div>}
+      {/* Smart Route banner for in-yard navigation */}
+      {['In Transit', 'Arrived at Yard'].includes(trip.status) && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 space-y-2">
+          <p className="text-xs text-indigo-900 leading-relaxed font-medium">
+            🧭 Bạn có thể mở Smart Route để xem sơ đồ bãi và lộ trình di chuyển tới Block {trip.yardBlock || 'chỉ định'}.
+          </p>
+          <button type="button" onClick={() => onOpenNavigation(trip)} className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm flex items-center justify-center gap-1.5">
+            <span>🗺️</span>
+            <span>Mở bản đồ điều hướng Smart Route</span>
+          </button>
+        </div>
+      )}
       {!isCompleted && !isCancelled && action && (
         <div className="bg-white border border-gray-100 rounded-2xl p-4 shadow-sm space-y-3">
           <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Bước tiếp theo</p>

@@ -18,7 +18,7 @@ import Login from './pages/Auth/Login'
 import Unauthorized from './pages/Auth/Unauthorized'
 import OperatorDashboard from './pages/Dashboard/OperatorDashboard'
 import BookingManagement from './pages/Booking/BookingManagement'
-import YardMap from './pages/Yard/YardMap'
+import YardDesignPreview from './pages/Yard/YardDesignPreview'
 import BillingPayment from './pages/Billing/BillingPayment'
 import UserRoleManagement from './pages/Users/UserRoleManagement'
 import CarrierPortal from './pages/Carrier/CarrierPortal'
@@ -36,7 +36,6 @@ import IncidentManagement from './pages/Incident/IncidentManagement'
 import DriverManagement from './pages/Carrier/DriverManagement'
 import YardOperations from './pages/Yard/YardOperations'
 import YardOperationsDashboard from './pages/Yard/YardOperationsDashboard'
-import YardMapContainerManagement from './pages/Yard/YardMapContainerManagement'
 import YardMovementOperations from './pages/Yard/YardMovementOperations'
 import ContainerGateOutPreparation from './pages/Yard/ContainerGateOutPreparation'
 import ContainerDetail from './pages/Yard/ContainerDetail'
@@ -61,6 +60,7 @@ import GateBookingRequests from './pages/Dispatch/GateBookingRequests'
 
 // Import các trang Admin Portal
 import CarrierManagement from './pages/Admin/CarrierManagement'
+import TransportCompanyManagement from './pages/Admin/TransportCompanyManagement'
 import BerthManagement from './pages/Admin/BerthManagement'
 import GateManagement from './pages/Admin/GateManagement'
 import EquipmentManagement from './pages/Admin/EquipmentManagement'
@@ -131,6 +131,7 @@ function App() {
       <Routes>
         {/* Route Công khai */}
         <Route path="/login" element={<Login />} />
+        {import.meta.env.DEV && <Route element={<MainLayout previewUser={{username:'Bản xem trước',role:ROLES.DISPATCHER}} />}><Route path="/preview/yard" element={<YardDesignPreview previewOnly />} /></Route>}
 
         {/* Tuyến đường được Bảo vệ (Yêu cầu Đăng nhập) */}
         <Route element={<ProtectedRoute />}>
@@ -200,8 +201,10 @@ function App() {
           <Route element={<RoleRoute allowedRoles={[ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
             <Route path="/dashboard" element={<DashboardIndex />} />
             <Route path="/yard-staff/dashboard" element={<YardOperationsDashboard />} />
-            <Route path="/yard" element={<YardOperations />} />
-            <Route path="/yard-staff/map" element={<YardMap />} />
+            <Route path="/yard" element={<YardDesignPreview />} />
+            <Route path="/yard/map" element={<YardDesignPreview />} />
+            <Route path="/yard/design" element={<Navigate to="/yard" replace />} />
+            <Route path="/yard-staff/map" element={<YardDesignPreview />} />
             <Route path="/yard-ops" element={<YardOperations />} />
             <Route path="/yard/receiving" element={<YardReceiving />} />
             <Route path="/yard-staff/movement-operations" element={<YardMovementOperations />} />
@@ -240,6 +243,7 @@ function App() {
             <Route path="/users" element={<UserRoleManagement />} />
             <Route path="/reports" element={<ReportsAnalytics />} />
             <Route path="/admin/carriers" element={<CarrierManagement />} />
+            <Route path="/admin/transport-companies" element={<TransportCompanyManagement />} />
             <Route path="/admin/berths" element={<BerthManagement />} />
             <Route path="/admin/gates" element={<GateManagement />} />
             <Route path="/admin/equipment" element={<EquipmentManagement />} />

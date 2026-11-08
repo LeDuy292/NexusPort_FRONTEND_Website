@@ -5,7 +5,6 @@ import NotificationCenter from '../components/NotificationCenter'
 
 // Danh sách các mục trong Sidebar tương ứng với các route
 const sidebarItems = [
-
   {
     path: '/containers',
     label: 'Quản Lý Container',
@@ -305,12 +304,12 @@ const sidebarItems = [
 ]
 
 
-export default function MainLayout() {
+export default function MainLayout({ previewUser = null }) {
   const navigate = useNavigate()
   const location = useLocation()
   const [clock, setClock] = useState('--:--:--')
   const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
-  const user = stored ? JSON.parse(stored) : { username: 'Khách', role: 'None' }
+  const user = previewUser || (stored ? JSON.parse(stored) : { username: 'Khách', role: 'None' })
 
   useEffect(() => {
     const updateTime = () => {
@@ -323,6 +322,7 @@ export default function MainLayout() {
   }, [])
 
   const handleLogout = async () => {
+    if (previewUser) { navigate('/login'); return }
     try {
       const apiBase = import.meta.env.VITE_API_URL || '/api'
       const token = localStorage.getItem('token') || sessionStorage.getItem('token')
@@ -342,10 +342,10 @@ export default function MainLayout() {
   }
 
   // Lọc các sidebar items được phép hiển thị với vai trò người dùng hiện tại (Administrator thấy tất cả để kiểm thử)
-  const allowedItems = sidebarItems.filter(item => user.role === ROLES.ADMINISTRATOR || item.roles.includes(user.role))
+  const allowedItems = sidebarItems.filter(item => previewUser ? item.path === '/yard' : user.role === ROLES.ADMINISTRATOR || item.roles.includes(user.role))
 
   // Lấy tiêu đề trang hiện tại
-  const currentTitle = sidebarItems.find(item => item.path === location.pathname)?.label || 'Cổng Quản trị'
+  const currentTitle = previewUser ? 'Bản Đồ Bãi' : sidebarItems.find(item => item.path === location.pathname)?.label || 'Cổng Quản trị'
 
   if (user.role === ROLES.DRIVER) {
     return (
@@ -401,7 +401,7 @@ export default function MainLayout() {
             return (
               <Link
                 key={item.path}
-                to={item.path}
+                to={previewUser ? '/preview/yard' : item.path}
                 className={linkClass}
               >
                 {/* Material Icon */}

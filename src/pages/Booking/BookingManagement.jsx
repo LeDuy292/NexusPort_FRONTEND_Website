@@ -1,10 +1,13 @@
 import ContainerBookingForm from '../../components/Containers/ContainerBookingForm'
+import BookingBatchWorkspace from '../../components/Containers/BookingBatchWorkspace'
+import BookingFleetDetails from '../../components/Containers/BookingFleetDetails'
 import ContainerJourneySearch from '../Containers/ContainerJourneySearch'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import React, { useState, useEffect, useMemo } from 'react'
 import { bookingService } from '../../services/bookingService'
 import driverService from '../../services/driverService'
 import vehicleService from '../../services/vehicleService'
+import { formatPlateNumber } from '../../utils/format'
 
 export default function BookingManagement() {
   const location = useLocation()
@@ -228,11 +231,11 @@ export default function BookingManagement() {
 
   // Helper lấy biển số xe chính xác cho từng booking
   const getBookingVehiclePlate = (bk) => {
-    if (bk.vehiclePlate) return bk.vehiclePlate
+    if (bk.vehiclePlate) return formatPlateNumber(bk.vehiclePlate)
     const cached = fleetCache[bk.bookingCode]
-    if (cached?.vehiclePlate) return cached.vehiclePlate
+    if (cached?.vehiclePlate) return formatPlateNumber(cached.vehiclePlate)
     const truck = (availableResources.trucks || []).find(t => t.id === bk.truckId || t.id === bk.vehicleId)
-    if (truck?.plateNumber) return truck.plateNumber
+    if (truck?.plateNumber) return formatPlateNumber(truck.plateNumber)
     return null
   }
 
@@ -561,8 +564,7 @@ export default function BookingManagement() {
     setActionLoading(true)
     try {
       await bookingService.verifyDocument(bookingId, documentId, {
-        status: 'Verified',
-        verificationNotes: 'Duyệt chứng từ bởi điều độ cảng NexusPort'
+        isApproved: true
       })
       showNotification('Đã duyệt và xác thực chứng từ thành công!')
       const fresh = await bookingService.getBookingById(bookingId)
@@ -1059,6 +1061,7 @@ export default function BookingManagement() {
           {[
             { key: 'my_bookings', label: 'Danh Sách Lịch Hẹn', icon: 'format_list_bulleted', badge: totalCount },
             { key: 'create', label: 'Tạo Lịch Hẹn Mới', icon: 'add_circle' },
+            { key: 'batch', label: 'Booking Theo Lô', icon: 'view_list' },
             { key: 'container_status', label: 'Lộ Trình Container', icon: 'timeline' },
           ].map((tab) => (
             <button
@@ -1516,6 +1519,7 @@ export default function BookingManagement() {
       {/* TAB 2: CREATE BOOKING WIZARD */}
       {/* ========================================================================= */}
       {activeTab === 'create' && <ContainerBookingForm onClose={() => setActiveTab('my_bookings')} onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
+      {activeTab === 'batch' && <BookingBatchWorkspace onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
 
       {/* ========================================================================= */}
       {/* TAB 3: CONTAINER JOURNEY TRACKING */}
@@ -1586,7 +1590,7 @@ export default function BookingManagement() {
                 >
                   {(availableResources.trucks || []).map((t) => (
                     <option key={t.id} value={t.id}>
-                      🚚 Biển số: {t.plateNumber} (Tải trọng {t.maxPayloadTon}T)
+                      🚚 Biển số: {t.plateNumber}
                     </option>
                   ))}
                 </select>
@@ -1800,6 +1804,9 @@ export default function BookingManagement() {
                 <span className="text-slate-600 font-bold">Trạng thái vận hành:</span>
                 {renderBookingStatusBadge(selectedBooking.status)}
               </div>
+
+              <BookingFleetDetails vehicle={selectedBooking.vehicleDetails} driver={selectedBooking.driverDetails} saved />
+              {selectedBooking.trailerNumber && <p className="text-xs font-bold">Biển số rơ-moóc: {selectedBooking.trailerNumber}</p>}
 
               {/* Thông tin Cước & Thanh Toán TOS */}
               <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/70 space-y-3">
@@ -2074,12 +2081,12 @@ export default function BookingManagement() {
                                       </a>
                                     )}
                                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                      doc.status === 'Verified' ? 'bg-emerald-100 text-emerald-800' :
-                                      doc.status === 'Rejected' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
+                                      (doc.verificationStatus || doc.status) === 'Verified' ? 'bg-emerald-100 text-emerald-800' :
+                                      (doc.verificationStatus || doc.status) === 'Rejected' ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800'
                                     }`}>
-                                      {getDocStatusVi(doc.status)}
+                                      {getDocStatusVi(doc.verificationStatus || doc.status)}
                                     </span>
-                                    {doc.status !== 'Verified' && (
+                                    {(doc.verificationStatus || doc.status) !== 'Verified' && (
                                       <button
                                         type="button"
                                         disabled={actionLoading}

@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import apiClient from '../../services/apiClient'
 import gateService from '../../services/gateService'
-
-// Chuẩn hóa biển số xe để so sánh chính xác
-const normalizePlate = (str) => (str ? String(str).toUpperCase().replace(/[^A-Z0-9]/g, '') : '')
+import { formatPlateNumber, normalizePlate } from '../../utils/format'
+import { gateBookingLookup } from '../../features/booking-dispatch/gateBookingLookup'
 
 // Format khung giờ hiển thị
 const formatTimeSlot = (start, end) => {
@@ -76,7 +74,7 @@ export default function GateVerification() {
 
   // 2. Chuyển đổi dữ liệu Booking thực tế sang Profile đối chiếu
   const mapBookingToProfile = (bkg) => {
-    const plate = bkg.vehiclePlate || bkg.licensePlate || '29Y3-036.58'
+    const plate = formatPlateNumber(bkg.vehiclePlate || bkg.licensePlate)
     const status = bkg.status || 'Approved'
     const timeStart = bkg.appointmentStart || bkg.validFrom
     const timeEnd = bkg.appointmentEnd || bkg.validTo
@@ -109,7 +107,7 @@ export default function GateVerification() {
   const loadRealBookingsAndHistory = async () => {
     try {
       const [bookingRes, historyRes] = await Promise.all([
-        apiClient.get('/v1/booking').catch(() => ({ data: { items: [] } })),
+        gateService.getBookings({pageSize:150}).then(data=>({data})),
         gateService.getVerificationHistory().catch(() => ({ data: [] }))
       ])
 
@@ -138,6 +136,7 @@ export default function GateVerification() {
       }
     } catch (err) {
       console.error('Lỗi nạp dữ liệu booking thật:', err)
+      showToast(`Không tải được lịch booking cổng: ${err.message}`)
     }
   }
 
@@ -146,15 +145,10 @@ export default function GateVerification() {
     if (!query || !query.trim()) return
 
     const clean = query.trim().toUpperCase()
-    const cleanNorm = normalizePlate(clean)
     setVerifying(true)
 
     // A. Tìm kiếm trong danh sách Bookings thực tế
-    const foundBooking = realBookings.find((b) => {
-      const pNorm = normalizePlate(b.vehiclePlate)
-      const bCode = String(b.bookingCode || b.bookingNumber || '').toUpperCase()
-      return (pNorm && pNorm === cleanNorm) || bCode === clean
-    })
+    const { profileBooking: foundBooking, bookingNumber } = gateBookingLookup(realBookings, clean)
 
     let profileToUse = currentProfile
     if (foundBooking) {
@@ -166,30 +160,31 @@ export default function GateVerification() {
     // B. Gửi truy vấn đối soát thông tin tới Rule Engine để lấy chi tiết đối chiếu
     try {
       const res = await gateService.verifyGateScan({
-        gateCode: 'GATE_A',
+        gateCode: 'GATE-01',
         laneCode: 'LANE_01',
         detectedVehiclePlate: clean,
         vehiclePlate: clean,
-        bookingNumber: foundBooking?.bookingCode || clean,
+        bookingNumber,
         driverConfirmed: true,
       })
 
-      let finalStatus = 'PASS'
+      if (!res.success || !res.data) throw new Error(res.error || 'Không xác minh được với hệ thống cổng.')
+      let finalStatus = 'FAIL'
       let finalCode = `CHK-${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, '0')}-${Math.floor(100000 + Math.random() * 900000)}`
       let finalPlate = clean
-      let finalDriver = profileToUse.driverName
-      let finalBkg = profileToUse.bookingNumber
+      let finalDriver = '—'
+      let finalBkg = ''
 
       if (res.success && res.data) {
         const bkg = res.data.booking
         const drv = res.data.driver
+        finalStatus = res.data.status === 'PASS' || res.data.isSuccess === true ? 'PASS' : 'FAIL'
+        finalCode = res.data.verificationCode || finalCode
+        finalPlate = formatPlateNumber(res.data.detectedVehiclePlate || clean)
 
         if (bkg || drv) {
-          finalPlate = res.data.detectedVehiclePlate || clean
           finalDriver = drv?.fullName || bkg?.driverName || profileToUse.driverName
           finalBkg = bkg?.bookingNumber || profileToUse.bookingNumber
-          finalStatus = res.data.status === 'PASS' || res.data.isSuccess === true ? 'PASS' : 'FAIL'
-          finalCode = res.data.verificationCode || finalCode
 
           setCurrentProfile((prev) => ({
             ...prev,
@@ -202,7 +197,6 @@ export default function GateVerification() {
             bookingNumber: finalBkg,
             bookingStatus: bkg?.status || prev.bookingStatus,
           }))
-          showToast(`✓ Đã đồng bộ thông tin đối chiếu cho xe ${clean}`)
         }
       }
 
@@ -221,17 +215,17 @@ export default function GateVerification() {
           detectedPlate: finalPlate,
           driverName: finalDriver,
           bookingId: finalBkg,
-          notes: finalStatus === 'PASS'
+          notes: res.data.message || (finalStatus === 'PASS'
             ? 'Tự động lưu: Xe vào cổng, hồ sơ tài xế và phương tiện khớp hoàn toàn'
-            : 'Tự động lưu: Xe vào cổng, phát hiện sai lệch thông tin hồ sơ',
+            : 'Tự động lưu: Xe vào cổng, phát hiện sai lệch thông tin hồ sơ'),
           verificationTime: new Date().toISOString(),
         }
 
         setHistoryList((prev) => [autoRecord, ...prev])
-        showToast(`⚡ Tự động ghi nhật ký: Xe ${finalPlate} đã được đối chiếu`)
       }
-    } catch {
-      // Dùng dữ liệu booking đã nạp
+      showToast(finalStatus === 'PASS' ? `✓ Xe ${finalPlate} đã xác minh hợp lệ` : `Từ chối: ${res.data.message || res.data.failureReason || 'Không đủ điều kiện vào cổng'}`)
+    } catch (err) {
+      showToast(err.message || 'Không xác minh được với hệ thống cổng.')
     } finally {
       setVerifying(false)
     }

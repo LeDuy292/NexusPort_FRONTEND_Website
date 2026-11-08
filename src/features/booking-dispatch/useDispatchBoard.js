@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { connectDispatchBoard, getDispatchBoard } from './dispatchService'
+import { connectDispatchBoard, connectYardMonitor, getDispatchBoard } from './dispatchService'
 
 export function useDispatchBoard(date) {
   const [data, setData] = useState(null)
@@ -33,9 +33,10 @@ export function useDispatchBoard(date) {
       onDisconnected: () => { if (active) setConnected(false) },
     })
     const timer = setInterval(() => { if (!document.hidden) void reload() }, 15000)
+    const cleanupYard = connectYardMonitor(() => { if (active) void reload() })
     const onFocus = () => { if (!document.hidden) void reload() }
     document.addEventListener('visibilitychange', onFocus)
-    return () => { active = false; cleanup(); clearInterval(timer); document.removeEventListener('visibilitychange', onFocus) }
+    return () => { active = false; cleanup(); cleanupYard(); clearInterval(timer); document.removeEventListener('visibilitychange', onFocus) }
   }, [date])
   return { data, loading, error, connected, reload: () => reloadRef.current() }
 }

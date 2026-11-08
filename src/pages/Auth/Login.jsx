@@ -1,14 +1,73 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import useAuth from '../../hooks/useAuth'
+import { openGoogleOAuthTab, getGoogleClientId } from '../../services/googleAuthService'
 
 export default function Login() {
   const navigate = useNavigate()
   const location = useLocation()
   const { loginWithToken } = useAuth()
 
-  // Kiểm tra cờ kicked từ query params
-  const isKicked = new URLSearchParams(location.search).get('kicked') === 'true'
+  // Kiểm tra cờ kicked từ query params (chỉ khi có giá trị chính xác là 'duplicate')
+  const kickedParam = new URLSearchParams(location.search).get('kicked')
+  const [showDuplicateWarning, setShowDuplicateWarning] = useState(
+    kickedParam === 'duplicate'
+  )
+
+  // Lắng nghe kết quả xác thực từ tab Google OAuth chuyển hướng về
+  useEffect(() => {
+    // 1. Kiểm tra hash URL khi Google OAuth redirect về (Implicit Flow)
+    const hash = window.location.hash
+    if (hash && (hash.includes('access_token=') || hash.includes('id_token='))) {
+      const params = new URLSearchParams(hash.replace(/^#/, ''))
+      const accessToken = params.get('access_token')
+      const idToken = params.get('id_token')
+
+      // Nếu đang chạy trong popup tab Google, gửi kết quả về tab chính rồi đóng lại
+      if (window.opener && window.opener !== window) {
+        try {
+          window.opener.postMessage({ type: 'GOOGLE_AUTH_CALLBACK', accessToken, idToken }, window.location.origin)
+          window.close()
+          return
+        } catch (_) {}
+      }
+
+      window.history.replaceState({}, '', window.location.pathname)
+      if (accessToken || idToken) {
+        handleGoogleLogin({ accessToken, idToken })
+      }
+    }
+
+    // 2. Lắng nghe thông điệp từ popup tab Google gửi về
+    const handleMessage = (event) => {
+      if (event.origin !== window.location.origin) return
+      if (event.data?.type === 'GOOGLE_AUTH_CALLBACK') {
+        const { accessToken, idToken } = event.data
+        if (accessToken || idToken) {
+          handleGoogleLogin({ accessToken, idToken })
+        }
+      }
+    }
+    window.addEventListener('message', handleMessage)
+    return () => window.removeEventListener('message', handleMessage)
+  }, [])
+
+  // Dọn dẹp token cũ khi đang ở trang login và xử lý cờ duplicate warning
+  useEffect(() => {
+    try {
+      localStorage.removeItem('user')
+      localStorage.removeItem('token')
+      sessionStorage.removeItem('user')
+      sessionStorage.removeItem('token')
+    } catch (_) {}
+
+    if (kickedParam === 'duplicate') {
+      setShowDuplicateWarning(true)
+      window.history.replaceState({}, '', window.location.pathname)
+    } else {
+      setShowDuplicateWarning(false)
+    }
+  }, [kickedParam])
 
   // State form chính
   const [step, setStep] = useState(1)
@@ -26,6 +85,10 @@ export default function Login() {
     password: '',
     general: '',
   })
+
+  // State Đăng nhập bằng Google
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [googleError, setGoogleError] = useState('')
 
   // State Quên mật khẩu Modal
   const [showForgotModal, setShowForgotModal] = useState(false)
@@ -146,6 +209,8 @@ export default function Login() {
     setUsername(defaultUsers[roleObj.id] || '')
     setPassword('NexusPort@2026')
     setErrors({ username: '', password: '', general: '' })
+    setShowDuplicateWarning(false)
+    window.history.replaceState({}, '', '/login')
     setTimeout(() => {
       setStep(2)
     }, 150)
@@ -272,6 +337,116 @@ export default function Login() {
       setErrors((prev) => ({ ...prev, general: 'Không thể kết nối đến máy chủ backend!' }))
       showToastMessage('Không thể kết nối đến máy chủ backend!', 'error', 'error')
       setLoading(false)
+    }
+  }
+
+  // Hàm điều hướng theo vai trò được cấp phép từ Backend
+  const handleRedirectByRole = (user) => {
+    const normalizedRole = (user.role || '').trim().toLowerCase()
+    let redirectPath = '/dashboard'
+    if (normalizedRole === 'yard operator' || normalizedRole === 'yard staff' || normalizedRole === 'yard') {
+      redirectPath = '/yard-staff/dashboard'
+    } else if (normalizedRole === 'dispatcher' || normalizedRole === 'operator') {
+      redirectPath = '/dashboard'
+    } else if (normalizedRole === 'gate officer' || normalizedRole === 'gate') {
+      redirectPath = '/gate'
+    } else if (normalizedRole === 'berth staff' || normalizedRole === 'berth' || normalizedRole === 'hãng tàu' || normalizedRole === 'shipping line') {
+      redirectPath = '/shipping-line/overview'
+    } else if (normalizedRole === 'transport company' || normalizedRole === 'carrier' || normalizedRole === 'carrier staff' || normalizedRole === 'công ty vận tải') {
+      redirectPath = '/carrier-portal'
+    } else if (normalizedRole === 'driver') {
+      redirectPath = '/driver-portal'
+    } else if (normalizedRole === 'administrator' || normalizedRole === 'admin') {
+      redirectPath = '/dashboard'
+    }
+    return redirectPath
+  }
+
+  // Xử lý đăng nhập bằng tài khoản Google (kiểm tra Whitelist từ Backend)
+  const handleGoogleLogin = async ({ credential, idToken, accessToken, email }) => {
+    setGoogleLoading(true)
+    setGoogleError('')
+    setErrors({ username: '', password: '', general: '' })
+
+    try {
+      const apiBase = import.meta.env.VITE_API_URL || '/api'
+      const response = await fetch(`${apiBase}/auth/google`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          credential,
+          idToken,
+          accessToken,
+          email,
+          expectedRole: selectedRole?.roleName || undefined,
+          rememberMe,
+        }),
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        setGoogleLoading(false)
+        const errorMsg = result.message || 'Đăng nhập Google thất bại.'
+        setGoogleError(errorMsg)
+        showToastMessage(errorMsg, 'error', 'error')
+        return
+      }
+
+      const { token, user } = result.data
+      showToastMessage(`Chào mừng ${user.fullName || user.username}! Đang chuyển hướng...`, 'check_circle', 'success')
+
+      const authUser = { ...user, token }
+      localStorage.setItem('user', JSON.stringify(authUser))
+      sessionStorage.setItem('user', JSON.stringify(authUser))
+      if (token) {
+        localStorage.setItem('token', token)
+        sessionStorage.setItem('token', token)
+      }
+      if (loginWithToken) {
+        loginWithToken(user, token, rememberMe)
+      }
+
+      const redirectPath = handleRedirectByRole(user)
+
+      setTimeout(() => {
+        setGoogleLoading(false)
+        navigate(redirectPath, { replace: true })
+      }, 350)
+    } catch (err) {
+      console.error('Google login error:', err)
+      setGoogleLoading(false)
+      const msg = 'Không thể kết nối đến máy chủ backend!'
+      setGoogleError(msg)
+      showToastMessage(msg, 'wifi_off', 'error')
+    }
+  }
+
+  // Mở tab Google OAuth chính thức để người dùng chọn tài khoản Gmail
+  const handleInitiateGoogleSignIn = () => {
+    setGoogleError('')
+    setGoogleLoading(true)
+    showToastMessage('Đang mở tab Google để chọn tài khoản Gmail...', 'account_circle', 'info')
+
+    try {
+      openGoogleOAuthTab({
+        onSuccess: async ({ accessToken, idToken }) => {
+          await handleGoogleLogin({ accessToken, idToken })
+        },
+        onError: (err) => {
+          setGoogleLoading(false)
+          const msg = err.message || 'Không thể mở tab đăng nhập Google.'
+          setGoogleError(msg)
+          showToastMessage(msg, 'error', 'error')
+        },
+      })
+    } catch (err) {
+      setGoogleLoading(false)
+      const msg = err.message || 'Không thể mở tab Google.'
+      setGoogleError(msg)
+      showToastMessage(msg, 'error', 'error')
     }
   }
 
@@ -479,8 +654,8 @@ export default function Login() {
             {/* Glass Card */}
             <div className="bg-white/[0.03] border border-white/10 backdrop-blur-2xl rounded-2xl p-8 shadow-2xl transition-all">
               
-              {/* Banner cảnh báo nếu phiên bị kick */}
-              {isKicked && (
+              {/* Banner cảnh báo phiên cũ đã bị đăng xuất vì có phiên mới đăng nhập */}
+              {showDuplicateWarning && (
                 <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-3 animate-fadeIn">
                   <span className="material-symbols-outlined text-amber-400 text-xl flex-shrink-0 mt-0.5">warning</span>
                   <div className="flex-1">
@@ -489,6 +664,17 @@ export default function Login() {
                       Tài khoản của bạn vừa được đăng nhập trên một thiết bị hoặc trình duyệt khác. Để bảo vệ an toàn tài khoản, phiên làm việc trước đó đã tự động đăng xuất.
                     </div>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowDuplicateWarning(false)
+                      window.history.replaceState({}, '', '/login')
+                    }}
+                    className="text-amber-400/60 hover:text-amber-200 p-1"
+                    title="Đóng thông báo"
+                  >
+                    <span className="material-symbols-outlined text-sm">close</span>
+                  </button>
                 </div>
               )}
 
@@ -557,6 +743,29 @@ export default function Login() {
                   </div>
 
                   <p className="text-center text-white/20 text-[11px] mt-4 font-medium">Nhấn vào vai trò để tiếp tục</p>
+
+                  <div className="relative my-4 flex items-center justify-center">
+                    <div className="border-t border-white/10 w-full" />
+                    <span className="bg-[#121212] px-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                      hoặc
+                    </span>
+                    <div className="border-t border-white/10 w-full" />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleInitiateGoogleSignIn}
+                    disabled={googleLoading}
+                    className="w-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 text-white font-medium text-[13px] py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-3 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
+                  >
+                    <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                      <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                    </svg>
+                    <span>Đăng nhập nhanh với Google</span>
+                  </button>
                 </div>
               )}
 
@@ -720,6 +929,29 @@ export default function Login() {
                         )}
                       </button>
                     </div>
+
+                    <div className="relative my-4 flex items-center justify-center">
+                      <div className="border-t border-white/10 w-full" />
+                      <span className="bg-[#121212] px-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider">
+                        hoặc
+                      </span>
+                      <div className="border-t border-white/10 w-full" />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleInitiateGoogleSignIn}
+                      disabled={googleLoading}
+                      className="w-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 text-white font-medium text-[13px] py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-3 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
+                    >
+                      <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
+                        <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
+                        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                      </svg>
+                      <span>Đăng nhập bằng Google</span>
+                    </button>
                   </form>
                 </div>
               )}

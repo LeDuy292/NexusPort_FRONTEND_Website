@@ -1,4 +1,5 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { getTransportOrders } from '../../services/tripService'
 
 const initialAppointments = [
   {
@@ -60,9 +61,57 @@ const initialAppointments = [
 ]
 
 export default function DriverAppointments({ onSelectQR }) {
-  const [appointments] = useState(initialAppointments)
+  const [appointments, setAppointments] = useState(initialAppointments)
+  const [loading, setLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('Today')
   const [selectedApp, setSelectedApp] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    getTransportOrders()
+      .then(res => {
+        if (!active) return
+        const orders = res?.orders || res?.trips || []
+        if (Array.isArray(orders) && orders.length > 0) {
+          const mapped = orders.map(o => {
+            const isCompleted = ['Completed', 'Vehicle Returned'].includes(o.status)
+            const isCancelled = o.status === 'Cancelled'
+            let tabGroup = 'Today'
+            if (isCompleted) tabGroup = 'Completed'
+            else if (isCancelled) tabGroup = 'Cancelled'
+            else if (['Assigned', 'Acknowledged'].includes(o.status)) tabGroup = 'Upcoming'
+
+            return {
+              id: o.orderCode || o.tripCode || o.bookingCode || (o.id ? o.id.slice(0, 8) : 'TRIP'),
+              date: o.appointmentStart ? new Date(o.appointmentStart).toLocaleDateString('vi-VN') : 'Hôm nay',
+              time: o.appointmentStart ? new Date(o.appointmentStart).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '09:00 AM',
+              vehicle: o.truckPlate || 'Chưa gán xe',
+              container: o.containerNo || 'Container',
+              transType: o.bookingType === 'Delivery' ? 'TRẢ CONTAINER (DELIVERY)' : 'NHẬN CONTAINER (PICKUP)',
+              status: o.status,
+              statusColor: isCompleted
+                ? 'bg-green-50 text-green-700 border-green-200'
+                : isCancelled
+                ? 'bg-red-50 text-red-700 border-red-200'
+                : 'bg-blue-50 text-blue-700 border-blue-200',
+              gate: o.gateInCode || 'Cổng A',
+              driverName: o.driverName || 'Tài xế',
+              qrData: `NEXUSPORT_DRIVER_${o.orderCode || o.tripCode || o.bookingCode || o.id}`,
+              tabGroup,
+            }
+          })
+          setAppointments(mapped)
+        }
+      })
+      .catch(() => {
+        // Fallback silently to initialAppointments
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => { active = false }
+  }, [])
 
   const filteredApps = appointments.filter(a => {
     if (activeTab === 'Today') return a.tabGroup === 'Today'
