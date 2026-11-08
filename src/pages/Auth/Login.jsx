@@ -168,13 +168,23 @@ export default function Login() {
     },
     {
       id: 'berth',
-      title: 'Hãng tàu',
-      desc: 'Hãng tàu / Doanh nghiệp vận tải biển',
+      title: 'Nhân viên Cầu bến',
+      desc: 'Vận hành cầu tàu & kiểm soát lịch cập bến',
       roleName: 'Berth Staff',
-      icon: 'directions_boat',
+      icon: 'anchor',
       iconBg: 'rgba(118,169,250,0.12)',
       iconColor: '#76a9fa',
-      redirect: '/shipping-line/overview'
+      redirect: '/berth-staff/dashboard'
+    },
+    {
+      id: 'shipping',
+      title: 'Hãng tàu',
+      desc: 'Quản lý lịch tàu, Manifest, B/L & eDO',
+      roleName: 'Shipping Line',
+      icon: 'directions_boat',
+      iconBg: 'rgba(255,107,0,0.12)',
+      iconColor: '#ff6b00',
+      redirect: '/shipping-line/dashboard'
     },
     {
       id: 'admin',
@@ -195,8 +205,9 @@ export default function Login() {
 
   const handleSelectRole = (roleObj) => {
     setSelectedRole(roleObj)
-    setUsername('')
-    setPassword('')
+    const defaultUsers = { carrier: 'carrier01', driver: 'driver01', gate: 'gate01', operator: 'dispatcher01', yard: 'yard01', berth: 'berth01', shipping: 'shipping01', admin: 'admin' }
+    setUsername(defaultUsers[roleObj.id] || '')
+    setPassword('NexusPort@2026')
     setErrors({ username: '', password: '', general: '' })
     setShowDuplicateWarning(false)
     window.history.replaceState({}, '', '/login')
@@ -304,8 +315,10 @@ export default function Login() {
         redirectPath = '/dashboard'
       } else if (normalizedRole === 'gate officer' || normalizedRole === 'gate') {
         redirectPath = '/gate'
-      } else if (normalizedRole === 'berth staff' || normalizedRole === 'berth' || normalizedRole === 'hãng tàu' || normalizedRole === 'shipping line') {
-        redirectPath = '/shipping-line/overview'
+      } else if (normalizedRole === 'berth staff' || normalizedRole === 'berth') {
+        redirectPath = '/berth-staff/dashboard'
+      } else if (normalizedRole === 'shipping line' || normalizedRole === 'shipping') {
+        redirectPath = '/shipping-line/dashboard'
       } else if (normalizedRole === 'transport company' || normalizedRole === 'carrier' || normalizedRole === 'carrier staff' || normalizedRole === 'công ty vận tải') {
         redirectPath = '/carrier-portal'
       } else if (normalizedRole === 'driver') {
