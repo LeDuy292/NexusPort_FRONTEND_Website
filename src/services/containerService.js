@@ -19,6 +19,7 @@ export const containerService = {
   getOwnVisits: (id) => nodeApiClient.get(`/containers/own-visits/${id}`),
   getContainers: (params) => nodeApiClient.get('/containers', params),
   getCargoTypes: () => nodeApiClient.get('/containers/cargo-types'),
+  getRegistrationIsoTypes: () => nodeApiClient.get('/containers/intake/shipping-line/iso-types'),
   getContainerTypes: () => nodeApiClient.get('/containers/types'),
   getContainerById: (id) => nodeApiClient.get(`/containers/${id}`),
   getContainerStatus: (id) => nodeApiClient.get(`/containers/${id}/status`),
