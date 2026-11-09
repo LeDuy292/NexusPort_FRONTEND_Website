@@ -6,6 +6,18 @@ import NotificationCenter from '../components/NotificationCenter'
 // Danh sách các mục trong Sidebar tương ứng với các route
 const sidebarItems = [
   {
+    path: '/services',
+    label: 'Dịch Vụ Cảng',
+    icon: 'widgets',
+    roles: [ROLES.TRANSPORT_COMPANY, 'Carrier', ROLES.CARRIER_STAFF],
+  },
+  {
+    path: '/admin/service-catalog',
+    label: 'Danh Mục & Biểu Phí',
+    icon: 'price_change',
+    roles: [ROLES.ADMINISTRATOR],
+  },
+  {
     path: '/containers',
     label: 'Tra cứu lượt bãi',
     icon: 'search',
@@ -315,6 +327,7 @@ const sidebarItems = [
 export default function MainLayout({ previewUser = null }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const catalogPage = ['/services', '/admin/service-catalog'].includes(location.pathname)
   const [clock, setClock] = useState('--:--:--')
   const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
   const user = previewUser || (stored ? JSON.parse(stored) : { username: 'Khách', role: 'None' })
@@ -366,7 +379,7 @@ export default function MainLayout({ previewUser = null }) {
   }
 
   return (
-    <div className="flex h-screen w-full bg-slate-50 text-slate-800 font-sans antialiased overflow-hidden">
+    <div className={`flex h-screen w-full bg-slate-50 text-slate-800 font-sans antialiased overflow-hidden ${catalogPage ? 'epc-shell' : ''}`}>
 
       {/* ═══════════════════════════ SIDEBAR ═══════════════════════════ */}
       <aside className="w-[260px] min-w-[260px] h-screen bg-white border-r border-slate-200/90 flex flex-col z-20 flex-shrink-0 shadow-2xs">
@@ -457,6 +470,7 @@ export default function MainLayout({ previewUser = null }) {
 
         {/* TOP BAR */}
         <header className="h-16 px-8 flex justify-between items-center border-b border-slate-200/90 bg-white flex-shrink-0 z-10 shadow-2xs">
+          {catalogPage && <details key={location.pathname} className="epc-mobile-nav"><summary aria-label="Mở menu điều hướng"><span className="material-symbols-outlined">menu</span></summary><nav>{allowedItems.map(item => <Link key={item.path} to={item.path} aria-current={location.pathname === item.path ? 'page' : undefined}>{item.label}</Link>)}</nav></details>}
           <div className="text-slate-500 text-xs font-medium flex items-center gap-2">
             <span>
               {user.role === 'Berth Staff'

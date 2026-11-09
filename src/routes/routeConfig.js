@@ -18,6 +18,8 @@ export const CONTAINER_TRANSPORT_ROLES = [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER
 export const YARD_VISIT_OPERATORS = [ROLES.ADMINISTRATOR, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER]
 
 export const routeConfig = [
+  { path: '/services', allowedRoles: [ROLES.TRANSPORT_COMPANY, 'Carrier', ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR] },
+  { path: '/admin/service-catalog', allowedRoles: [ROLES.ADMINISTRATOR] },
   // Phân hệ Hãng tàu (Shipping Line)
   {
     path: '/shipping-line/dashboard',

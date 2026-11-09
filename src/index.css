@@ -1,5 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=DM+Serif+Display&display=swap');
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 /* === Material Symbols Font & Class === */
 @font-face {
   font-family: 'Material Symbols Outlined';
