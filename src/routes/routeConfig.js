@@ -238,6 +238,10 @@ export const routeConfig = [
     allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {
+    path: '/admin/shipping-lines',
+    allowedRoles: [ROLES.ADMINISTRATOR],
+  },
+  {
     path: '/admin/carriers',
     allowedRoles: [ROLES.ADMINISTRATOR],
   },

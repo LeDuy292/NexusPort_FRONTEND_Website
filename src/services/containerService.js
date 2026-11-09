@@ -1,6 +1,12 @@
 import nodeApiClient from './nodeApiClient'
 
 export const containerService = {
+  getShippingLines: () => nodeApiClient.get('/containers/shipping-lines'),
+  getOwnShippingLine: () => nodeApiClient.get('/containers/shipping-lines/me'),
+  getShippingLineAccounts: () => nodeApiClient.get('/containers/shipping-lines/accounts'),
+  saveShippingLine: (id, data) => id
+    ? nodeApiClient.put(`/containers/shipping-lines/${id}`, data)
+    : nodeApiClient.post('/containers/shipping-lines', data),
   getGates: () => nodeApiClient.get('/containers/gates'),
   getLegacyBookings: (containerNumber) => nodeApiClient.get('/containers/legacy-bookings', { containerNumber }),
   getLegacyOptions: (id, containerId) => nodeApiClient.get(`/containers/legacy-bookings/${id}/options`, { containerId }),

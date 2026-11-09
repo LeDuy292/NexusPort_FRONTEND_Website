@@ -234,6 +234,12 @@ const sidebarItems = [
   },
 
   {
+    path: '/admin/shipping-lines',
+    label: 'Danh Mục Hãng Tàu',
+    icon: 'directions_boat',
+    roles: [ROLES.ADMINISTRATOR],
+  },
+  {
     path: '/admin/berths',
     label: 'Quản Lý Cầu Bến',
     icon: 'anchor',

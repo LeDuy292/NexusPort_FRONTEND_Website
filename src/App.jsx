@@ -12,6 +12,7 @@ import DamageReport from './pages/Containers/DamageReport'
 import ContainerManagement from './pages/Containers/ContainerManagement'
 import ContainerJourneySearch from './pages/Containers/ContainerJourneySearch'
 import ContainerRegistration from './pages/ShippingLine/ContainerRegistration'
+import ShippingLineDirectory from './pages/Admin/ShippingLineDirectory'
 import CarrierProfile from './pages/Ships/CarrierProfile'
 import EquipmentDispatch from './pages/Dispatch/EquipmentDispatch'
 
@@ -252,6 +253,7 @@ function App() {
             <Route path="/users" element={<UserRoleManagement />} />
             <Route path="/reports" element={<ReportsAnalytics />} />
             <Route path="/admin/carriers" element={<CarrierManagement />} />
+            <Route path="/admin/shipping-lines" element={<ShippingLineDirectory />} />
             <Route path="/admin/transport-companies" element={<TransportCompanyManagement />} />
             <Route path="/admin/berths" element={<BerthManagement />} />
             <Route path="/admin/gates" element={<GateManagement />} />
