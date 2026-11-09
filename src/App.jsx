@@ -10,7 +10,7 @@ import BerthOps from './pages/Ships/BerthOps'
 import CargoDeclaration from './pages/Containers/CargoDeclaration'
 import DamageReport from './pages/Containers/DamageReport'
 import ContainerManagement from './pages/Containers/ContainerManagement'
-import ContainerJourneySearch from './pages/Containers/ContainerJourneySearch'
+import ContainerEquipmentSearch from './pages/Containers/ContainerEquipmentSearch'
 import ContainerRegistration from './pages/ShippingLine/ContainerRegistration'
 import ShippingLineDirectory from './pages/Admin/ShippingLineDirectory'
 import CarrierProfile from './pages/Ships/CarrierProfile'
@@ -153,7 +153,7 @@ function App() {
           </Route>
 
           <Route element={<RoleRoute allowedRoles={Object.values(ROLES)} />}>
-            <Route path="/containers/search" element={<ContainerJourneySearch identityOnly />} />
+            <Route path="/containers/search" element={<ContainerEquipmentSearch />} />
           </Route>
 
           <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF]} />}>

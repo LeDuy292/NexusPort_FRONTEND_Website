@@ -1,72 +1,47 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { containerService } from "../../services/containerService";
 import { declarationBookingSummary } from "../../utils/declarationBookingSummary";
+
+import ContainerEquipmentSearch from "./ContainerEquipmentSearch";
 
 const loadLabel = (value) =>
   ({ full: "Đầy hàng", empty: "Rỗng", unknown: "Chưa xác định" })[value] ||
   value;
 const date = (value) => (value ? new Date(value).toLocaleString("vi-VN") : "—");
-const inputClass =
-  "w-full rounded-xl border border-chalk bg-fog px-3.5 py-2.5 text-xs font-semibold text-carbon outline-none focus:border-signal-orange focus:bg-white focus:ring-0";
 
 export default function CargoDeclaration() {
   const navigate = useNavigate();
-  const [sharedIdentities, setSharedIdentities] = useState([]);
   const [declarations, setDeclarations] = useState([]);
-  const [types, setTypes] = useState([]);
   const [cargoTypes, setCargoTypes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
-  const [typeFilter, setTypeFilter] = useState("");
   const [selected, setSelected] = useState(null);
-  const load = useCallback(async () => {
-    const number = search.trim().toUpperCase();
-    if (!/^[A-Z0-9]{4,11}$/.test(number)) {
-      setError("Nhập số Container từ 4 đến 11 ký tự để tìm kiếm.");
-      return;
-    }
-    setLoading(true);
-    setError("");
-    setSharedIdentities([]);
-    setDeclarations([]);
-    try {
-      const [rows, shared] = await Promise.all([
-        containerService.getTransportDeclarations(number),
-        containerService.searchIdentities({ containerNumber: number, limit: 50 }),
-      ]);
-      setDeclarations(rows);
-      setSharedIdentities(shared.items);
-      setSearched(true);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [search]);
+  const declarationRequest = useRef(0);
+
   useEffect(() => {
-    Promise.all([
-      containerService.getContainerTypes(),
-      containerService.getCargoTypes(),
-    ])
-      .then(([equipment, cargo]) => {
-        setTypes(equipment);
-        setCargoTypes(cargo);
-      })
-      .catch((e) => setError(e.message));
+    containerService.getCargoTypes().then(setCargoTypes).catch((e) => setError(e.message));
   }, []);
-  const filtered = useMemo(
-    () =>
-      declarations.filter(
-        (item) => !typeFilter || item.containerTypeCode === typeFilter,
-      ),
-    [declarations, typeFilter],
-  );
-  const filteredIdentities = sharedIdentities.filter(
-    (item) => !typeFilter || item.containerTypeCode === typeFilter,
-  );
+
+  async function loadDeclarations({ containerNumber, prefix, containerTypeId }) {
+    const request = ++declarationRequest.current;
+    const number = containerNumber || prefix;
+    setDeclarations([]);
+    setError("");
+    setSearched(Boolean(number));
+    setLoading(Boolean(number));
+    if (!number) return;
+    try {
+      const rows = await containerService.getTransportDeclarations(number);
+      if (request === declarationRequest.current)
+        setDeclarations(rows.filter(row => !containerTypeId || row.containerTypeId === containerTypeId));
+    } catch (error) {
+      if (request === declarationRequest.current) setError(error.message);
+    } finally {
+      if (request === declarationRequest.current) setLoading(false);
+    }
+  }
   const cargoName = (item) =>
     item.cargoTypeName ||
     cargoTypes.find((t) => t.code === item.cargoType)?.name ||
@@ -115,76 +90,16 @@ export default function CargoDeclaration() {
           </p>
         </div>
       </header>
-      {error && (
-        <div
-          role="alert"
-          className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800"
-        >
-          {error}
-          <button onClick={load} disabled={loading} className="ml-4 underline">
-            Thử lại
-          </button>
-        </div>
-      )}
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          load();
-        }}
-        className="flex flex-wrap gap-4 rounded-xl border border-chalk bg-white p-4"
-      >
-        <input
-          aria-label="Số Container"
-          placeholder="Nhập ít nhất 4 ký tự của số Container"
-          className={`${inputClass} max-w-sm`}
-          value={search}
-          maxLength={11}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <select
-          aria-label="Lọc loại Container"
-          className={`${inputClass} max-w-xs`}
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-        >
-          <option value="">Tất cả loại Container</option>
-          {types.map((t) => (
-            <option key={t.id} value={t.code}>
-              {t.code} · {t.description}
-            </option>
-          ))}
-        </select>
-        <button disabled={loading} className="rounded-xl bg-carbon px-4 py-2 text-sm font-bold text-white disabled:opacity-50">
-          {loading ? "Đang tìm…" : "Tìm Container"}
-        </button>
-      </form>
-      {filteredIdentities.map((sharedIdentity) => (
-        <div key={sharedIdentity.id} className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-chalk bg-white p-5">
-          <div>
-            <p className="text-xs font-bold text-slate">
-              Container dùng chung · Chỉ hiển thị số và loại
-            </p>
-            <b className="mt-1 block font-mono">
-              {sharedIdentity.containerNumber} ·{" "}
-              {sharedIdentity.containerTypeCode}
-            </b>
-          </div>
-          <button
-            onClick={() =>
-              navigate("/booking", {
-                state: {
-                  containerNumber: sharedIdentity.containerNumber,
-                  containerId: sharedIdentity.id,
-                  bookingType: "Pickup",
-                },
-              })
-            }
-            className="rounded-xl bg-signal-orange px-4 py-2.5 text-sm font-bold text-white"
-          >
-            Đặt Pickup bằng mã lượt bãi
-          </button>
-        </div>
-      ))}
+      <ContainerEquipmentSearch
+        embedded
+        onSearch={loadDeclarations}
+        onPickup={item => navigate("/booking", { state: {
+          containerNumber: item.containerNumber,
+          containerId: item.id,
+          bookingType: "Pickup",
+        } })}
+      />
+      {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>}
       <h2 className="text-lg font-bold text-carbon">
         Bản khai hàng đã có của công ty
       </h2>
@@ -215,14 +130,14 @@ export default function CargoDeclaration() {
                   Đang tải khai báo...
                 </td>
               </tr>
-            ) : !filtered.length ? (
+            ) : !declarations.length ? (
               <tr>
                 <td colSpan={8} className="p-10 text-center">
                   {searched ? "Công ty chưa có bản khai hàng phù hợp." : "Nhập số Container để tìm khai báo hàng hóa."}
                 </td>
               </tr>
             ) : (
-              filtered.map((item) => {
+              declarations.map((item) => {
                 const { directBookings, pickupBooking } = declarationBookingSummary(item);
                 return <tr key={item.id} className="hover:bg-fog">
                   <td className="px-5 py-4 font-mono font-bold">
