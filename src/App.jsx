@@ -232,6 +232,7 @@ function App() {
           <Route element={<RoleRoute allowedRoles={[ROLES.DRIVER, ROLES.ADMINISTRATOR]} />}>
             <Route path="/driver-portal" element={<DriverPortalContainer />} />
             <Route path="/driver-home" element={<DriverPortalContainer />} />
+            <Route path="/driver" element={<DriverPortalContainer />} />
           </Route>
 
           {/* Báo cáo hư hỏng (Dành cho Yard Operator & Quản trị viên) */}
