@@ -22,6 +22,6 @@ export default function RoleRoute({ allowedRoles }) {
     return <Navigate to="/unauthorized" replace />
   }
 
-  return <Outlet />
+  return <Outlet context={user} />
 }
 

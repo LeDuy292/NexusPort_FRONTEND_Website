@@ -116,6 +116,10 @@ export default function DriverPortalContainer() {
         </div>
 
         <div className="flex items-center gap-1">
+          {!subView && <button type="button" aria-label="Tra cứu lượt bãi" title="Tra cứu lượt bãi"
+            onClick={() => navigate('/containers')} className="p-2 text-slate hover:text-carbon">
+            <span className="material-symbols-outlined">search</span>
+          </button>}
           {subView && (
             <button
               onClick={() => setSubView(null)}

@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './routes/ProtectedRoute'
 import RoleRoute from './routes/RoleRoute'
-import { ROLES } from './routes/routeConfig'
+import { CONTAINER_TRANSPORT_ROLES, ROLES } from './routes/routeConfig'
 import MainLayout from './layouts/MainLayout'
 import SessionListener from './components/SessionListener'
 
@@ -10,6 +10,8 @@ import BerthOps from './pages/Ships/BerthOps'
 import CargoDeclaration from './pages/Containers/CargoDeclaration'
 import DamageReport from './pages/Containers/DamageReport'
 import ContainerManagement from './pages/Containers/ContainerManagement'
+import ContainerRegistration from './pages/ShippingLine/ContainerRegistration'
+import ShippingLineDirectory from './pages/Admin/ShippingLineDirectory'
 import CarrierProfile from './pages/Ships/CarrierProfile'
 import EquipmentDispatch from './pages/Dispatch/EquipmentDispatch'
 
@@ -115,16 +117,6 @@ function HomeRedirect() {
   return <Navigate to="/unauthorized" replace />
 }
 
-function ContainerRoute() {
-  const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
-  let role = ''
-  try { role = JSON.parse(storedUser || '{}')?.role?.trim().toLowerCase() || '' } catch { role = '' }
-  if (['transport company', 'carrier staff', 'carrier'].includes(role)) {
-    return <Navigate to="/cargo" replace />
-  }
-  return <ContainerManagement />
-}
-
 function App() {
   return (
     <>
@@ -154,10 +146,10 @@ function App() {
           <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
             <Route path="/containers" element={<ContainerRoute />} />
             <Route path="/container-intake" element={<Navigate to="/containers" replace />} />
+            <Route path="/cargo" element={<Navigate to="/containers" replace />} />
           </Route>
 
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF]} />}>
-            <Route path="/cargo" element={<CargoDeclaration />} />
+          <Route element={<RoleRoute allowedRoles={CONTAINER_TRANSPORT_ROLES} />}>
             <Route path="/transport/cargo-declarations" element={<CargoDeclaration />} />
           </Route>
           
@@ -195,11 +187,14 @@ function App() {
           </Route>
 
           {/* Phân hệ Hãng tàu (Shipping Line) */}
+          <Route element={<RoleRoute allowedRoles={[ROLES.SHIPPING_LINE]} />}>
+            <Route path="/shipping-line/containers" element={<ContainerRegistration />} />
+            <Route path="/shipping-line/manifest" element={<ManifestManagementPage />} />
+          </Route>
           <Route element={<RoleRoute allowedRoles={[ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR]} />}>
             <Route path="/shipping-line" element={<Navigate to="/shipping-line/dashboard" replace />} />
             <Route path="/shipping-line/dashboard" element={<ShippingDashboard />} />
             <Route path="/shipping-line/voyages" element={<VesselVoyagePage />} />
-            <Route path="/shipping-line/manifest" element={<ManifestManagementPage />} />
             <Route path="/shipping-line/bills-of-lading" element={<BillOfLadingPage />} />
             <Route path="/shipping-line/delivery-orders" element={<DeliveryOrderPage />} />
           </Route>
@@ -250,6 +245,7 @@ function App() {
             <Route path="/users" element={<UserRoleManagement />} />
             <Route path="/reports" element={<ReportsAnalytics />} />
             <Route path="/admin/carriers" element={<CarrierManagement />} />
+            <Route path="/admin/shipping-lines" element={<ShippingLineDirectory />} />
             <Route path="/admin/transport-companies" element={<TransportCompanyManagement />} />
             <Route path="/admin/berths" element={<BerthManagement />} />
             <Route path="/admin/gates" element={<GateManagement />} />
