@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './routes/ProtectedRoute'
 import RoleRoute from './routes/RoleRoute'
-import { ROLES } from './routes/routeConfig'
+import { CONTAINER_TRANSPORT_ROLES, ROLES } from './routes/routeConfig'
 import MainLayout from './layouts/MainLayout'
 import SessionListener from './components/SessionListener'
 
@@ -10,7 +10,6 @@ import BerthOps from './pages/Ships/BerthOps'
 import CargoDeclaration from './pages/Containers/CargoDeclaration'
 import DamageReport from './pages/Containers/DamageReport'
 import ContainerManagement from './pages/Containers/ContainerManagement'
-import ContainerEquipmentSearch from './pages/Containers/ContainerEquipmentSearch'
 import ContainerRegistration from './pages/ShippingLine/ContainerRegistration'
 import ShippingLineDirectory from './pages/Admin/ShippingLineDirectory'
 import CarrierProfile from './pages/Ships/CarrierProfile'
@@ -117,16 +116,6 @@ function HomeRedirect() {
   return <Navigate to="/unauthorized" replace />
 }
 
-function ContainerRoute() {
-  const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
-  let role = ''
-  try { role = JSON.parse(storedUser || '{}')?.role?.trim().toLowerCase() || '' } catch { role = '' }
-  if (['transport company', 'carrier staff', 'carrier'].includes(role)) {
-    return <Navigate to="/cargo" replace />
-  }
-  return <ContainerManagement />
-}
-
 function App() {
   return (
     <>
@@ -147,17 +136,15 @@ function App() {
 
         {/* Toàn bộ các trang quản trị dùng chung cấu trúc Sidebar thông qua MainLayout */}
         <Route element={<MainLayout />}>
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
-            <Route path="/containers" element={<ContainerRoute />} />
-            <Route path="/container-intake" element={<Navigate to="/containers" replace />} />
-          </Route>
-
           <Route element={<RoleRoute allowedRoles={Object.values(ROLES)} />}>
-            <Route path="/containers/search" element={<ContainerEquipmentSearch />} />
+            <Route path="/containers" element={<ContainerManagement />} />
+            <Route path="/containers/search" element={<Navigate to="/containers" replace />} />
+            <Route path="/containers/journeys" element={<Navigate to="/containers" replace />} />
+            <Route path="/container-intake" element={<Navigate to="/containers" replace />} />
+            <Route path="/cargo" element={<Navigate to="/containers" replace />} />
           </Route>
 
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF]} />}>
-            <Route path="/cargo" element={<CargoDeclaration />} />
+          <Route element={<RoleRoute allowedRoles={CONTAINER_TRANSPORT_ROLES} />}>
             <Route path="/transport/cargo-declarations" element={<CargoDeclaration />} />
           </Route>
           

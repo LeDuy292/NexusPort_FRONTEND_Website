@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
+import ContainerEquipmentSearch from '../Containers/ContainerEquipmentSearch'
 import { containerService } from '../../services/containerService'
 
 const fieldClass = 'w-full rounded-xl border border-chalk bg-fog px-3.5 py-2.5 text-sm outline-none focus:border-signal-orange focus:bg-white'
@@ -10,6 +11,28 @@ const emptyForm = {
 const format = value => value.toLocaleString('vi-VN', { maximumFractionDigits: 2 })
 
 export default function ContainerRegistration() {
+  const [params] = useSearchParams()
+  const showEquipment = params.get('tab') === 'equipment'
+  const tabClass = active => `rounded-xl border px-4 py-2 text-sm font-bold ${active ? 'border-signal-orange bg-orange-50 text-carbon' : 'border-chalk bg-white text-slate'}`
+
+  return <div className="space-y-5 p-6 lg:p-8">
+    <header className="flex flex-wrap items-center justify-between gap-4">
+      <div>
+        <p className="text-xs font-bold uppercase text-signal-orange">Hãng tàu</p>
+        <h1 className="mt-2 font-heading text-3xl font-bold text-carbon">Khai báo container</h1>
+      </div>
+      <Link to="/containers" className="rounded-xl border border-chalk bg-white px-4 py-2 text-sm font-bold">Tra cứu lượt bãi</Link>
+    </header>
+    <nav aria-label="Khai báo container" className="flex flex-wrap gap-2">
+      <Link to="/shipping-line/containers" className={tabClass(!showEquipment)} aria-current={showEquipment ? undefined : 'page'}>Đăng ký mới</Link>
+      <Link to="?tab=equipment" className={tabClass(showEquipment)} aria-current={showEquipment ? 'page' : undefined}>Container của hãng</Link>
+    </nav>
+    <div hidden={showEquipment}><ContainerRegistrationForm /></div>
+    {showEquipment && <ContainerEquipmentSearch />}
+  </div>
+}
+
+function ContainerRegistrationForm() {
   const [isoTypes, setIsoTypes] = useState([])
   const [line, setLine] = useState(null)
   const [form, setForm] = useState(emptyForm)
@@ -69,17 +92,8 @@ export default function ContainerRegistration() {
   }
 
   return (
-    <div className="space-y-5 p-6 lg:p-8">
-      <header className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="text-xs font-bold uppercase text-signal-orange">Hãng tàu</p>
-          <h1 className="mt-2 font-heading text-3xl font-bold text-carbon">Đăng ký Container</h1>
-          <p className="mt-2 text-sm text-slate">Chọn mã ISO trên cửa container để điền loại và kích thước danh định.</p>
-        </div>
-        <Link to="/containers/search" className="rounded-xl border border-chalk bg-white px-4 py-2 text-sm font-bold">
-          Tra cứu Container
-        </Link>
-      </header>
+    <div className="space-y-5">
+      <p className="text-sm text-slate">Chọn mã ISO trên cửa container để điền loại và kích thước danh định.</p>
       {loading && <p className="text-sm">Đang tải hồ sơ hãng tàu…</p>}
       {line && <div className="rounded-xl border border-chalk bg-white p-4">
         <p className="font-bold">{line.fullName} ({line.shortName})</p>

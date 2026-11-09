@@ -1,9 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { containerService } from "../../services/containerService";
 import { declarationBookingSummary } from "../../utils/declarationBookingSummary";
-
-import ContainerEquipmentSearch from "./ContainerEquipmentSearch";
 
 const loadLabel = (value) =>
   ({ full: "Đầy hàng", empty: "Rỗng", unknown: "Chưa xác định" })[value] ||
@@ -13,6 +11,9 @@ const date = (value) => (value ? new Date(value).toLocaleString("vi-VN") : "—"
 export default function CargoDeclaration() {
   const navigate = useNavigate();
   const [declarations, setDeclarations] = useState([]);
+  const [searchNumber, setSearchNumber] = useState("");
+  const [containerTypeId, setContainerTypeId] = useState("");
+  const [containerTypes, setContainerTypes] = useState([]);
   const [cargoTypes, setCargoTypes] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
@@ -21,17 +22,23 @@ export default function CargoDeclaration() {
   const declarationRequest = useRef(0);
 
   useEffect(() => {
-    containerService.getCargoTypes().then(setCargoTypes).catch((e) => setError(e.message));
+    Promise.all([containerService.getCargoTypes(), containerService.getContainerTypes()])
+      .then(([cargo, types]) => { setCargoTypes(cargo); setContainerTypes(types); })
+      .catch((e) => setError(e.message));
   }, []);
 
-  async function loadDeclarations({ containerNumber, prefix, containerTypeId }) {
+  async function loadDeclarations(event) {
+    event.preventDefault();
+    const number = searchNumber.toUpperCase().replace(/[\s-]+/g, "");
+    if (!/^[A-Z0-9]{4,11}$/.test(number)) {
+      setError("Nhập ít nhất 4 ký tự đầu của số container.");
+      return;
+    }
     const request = ++declarationRequest.current;
-    const number = containerNumber || prefix;
     setDeclarations([]);
     setError("");
-    setSearched(Boolean(number));
-    setLoading(Boolean(number));
-    if (!number) return;
+    setSearched(true);
+    setLoading(true);
     try {
       const rows = await containerService.getTransportDeclarations(number);
       if (request === declarationRequest.current)
@@ -82,23 +89,30 @@ export default function CargoDeclaration() {
             Công ty vận tải
           </p>
           <h1 className="font-heading text-3xl font-extrabold text-carbon">
-            Tra cứu Container
+            Bản khai hàng của công ty
           </h1>
           <p className="mt-1 text-sm text-slate">
-            Tìm theo số container để đặt lịch nhận hàng hoặc dùng bản khai hàng
-            đã có của công ty để tiếp tục đặt lịch.
+            Tìm các bản khai hàng của công ty theo số container để tiếp tục đặt lịch.
           </p>
         </div>
+        <Link to="/containers" className="rounded-xl border border-chalk px-4 py-2 text-sm font-bold">Tra cứu lượt bãi</Link>
       </header>
-      <ContainerEquipmentSearch
-        embedded
-        onSearch={loadDeclarations}
-        onPickup={item => navigate("/booking", { state: {
-          containerNumber: item.containerNumber,
-          containerId: item.id,
-          bookingType: "Pickup",
-        } })}
-      />
+      <form onSubmit={loadDeclarations} className="flex flex-wrap items-end gap-4 rounded-2xl border border-chalk bg-white p-5">
+        <label className="space-y-2 text-xs font-bold text-slate">
+          <span>Số container</span>
+          <input required maxLength={20} placeholder="Nhập ít nhất 4 ký tự" value={searchNumber}
+            onChange={event => setSearchNumber(event.target.value)} className="block rounded-xl border border-chalk bg-fog px-3 py-2.5 text-sm" />
+        </label>
+        <label className="space-y-2 text-xs font-bold text-slate">
+          <span>Loại trong danh mục</span>
+          <select value={containerTypeId} onChange={event => setContainerTypeId(event.target.value)}
+            className="block rounded-xl border border-chalk bg-fog px-3 py-2.5 text-sm">
+            <option value="">Tất cả</option>
+            {containerTypes.map(type => <option key={type.id} value={type.id}>{type.code} · {type.description}</option>)}
+          </select>
+        </label>
+        <button disabled={loading} className="rounded-xl bg-signal-orange px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">Tìm kiếm</button>
+      </form>
       {error && <p role="alert" className="rounded-xl bg-red-50 p-4 text-sm text-red-800">{error}</p>}
       <h2 className="text-lg font-bold text-carbon">
         Bản khai hàng đã có của công ty

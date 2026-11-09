@@ -76,7 +76,8 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-main:has([data-equipment-search]) {
+main:has([data-equipment-search]),
+html:has([data-equipment-search]):not(:has(main [data-equipment-search])) {
   scrollbar-gutter: stable;
 }
 
@@ -84,10 +85,6 @@ main:has([data-equipment-search]) {
   width: 100%;
   min-width: 42rem;
   table-layout: fixed;
-}
-
-.equipment-search-table[data-pickup] {
-  min-width: 50rem;
 }
 
 .equipment-search-table td {

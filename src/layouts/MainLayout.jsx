@@ -1,21 +1,15 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { routeConfig, ROLES } from '../routes/routeConfig'
+import { ROLES } from '../routes/routeConfig'
 import NotificationCenter from '../components/NotificationCenter'
 
 // Danh sách các mục trong Sidebar tương ứng với các route
 const sidebarItems = [
   {
-    path: '/containers/search',
-    label: 'Tra Cứu Container',
-    icon: 'search',
-    roles: [ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR, ROLES.GATE_OFFICER, ROLES.BERTH_STAFF, ROLES.DRIVER],
-  },
-  {
     path: '/containers',
-    label: 'Quản Lý Container',
-    icon: 'inventory_2',
-    roles: [ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
+    label: 'Tra cứu lượt bãi',
+    icon: 'search',
+    roles: Object.values(ROLES),
   },
   // ── DISPATCHER ────────────────────────────────────────────────
   // 1. Tổng quan trước
@@ -181,7 +175,7 @@ const sidebarItems = [
   // ── SHIPPING LINE (Hãng Tàu) ──────────────────────────────
   {
     path: '/shipping-line/containers',
-    label: 'Đăng Ký Container',
+    label: 'Khai báo container',
     icon: 'inventory_2',
     roles: [ROLES.SHIPPING_LINE],
     showForAdmin: false,
@@ -277,12 +271,6 @@ const sidebarItems = [
     path: '/booking',
     label: 'Đặt Lịch Cảng',
     icon: 'calendar_month',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
-  },
-  {
-    path: '/cargo',
-    label: 'Tra Cứu Container',
-    icon: 'inventory_2',
     roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
   },
   {

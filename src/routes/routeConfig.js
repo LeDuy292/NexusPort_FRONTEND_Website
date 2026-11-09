@@ -14,6 +14,9 @@ export const ROLES = {
   SHIPPING_LINE: 'Shipping Line'
 }
 
+export const CONTAINER_TRANSPORT_ROLES = [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF]
+export const YARD_VISIT_OPERATORS = [ROLES.ADMINISTRATOR, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER]
+
 export const routeConfig = [
   // Phân hệ Hãng tàu (Shipping Line)
   {
@@ -58,10 +61,14 @@ export const routeConfig = [
   },
   {
     path: '/containers',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
+    allowedRoles: Object.values(ROLES),
   },
   {
     path: '/containers/search',
+    allowedRoles: Object.values(ROLES),
+  },
+  {
+    path: '/containers/journeys',
     allowedRoles: Object.values(ROLES),
   },
   {
@@ -114,11 +121,11 @@ export const routeConfig = [
   },
   {
     path: '/cargo',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
+    allowedRoles: Object.values(ROLES),
   },
   {
     path: '/transport/cargo-declarations',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
+    allowedRoles: CONTAINER_TRANSPORT_ROLES,
   },
   {
     path: '/gate',
