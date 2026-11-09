@@ -10,6 +10,8 @@ import BerthOps from './pages/Ships/BerthOps'
 import CargoDeclaration from './pages/Containers/CargoDeclaration'
 import DamageReport from './pages/Containers/DamageReport'
 import ContainerManagement from './pages/Containers/ContainerManagement'
+import ContainerJourneySearch from './pages/Containers/ContainerJourneySearch'
+import ContainerRegistration from './pages/ShippingLine/ContainerRegistration'
 import CarrierProfile from './pages/Ships/CarrierProfile'
 import EquipmentDispatch from './pages/Dispatch/EquipmentDispatch'
 
@@ -144,12 +146,16 @@ function App() {
 
         {/* Toàn bộ các trang quản trị dùng chung cấu trúc Sidebar thông qua MainLayout */}
         <Route element={<MainLayout />}>
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
             <Route path="/containers" element={<ContainerRoute />} />
             <Route path="/container-intake" element={<Navigate to="/containers" replace />} />
           </Route>
 
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF]} />}>
+          <Route element={<RoleRoute allowedRoles={Object.values(ROLES)} />}>
+            <Route path="/containers/search" element={<ContainerJourneySearch identityOnly />} />
+          </Route>
+
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF]} />}>
             <Route path="/cargo" element={<CargoDeclaration />} />
             <Route path="/transport/cargo-declarations" element={<CargoDeclaration />} />
           </Route>
@@ -188,11 +194,14 @@ function App() {
           </Route>
 
           {/* Phân hệ Hãng tàu (Shipping Line) */}
+          <Route element={<RoleRoute allowedRoles={[ROLES.SHIPPING_LINE]} />}>
+            <Route path="/shipping-line/containers" element={<ContainerRegistration />} />
+            <Route path="/shipping-line/manifest" element={<ManifestManagementPage />} />
+          </Route>
           <Route element={<RoleRoute allowedRoles={[ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR]} />}>
             <Route path="/shipping-line" element={<Navigate to="/shipping-line/dashboard" replace />} />
             <Route path="/shipping-line/dashboard" element={<ShippingDashboard />} />
             <Route path="/shipping-line/voyages" element={<VesselVoyagePage />} />
-            <Route path="/shipping-line/manifest" element={<ManifestManagementPage />} />
             <Route path="/shipping-line/bills-of-lading" element={<BillOfLadingPage />} />
             <Route path="/shipping-line/delivery-orders" element={<DeliveryOrderPage />} />
           </Route>

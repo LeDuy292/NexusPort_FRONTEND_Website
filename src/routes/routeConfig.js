@@ -3,6 +3,7 @@
  */
 export const ROLES = {
   TRANSPORT_COMPANY: 'Transport Company',
+  CARRIER: 'Carrier',
   DRIVER: 'Driver',
   GATE_OFFICER: 'Gate Officer',
   DISPATCHER: 'Dispatcher',
@@ -25,7 +26,11 @@ export const routeConfig = [
   },
   {
     path: '/shipping-line/manifest',
-    allowedRoles: [ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.SHIPPING_LINE],
+  },
+  {
+    path: '/shipping-line/containers',
+    allowedRoles: [ROLES.SHIPPING_LINE],
   },
   {
     path: '/shipping-line/bills-of-lading',
@@ -53,7 +58,11 @@ export const routeConfig = [
   },
   {
     path: '/containers',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/containers/search',
+    allowedRoles: Object.values(ROLES),
   },
   {
     path: '/booking',
@@ -105,11 +114,11 @@ export const routeConfig = [
   },
   {
     path: '/cargo',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
   },
   {
     path: '/transport/cargo-declarations',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
   },
   {
     path: '/gate',

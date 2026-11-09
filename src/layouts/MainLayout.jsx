@@ -6,6 +6,12 @@ import NotificationCenter from '../components/NotificationCenter'
 // Danh sách các mục trong Sidebar tương ứng với các route
 const sidebarItems = [
   {
+    path: '/containers/search',
+    label: 'Tra Cứu Container',
+    icon: 'search',
+    roles: [ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR, ROLES.GATE_OFFICER, ROLES.BERTH_STAFF, ROLES.DRIVER],
+  },
+  {
     path: '/containers',
     label: 'Quản Lý Container',
     icon: 'inventory_2',
@@ -174,6 +180,13 @@ const sidebarItems = [
 
   // ── SHIPPING LINE (Hãng Tàu) ──────────────────────────────
   {
+    path: '/shipping-line/containers',
+    label: 'Đăng Ký Container',
+    icon: 'inventory_2',
+    roles: [ROLES.SHIPPING_LINE],
+    showForAdmin: false,
+  },
+  {
     path: '/shipping-line/dashboard',
     label: 'Tổng Quan Hoạt Động',
     icon: 'dashboard',
@@ -190,6 +203,7 @@ const sidebarItems = [
     label: 'Bản Khai Hàng Hóa (Manifest)',
     icon: 'description',
     roles: [ROLES.SHIPPING_LINE],
+    showForAdmin: false,
   },
   {
     path: '/shipping-line/bills-of-lading',
@@ -261,7 +275,7 @@ const sidebarItems = [
   },
   {
     path: '/cargo',
-    label: 'Khai Báo Container',
+    label: 'Tra Cứu Container',
     icon: 'inventory_2',
     roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
   },
@@ -342,7 +356,9 @@ export default function MainLayout({ previewUser = null }) {
   }
 
   // Lọc các sidebar items được phép hiển thị với vai trò người dùng hiện tại (Administrator thấy tất cả để kiểm thử)
-  const allowedItems = sidebarItems.filter(item => previewUser ? item.path === '/yard' : user.role === ROLES.ADMINISTRATOR || item.roles.includes(user.role))
+  const allowedItems = sidebarItems.filter(item => previewUser
+    ? item.path === '/yard'
+    : item.roles.includes(user.role) || (user.role === ROLES.ADMINISTRATOR && item.showForAdmin !== false))
 
   // Lấy tiêu đề trang hiện tại
   const currentTitle = previewUser ? 'Bản Đồ Bãi' : sidebarItems.find(item => item.path === location.pathname)?.label || 'Cổng Quản trị'

@@ -6,7 +6,7 @@ const fieldClass = 'w-full rounded-xl border border-chalk bg-fog px-3.5 py-2.5 t
 const time = value => value ? new Date(value).toLocaleString('vi-VN') : '—'
 const statusName = { planned: 'Đã lên kế hoạch', active: 'Đang lưu bãi', completed: 'Đã kết thúc', canceled: 'Đã hủy' }
 
-export default function ContainerJourneySearch({ isTransport = false, onDeclare }) {
+export default function ContainerJourneySearch({ identityOnly = false }) {
   const [filters, setFilters] = useState({ containerNumber: '', plateNumber: '', customerName: '', dateFrom: '', dateTo: '' })
   const [result, setResult] = useState(null)
   const [submitted, setSubmitted] = useState(null)
@@ -40,38 +40,41 @@ export default function ContainerJourneySearch({ isTransport = false, onDeclare 
     const id = ++requestId.current
     setLoading(true); setError('')
     const params = { containerNumber: query.containerNumber.trim().toUpperCase(), page, limit: 20 }
-    if (!isTransport) {
+    if (!identityOnly) {
       Object.assign(params, { plateNumber: query.plateNumber, customerName: query.customerName,
         dateFrom: query.dateFrom ? new Date(`${query.dateFrom}T00:00:00`).toISOString() : undefined,
         dateTo: query.dateTo ? new Date(new Date(`${query.dateTo}T00:00:00`).setDate(new Date(`${query.dateTo}T00:00:00`).getDate() + 1)).toISOString() : undefined })
     }
     try {
-      const data = await containerService.searchJourneys(params)
+      const data = await (identityOnly ? containerService.searchIdentities(params) : containerService.searchJourneys(params))
       if (id === requestId.current) { setResult(data); setSubmitted(query) }
     } catch (e) { if (id === requestId.current) { setError(e.message); setResult(null) } }
     finally { if (id === requestId.current) setLoading(false) }
   }
   const input = (label, key, type = 'text') => <label className="space-y-2 text-xs font-bold text-slate"><span>{label}</span><input type={type} className={fieldClass} value={filters[key]} onChange={e => setFilters({ ...filters, [key]: e.target.value })} maxLength={key === 'containerNumber' ? 11 : 250} /></label>
-  return <div className={isTransport ? 'space-y-4' : 'space-y-4 p-6 lg:p-8'}>
-    {!isTransport && <div><p className="text-xs font-bold uppercase tracking-wider text-signal-orange">Kho bãi · Tra cứu lịch sử</p><h1 className="mt-2 font-heading text-3xl font-bold text-carbon">Lượt lưu bãi Container</h1><p className="mt-2 text-sm text-slate">Mỗi dòng là một lượt bãi, gồm lịch đưa vào và lấy ra. Nhập điều kiện để tìm kiếm.</p></div>}
+  return <div className="space-y-4 p-6 lg:p-8">
+    <div>
+      <h1 className="mt-2 font-heading text-3xl font-bold text-carbon">{identityOnly ? 'Tra cứu Container' : 'Lượt lưu bãi Container'}</h1>
+      <p className="mt-2 text-sm text-slate">{identityOnly ? 'Tìm số và loại container đã đăng ký.' : 'Mỗi dòng là một lượt bãi, gồm lịch đưa vào và lấy ra. Nhập điều kiện để tìm kiếm.'}</p>
+    </div>
     <form onSubmit={e => { e.preventDefault(); search(filters) }} className="rounded-2xl border border-chalk bg-white p-5">
-      <div className={`grid items-end gap-4 ${isTransport ? 'sm:grid-cols-[1fr_auto]' : 'md:grid-cols-3 xl:grid-cols-6'}`}>
+      <div className={`grid items-end gap-4 ${identityOnly ? 'sm:grid-cols-[1fr_auto]' : 'md:grid-cols-3 xl:grid-cols-6'}`}>
         {input('Số Container', 'containerNumber')}
-        {!isTransport && <>{input('Biển số xe', 'plateNumber')}{input('Khách hàng / chủ hàng', 'customerName')}{input('Từ ngày', 'dateFrom', 'date')}{input('Đến ngày', 'dateTo', 'date')}</>}
+        {!identityOnly && <>{input('Biển số xe', 'plateNumber')}{input('Khách hàng / chủ hàng', 'customerName')}{input('Từ ngày', 'dateFrom', 'date')}{input('Đến ngày', 'dateTo', 'date')}</>}
         <button disabled={loading} className="rounded-xl bg-signal-orange px-5 py-3 text-sm font-bold text-white disabled:opacity-50">{loading ? 'Đang tìm…' : 'Tìm kiếm'}</button>
       </div>
-      <p className="mt-3 text-xs text-slate">{isTransport ? 'Tra cứu dùng chung chỉ hiển thị số và loại Container. Thông tin khai báo hàng hóa nằm trong danh sách khai báo của công ty.' : 'Có thể nhập đầu số Container (từ 4 ký tự), biển số xe hoặc tên khách hàng. Ngày lọc theo thời điểm bắt đầu lượt bãi.'}</p>
+      <p className="mt-3 text-xs text-slate">{identityOnly ? 'Nhập ít nhất 4 ký tự đầu của số container.' : 'Có thể nhập đầu số Container (từ 4 ký tự), biển số xe hoặc tên khách hàng. Ngày lọc theo thời điểm bắt đầu lượt bãi.'}</p>
     </form>
     {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</p>}
     <div className="overflow-hidden rounded-2xl border border-chalk bg-white">
       <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-fog text-xs uppercase text-slate"><tr>
-        {(isTransport ? ['Số Container', 'Loại Container', 'Thao tác'] : ['Số Container / lượt bãi', 'Loại', 'Số xe', 'Khách hàng', 'Vào bãi', 'Ra bãi', 'Trạng thái', 'Thao tác']).map(h => <th className="px-5 py-4" key={h}>{h}</th>)}
+        {(identityOnly ? ['Số Container', 'Loại Container'] : ['Số Container / lượt bãi', 'Loại', 'Số xe', 'Khách hàng', 'Vào bãi', 'Ra bãi', 'Trạng thái', 'Thao tác']).map(h => <th className="px-5 py-4" key={h}>{h}</th>)}
       </tr></thead><tbody className="divide-y divide-chalk">
-        {!result?.items?.length ? <tr><td colSpan={isTransport ? 3 : 8} className="px-5 py-16 text-center text-slate"><span className="material-symbols-outlined mb-3 block text-4xl">search</span>{loading ? 'Đang tìm kiếm…' : result ? 'Không có kết quả phù hợp.' : 'Chưa tải danh sách. Nhập điều kiện và bấm Tìm kiếm.'}</td></tr> : result.items.map(item => <tr key={item.id} className="hover:bg-fog">
-          <td className="px-5 py-4 font-mono font-bold">{item.containerNumber}{!isTransport && <p className="mt-1 max-w-52 truncate text-xs font-normal text-slate" title={item.visitReference}>{item.visitReference}</p>}</td>
+        {!result?.items?.length ? <tr><td colSpan={identityOnly ? 2 : 8} className="px-5 py-16 text-center text-slate"><span className="material-symbols-outlined mb-3 block text-4xl">search</span>{loading ? 'Đang tìm kiếm…' : result ? 'Không có kết quả phù hợp.' : 'Chưa tải danh sách. Nhập điều kiện và bấm Tìm kiếm.'}</td></tr> : result.items.map(item => <tr key={item.id} className="hover:bg-fog">
+          <td className="px-5 py-4 font-mono font-bold">{item.containerNumber}{!identityOnly && <p className="mt-1 max-w-52 truncate text-xs font-normal text-slate" title={item.visitReference}>{item.visitReference}</p>}</td>
           <td className="px-5 py-4">{item.containerTypeCode}</td>
-          {!isTransport && <><td className="px-5 py-4 font-mono text-xs">{[...new Set((item.bookings || []).map(b => b.plateNumber).filter(Boolean))].join(' / ') || '—'}</td><td className="px-5 py-4">{item.customerName || '—'}</td><td className="px-5 py-4 text-xs">{time(item.startedAt)}</td><td className="px-5 py-4 text-xs">{time(item.completedAt)}</td><td className="px-5 py-4"><span className="rounded-full bg-fog px-3 py-1 text-xs font-bold">{statusName[item.visitStatus] || item.visitStatus}</span></td></>}
-          <td className="px-5 py-4"><button className="rounded-lg border border-chalk px-3 py-2 text-xs font-bold hover:border-signal-orange" onClick={() => isTransport ? onDeclare?.(item) : (setSelected(item),setAccessNotice(''),setCompanies([]))}>{isTransport ? 'Khai báo lần giao nhận' : 'Xem lượt bãi'}</button></td>
+          {!identityOnly && <><td className="px-5 py-4 font-mono text-xs">{[...new Set((item.bookings || []).map(b => b.plateNumber).filter(Boolean))].join(' / ') || '—'}</td><td className="px-5 py-4">{item.customerName || '—'}</td><td className="px-5 py-4 text-xs">{time(item.startedAt)}</td><td className="px-5 py-4 text-xs">{time(item.completedAt)}</td><td className="px-5 py-4"><span className="rounded-full bg-fog px-3 py-1 text-xs font-bold">{statusName[item.visitStatus] || item.visitStatus}</span></td>
+          <td className="px-5 py-4"><button className="rounded-lg border border-chalk px-3 py-2 text-xs font-bold hover:border-signal-orange" onClick={() => { setSelected(item); setAccessNotice(''); setCompanies([]) }}>Xem lượt bãi</button></td></>}
         </tr>)}
       </tbody></table></div>
       {result && <div className="flex items-center justify-between border-t border-chalk p-4 text-xs text-slate"><span>{result.total} kết quả · Trang {result.page}/{Math.max(1, result.totalPages)}</span><div className="flex gap-2"><button disabled={loading || result.page <= 1} onClick={() => search(submitted, result.page - 1)} className="rounded-lg border border-chalk px-3 py-2 disabled:opacity-40">Trước</button><button disabled={loading || result.page >= result.totalPages} onClick={() => search(submitted, result.page + 1)} className="rounded-lg border border-chalk px-3 py-2 disabled:opacity-40">Sau</button></div></div>}

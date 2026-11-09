@@ -24,7 +24,7 @@ export default function BookingSourcePicker({ operation, onSelect }) {
         const data = await bookingService.getContainerOptions('', pickup ? 'Pickup' : 'Dropoff')
         if (active) {
           setRows(data)
-          const selected = pickup ? operation.containerVisitId || operation.containerId : operation.declarationId
+          const selected = pickup ? operation.containerVisitId : operation.declarationId
           const stillAvailable = data.some(row => (pickup ? row.containerVisitId || row.containerId : row.declarationId) === selected)
           if (selected && !stillAvailable) { setCode(''); onSelect(null) }
         }
@@ -42,9 +42,11 @@ export default function BookingSourcePicker({ operation, onSelect }) {
     (row.containerId === operation.containerId && row.yardCode && row.yardCode === operation.yardCode)) : null
   const selectedKey = (pickup ? selectedRow && keyOf(selectedRow) || operation.containerVisitId || operation.containerId : operation.declarationId) || ''
   const automaticCode = pickup && !!selectedRow?.yardCode
-  const options = loading && selectedKey && !rows.some(row => keyOf(row) === selectedKey)
+  const fromSharedSearch = pickup && operation.containerId && !operation.containerVisitId && !selectedRow
+  const options = (loading || fromSharedSearch) && selectedKey && !rows.some(row => keyOf(row) === selectedKey)
     ? [{ containerId: operation.containerId, containerVisitId: operation.containerVisitId, declarationId: operation.declarationId,
-        containerNumber: operation.containerNumber, containerTypeCode: operation.containerIsoSize, pendingSource: true }, ...rows]
+        containerNumber: operation.containerNumber, containerTypeCode: operation.containerIsoSize,
+        pendingSource: loading, fromSharedSearch }, ...rows]
     : rows
 
   return <div className="rounded-2xl border border-orange-200 bg-orange-50/40 p-4 space-y-3">
@@ -60,14 +62,15 @@ export default function BookingSourcePicker({ operation, onSelect }) {
       }} className="w-full rounded-xl border bg-white p-3 text-sm">
       <option value="">{loading ? 'Đang tải danh sách container…' : '-- Chọn container --'}</option>
       {options.map(row => <option key={keyOf(row)} value={keyOf(row)}>
-        {row.containerNumber}{row.pendingSource ? ' · Chờ tải thông tin từ API' : ` · ${row.containerTypeCode || 'Chưa có loại'}`}
+        {row.containerNumber}{row.pendingSource ? ' · Chờ tải thông tin từ API'
+          : row.fromSharedSearch ? ' · Nhập mã nhận container' : ` · ${row.containerTypeCode || 'Chưa có loại'}`}
         {pickup && !row.pendingSource && row.yardCode && ` · Lượt ${row.yardCode}`}
         {!pickup && !row.pendingSource && ` · ${row.grossWeightKg == null ? 'Chưa có khối lượng' : `${row.grossWeightKg.toLocaleString()} kg`} · ${row.customerName || 'Chưa có khách hàng'} · Bản khai ${row.declarationId.slice(0, 8)}`}
       </option>)}
     </select>
     {!loading && !error && !rows.length && <p className="text-xs">
-      {pickup ? 'Chưa có container được cấp quyền nhận trong danh sách.'
-        : 'Chưa có bản khai có hàng chưa đặt lịch phù hợp. Hãy kiểm tra tại trang Khai báo container.'}
+      {pickup ? 'Chưa có lượt bãi nào đã được cấp quyền nhận cho công ty.'
+        : 'Chưa có bản khai hàng phù hợp để đặt lịch. Hãy kiểm tra tại trang Tra cứu Container.'}
     </p>}
     {pickup && <div className="flex flex-wrap gap-2">
       <input aria-label="Mã nhận container" value={automaticCode ? selectedRow.yardCode : code} readOnly={automaticCode} placeholder="TC-XXXX-XXXX-XXXX"

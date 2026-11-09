@@ -8,17 +8,9 @@ export const containerService = {
   searchAccessCarriers: (search) => nodeApiClient.get('/containers/access-carriers', { search }),
   grantVisitAccess: (id, carrierId) => nodeApiClient.post(`/containers/visits/${id}/access`, { carrierId }),
   lookup: (containerNumber) => nodeApiClient.get('/containers/lookup', { containerNumber }),
+  searchIdentities: (params) => nodeApiClient.get('/containers/identities', params),
   searchJourneys: (params) => nodeApiClient.get('/containers/journeys', params),
   getOwnVisits: (id) => nodeApiClient.get(`/containers/own-visits/${id}`),
-  downloadTransportTemplate: async () => {
-    const blob = await nodeApiClient.get('/containers/intake/transport/template')
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = 'Mau_Khai_Bao_Container.xlsx'
-    link.click()
-    setTimeout(() => URL.revokeObjectURL(url), 1000)
-  },
   getContainers: (params) => nodeApiClient.get('/containers', params),
   getCargoTypes: () => nodeApiClient.get('/containers/cargo-types'),
   getContainerTypes: () => nodeApiClient.get('/containers/types'),
@@ -27,12 +19,7 @@ export const containerService = {
   getContainerStatusHistory: (id) => nodeApiClient.get(`/containers/${id}/status/history`),
   transitionContainerStatus: (id, status) =>
     nodeApiClient.post(`/containers/${id}/status/transition`, { status }),
-  createTransportIntake: (data) => nodeApiClient.post('/containers/intake/transport/manual', data),
-  importTransportContainers: (file) => {
-    const body = new FormData()
-    body.append('file', file)
-    return nodeApiClient.postForm('/containers/intake/transport/import', body)
-  },
+  registerIdentity: (data) => nodeApiClient.post('/containers/intake/shipping-line/manual', data),
   getTransportDeclarations: (containerNumber) => nodeApiClient.get('/containers/intake/transport/declarations', { containerNumber }),
   getContainerImports: () => nodeApiClient.get('/containers/intake/imports'),
 }
