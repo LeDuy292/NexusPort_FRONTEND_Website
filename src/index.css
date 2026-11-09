@@ -76,6 +76,24 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+main:has([data-equipment-search]) {
+  scrollbar-gutter: stable;
+}
+
+.equipment-search-table {
+  width: 100%;
+  min-width: 42rem;
+  table-layout: fixed;
+}
+
+.equipment-search-table[data-pickup] {
+  min-width: 50rem;
+}
+
+.equipment-search-table td {
+  overflow-wrap: anywhere;
+}
+
 button {
   cursor: pointer;
   border: none;

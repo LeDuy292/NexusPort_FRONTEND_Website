@@ -17,7 +17,7 @@ function EquipmentSpecs({ item }) {
     ['Dung tích', format(item.capacityM3, 'm³')],
     ['Nhà sản xuất', item.manufacturer || '—'],
   ]
-  return <details className="min-w-36">
+  return <details>
     <summary className="cursor-pointer text-sm font-semibold">Xem thông số</summary>
     <dl className="mt-2 space-y-2">
       {fields.map(([label, value]) => <div key={label}><dt className="text-xs text-slate">{label}</dt><dd className="text-sm font-semibold">{value}</dd></div>)}
@@ -83,7 +83,7 @@ export default function ContainerEquipmentSearch({ embedded = false, onPickup, o
     </label>
   )
 
-  return <section className={embedded ? 'space-y-4' : 'space-y-4 p-6 lg:p-8'}>
+  return <section data-equipment-search className={embedded ? 'space-y-4' : 'space-y-4 p-6 lg:p-8'}>
     {!embedded && <header>
       <h1 className="font-heading text-3xl font-bold text-carbon">Tra cứu Container</h1>
       <p className="mt-2 text-sm text-slate">Tìm theo số container hoặc kết hợp các bộ lọc thiết bị.</p>
@@ -113,7 +113,14 @@ export default function ContainerEquipmentSearch({ embedded = false, onPickup, o
     {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
     {result && <div className="overflow-hidden rounded-2xl border border-chalk bg-white">
       <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
+        <table className="equipment-search-table text-left text-sm" data-pickup={onPickup ? '' : undefined}>
+          <colgroup>
+            <col style={{ width: '22%' }} />
+            <col style={{ width: '24%' }} />
+            <col style={{ width: '23%' }} />
+            <col />
+            {onPickup && <col style={{ width: '7rem' }} />}
+          </colgroup>
           <thead className="bg-fog"><tr>
             {['Số container', 'Hãng tàu', 'Loại thiết bị', 'Thông số', ...(onPickup ? ['Thao tác'] : [])].map(label => <th key={label} className="px-4 py-3">{label}</th>)}
           </tr></thead>
