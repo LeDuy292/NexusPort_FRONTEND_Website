@@ -14,6 +14,8 @@ export const ROLES = {
 }
 
 export const routeConfig = [
+  { path: '/services', allowedRoles: [ROLES.TRANSPORT_COMPANY, 'Carrier', ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR] },
+  { path: '/admin/service-catalog', allowedRoles: [ROLES.ADMINISTRATOR] },
   // Phân hệ Hãng tàu (Shipping Line)
   {
     path: '/shipping-line/dashboard',
