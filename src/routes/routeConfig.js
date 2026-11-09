@@ -3,6 +3,7 @@
  */
 export const ROLES = {
   TRANSPORT_COMPANY: 'Transport Company',
+  CARRIER: 'Carrier',
   DRIVER: 'Driver',
   GATE_OFFICER: 'Gate Officer',
   DISPATCHER: 'Dispatcher',
@@ -12,6 +13,9 @@ export const ROLES = {
   CARRIER_STAFF: 'Carrier Staff',
   SHIPPING_LINE: 'Shipping Line'
 }
+
+export const CONTAINER_TRANSPORT_ROLES = [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF]
+export const YARD_VISIT_OPERATORS = [ROLES.ADMINISTRATOR, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER]
 
 export const routeConfig = [
   // Phân hệ Hãng tàu (Shipping Line)
@@ -25,7 +29,11 @@ export const routeConfig = [
   },
   {
     path: '/shipping-line/manifest',
-    allowedRoles: [ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.SHIPPING_LINE],
+  },
+  {
+    path: '/shipping-line/containers',
+    allowedRoles: [ROLES.SHIPPING_LINE],
   },
   {
     path: '/shipping-line/bills-of-lading',
@@ -53,7 +61,15 @@ export const routeConfig = [
   },
   {
     path: '/containers',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
+    allowedRoles: Object.values(ROLES),
+  },
+  {
+    path: '/containers/search',
+    allowedRoles: Object.values(ROLES),
+  },
+  {
+    path: '/containers/journeys',
+    allowedRoles: Object.values(ROLES),
   },
   {
     path: '/booking',
@@ -105,11 +121,11 @@ export const routeConfig = [
   },
   {
     path: '/cargo',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+    allowedRoles: Object.values(ROLES),
   },
   {
     path: '/transport/cargo-declarations',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+    allowedRoles: CONTAINER_TRANSPORT_ROLES,
   },
   {
     path: '/gate',
@@ -227,6 +243,10 @@ export const routeConfig = [
   {
     path: '/dispatcher/cameras',
     allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/admin/shipping-lines',
+    allowedRoles: [ROLES.ADMINISTRATOR],
   },
   {
     path: '/admin/carriers',

@@ -76,6 +76,21 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+main:has([data-equipment-search]),
+html:has([data-equipment-search]):not(:has(main [data-equipment-search])) {
+  scrollbar-gutter: stable;
+}
+
+.equipment-search-table {
+  width: 100%;
+  min-width: 42rem;
+  table-layout: fixed;
+}
+
+.equipment-search-table td {
+  overflow-wrap: anywhere;
+}
+
 button {
   cursor: pointer;
   border: none;
