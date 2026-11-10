@@ -280,6 +280,18 @@ const sidebarItems = [
     roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
   },
   {
+    path: '/cargo/tracking',
+    label: 'Theo Dõi Chứng Từ',
+    icon: 'description',
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/cargo/notifications',
+    label: 'Việc Cần Làm & Cảnh Báo',
+    icon: 'notifications_active',
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
+  },
+  {
     path: '/booking',
     label: 'Đặt Lịch Cảng',
     icon: 'calendar_month',
