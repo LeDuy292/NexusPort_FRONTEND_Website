@@ -25,6 +25,7 @@ import BillingPayment from './pages/Billing/BillingPayment'
 import UserRoleManagement from './pages/Users/UserRoleManagement'
 import CarrierPortal from './pages/Carrier/CarrierPortal'
 import CarrierStaffManagement from './pages/Carrier/CarrierStaffManagement'
+import CargoDocumentTracking from './pages/Cargo/CargoDocumentTracking'
 import DashboardIndex from './pages/Dashboard/DashboardIndex'
 import GateControl from './pages/Gate/GateControl'
 import GateDashboard from './pages/Gate/GateDashboard'
@@ -157,6 +158,9 @@ function App() {
           <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
             <Route path="/carrier-profile" element={<CarrierProfile />} />
             <Route path="/carrier-portal" element={<CarrierPortal />} />
+            <Route path="/cargo/tracking" element={<CargoDocumentTracking />} />
+            <Route path="/cargo/notifications" element={<CargoDocumentTracking />} />
+            <Route path="/cargo/documents" element={<CargoDocumentTracking />} />
             <Route path="/booking" element={<BookingManagement />} />
             <Route path="/billing" element={<BillingPayment />} />
             <Route path="/fleet" element={<VehicleManagement />} />
