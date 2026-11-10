@@ -77,6 +77,24 @@ export const cargoNotificationService = {
     const res = await apiClient.post(`${BASE_URL}/unclaimed-consignees/${queueId}/claim`, { companyId });
     return res.data || res;
   },
+
+  // Xác nhận bản nháp Draft B/L (Hành động mục 3.2 #9)
+  confirmDraftBL: async (payload) => {
+    const res = await apiClient.post(`${BASE_URL}/draft-bl/confirm`, payload);
+    return res.data || res;
+  },
+
+  // Khai báo / nộp VGM điện tử (Hành động mục 3.2 #5)
+  submitVGM: async (payload) => {
+    const res = await apiClient.post(`${BASE_URL}/vgm/submit`, payload);
+    return res.data || res;
+  },
+
+  // Quét và kích hoạt nhắc hẹn tự động (Mục 3.2 Quy tắc 3)
+  processDueReminders: async () => {
+    const res = await apiClient.post(`${BASE_URL}/reminders/process`, {});
+    return res.data || res;
+  },
 };
 
 export default cargoNotificationService;
