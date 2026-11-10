@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { cargoNotificationService } from '../../services/cargoNotificationService';
 
 export default function CargoDocumentTracking() {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('todo'); // 'todo' | 'notifications' | 'documents' | 'simulator' | 'unclaimed'
   const [loading, setLoading] = useState(false);
 
@@ -24,6 +26,41 @@ export default function CargoDocumentTracking() {
   // Modal detail state
   const [selectedDoc, setSelectedDoc] = useState(null);
   const [docDetailLoading, setDocDetailLoading] = useState(false);
+
+  // VGM Modal state (Hành động mục 3.2 #5)
+  const [vgmModal, setVgmModal] = useState({ open: false, bookingNo: '', containerNo: '' });
+  const [vgmForm, setVgmForm] = useState({ vgmWeight: '24500', authorizedPerson: 'Nguyễn Văn Kiểm', signatureMethod: 'ELECTRONIC' });
+
+  // Hướng dẫn xử lý ngoại lệ / Liên hệ Hãng tàu (Hành động mục 3.2 #7)
+  const [supportModal, setSupportModal] = useState({ open: false, title: '', reason: '', containerNo: '' });
+
+  // Sửa danh sách container có lỗi (Mục 3.2 #4)
+  const [editListModal, setEditListModal] = useState({
+    open: false,
+    bookingNo: '',
+    errors: [],
+    containerList: '',
+  });
+
+  // Tạo booking mới (Mục 3.2 #2)
+  const [createBookingModal, setCreateBookingModal] = useState({
+    open: false,
+    reason: '',
+    vesselName: 'EVER GLORY',
+    voyageNo: '2602N',
+    quantity: 2,
+    containerType: '40HC',
+    commodity: 'Thép cuộn cán nóng',
+  });
+
+  // Đặt lệnh lấy hàng e-Port (Mục 4.2 #3, #5)
+  const [pickupModal, setPickupModal] = useState({
+    open: false,
+    doNumber: '',
+    blNumber: '',
+    validUntil: '',
+    emptyReturnDepot: '',
+  });
 
   // Simulator state
   const [simEventCode, setSimEventCode] = useState('BookingConfirmed');
@@ -141,11 +178,261 @@ export default function CargoDocumentTracking() {
     }
   };
 
-  // Simulator preset payloads
+  // Xác nhận Draft B/L (Mục 3.2 #9)
+  const handleConfirmDraftBL = async (blNumber, bookingNo) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xác nhận bản nháp vận đơn (Draft B/L) cho ${blNumber || bookingNo}?`)) return;
+    try {
+      const res = await cargoNotificationService.confirmDraftBL({ blNumber, bookingNo });
+      alert(res.message || 'Xác nhận Draft B/L thành công!');
+      setSelectedDoc(null);
+      loadAllData();
+    } catch (e) {
+      alert('Lỗi xác nhận Draft B/L: ' + (e.response?.data?.message || e.message));
+    }
+  };
+
+  // Nộp khai báo VGM (Mục 3.2 #5)
+  const handleSubmitVGM = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await cargoNotificationService.submitVGM({
+        bookingNo: vgmModal.bookingNo,
+        containerNo: vgmModal.containerNo,
+        vgmWeight: vgmForm.vgmWeight,
+        authorizedPerson: vgmForm.authorizedPerson,
+        signatureMethod: vgmForm.signatureMethod,
+      });
+      alert(res.message || 'Nộp VGM thành công!');
+      setVgmModal({ open: false, bookingNo: '', containerNo: '' });
+      loadAllData();
+    } catch (e) {
+      alert('Lỗi nộp VGM: ' + (e.response?.data?.message || e.message));
+    }
+  };
+
+  // Quét nhắc hẹn tự động (Mục 3.2 Quy tắc 3)
+  const handleProcessReminders = async () => {
+    try {
+      const res = await cargoNotificationService.processDueReminders();
+      alert(res.message || 'Đã quét nhắc hẹn thành công!');
+      loadAllData();
+    } catch (e) {
+      alert('Lỗi quét nhắc việc: ' + (e.response?.data?.message || e.message));
+    }
+  };
+
+  // Sửa danh sách container có lỗi (Mục 3.2 #4)
+  const handleSubmitEditList = async (e) => {
+    e.preventDefault();
+    try {
+      const parsedContainers = editListModal.containerList
+        .split(/[\n,]/)
+        .map(c => c.trim().toUpperCase())
+        .filter(Boolean);
+
+      const res = await cargoNotificationService.ingestEvent({
+        eventId: `evt-fix-list-${Date.now()}`,
+        eventCode: 'ContainerListAnnounced',
+        direction: 'export',
+        payload: {
+          bookingNo: editListModal.bookingNo,
+          containers: parsedContainers,
+          errors: [], // Đã sửa xong -> Không còn lỗi!
+          shipperTaxCode: '0401889988',
+        },
+      });
+      alert('Đã gửi lại danh sách container chuẩn hóa thành công! ' + (res.message || ''));
+      setEditListModal({ open: false, bookingNo: '', errors: [], containerList: '' });
+      loadAllData();
+    } catch (err) {
+      alert('Lỗi gửi lại danh sách: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  // Tạo booking mới sau khi bị từ chối (Mục 3.2 #2)
+  const handleSubmitCreateBooking = async (e) => {
+    e.preventDefault();
+    try {
+      const newBkg = `BKG-NEW-${Math.floor(1000 + Math.random() * 9000)}`;
+      const res = await cargoNotificationService.ingestEvent({
+        eventId: `evt-new-bkg-${Date.now()}`,
+        eventCode: 'BookingConfirmed',
+        direction: 'export',
+        payload: {
+          bookingNo: newBkg,
+          vesselName: createBookingModal.vesselName,
+          voyageNo: createBookingModal.voyageNo,
+          etd: new Date(Date.now() + 72 * 3600 * 1000).toISOString(),
+          cyCutOff: new Date(Date.now() + 48 * 3600 * 1000).toISOString(),
+          vgmCutOff: new Date(Date.now() + 44 * 3600 * 1000).toISOString(),
+          siCutOff: new Date(Date.now() + 40 * 3600 * 1000).toISOString(),
+          emptyPickupPlace: 'Depot Tân Cảng Đà Nẵng',
+          shipperTaxCode: '0401889988',
+          shipper: 'Công ty Cổ phần Thép Hòa Phát',
+          containers: ['MSKU9082134', 'TCKU4829102'],
+        },
+      });
+      alert(`Đã tạo Booking mới [${newBkg}] thành công! Cảng đã tiếp nhận.`);
+      setCreateBookingModal(prev => ({ ...prev, open: false }));
+      loadAllData();
+    } catch (err) {
+      alert('Lỗi tạo booking mới: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  // Đặt lệnh lấy container e-Port (Mục 4.2 #3, #5)
+  const handleSubmitPickupOrder = async (e) => {
+    e.preventDefault();
+    try {
+      const newOrderCode = `ORD-PU-${Math.floor(100000 + Math.random() * 900000)}`;
+      const res = await cargoNotificationService.ingestEvent({
+        eventId: `evt-pickup-${Date.now()}`,
+        eventCode: 'ServiceOrderSubmitted',
+        direction: 'import',
+        payload: {
+          orderCode: newOrderCode,
+          serviceType: 'Lệnh rút/lấy container hàng nhập',
+          serviceName: 'Giao nhận container nhập bãi',
+          amount: 450000,
+          doNumber: pickupModal.doNumber,
+          blNumber: pickupModal.blNumber,
+          consigneeTaxCode: '0401889988',
+        },
+      });
+      alert(`Đã đặt Lệnh lấy container [${newOrderCode}] thành công! Lệnh đang chờ thanh toán trên e-Port.`);
+      setPickupModal({ open: false, doNumber: '', blNumber: '', validUntil: '', emptyReturnDepot: '' });
+      loadAllData();
+    } catch (err) {
+      alert('Lỗi đặt lệnh lấy hàng: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  // Gán người nhận từ Hàng đợi ngoại lệ (Mục 4.2)
+  const handleClaimConsignee = async (queueId) => {
+    if (!window.confirm('Gán người nhận cho chứng từ này với tài khoản công ty hiện tại?')) return;
+    try {
+      const res = await cargoNotificationService.claimConsignee(queueId);
+      alert(res.message || 'Đã gán người nhận thành công!');
+      fetchUnclaimed();
+      loadAllData();
+    } catch (err) {
+      alert('Lỗi gán người nhận: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
+  // Điều phối hành động kèm theo
+  const handleOpenAction = (item) => {
+    // 1. Khai hoặc nộp VGM / Declaration (Mục 3.2 #5)
+    if (item.action_type === 'submit_declaration' || item.action_type === 'submit_vgm') {
+      const bkg = item.bookingNo || item.document_id || 'BKG-TEST-1001';
+      setVgmModal({ open: true, bookingNo: bkg, containerNo: item.data?.containerNo || 'MSKU9082134' });
+      return;
+    }
+
+    // 2. Sửa danh sách container có lỗi (Mục 3.2 #4)
+    if (item.action_type === 'edit_container_list') {
+      const errs = item.data?.errors || (item.message && item.message.includes('Danh sách lỗi') ? [item.message] : ['Dòng 1: Container MSKU9082134 thiếu khai báo VGM', 'Dòng 2: Container TCKU4829102 sai số niêm chì']);
+      setEditListModal({
+        open: true,
+        bookingNo: item.document_id || item.data?.bookingNo || 'BKG-TEST-1001',
+        errors: Array.isArray(errs) ? errs : [errs],
+        containerList: (item.data?.containers || ['MSKU9082134', 'TCKU4829102']).join('\n'),
+      });
+      return;
+    }
+
+    // 3. Tạo booking mới (Mục 3.2 #2)
+    if (item.action_type === 'create_booking' || item.action_type === 'create_new_booking') {
+      setCreateBookingModal({
+        open: true,
+        reason: item.message || item.data?.reason || 'Hết chỗ trên chuyến chỉ định',
+        vesselName: 'EVER GLORY',
+        voyageNo: '2602N',
+        quantity: 2,
+        containerType: '40HC',
+        commodity: 'Thép cuộn cán nóng',
+      });
+      return;
+    }
+
+    // 4. Đặt lệnh lấy hàng (Mục 4.2 #3, #5)
+    if (item.action_type === 'order_service_pickup') {
+      setPickupModal({
+        open: true,
+        doNumber: item.document_id || item.data?.doNumber || 'EDO-DEMO-991',
+        blNumber: item.data?.blNumber || 'BL-IMPORT-88991',
+        validUntil: item.data?.validUntil || new Date(Date.now() + 72 * 3600 * 1000).toISOString(),
+        emptyReturnDepot: item.data?.emptyReturnDepot || 'Depot Tân Cảng Đà Nẵng',
+      });
+      return;
+    }
+
+    // 5. Liên hệ hãng tàu / Hướng xử lý ngoại lệ (Mục 3.2 #7, Mục 4.2 #4)
+    if (item.action_type === 'contact_shipping_line' || item.action_type === 'contact_support') {
+      setSupportModal({
+        open: true,
+        title: item.title,
+        reason: item.message,
+        containerNo: item.data?.containerNo || (item.data?.containers ? item.data.containers.join(', ') : 'Container liên quan'),
+      });
+      return;
+    }
+
+    // 6. Xác nhận Draft B/L (Mục 3.2 #9)
+    if (item.action_type === 'confirm_draft_bl') {
+      handleOpenDocModal('BL', item.document_id || item.blNumber || 'HDMU-DAD-88991');
+      return;
+    }
+
+    // 7. Mở booking hoặc Xem chi tiết (Mục 3.2 #1, #3, #8)
+    if (item.action_type === 'open_booking' || item.action_type === 'view_details') {
+      handleOpenDocModal('BOOKING', item.document_id || item.bookingNo || 'BKG-TEST-1001');
+      return;
+    }
+
+    // 8. Xem EIR hoặc Nhắc trả vỏ (Mục 3.2 #6, Mục 4.2 #7)
+    if (item.action_type === 'view_eir' || item.action_type === 'remind_empty_return') {
+      handleOpenDocModal('EIR', item.document_id || item.eirNo || 'EIR-DEMO-01');
+      return;
+    }
+
+    // 9. Xem B/L (Mục 3.2 #10)
+    if (item.action_type === 'view_bl') {
+      handleOpenDocModal('BL', item.document_id || item.blNumber || 'BL-DEMO-01');
+      return;
+    }
+
+    // 10. Xem thông báo hàng đến / Xem container (Mục 4.2 #1, #2)
+    if (item.action_type === 'view_arrival_notice' || item.action_type === 'view_container') {
+      handleOpenDocModal('ARRIVAL_NOTICE', item.document_id || item.blNumber || 'BL-IMPORT-88991');
+      return;
+    }
+
+    // 11. Xem lệnh dịch vụ (Mục 4.2 #6)
+    if (item.action_type === 'view_order' || item.action_type === 'pay_order') {
+      if (item.action_url) {
+        navigate(item.action_url);
+        return;
+      }
+    }
+
+    // 12. Nếu có document_type & document_id
+    if (item.document_type && item.document_id) {
+      handleOpenDocModal(item.document_type, item.document_id);
+      return;
+    }
+
+    // 13. Fallback URL
+    if (item.action_url) {
+      navigate(item.action_url);
+    }
+  };
+
+  // Simulator preset payloads - Đầy đủ 10 sự kiện Xuất (Mục 3.2) & các sự kiện Nhập (Mục 4.2)
   const presetEvents = [
     {
       code: 'BookingConfirmed',
-      label: 'X1. Hãng tàu duyệt Booking (Xuất)',
+      label: '1. Booking được duyệt (Hành động: Mở booking)',
       direction: 'export',
       payload: {
         bookingNo: `BKG-TEST-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -162,12 +449,62 @@ export default function CargoDocumentTracking() {
       },
     },
     {
+      code: 'BookingRejected',
+      label: '2. Booking bị từ chối (Hành động: Tạo booking mới)',
+      direction: 'export',
+      payload: {
+        bookingNo: `BKG-REJ-${Math.floor(1000 + Math.random() * 9000)}`,
+        reason: 'Hết chỗ trên tàu chuyến 2601N và không đáp ứng hạn vận chuyển',
+        shipperTaxCode: '0401889988',
+      },
+    },
+    {
+      code: 'BookingUpdated',
+      label: '3. Đổi lịch tàu hoặc cut-off (Hành động: Xem chi tiết)',
+      direction: 'export',
+      payload: {
+        bookingNo: 'BKG-TEST-1001',
+        vesselName: 'EVER GLORY',
+        voyageNo: '2601N',
+        changes: [
+          { field: 'ETD', oldValue: '2026-11-12T10:00:00Z', newValue: '2026-11-13T06:00:00Z' },
+          { field: 'CY Cut-off', oldValue: '2026-11-11T18:00:00Z', newValue: '2026-11-12T12:00:00Z' },
+        ],
+        shipperTaxCode: '0401889988',
+      },
+    },
+    {
+      code: 'ContainerListAnnounced',
+      label: '4. Danh sách container có lỗi (Hành động: Sửa danh sách)',
+      direction: 'export',
+      payload: {
+        bookingNo: 'BKG-TEST-1001',
+        errors: [
+          'Dòng 1: Container MSKU9082134 thiếu khai báo VGM',
+          'Dòng 2: Container TCKU4829102 số niêm chì không đúng định dạng',
+        ],
+        shipperTaxCode: '0401889988',
+      },
+    },
+    {
+      code: 'CutoffApproaching',
+      label: '5. Sắp hết hạn VGM, CY, SI (Hành động: Khai hoặc nộp)',
+      direction: 'export',
+      payload: {
+        bookingNo: 'BKG-TEST-1001',
+        cutoffType: 'VGM và CY Cut-off',
+        dueAt: new Date(Date.now() + 1.5 * 3600 * 1000).toISOString(), // Còn dưới 2h -> Mức Khẩn
+        isUrgent: true,
+        shipperTaxCode: '0401889988',
+      },
+    },
+    {
       code: 'ContainerGatedIn',
-      label: 'X4. Xe vào cổng thành công - Cấp EIR (Xuất)',
+      label: '6. Container qua cổng (Hành động: Xem EIR)',
       direction: 'export',
       payload: {
         eirNo: `EIR-IN-${Math.floor(100000 + Math.random() * 900000)}`,
-        containerNo: 'MSKU9082134',
+        containers: ['MSKU9082134', 'TCKU4829102'], // Gộp nhiều container
         bookingNo: 'BKG-TEST-1001',
         gateCode: 'GATE-01',
         gateInAt: new Date().toISOString(),
@@ -179,20 +516,35 @@ export default function CargoDocumentTracking() {
     },
     {
       code: 'ContainerGateRejected',
-      label: 'X4. Xe bị từ chối ở cổng vào (Xuất - Khẩn)',
+      label: '7. Container bị từ chối ở cổng (Hành động: Liên hệ hãng tàu)',
       direction: 'export',
       payload: {
         containerNo: 'TCKU4829102',
         bookingNo: 'BKG-TEST-1001',
         truckPlate: '43C-777.99',
         gateCode: 'GATE-01',
-        reason: 'Quá hạn CY cut-off và chưa có khai báo VGM hợp lệ',
+        reason: 'Quá hạn CY cut-off và số niêm chì không khớp dữ liệu khai báo',
+        shipperTaxCode: '0401889988',
+      },
+    },
+    {
+      code: 'ContainerRolledOver',
+      label: '8. Container bị loại hoặc rớt tàu (Hành động: Xem chi tiết)',
+      direction: 'export',
+      payload: {
+        bookingNo: 'BKG-TEST-1001',
+        containers: ['TCKU4829102'],
+        vesselName: 'EVER GLORY',
+        voyageNo: '2601N',
+        reason: 'Tàu đầy tải, điều độ hãng tàu chuyển container sang chuyến kế tiếp',
+        newVoyageNo: '2602S',
+        newEtd: new Date(Date.now() + 72 * 3600 * 1000).toISOString(),
         shipperTaxCode: '0401889988',
       },
     },
     {
       code: 'DraftBLIssued',
-      label: 'X5. Hãng tàu gửi Draft B/L cần xác nhận (Xuất)',
+      label: '9. Draft B/L cần xác nhận (Hành động: Xem và xác nhận draft)',
       direction: 'export',
       payload: {
         blNumber: `HDMU-DAD-${Math.floor(10000 + Math.random() * 90000)}`,
@@ -202,8 +554,20 @@ export default function CargoDocumentTracking() {
       },
     },
     {
+      code: 'BLIssued',
+      label: '10. B/L đã phát hành (Hành động: Xem B/L)',
+      direction: 'export',
+      payload: {
+        blNumber: `HDMU-DAD-${Math.floor(10000 + Math.random() * 90000)}`,
+        bookingNo: 'BKG-TEST-1001',
+        shippedOnBoardDate: new Date().toISOString(),
+        shipperTaxCode: '0401889988',
+      },
+    },
+    // Chiều nhập khẩu (Mục 4.2)
+    {
       code: 'ManifestSent',
-      label: 'M1. Hãng tàu gửi Manifest nhập - Giấy báo hàng đến',
+      label: 'M1. Hãng tàu gửi Manifest nhập (Xem thông báo hàng đến)',
       direction: 'import',
       payload: {
         manifestId: `MNF-IN-${Math.floor(1000 + Math.random() * 9000)}`,
@@ -218,8 +582,21 @@ export default function CargoDocumentTracking() {
       },
     },
     {
+      code: 'ContainerDischarged',
+      label: 'M2. Container đã dỡ khỏi tàu (Xem container)',
+      direction: 'import',
+      payload: {
+        containerNo: 'CMAU7788991',
+        blNumber: 'BL-IMPORT-88991',
+        vesselName: 'CMA CGM CHENNAI',
+        dischargedAt: new Date().toISOString(),
+        yardLocation: 'BLOCK-B2-04-03',
+        consigneeTaxCode: '0401889988',
+      },
+    },
+    {
       code: 'EDoIssued',
-      label: 'M3. Hãng tàu cấp e-D/O lấy hàng (Nhập)',
+      label: 'M3. Hãng tàu cấp e-D/O lấy hàng (Đặt lệnh lấy hàng)',
       direction: 'import',
       payload: {
         doNumber: `EDO-${Math.floor(100000 + Math.random() * 900000)}`,
@@ -233,7 +610,7 @@ export default function CargoDocumentTracking() {
     },
     {
       code: 'EDoHeld',
-      label: 'M6. Hãng tàu TẠM GIỮ e-D/O (Nhập - Khẩn)',
+      label: 'M6. Hãng tàu TẠM GIỮ e-D/O (Liên hệ hãng tàu)',
       direction: 'import',
       payload: {
         doNumber: 'EDO-DEMO-HELD',
@@ -244,7 +621,7 @@ export default function CargoDocumentTracking() {
     },
     {
       code: 'ContainerGatedOut',
-      label: 'M5. Lấy container ra cổng - Nhắc trả vỏ rỗng (Nhập)',
+      label: 'M5. Lấy container ra cổng - Nhắc trả vỏ rỗng (Nhắc trả vỏ)',
       direction: 'import',
       payload: {
         eirNo: `EIR-OUT-${Math.floor(100000 + Math.random() * 900000)}`,
@@ -255,18 +632,6 @@ export default function CargoDocumentTracking() {
         gateOutAt: new Date().toISOString(),
         emptyReturnDepot: 'Depot Tân Cảng Đà Nẵng',
         consigneeTaxCode: '0401889988',
-      },
-    },
-    {
-      code: 'ServiceOrderPaid',
-      label: 'Dịch vụ: Lệnh hạ/lấy cont đã thanh toán (Người 3)',
-      direction: 'general',
-      payload: {
-        orderCode: `SRV-${Math.floor(10000 + Math.random() * 90000)}`,
-        serviceName: 'Nâng hạ container bãi (Lift On/Off)',
-        amount: 850000,
-        paymentRef: `PAY-MOCK-${Math.floor(100000 + Math.random() * 900000)}`,
-        shipperTaxCode: '0401889988',
       },
     },
   ];
@@ -464,7 +829,7 @@ export default function CargoDocumentTracking() {
       {/* ── TAB 1: VIỆC CẦN LÀM (TO-DO & ACTION CENTER) ── */}
       {activeTab === 'todo' && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex-wrap gap-2">
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-slate-700">Lọc theo luồng:</span>
               {['all', 'export', 'import'].map((type) => (
@@ -481,9 +846,19 @@ export default function CargoDocumentTracking() {
                 </button>
               ))}
             </div>
-            <span className="text-xs text-slate-400 font-medium">
-              Tự động đối soát từ trạng thái Booking, VGM, e-D/O và EIR
-            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleProcessReminders}
+                className="px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-lg text-xs font-bold inline-flex items-center gap-1 shadow-sm"
+                title="Quét các mốc T-24H, T-2H và tự động phát sinh việc cần làm"
+              >
+                <span className="material-symbols-outlined text-sm">alarm</span>
+                Quét mốc nhắc hẹn (T-24H / T-2H)
+              </button>
+              <span className="text-xs text-slate-400 font-medium hidden md:inline">
+                Tự động đối soát từ Booking, VGM, e-D/O và EIR
+              </span>
+            </div>
           </div>
 
           {todos.length === 0 ? (
@@ -537,32 +912,16 @@ export default function CargoDocumentTracking() {
                     </div>
 
                     <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-end">
-                      {todo.actionUrl?.startsWith('/cargo/documents') ? (
-                        <button
-                          onClick={() => {
-                            const parts = todo.actionUrl.split('/');
-                            handleOpenDocModal(parts[3], parts[4]);
-                          }}
-                          className={`px-4 py-2 text-xs font-bold rounded-lg shadow-sm transition-all ${
-                            isUrgent
-                              ? 'bg-red-600 hover:bg-red-700 text-white'
-                              : 'bg-slate-800 hover:bg-slate-900 text-white'
-                          }`}
-                        >
-                          {todo.actionLabel} →
-                        </button>
-                      ) : (
-                        <a
-                          href={todo.actionUrl}
-                          className={`px-4 py-2 text-xs font-bold rounded-lg shadow-sm transition-all ${
-                            isUrgent
-                              ? 'bg-red-600 hover:bg-red-700 text-white'
-                              : 'bg-slate-800 hover:bg-slate-900 text-white'
-                          }`}
-                        >
-                          {todo.actionLabel} →
-                        </a>
-                      )}
+                      <button
+                        onClick={() => handleOpenAction(todo)}
+                        className={`px-4 py-2 text-xs font-bold rounded-lg shadow-sm transition-all ${
+                          isUrgent
+                            ? 'bg-red-600 hover:bg-red-700 text-white'
+                            : 'bg-slate-800 hover:bg-slate-900 text-white'
+                        }`}
+                      >
+                        {todo.actionLabel} →
+                      </button>
                     </div>
                   </div>
                 );
@@ -669,13 +1028,17 @@ export default function CargoDocumentTracking() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
-                      {item.document_type && item.document_id && (
+                    <div className="flex items-center gap-2 shrink-0 self-end md:self-center flex-wrap justify-end">
+                      {(item.action_label || item.document_type || item.action_type) && (
                         <button
-                          onClick={() => handleOpenDocModal(item.document_type, item.document_id)}
-                          className="px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-700 text-xs font-bold rounded-lg border border-orange-200"
+                          onClick={() => handleOpenAction(item)}
+                          className={`px-3 py-1.5 text-xs font-bold rounded-lg border shadow-sm transition-all flex items-center gap-1 ${
+                            isUrgent
+                              ? 'bg-red-600 hover:bg-red-700 text-white border-red-700'
+                              : 'bg-orange-50 hover:bg-orange-100 text-orange-700 border-orange-200'
+                          }`}
                         >
-                          Xem {item.document_type}
+                          {item.action_label || (item.document_type ? `Xem ${item.document_type}` : 'Xem chi tiết')} →
                         </button>
                       )}
 
@@ -838,12 +1201,13 @@ export default function CargoDocumentTracking() {
                   <th className="p-3">Tàu / Chuyến</th>
                   <th className="p-3">Số lượng Cont</th>
                   <th className="p-3">Trạng thái</th>
+                  <th className="p-3 text-right">Thao tác</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs text-slate-700">
                 {unclaimedList.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-slate-400">
+                    <td colSpan={7} className="p-8 text-center text-slate-400">
                       Không có ngoại lệ nào trong hàng đợi. Tất cả Consignee trên Manifest đều đã được gán tự động!
                     </td>
                   </tr>
@@ -859,6 +1223,16 @@ export default function CargoDocumentTracking() {
                         <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-amber-100 text-amber-800">
                           {item.status}
                         </span>
+                      </td>
+                      <td className="p-3 text-right">
+                        {item.status === 'PENDING_CLAIM' && (
+                          <button
+                            onClick={() => handleClaimConsignee(item.id)}
+                            className="px-2.5 py-1 bg-gradient-to-r from-orange-500 to-amber-500 hover:opacity-90 text-white rounded font-bold text-[11px] shadow-sm transition"
+                          >
+                            Gán người nhận
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))
@@ -1054,6 +1428,77 @@ export default function CargoDocumentTracking() {
                     </div>
                   </>
                 )}
+
+                {selectedDoc.documentType === 'ARRIVAL_NOTICE' && (
+                  <>
+                    <div className="grid grid-cols-2 p-3 bg-slate-50 font-semibold">
+                      <span className="text-slate-500">Tàu & Chuyến:</span>
+                      <span className="font-bold text-slate-800">{selectedDoc.vesselName} ({selectedDoc.voyageNo})</span>
+                    </div>
+                    <div className="grid grid-cols-2 p-3">
+                      <span className="text-slate-500">Ngày dự kiến cập cảng (ETA):</span>
+                      <span className="font-bold text-blue-700">{selectedDoc.eta ? new Date(selectedDoc.eta).toLocaleString('vi-VN') : 'N/A'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 p-3 bg-slate-50">
+                      <span className="text-slate-500">Người nhận hàng (Consignee):</span>
+                      <span className="font-bold text-slate-800">{selectedDoc.consigneeName} (MST: {selectedDoc.consigneeTaxCode})</span>
+                    </div>
+                    <div className="grid grid-cols-2 p-3">
+                      <span className="text-slate-500">Thời hạn miễn phí lưu bãi:</span>
+                      <span className="font-bold text-emerald-700">{selectedDoc.freeTimeDays} ngày kể từ khi dỡ hàng</span>
+                    </div>
+                    <div className="grid grid-cols-2 p-3 bg-slate-50">
+                      <span className="text-slate-500">Danh sách Container:</span>
+                      <span className="font-bold text-slate-800 font-mono">{(selectedDoc.containers || []).join(', ')}</span>
+                    </div>
+                    {selectedDoc.charges && selectedDoc.charges.length > 0 && (
+                      <div className="p-3 bg-amber-50/50">
+                        <div className="font-bold text-slate-700 mb-1">Các khoản cước & phụ phí Hãng tàu thu (tạm tính):</div>
+                        <div className="space-y-1">
+                          {selectedDoc.charges.map((c, i) => (
+                            <div key={i} className="flex justify-between text-slate-600">
+                              <span>- {c.item}</span>
+                              <span className="font-bold text-slate-800">{Number(c.amount).toLocaleString('vi-VN')} VND</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {selectedDoc.documentType === 'BOOKING' && (
+                  <>
+                    <div className="grid grid-cols-2 p-3 bg-slate-50 font-semibold">
+                      <span className="text-slate-500">Số Booking:</span>
+                      <span className="font-bold text-slate-800 font-mono">{selectedDoc.bookingNo}</span>
+                    </div>
+                    <div className="grid grid-cols-2 p-3">
+                      <span className="text-slate-500">Tàu & Chuyến dự kiến:</span>
+                      <span className="font-bold text-slate-800">{selectedDoc.vesselName} ({selectedDoc.voyageNo})</span>
+                    </div>
+                    <div className="grid grid-cols-2 p-3 bg-slate-50">
+                      <span className="text-slate-500">Chủ hàng (Shipper):</span>
+                      <span className="font-bold text-slate-800">{selectedDoc.shipper}</span>
+                    </div>
+                    <div className="grid grid-cols-2 p-3">
+                      <span className="text-slate-500">Số lượng & Loại container:</span>
+                      <span className="font-bold text-slate-800">{selectedDoc.quantity} container x {selectedDoc.containerType}</span>
+                    </div>
+                    <div className="grid grid-cols-2 p-3 bg-slate-50">
+                      <span className="text-slate-500">Hạn chót hạ bãi (CY Cut-off):</span>
+                      <span className="font-bold text-amber-800">{selectedDoc.cyCutOff ? new Date(selectedDoc.cyCutOff).toLocaleString('vi-VN') : 'Theo thông báo hãng tàu'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 p-3">
+                      <span className="text-slate-500">Hạn chót nộp VGM (VGM Cut-off):</span>
+                      <span className="font-bold text-amber-800">{selectedDoc.vgmCutOff ? new Date(selectedDoc.vgmCutOff).toLocaleString('vi-VN') : 'Trước giờ CY Cut-off'}</span>
+                    </div>
+                    <div className="grid grid-cols-2 p-3 bg-slate-50">
+                      <span className="text-slate-500">Địa điểm lấy vỏ rỗng:</span>
+                      <span className="font-bold text-slate-800">{selectedDoc.emptyPickupPlace}</span>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Mô phỏng mã QR xác thực */}
@@ -1071,21 +1516,446 @@ export default function CargoDocumentTracking() {
             </div>
 
             {/* Footer nút bấm */}
-            <div className="bg-slate-50 p-4 border-t border-slate-200 flex items-center justify-end gap-2">
+            <div className="bg-slate-50 p-4 border-t border-slate-200 flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                {selectedDoc.documentType === 'BL' && (
+                  <button
+                    onClick={() => handleConfirmDraftBL(selectedDoc.blNumber, selectedDoc.bookingNo)}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-xs font-bold text-white inline-flex items-center gap-1.5 shadow-sm"
+                  >
+                    <span className="material-symbols-outlined text-sm">check_circle</span>
+                    Xác nhận bản nháp Draft B/L
+                  </button>
+                )}
+                {selectedDoc.documentType === 'BOOKING' && (
+                  <button
+                    onClick={() => {
+                      setSelectedDoc(null);
+                      setVgmModal({ open: true, bookingNo: selectedDoc.bookingNo, containerNo: 'MSKU9082134' });
+                    }}
+                    className="px-4 py-2 bg-orange-600 hover:bg-orange-700 rounded-lg text-xs font-bold text-white inline-flex items-center gap-1.5 shadow-sm"
+                  >
+                    <span className="material-symbols-outlined text-sm">scale</span>
+                    Khai báo / Nộp VGM
+                  </button>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.print()}
+                  className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg text-xs font-bold text-slate-700 inline-flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-sm">print</span>
+                  In chứng từ
+                </button>
+                <button
+                  onClick={() => setSelectedDoc(null)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-900 rounded-lg text-xs font-bold text-white"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL KHAI BÁO / NỘP VGM ĐIỆN TỬ (HÀNH ĐỘNG MỤC 3.2 #5) ── */}
+      {vgmModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="bg-gradient-to-r from-orange-600 to-amber-600 text-white p-5 flex items-center justify-between">
+              <div>
+                <span className="px-2 py-0.5 text-[10px] font-black rounded bg-white/20 uppercase tracking-wider">
+                  THỦ TỤC XUẤT KHẨU (MỤC 3.2)
+                </span>
+                <h3 className="text-lg font-black mt-1">Khai báo khối lượng toàn bộ (VGM)</h3>
+                <p className="text-xs text-orange-100">Booking: {vgmModal.bookingNo}</p>
+              </div>
               <button
-                onClick={() => window.print()}
-                className="px-4 py-2 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg text-xs font-bold text-slate-700 inline-flex items-center gap-1.5"
+                onClick={() => setVgmModal({ open: false, bookingNo: '', containerNo: '' })}
+                className="p-1 rounded-lg text-orange-100 hover:text-white"
               >
-                <span className="material-symbols-outlined text-sm">print</span>
-                In chứng từ
-              </button>
-              <button
-                onClick={() => setSelectedDoc(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 rounded-lg text-xs font-bold text-white"
-              >
-                Đóng
+                <span className="material-symbols-outlined text-2xl">close</span>
               </button>
             </div>
+
+            <form onSubmit={handleSubmitVGM} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Số Container:</label>
+                <input
+                  type="text"
+                  required
+                  value={vgmModal.containerNo}
+                  onChange={(e) => setVgmModal(prev => ({ ...prev, containerNo: e.target.value.toUpperCase() }))}
+                  className="w-full p-2.5 font-mono text-xs border border-slate-300 rounded-lg font-bold text-slate-800"
+                  placeholder="VD: MSKU9082134"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Khối lượng toàn bộ xác nhận (VGM Weight - Kg):</label>
+                <input
+                  type="number"
+                  required
+                  value={vgmForm.vgmWeight}
+                  onChange={(e) => setVgmForm(prev => ({ ...prev, vgmWeight: e.target.value }))}
+                  className="w-full p-2.5 text-xs border border-slate-300 rounded-lg font-bold text-slate-800"
+                  placeholder="VD: 24500"
+                />
+                <span className="text-[11px] text-slate-400">Bao gồm trọng lượng hàng hóa + vật liệu chèn lót + trọng lượng vỏ container rỗng.</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Phương pháp xác định:</label>
+                <select
+                  value={vgmForm.signatureMethod}
+                  onChange={(e) => setVgmForm(prev => ({ ...prev, signatureMethod: e.target.value }))}
+                  className="w-full p-2.5 text-xs border border-slate-300 rounded-lg bg-slate-50 font-medium text-slate-700"
+                >
+                  <option value="METHOD_1">Phương pháp 1: Cân toàn bộ xe và container tại trạm cân đạt chuẩn</option>
+                  <option value="METHOD_2">Phương pháp 2: Cân từng kiện hàng + bì đóng gói + trọng lượng vỏ</option>
+                  <option value="ELECTRONIC">Cân điện tử tích hợp cổng cảng Tiên Sa</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Người ký xác nhận ủy quyền:</label>
+                <input
+                  type="text"
+                  required
+                  value={vgmForm.authorizedPerson}
+                  onChange={(e) => setVgmForm(prev => ({ ...prev, authorizedPerson: e.target.value }))}
+                  className="w-full p-2.5 text-xs border border-slate-300 rounded-lg text-slate-800 font-medium"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setVgmModal({ open: false, bookingNo: '', containerNo: '' })}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:opacity-90 text-white rounded-lg text-xs font-extrabold shadow"
+                >
+                  Ký & Nộp VGM ngay
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL HƯỚNG DẪN XỬ LÝ NGOẠI LỆ / LIÊN HỆ HÃNG TÀU (HÀNH ĐỘNG MỤC 3.2 #7) ── */}
+      {supportModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200 animate-in fade-in zoom-in-95">
+            <div className="bg-red-600 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="material-symbols-outlined text-2xl">warning</span>
+                <div>
+                  <h3 className="text-base font-black">Hướng dẫn xử lý sự cố & Liên hệ Hãng tàu</h3>
+                  <p className="text-xs text-red-100">{supportModal.containerNo}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setSupportModal({ open: false, title: '', reason: '', containerNo: '' })}
+                className="p-1 rounded-lg text-red-200 hover:text-white"
+              >
+                <span className="material-symbols-outlined text-2xl">close</span>
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div className="p-3.5 bg-red-50 border border-red-200 rounded-xl text-red-900">
+                <span className="font-bold">Lý do ghi nhận tại Cảng: </span>
+                {supportModal.reason}
+              </div>
+
+              <div>
+                <h4 className="font-bold text-slate-800 text-sm mb-2">Quy trình xử lý theo nghiệp vụ cảng container:</h4>
+                <ol className="list-decimal list-inside space-y-2 text-slate-600 leading-relaxed">
+                  <li>
+                    <strong className="text-slate-800">Trường hợp số niêm chì không khớp:</strong> Yêu cầu tài xế giữ nguyên xe tại làn chờ quầy kiểm soát Gate-01, mở lại tờ khai danh sách cont để đối soát số chì thực tế.
+                  </li>
+                  <li>
+                    <strong className="text-slate-800">Trường hợp thiếu khai báo VGM:</strong> Sử dụng chức năng <em>"Khai hoặc nộp VGM"</em> ngay trên màn hình để nộp bổ sung chứng chỉ cân điện tử, hệ thống sẽ cấp phép hạ bãi tức thì.
+                  </li>
+                  <li>
+                    <strong className="text-slate-800">Trường hợp quá hạn CY Cut-off:</strong> Liên hệ ngay đại diện Hãng tàu qua thông tin bên dưới để xin phát hành <em>Công văn chấp thuận hạ trễ (Late Gate-in Authorization)</em> đưa vào hàng đợi ngoại lệ của Điều độ viên.
+                  </li>
+                </ol>
+              </div>
+
+              <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 font-medium text-slate-700">
+                <div className="font-bold text-slate-900">Đầu mối hỗ trợ 24/7 (Cảng Tiên Sa & Hãng tàu):</div>
+                <div>- Hotline hỗ trợ khẩn cấp: <span className="font-bold text-orange-600">1900 6868 (Phím 2)</span></div>
+                <div>- Email tiếp nhận chỉ thị ngoại lệ: <span className="font-mono text-slate-900">ops@nexusport.vn / exception@shippingline.vn</span></div>
+                <div>- Quầy thủ tục hiện trường: <span className="font-semibold">Bộ phận Điều độ Cổng Cảng (Gate Ops)</span></div>
+              </div>
+
+              <div className="flex justify-end pt-2 border-t border-slate-100">
+                <button
+                  onClick={() => setSupportModal({ open: false, title: '', reason: '', containerNo: '' })}
+                  className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-lg text-xs font-bold"
+                >
+                  Đã hiểu & Đóng hướng dẫn
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── MODAL SỬA DANH SÁCH CONTAINER CÓ LỖI (MỤC 3.2 #4) ── */}
+      {editListModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200">
+            <div className="bg-amber-600 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="material-symbols-outlined text-2xl">rule</span>
+                <div>
+                  <h3 className="text-base font-black">Sửa danh sách container có lỗi</h3>
+                  <p className="text-xs text-amber-100">Booking: {editListModal.bookingNo}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setEditListModal({ open: false, bookingNo: '', errors: [], containerList: '' })}
+                className="p-1 rounded-lg text-amber-100 hover:text-white"
+              >
+                <span className="material-symbols-outlined text-2xl">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitEditList} className="p-6 space-y-4">
+              <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-xl space-y-1">
+                <div className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-base text-amber-600">error</span>
+                  Danh sách lỗi từng dòng cần khắc phục:
+                </div>
+                <div className="space-y-1 pl-5 text-xs text-amber-800">
+                  {editListModal.errors.map((err, idx) => (
+                    <div key={idx} className="list-disc leading-relaxed">
+                      • {typeof err === 'object' ? (err.message || JSON.stringify(err)) : err}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Nhập danh sách Container đã chuẩn hóa (mỗi dòng 1 mã container):
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={editListModal.containerList}
+                  onChange={(e) => setEditListModal(prev => ({ ...prev, containerList: e.target.value }))}
+                  className="w-full p-3 font-mono text-xs border border-slate-300 rounded-lg text-slate-800 font-semibold focus:ring-2 focus:ring-amber-500"
+                  placeholder="MSKU9082134&#10;TCKU4829102"
+                />
+                <span className="text-[11px] text-slate-400">
+                  Định dạng chuẩn ISO 6346: 4 chữ cái + 7 chữ số (Ví dụ: MSKU9082134).
+                </span>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditListModal({ open: false, bookingNo: '', errors: [], containerList: '' })}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-extrabold shadow"
+                >
+                  Lưu & Gửi lại danh sách chuẩn
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL TẠO BOOKING MỚI SAU KHI BỊ TỪ CHỐI (MỤC 3.2 #2) ── */}
+      {createBookingModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200">
+            <div className="bg-blue-600 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="material-symbols-outlined text-2xl">add_shopping_cart</span>
+                <div>
+                  <h3 className="text-base font-black">Tạo Booking Xuất khẩu mới</h3>
+                  <p className="text-xs text-blue-100">Cấp lại chỗ sau khi Booking cũ bị từ chối</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCreateBookingModal(prev => ({ ...prev, open: false }))}
+                className="p-1 rounded-lg text-blue-100 hover:text-white"
+              >
+                <span className="material-symbols-outlined text-2xl">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitCreateBooking} className="p-6 space-y-4">
+              {createBookingModal.reason && (
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-800">
+                  <span className="font-bold">Lý do từ chối trước đó: </span>
+                  {createBookingModal.reason}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Tên tàu:</label>
+                  <input
+                    type="text"
+                    required
+                    value={createBookingModal.vesselName}
+                    onChange={(e) => setCreateBookingModal(prev => ({ ...prev, vesselName: e.target.value }))}
+                    className="w-full p-2.5 text-xs border border-slate-300 rounded-lg font-bold text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Số chuyến mới:</label>
+                  <input
+                    type="text"
+                    required
+                    value={createBookingModal.voyageNo}
+                    onChange={(e) => setCreateBookingModal(prev => ({ ...prev, voyageNo: e.target.value }))}
+                    className="w-full p-2.5 text-xs border border-slate-300 rounded-lg font-bold text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Số lượng container:</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={50}
+                    required
+                    value={createBookingModal.quantity}
+                    onChange={(e) => setCreateBookingModal(prev => ({ ...prev, quantity: Number(e.target.value) }))}
+                    className="w-full p-2.5 text-xs border border-slate-300 rounded-lg font-bold text-slate-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Loại container:</label>
+                  <select
+                    value={createBookingModal.containerType}
+                    onChange={(e) => setCreateBookingModal(prev => ({ ...prev, containerType: e.target.value }))}
+                    className="w-full p-2.5 text-xs border border-slate-300 rounded-lg bg-slate-50 font-bold text-slate-800"
+                  >
+                    <option value="20GP">20' Dry Standard (20GP)</option>
+                    <option value="40HC">40' High Cube (40HC)</option>
+                    <option value="40RF">40' Reefer Container (40RF)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Mô tả hàng hóa:</label>
+                <input
+                  type="text"
+                  required
+                  value={createBookingModal.commodity}
+                  onChange={(e) => setCreateBookingModal(prev => ({ ...prev, commodity: e.target.value }))}
+                  className="w-full p-2.5 text-xs border border-slate-300 rounded-lg text-slate-800 font-medium"
+                />
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setCreateBookingModal(prev => ({ ...prev, open: false }))}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-extrabold shadow"
+                >
+                  Gửi yêu cầu Booking mới
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL ĐẶT LỆNH LẤY HÀNG (MỤC 4.2 #3, #5) ── */}
+      {pickupModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden border border-slate-200">
+            <div className="bg-emerald-600 text-white p-5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="material-symbols-outlined text-2xl">local_shipping</span>
+                <div>
+                  <h3 className="text-base font-black">Đặt Lệnh Giao Nhận Lấy Hàng (e-Port)</h3>
+                  <p className="text-xs text-emerald-100">e-D/O: {pickupModal.doNumber}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setPickupModal({ open: false, doNumber: '', blNumber: '', validUntil: '', emptyReturnDepot: '' })}
+                className="p-1 rounded-lg text-emerald-100 hover:text-white"
+              >
+                <span className="material-symbols-outlined text-2xl">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitPickupOrder} className="p-6 space-y-4 text-xs">
+              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl space-y-2 text-emerald-950 font-medium">
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">Số lệnh e-D/O:</span>
+                  <span className="font-mono font-bold text-slate-900">{pickupModal.doNumber}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">Vận đơn B/L:</span>
+                  <span className="font-mono font-bold text-slate-900">{pickupModal.blNumber}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">Hạn hiệu lực e-D/O:</span>
+                  <span className="font-bold text-slate-800">{new Date(pickupModal.validUntil).toLocaleString('vi-VN')}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">Nơi trả vỏ rỗng:</span>
+                  <span className="font-bold text-emerald-800">{pickupModal.emptyReturnDepot}</span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-emerald-200">
+                  <span className="text-slate-600">Biểu phí nâng hạ container:</span>
+                  <span className="font-bold text-slate-900">450.000 VND / cont</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-slate-600">Phí lưu bãi tạm tính:</span>
+                  <span className="font-bold text-emerald-700">0 VND (Trong hạn Free Time)</span>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setPickupModal({ open: false, doNumber: '', blNumber: '', validUntil: '', emptyReturnDepot: '' })}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="submit"
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-extrabold shadow"
+                >
+                  Xác nhận đặt lệnh lấy hàng
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
