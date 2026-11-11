@@ -1,14 +1,21 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Container, Truck, PlugZap, ArrowLeftRight, Clock3, Scale, Search, Plus, ArrowUpRight, Check, X, ShieldCheck, CalendarDays, Calculator, Pencil, Loader2, RefreshCw, CircleHelp, ReceiptText, CheckCircle2, Ban, SlidersHorizontal, ArrowRight, Layers3, Pause, Play, FolderOpen } from 'lucide-react'
+import { useSearchParams } from 'react-router-dom'
+import { Container, Truck, PlugZap, ArrowLeftRight, Clock3, Scale, Search, Plus, ArrowUpRight, Check, X, ShieldCheck, CalendarDays, Calculator, Pencil, Loader2, RefreshCw, CircleHelp, ReceiptText, CheckCircle2, Ban, SlidersHorizontal, ArrowRight, Layers3, Pause, Play, ArrowDownToLine, ArrowUpFromLine, CheckCircle, ClipboardList, Filter, FileText } from 'lucide-react'
 import { catalogApi, labels, money, formatDate, rateState, liveRates } from './catalogApi'
 import CatalogDialog from './CatalogDialog'
 import ServiceDraftWizard from './ServiceDraftWizard'
 import ServiceDraftList from './ServiceDraftList'
 import ServiceRegistrationReview from './ServiceRegistrationReview'
+import ServiceOrderDetail from './ServiceOrderDetail'
+import OrderBadge from './ServiceOrderBadge'
+import { draftDateTime, draftError, draftSession, serviceDraftKey } from './serviceDraftsApi'
+import { orderStatusLabels, paymentStateLabel, paymentStatusLabels, serviceOrderKey, serviceOrdersApi, statusTone } from './serviceOrdersApi'
 import './serviceCatalog.css'
 import './serviceDrafts.css'
 import './serviceRegistrations.css'
+import './serviceDelivery.css'
+import './serviceOrders.css'
 
 const iconMap = { container: Container, truck: Truck, plug: PlugZap, move: ArrowLeftRight, clock: Clock3, scale: Scale }
 const directionIcons = { ALL: Layers3, EXPORT: Container, IMPORT: Truck, BOTH: PlugZap }
@@ -80,30 +87,6 @@ function TariffForm({ service, today, onClose, onSaved }) {
   </Modal>
 }
 
-function Estimate({ service }) {
-  const [form, setForm] = useState({ size: '20FT', equipment: 'DRY', quantity: '1' })
-  const resultRef = useRef(null)
-  const quote = useMutation({ mutationFn: () => catalogApi.quote(service.id, { ...form, quantity: Number(form.quantity) }) })
-  useEffect(() => {
-    if (!quote.data || !resultRef.current) return
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
-      || resultRef.current.closest('.epc-motion-paused')
-    resultRef.current.scrollIntoView({ block: 'nearest', behavior: reduced ? 'instant' : 'smooth' })
-  }, [quote.data])
-  const update = (name, value) => { setForm(f => ({ ...f, [name]: value })); quote.reset() }
-  return <section className="epc-estimate"><div className="epc-section-title"><Calculator size={18} /><h3>Dự tính chi phí</h3><Badge>VND</Badge></div>
-    <p className="epc-estimate-intro">Chọn thông tin container để tra đơn giá phù hợp.</p>
-    <form onSubmit={e => { e.preventDefault(); quote.mutate() }}><fieldset disabled={quote.isPending}>
-      <div className="epc-form-grid"><Field label="Kích thước"><select value={form.size} onChange={e => update('size', e.target.value)}><Options values={Object.fromEntries(Object.entries(labels.size).filter(([k]) => k !== 'ALL'))} /></select></Field>
-        <Field label="Nhóm container"><select value={form.equipment} onChange={e => update('equipment', e.target.value)}><Options values={Object.fromEntries(Object.entries(labels.equipment).filter(([k]) => k !== 'ALL'))} /></select></Field>
-        <Field label={`Số ${labels.unit[service.unit]}`} wide><input type="number" required min={service.unit === 'HOUR' ? '.01' : '1'} max="10000" step={service.unit === 'HOUR' ? '.01' : '1'} value={form.quantity} onChange={e => update('quantity', e.target.value)} /></Field></div>
-      <button className="epc-button primary full" disabled={!service.isActive || quote.isPending}>{quote.isPending ? <Loader2 size={16} className="epc-spin" /> : <Calculator size={16} />}Tính chi phí dự kiến<ArrowRight size={16} aria-hidden="true" /></button>
-    </fieldset></form>
-    {!quote.data && !quote.error && <div className="epc-estimate-hint"><ShieldCheck size={16} /><p>Tham khảo chi phí theo biểu phí hiện hành trước khi đăng ký dịch vụ.</p></div>}
-    {quote.error && <p className="epc-error" role="alert">{getError(quote.error)}</p>}
-    {quote.data && <div ref={resultRef} className="epc-quote" aria-live="polite">{quote.data.status === 'PRICED' ? <><div className="epc-quote-heading"><span>Tổng dự kiến</span><CheckCircle2 size={18} /></div><strong>{money(quote.data.total)}</strong><small>{money(quote.data.unitPrice)} × {quote.data.quantity} {labels.unit[service.unit]}</small></> : <strong className="epc-quote-unpriced">{quote.data.message}</strong>}<p>{quote.data.status === 'PRICED' ? quote.data.message : 'Vui lòng liên hệ bộ phận dịch vụ để được hỗ trợ về đơn giá.'}</p></div>}
-  </section>
-}
 function HistoryPanel({ id }) {
   const query = useQuery({ queryKey: [...key, 'history', id], queryFn: () => catalogApi.history(id) })
   if (query.isPending) return <p className="epc-muted">Đang tải lịch sử…</p>
@@ -182,7 +165,7 @@ function ServiceWorkspace({ service, today, management, tab, onTab, onClose, onE
         </div>
       </section>
       <aside className="epc-workspace-aside" aria-label={management ? 'Thao tác quản trị dịch vụ' : 'Dự tính chi phí dịch vụ'}>
-        {management ? <div className="epc-workspace-tools">
+        {management && <div className="epc-workspace-tools">
           <div className="epc-section-title"><SlidersHorizontal size={19} /><h3>Quản lý dịch vụ</h3></div>
           <div className="epc-workspace-price"><span>Đơn giá đang hiệu lực</span><Price service={service} today={today} /></div>
           <dl className="epc-workspace-facts">
@@ -193,14 +176,10 @@ function ServiceWorkspace({ service, today, management, tab, onTab, onClose, onE
           <button type="button" className="epc-button primary full" onClick={onAddTariff}><Plus size={17} />Thêm biểu phí</button>
           <button type="button" className="epc-button secondary full" onClick={onEdit}><Pencil size={16} />Chỉnh sửa dịch vụ</button>
           <p className="epc-workspace-helper">Mỗi biểu phí được lưu theo khoảng ngày áp dụng. Lịch sử thay đổi luôn được giữ lại.</p>
-        </div> : <>
-          <div className="epc-price-summary"><div className="epc-price-summary-heading"><ReceiptText size={17} /><span>Đơn giá tham khảo</span><Badge>VND</Badge></div><Price service={service} today={today} /><p>Áp dụng theo kích thước, nhóm container và thời gian sử dụng.</p><div className="epc-price-summary-meta"><CalendarDays size={14} />Tra cứu tại ngày {formatDate(today)}</div></div>
-          {!service.isActive && <div className="epc-notice"><Ban size={17} /><p>Dịch vụ đang tạm ngừng. Bạn vẫn có thể xem điều kiện và biểu phí đã công bố.</p></div>}
-          <Estimate key={service.id} service={service} />
-        </>}
+        </div>}
       </aside>
     </div>
-    <footer className={`epc-workspace-footer ${onRegister && service.isActive ? 'epc-workspace-footer-register' : ''}`}><span><span className="epc-workspace-footer-mark"><ShieldCheck size={15} /></span>Thông tin theo danh mục hiện hành</span><div className="epc-workspace-footer-actions"><button type="button" className="epc-button secondary" onClick={onClose}>Đóng chi tiết</button>{onRegister && service.isActive && <button type="button" className="epc-button primary" onClick={onRegister}><Plus size={16} />Đăng ký dịch vụ</button>}</div></footer>
+    <footer className="epc-workspace-footer"><span><span className="epc-workspace-footer-mark"><ShieldCheck size={15} /></span>Thông tin theo danh mục hiện hành</span><div className="epc-workspace-footer-actions"><button type="button" className="epc-button secondary" onClick={onClose}>Đóng chi tiết</button></div></footer>
   </CatalogDialog>
 }
 
@@ -221,13 +200,40 @@ export default function ServiceCatalogPage({ management = false }) {
   const [draftDialog, setDraftDialog] = useState(null)
   const [showDraftList, setShowDraftList] = useState(false)
   const [registrationReview, setRegistrationReview] = useState(null)
+  const [activeSection, setActiveSection] = useState('orders') // 'orders' | 'register'
   const canDraft = !management && ['transport company', 'carrier', 'carrier staff'].includes(account?.role?.trim().toLowerCase())
   const services = query.data?.services || []
   const today = query.data?.asOf || ''
-  // There is no implicit selection: detail content belongs only to the clicked service.
   const selected = services.find(service => service.id === selectedId)
   const filtered = services.filter(service => (!search || `${service.name} ${service.code} ${service.description}`.toLocaleLowerCase('vi').includes(search.toLocaleLowerCase('vi'))) && (direction === 'ALL' || service.direction === direction) && (status === 'ALL' || service.isActive === (status === 'ACTIVE')))
   const ready = services.filter(service => service.isActive && liveRates(service, today).length)
+
+  // Orders list state (merged from ServiceOrdersPage)
+  const [params, setParams] = useSearchParams()
+  const session = draftSession()
+  const selectedOrderId = params.get('order') || params.get('orderId')
+  const [orderSearch, setOrderSearch] = useState('')
+  const [orderTerm, setOrderTerm] = useState('')
+  const [orderStatus, setOrderStatus] = useState('')
+  const [orderPaymentStatus, setOrderPaymentStatus] = useState('')
+  const [orderFlow, setOrderFlow] = useState('')
+  const [orderPage, setOrderPage] = useState(1)
+  const [orderEditing, setOrderEditing] = useState(null)
+  const [orderReviewing, setOrderReviewing] = useState(null)
+  useEffect(() => { const timer = setTimeout(() => { setOrderTerm(orderSearch.trim()); setOrderPage(1) }, 280); return () => clearTimeout(timer) }, [orderSearch])
+  const orderFilters = { search: orderTerm || undefined, status: orderStatus || undefined, paymentStatus: orderPaymentStatus || undefined, flow: orderFlow || undefined, page: orderPage, pageSize: 10 }
+  const ordersQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'list', orderFilters], queryFn: () => serviceOrdersApi.list(orderFilters), retry: false, enabled: canDraft })
+  const ordersTotal = ordersQuery.data?.total || 0
+  const ordersPages = Math.max(1, Math.ceil(ordersTotal / 10))
+  const orderItems = ordersQuery.data?.items || []
+  const ordersHasFilter = !!(orderSearch || orderStatus || orderPaymentStatus || orderFlow)
+  const catalogForOrders = useQuery({ queryKey: ['eport-service-catalog', session, 'orders'], queryFn: catalogApi.list, enabled: !!orderEditing, retry: false })
+  const chooseOrder = id => setParams(prev => { const next = new URLSearchParams(prev); ['orderId', 'code', 'status', 'cancel', 'id'].forEach(k => next.delete(k)); if (id) next.set('order', id); else next.delete('order'); return next })
+  const refreshOrders = async () => { await Promise.all([client.invalidateQueries({ queryKey: serviceOrderKey }), client.invalidateQueries({ queryKey: serviceDraftKey })]) }
+  const orderEditDraft = id => { chooseOrder(null); setOrderReviewing(null); setOrderEditing(id) }
+  const orderReviewDraft = id => { chooseOrder(null); setOrderEditing(null); setOrderReviewing(id) }
+  const orderChangeFilter = (setter, value) => { setter(value); setOrderPage(1) }
+
   const updated = async () => {
     await client.invalidateQueries({ queryKey: key })
     setModal(null)
@@ -237,105 +243,588 @@ export default function ServiceCatalogPage({ management = false }) {
     mutationFn: ({ serviceId, tariff }) => catalogApi.retire(serviceId, tariff.id),
     onSuccess: async () => { setConfirmRetire(null); await updated() },
   })
+
   useEffect(() => {
     if (!notice) return
     const timer = setTimeout(() => setNotice(''), 4500)
     return () => clearTimeout(timer)
   }, [notice])
   useEffect(() => { setSelectedId(null); setModal(null); setConfirmRetire(null); setTab('conditions') }, [management])
+
   const choose = id => { setSelectedId(id); setTab('conditions'); setNotice(''); retire.reset() }
   const startDraft = (initialServiceId = null) => { setSelectedId(null); setShowDraftList(false); setRegistrationReview(null); setDraftDialog({ initialServiceId }) }
   const draftSaved = async draft => {
     setDraftDialog(null)
     await client.invalidateQueries({ queryKey: ['eport-service-drafts'] })
-    setNotice(`Đã lưu bản nháp ${draft.number || ''}. Bạn có thể mở lại trong “Hồ sơ của tôi”.`)
+    await refreshOrders()
+    setNotice(`Đã lưu bản nháp ${draft.number || ''}.`)
   }
   const reviewDraft = draftId => { setDraftDialog(null); setShowDraftList(false); setRegistrationReview(draftId); setNotice('') }
   const editDraft = draftId => { setRegistrationReview(null); setShowDraftList(false); setDraftDialog({ draftId }) }
-  const registered = registration => setNotice(`Đã ghi nhận đăng ký ${registration.number || ''}${registration.status === 'PENDING_APPROVAL' ? ' — Chờ cảng duyệt.' : ' — Đã xác nhận.'}`)
+  const registered = async registration => {
+    setNotice(`Đã ghi nhận đăng ký ${registration.number || ''}${registration.status === 'PENDING_APPROVAL' ? ' — Chờ cảng duyệt.' : ' — Đã xác nhận.'}`)
+    await refreshOrders()
+  }
 
-  return <div className={`epc ${motionPaused ? 'epc-motion-paused' : ''}`}>
-    <div className="epc-page-header">
-      <div>
-        <div className="epc-breadcrumb">{management ? 'Quản trị' : 'Cổng doanh nghiệp'}<span>/</span>Dịch vụ cảng</div>
-        <h1>{management ? 'Danh mục & biểu phí' : 'Dịch vụ cảng'}</h1>
-        <p>{management ? 'Quản lý dịch vụ và đơn giá theo từng thời gian áp dụng.' : 'Chọn dịch vụ để xem điều kiện, biểu phí và dự tính chi phí.'}</p>
-      </div>
-      {management ? <button type="button" className="epc-button primary" onClick={() => setModal({ type: 'service' })}><Plus size={18} />Thêm dịch vụ</button> : canDraft ? <div className="epc-page-actions"><button type="button" className="epc-button secondary" onClick={() => setShowDraftList(true)}><FolderOpen size={16} />Hồ sơ của tôi</button><button type="button" className="epc-button primary" onClick={() => startDraft()}><Plus size={17} />Tạo đăng ký</button></div> : <span className="epc-header-label"><ShieldCheck size={16} />Thông tin dịch vụ & đơn giá</span>}
-    </div>
+  const importService = services.find(s => s.code === 'IMPORT_PICKUP' && s.isActive) || services.find(s => s.code === 'IMPORT_PICKUP')
+  const exportService = services.find(s => s.code === 'EXPORT_DROPOFF' && s.isActive) || services.find(s => s.code === 'EXPORT_DROPOFF')
 
-    <section className="epc-hero" aria-labelledby="epc-hero-title">
-      <div className="epc-hero-grid" aria-hidden="true" />
-      <button type="button" className="epc-motion-control" onClick={() => setMotionPaused(paused => !paused)} aria-label={motionPaused ? 'Bật hiệu ứng chuyển động' : 'Tạm dừng hiệu ứng chuyển động'}>{motionPaused ? <Play size={13} /> : <Pause size={13} />}<span>{motionPaused ? 'Bật chuyển động' : 'Chuyển động'}</span></button>
-      <div className="epc-hero-content">
-        <div className="epc-hero-brand"><span />NEXUSPORT E-PORT</div>
-        <h2 id="epc-hero-title">{management ? 'Một danh mục rõ ràng.' : 'Dịch vụ cho từng hành trình.'}<span>{management ? 'Mỗi đơn giá có căn cứ.' : 'Chi phí rõ từ đầu.'}</span></h2>
-        <p>{management ? 'Thiết lập dịch vụ và thời gian hiệu lực. Giữ lịch sử cho mỗi lần cập nhật.' : 'Tra cứu giao nhận, dịch vụ bãi và điều kiện sử dụng tại một nơi.'}</p>
-        <div className="epc-hero-stats" aria-label="Tổng quan danh mục">
-          <div><strong>{query.isPending || query.isError ? '—' : String(services.filter(service => service.isActive).length).padStart(2, '0')}</strong><span>dịch vụ đang cung cấp</span></div>
-          <div><strong>{query.isPending || query.isError ? '—' : String(ready.length).padStart(2, '0')}</strong><span>dịch vụ có giá hiệu lực</span></div>
-          <div><strong>VND</strong><span>đơn vị tiền tệ</span></div>
+  return (
+    <div className={`epc ${motionPaused ? 'epc-motion-paused' : ''}`}>
+      <div className="epc-page-header">
+        <div>
+          <div className="epc-breadcrumb">
+            {management ? 'Quản trị' : 'Cổng doanh nghiệp'}
+            <span>/</span>
+            {management ? 'Danh mục dịch vụ & Biểu phí' : 'Đăng ký giao nhận'}
+          </div>
+          <h1>{management ? 'Danh mục & biểu phí' : 'Đăng Ký Giao Nhận (ePort)'}</h1>
+          <p>
+            {management
+              ? 'Quản lý danh mục dịch vụ và đơn giá theo từng thời gian áp dụng.'
+              : 'Hệ thống tiếp nhận và giải quyết thủ tục giao nhận container hàng xuất và nhập khẩu trực tuyến.'}
+          </p>
         </div>
+        {management ? (
+          <button type="button" className="epc-button primary" onClick={() => setModal({ type: 'service' })}>
+            <Plus size={18} />Thêm dịch vụ
+          </button>
+        ) : canDraft ? (
+          <span className="epc-header-label">
+            <ShieldCheck size={16} />Đăng ký giao nhận ePort
+          </span>
+        ) : (
+          <span className="epc-header-label">
+            <ShieldCheck size={16} />Thông tin dịch vụ & đơn giá
+          </span>
+        )}
       </div>
-      <div className="epc-hero-art" aria-hidden="true">
-        <div className="epc-hero-orbit" />
-        <div className="epc-hero-route"><span /><span /><span /></div>
-        <div className="epc-hero-node"><Container size={17} /><span>E-PORT<span>Dịch vụ kết nối</span></span></div>
-        <div className="epc-hero-container epc-hero-container-blue"><span>E-PORT</span></div>
-        <div className="epc-hero-container epc-hero-container-green" />
-        <div className="epc-hero-container epc-hero-container-orange"><Container size={40} strokeWidth={1.2} /><span>NEXUSPORT</span></div>
-        <div className="epc-hero-art-caption"><ShieldCheck size={16} />KẾT NỐI MỌI TÁC NGHIỆP</div>
-      </div>
-    </section>
-    {notice && !selected && <div className="epc-success" role="status"><CheckCircle2 size={18} />{notice}<button type="button" aria-label="Đóng thông báo" onClick={() => setNotice('')}><X size={16} /></button></div>}
 
-    {query.isError ? <section className="epc-load-error"><CircleHelp size={32} /><h2>Chưa tải được danh mục dịch vụ</h2><p>{getError(query.error)}</p><button type="button" className="epc-button secondary" onClick={() => query.refetch()}><RefreshCw size={16} />Thử lại</button></section>
-      : query.isPending ? <div className="epc-loading" aria-live="polite"><Loader2 className="epc-spin" size={28} /><p>Đang tải dịch vụ và biểu phí…</p></div> : <>
-        <div className="epc-toolbar">
-          <div className="epc-filters" aria-label="Lọc theo luồng hàng" style={{ '--filter-index': Object.keys(labels.direction).indexOf(direction) }}><span className="epc-filter-indicator" aria-hidden="true" />{Object.entries(labels.direction).map(([value, label]) => { const FilterIcon = directionIcons[value]; return <button type="button" key={value} className={direction === value ? 'active' : ''} aria-label={label} aria-pressed={direction === value} onClick={() => setDirection(value)}><FilterIcon size={15} aria-hidden="true" /><span>{label}</span><small>{services.filter(service => value === 'ALL' || service.direction === value).length}</small></button> })}</div>
-          <div className="epc-search"><Search size={17} /><input aria-label="Tìm dịch vụ" placeholder="Tìm tên hoặc mã dịch vụ…" value={search} onChange={event => setSearch(event.target.value)} /></div>
-          {management && <select className="epc-status-filter" aria-label="Lọc trạng thái dịch vụ" value={status} onChange={event => setStatus(event.target.value)}><option value="ALL">Mọi trạng thái</option><option value="ACTIVE">Đang cung cấp</option><option value="PAUSED">Tạm ngừng</option></select>}
+      <section className="epc-hero" aria-labelledby="epc-hero-title">
+        <div className="epc-hero-grid" aria-hidden="true" />
+        <button
+          type="button"
+          className="epc-motion-control"
+          onClick={() => setMotionPaused(paused => !paused)}
+          aria-label={motionPaused ? 'Bật hiệu ứng chuyển động' : 'Tạm dừng hiệu ứng chuyển động'}
+        >
+          {motionPaused ? <Play size={13} /> : <Pause size={13} />}
+          <span>{motionPaused ? 'Bật chuyển động' : 'Chuyển động'}</span>
+        </button>
+        <div className="epc-hero-content">
+          <div className="epc-hero-brand"><span />NEXUSPORT E-PORT</div>
+          <h2 id="epc-hero-title">
+            {management ? 'Một danh mục rõ ràng.' : 'Đăng ký giao nhận trực tuyến.'}
+            <span>{management ? 'Mỗi đơn giá có căn cứ.' : 'Chuẩn hóa quy trình cảng biển.'}</span>
+          </h2>
+          <p>
+            {management
+              ? 'Thiết lập dịch vụ và thời gian hiệu lực. Giữ lịch sử cho mỗi lần cập nhật.'
+              : 'Giao container hàng nhập (lệnh eDO/DO, VASSCM) và Hạ container hàng xuất (Booking giấy/eBooking, khai báo cont).'}
+          </p>
+          <div className="epc-hero-stats" aria-label="Tổng quan dịch vụ">
+            <div>
+              <strong>02</strong>
+              <span>Tác nghiệp chính (Xuất & Nhập)</span>
+            </div>
+            <div>
+              <strong>PayOS</strong>
+              <span>Cổng thanh toán điện tử</span>
+            </div>
+            <div>
+              <strong>VASSCM</strong>
+              <span>Hải quan điện tử</span>
+            </div>
+          </div>
         </div>
-        <div className="epc-layout">
-          <section className="epc-catalog" aria-labelledby="epc-catalog-heading">
-            <div className="epc-list-caption"><h2 id="epc-catalog-heading" tabIndex={-1} data-catalog-heading>{management ? 'Danh sách dịch vụ' : 'Khám phá dịch vụ'}</h2><span>{filtered.length} dịch vụ</span></div>
-            {!filtered.length ? <div className="epc-empty"><Search size={28} /><h3>Không có dịch vụ phù hợp</h3><p>Thử một từ khóa hoặc bộ lọc khác.</p><button type="button" className="epc-button secondary" onClick={() => { setSearch(''); setDirection('ALL'); setStatus('ALL') }}>Xóa bộ lọc</button></div>
-              : management ? <div className="epc-table-wrap"><table className="epc-table">
-                <thead><tr><th>Dịch vụ</th><th>Đơn vị / luồng</th><th>Đơn giá hiện tại</th><th><span className="epc-sr-only">Thao tác</span></th></tr></thead>
-                <tbody>{filtered.map(service => <tr key={service.id}>
-                  <td><button type="button" className="epc-service-link" onClick={() => choose(service.id)} aria-haspopup="dialog"><ServiceIcon service={service} size={21} /><span><strong>{service.name}</strong><small>{service.code}</small><Badge tone={service.isActive ? 'green' : 'neutral'}>{service.isActive ? 'Đang cung cấp' : 'Tạm ngừng'}</Badge></span></button></td>
-                  <td><span>{labels.unit[service.unit]}</span><small>{labels.direction[service.direction]}</small></td>
-                  <td><Price service={service} today={today} /><small>{liveRates(service, today).length} biểu phí hiệu lực</small></td>
-                  <td><button type="button" className="epc-icon-button" aria-label={`Chỉnh sửa ${service.name}`} onClick={() => setModal({ type: 'service', service })}><Pencil size={16} /></button></td>
-                </tr>)}</tbody>
-              </table></div> : <div className="epc-cards">{filtered.map((service, index) => <button type="button" key={service.id} className={`epc-service-card ${!service.isActive ? 'paused' : ''}`} data-accent={service.icon} style={{ '--card-index': index }} onClick={() => choose(service.id)} aria-haspopup="dialog">
-                <div className="epc-card-top"><ServiceIcon service={service} /><div className="epc-card-kicker"><small>{service.code}</small><Badge tone={!service.isActive ? 'neutral' : service.direction === 'EXPORT' ? 'orange' : service.direction === 'IMPORT' ? 'blue' : 'green'}>{service.isActive ? labels.direction[service.direction] : 'Tạm ngừng'}</Badge></div><span className="epc-card-watermark" aria-hidden="true"><ServiceIcon service={service} size={88} /></span></div>
-                <h3>{service.name}</h3><p>{service.description}</p>
-                <div className="epc-card-condition"><ShieldCheck size={14} /><span>{service.requiresApproval ? 'Cần điều độ phê duyệt' : `${service.conditions.length} điều kiện sử dụng`}</span></div>
-                <div className="epc-card-bottom"><Price service={service} today={today} /><span className="epc-card-action">Xem dịch vụ<ArrowUpRight size={17} /></span></div>
-              </button>)}</div>}
-            <div className="epc-footnote"><CircleHelp size={17} /><p>Đơn giá phụ thuộc kích thước, nhóm container và thời gian hiệu lực. Mở một dịch vụ để xem thông tin và dự tính chi phí.</p></div>
+        <div className="epc-hero-art" aria-hidden="true">
+          <div className="epc-hero-orbit" />
+          <div className="epc-hero-route"><span /><span /><span /></div>
+          <div className="epc-hero-node"><Container size={17} /><span>E-PORT<span>Dịch vụ kết nối</span></span></div>
+          <div className="epc-hero-container epc-hero-container-blue"><span>E-PORT</span></div>
+          <div className="epc-hero-container epc-hero-container-green" />
+          <div className="epc-hero-container epc-hero-container-orange"><Container size={40} strokeWidth={1.2} /><span>NEXUSPORT</span></div>
+          <div className="epc-hero-art-caption"><ShieldCheck size={16} />KẾT NỐI MỌI TÁC NGHIỆP</div>
+        </div>
+      </section>
+
+      {/* SECTION TABS: Điều hướng giữa 2 phần */}
+      {!management && canDraft && (
+        <div className="epc-section-tabs" role="tablist" aria-label="Chọn chế độ xem">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeSection === 'orders'}
+            className={`epc-section-tab ${activeSection === 'orders' ? 'active' : ''}`}
+            onClick={() => setActiveSection('orders')}
+          >
+            <ClipboardList size={16} aria-hidden="true" />
+            Đơn dịch vụ
+            {ordersTotal > 0 && <span className="epc-tab-count">{ordersTotal}</span>}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeSection === 'register'}
+            className={`epc-section-tab ${activeSection === 'register' ? 'active' : ''}`}
+            onClick={() => setActiveSection('register')}
+          >
+            <Container size={16} aria-hidden="true" />
+            Đăng ký dịch vụ
+          </button>
+        </div>
+      )}
+
+      {notice && !selected && (
+        <div className="epc-success" role="status">
+          <CheckCircle2 size={18} />{notice}
+          <button type="button" aria-label="Đóng thông báo" onClick={() => setNotice('')}><X size={16} /></button>
+        </div>
+      )}
+
+      {/* PORTAL FOR TRANSPORT COMPANY: CHỈ HIỂN THỊ DUY NHẤT 2 DỊCH VỤ XUẤT VÀ NHẬP */}
+      {!management && query.isSuccess && activeSection === 'register' && (
+        <section className="epc-eport-portal" aria-label="Hai dịch vụ xuất nhập khẩu">
+          {/* Card 1: Giao container hàng nhập */}
+          <article className="epc-portal-card import-card">
+            <div>
+              <header className="epc-portal-card-header">
+                <div className="epc-portal-icon-wrapper">
+                  <Truck size={30} strokeWidth={2} />
+                </div>
+                <Badge tone="blue">Hàng nhập · Import</Badge>
+              </header>
+              <h3>Giao container hàng nhập</h3>
+              <p className="epc-portal-desc">
+                Tác nghiệp bốc container hàng nhập ra khỏi cảng (lấy nguyên). Đăng ký lệnh giao hàng điện tử eDO hoặc DO giấy,
+                kiểm tra thông quan VASSCM cơ quan hải quan và điều động phương tiện xe/sà lan.
+              </p>
+
+              <div className="epc-portal-steps-box">
+                <div className="epc-portal-steps-title">
+                  <ShieldCheck size={14} />Quy trình 7 bước nghiệp vụ
+                </div>
+                <ul className="epc-portal-steps-list">
+                  <li><span className="epc-portal-step-num">1</span>Khai báo lệnh giao nhận DO/eDO & Xác thực email</li>
+                  <li><span className="epc-portal-step-num">2</span>Khai báo container lấy nguyên (chì niêm phong HQ)</li>
+                  <li><span className="epc-portal-step-num">3</span>Khai báo dịch vụ đính kèm (Lưu bãi, Cắm điện lạnh, Clone)</li>
+                  <li><span className="epc-portal-step-num">4</span>Kiểm tra thông quan qua hệ thống VASSCM</li>
+                  <li><span className="epc-portal-step-num">5</span>Khai báo giao nhận (Xe / Sà lan, Hạn lệnh)</li>
+                  <li><span className="epc-portal-step-num">6</span>Kiểm tra thông tin & Tính tiền, Thanh toán PayOS</li>
+                  <li><span className="epc-portal-step-num">7</span>Hoàn tất: In phiếu giao nhận từng cont & Hóa đơn</li>
+                </ul>
+              </div>
+            </div>
+
+            <footer className="epc-portal-card-footer">
+              <div className="epc-portal-price">
+                <span>Biểu phí tác nghiệp</span>
+                {importService ? <Price service={importService} today={today} /> : <strong>Theo biểu phí cảng</strong>}
+              </div>
+              <button
+                type="button"
+                className="epc-portal-btn"
+                disabled={!importService?.isActive}
+                onClick={() => startDraft(importService?.id)}
+              >
+                <span>Đăng ký giao hàng nhập</span>
+                <ArrowRight size={17} />
+              </button>
+            </footer>
+          </article>
+
+          {/* Card 2: Hạ container hàng xuất */}
+          <article className="epc-portal-card export-card">
+            <div>
+              <header className="epc-portal-card-header">
+                <div className="epc-portal-icon-wrapper">
+                  <Container size={30} strokeWidth={2} />
+                </div>
+                <Badge tone="orange">Hàng xuất · Export</Badge>
+              </header>
+              <h3>Hạ container hàng xuất</h3>
+              <p className="epc-portal-desc">
+                Tác nghiệp hạ container hàng xuất vào bãi cảng chờ xếp tàu. Khai báo Booking hãng tàu (Booking giấy hoặc eBooking),
+                khai báo danh sách container, seal, VGM, chỉ dẫn hàng lạnh/nguy hiểm và xe/sà lan giao nhận.
+              </p>
+
+              <div className="epc-portal-steps-box">
+                <div className="epc-portal-steps-title">
+                  <ShieldCheck size={14} />Quy trình 6 bước nghiệp vụ
+                </div>
+                <ul className="epc-portal-steps-list">
+                  <li><span className="epc-portal-step-num">1</span>Khai báo Booking (eBooking / Booking giấy) & Xác thực email</li>
+                  <li><span className="epc-portal-step-num">2</span>Khai báo Container (Thêm dòng, xóa dòng, seal, VGM, IMO/UN)</li>
+                  <li><span className="epc-portal-step-num">3</span>Khai báo dịch vụ đính kèm & Clone dịch vụ</li>
+                  <li><span className="epc-portal-step-num">4</span>Khai báo giao nhận (Xe / Sà lan, Hạn lệnh)</li>
+                  <li><span className="epc-portal-step-num">5</span>Kiểm tra thông tin & Tính tiền, Thanh toán PayOS</li>
+                  <li><span className="epc-portal-step-num">6</span>Hoàn tất: In phiếu giao nhận từng cont & Hóa đơn</li>
+                </ul>
+              </div>
+            </div>
+
+            <footer className="epc-portal-card-footer">
+              <div className="epc-portal-price">
+                <span>Biểu phí tác nghiệp</span>
+                {exportService ? <Price service={exportService} today={today} /> : <strong>Theo biểu phí cảng</strong>}
+              </div>
+              <button
+                type="button"
+                className="epc-portal-btn"
+                disabled={!exportService?.isActive}
+                onClick={() => startDraft(exportService?.id)}
+              >
+                <span>Đăng ký hạ hàng xuất</span>
+                <ArrowRight size={17} />
+              </button>
+            </footer>
+          </article>
+        </section>
+      )}
+
+      {/* ORDERS LIST SECTION: Danh sách đơn dịch vụ của doanh nghiệp */}
+      {canDraft && activeSection === 'orders' && (
+        <section className="epo-worklist" aria-labelledby="epo-list-title">
+          <div className="epo-worklist-heading">
+            <div>
+              <span className="epo-caption">KHÔNG GIAN HỒ SƠ</span>
+              <h2 id="epo-list-title">Danh sách đơn dịch vụ</h2>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span className="epo-result-count">{ordersQuery.isSuccess ? `${ordersTotal} hồ sơ` : 'Đang kết nối'}</span>
+              <button type="button" className="epc-button secondary" disabled={ordersQuery.isFetching} onClick={refreshOrders}>
+                <RefreshCw size={15} className={ordersQuery.isFetching ? 'epc-spin' : ''} />Làm mới
+              </button>
+            </div>
+          </div>
+          <div className="epo-filters">
+            <div className="epc-search epo-search">
+              <Search size={17} />
+              <input aria-label="Tìm đơn dịch vụ" maxLength={100} placeholder="Mã đơn, Booking, dịch vụ hoặc container…" value={orderSearch} onChange={e => setOrderSearch(e.target.value)} />
+            </div>
+            <label>
+              <span className="epc-sr-only">Trạng thái đơn</span>
+              <select value={orderStatus} onChange={e => orderChangeFilter(setOrderStatus, e.target.value)}>
+                <option value="">Mọi trạng thái đơn</option>
+                {Object.entries(orderStatusLabels).map(([v, l]) => <option value={v} key={v}>{l}</option>)}
+              </select>
+            </label>
+            <label>
+              <span className="epc-sr-only">Trạng thái thanh toán</span>
+              <select value={orderPaymentStatus} onChange={e => orderChangeFilter(setOrderPaymentStatus, e.target.value)}>
+                <option value="">Mọi thanh toán</option>
+                {['UNPAID', 'PENDING', 'PAID', 'FAILED', 'NOT_REQUIRED'].map(v => <option key={v} value={v}>{paymentStatusLabels[v]}</option>)}
+              </select>
+            </label>
+            <label>
+              <span className="epc-sr-only">Luồng hàng</span>
+              <select value={orderFlow} onChange={e => orderChangeFilter(setOrderFlow, e.target.value)}>
+                <option value="">Mọi luồng hàng</option>
+                <option value="EXPORT">Hàng xuất</option>
+                <option value="IMPORT">Hàng nhập</option>
+              </select>
+            </label>
+          </div>
+          {ordersQuery.isPending ? (
+            <div className="epo-empty" role="status"><Loader2 size={29} className="epc-spin" /><h3>Đang tải hồ sơ…</h3></div>
+          ) : ordersQuery.isError ? (
+            <div className="epo-empty"><FileText size={33} /><h3>Chưa tải được danh sách</h3><p role="alert">{draftError(ordersQuery.error)}</p><button type="button" className="epc-button secondary" onClick={() => ordersQuery.refetch()}><RefreshCw size={16} />Thử lại</button></div>
+          ) : !orderItems.length ? (
+            <div className="epo-empty">
+              <Filter size={33} />
+              <h3>{ordersHasFilter ? 'Không có hồ sơ phù hợp' : 'Chưa có đơn dịch vụ'}</h3>
+              <p>{ordersHasFilter ? 'Thử điều chỉnh từ khóa hoặc bộ lọc để tìm lại hồ sơ.' : 'Bắt đầu từ danh mục, chọn dịch vụ và tạo đăng ký cho container của bạn.'}</p>
+              {ordersHasFilter && <button type="button" className="epc-button secondary" onClick={() => { setOrderSearch(''); setOrderStatus(''); setOrderPaymentStatus(''); setOrderFlow(''); setOrderPage(1) }}>Xóa bộ lọc</button>}
+            </div>
+          ) : (
+            <div className="epo-order-table" role="table" aria-label="Danh sách đơn dịch vụ">
+              <div className="epo-table-head" role="row">
+                <span role="columnheader">Hồ sơ / dịch vụ</span>
+                <span role="columnheader">Nguồn / container</span>
+                <span role="columnheader">Trạng thái xử lý</span>
+                <span role="columnheader">Giá trị đăng ký</span>
+                <span role="columnheader" className="epc-sr-only">Chi tiết</span>
+              </div>
+              {orderItems.map((order, index) => (
+                <button type="button" className="epo-order-row" role="row" key={order.id} data-flow={order.flow} onClick={() => chooseOrder(order.id)} aria-label={`Xem đơn ${order.number}`} aria-haspopup="dialog" style={{ '--epo-row': Math.min(index, 5) }}>
+                  <span className="epo-order-identity" role="cell">
+                    <span className={`epo-order-icon epo-order-icon--${(order.flow || 'other').toLowerCase()}`}><FileText size={19} /></span>
+                    <span>
+                      <strong>{order.number}</strong>
+                      <span>{order.mainServiceName || 'Chưa chọn dịch vụ chính'}</span>
+                    </span>
+                  </span>
+                  <span className={`epo-source epo-source--${(order.flow || 'other').toLowerCase()}`} role="cell">
+                    <strong>{order.sourceLabel || 'Chưa chọn hồ sơ nguồn'}</strong>
+                    <small><Container size={12} />{order.containerCount || 0} container<span>·</span>{order.flow === 'IMPORT' ? 'Hàng nhập' : 'Hàng xuất'}</small>
+                  </span>
+                  <span className="epo-order-status" role="cell">
+                    <OrderBadge status={order.status} />
+                    {order.paymentStatus && <small className={`epo-payment-label ${order.paymentReviewRequired ? 'orange' : statusTone(order.paymentStatus)}`}>{paymentStateLabel(order)}</small>}
+                  </span>
+                  <span className="epo-order-amount" role="cell">
+                    <strong>{order.total == null ? 'Chưa xác định' : money(order.total)}</strong>
+                    <small>{draftDateTime(order.updatedAt)}</small>
+                  </span>
+                  <span className="epo-open-arrow" role="cell"><ArrowUpRight size={17} /></span>
+                </button>
+              ))}
+            </div>
+          )}
+          {ordersQuery.isSuccess && ordersTotal > 0 && (
+            <div className="epo-pagination">
+              <span>Trang {orderPage} / {ordersPages} · {ordersTotal} hồ sơ</span>
+              <div>
+                <button type="button" className="epc-icon-button" disabled={orderPage <= 1 || ordersQuery.isFetching} onClick={() => setOrderPage(v => v - 1)} aria-label="Trang trước"><ArrowDownToLine size={17} style={{ transform: 'rotate(90deg)' }} /></button>
+                <button type="button" className="epc-icon-button" disabled={orderPage >= ordersPages || ordersQuery.isFetching} onClick={() => setOrderPage(v => v + 1)} aria-label="Trang sau"><ArrowUpFromLine size={17} style={{ transform: 'rotate(90deg)' }} /></button>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* ORDER DIALOGS */}
+      {selectedOrderId && <ServiceOrderDetail key={`${session}:${selectedOrderId}`} orderId={selectedOrderId} initialTab={params.has('orderId') || params.get('tab') === 'payments' ? 'payments' : 'information'} onClose={() => chooseOrder(null)} onEdit={orderEditDraft} onReview={orderReviewDraft} />}
+      {orderEditing && (
+        catalogForOrders.isPending
+          ? <div className="epo-loading-overlay" role="status"><Loader2 className="epc-spin" size={22} />Đang tải danh mục…<button type="button" onClick={() => setOrderEditing(null)}>Đóng</button></div>
+          : catalogForOrders.isError
+            ? <div className="epo-loading-overlay" role="alert"><p>{draftError(catalogForOrders.error)}</p><button type="button" className="epc-button secondary" onClick={() => catalogForOrders.refetch()}>Thử lại</button><button type="button" onClick={() => setOrderEditing(null)}>Đóng</button></div>
+            : <ServiceDraftWizard key={orderEditing} draftId={orderEditing} services={catalogForOrders.data?.services || []} onClose={() => setOrderEditing(null)} onSaved={async draft => { setOrderEditing(null); setNotice(`Đã lưu bản nháp ${draft.number || ''}.`); await refreshOrders() }} onReview={draft => orderReviewDraft(draft.id)} />
+      )}
+      {orderReviewing && <ServiceRegistrationReview key={orderReviewing} draftId={orderReviewing} onClose={() => setOrderReviewing(null)} onEdit={orderEditDraft} onRegistered={async reg => { setOrderReviewing(null); await refreshOrders(); chooseOrder(reg.draftId || reg.id) }} />}
+
+            {/* ADMIN MANAGEMENT VIEW: Quản lý danh mục & biểu phí toàn bộ dịch vụ */}
+      {management && (
+        query.isError ? (
+          <section className="epc-load-error">
+            <CircleHelp size={32} />
+            <h2>Chưa tải được danh mục dịch vụ</h2>
+            <p>{getError(query.error)}</p>
+            <button type="button" className="epc-button secondary" onClick={() => query.refetch()}>
+              <RefreshCw size={16} />Thử lại
+            </button>
           </section>
-        </div>
-      </>}
+        ) : query.isPending ? (
+          <div className="epc-loading" aria-live="polite">
+            <Loader2 className="epc-spin" size={28} />
+            <p>Đang tải dịch vụ và biểu phí…</p>
+          </div>
+        ) : (
+          <>
+            <div className="epc-toolbar">
+              <div
+                className="epc-filters"
+                aria-label="Lọc theo luồng hàng"
+                style={{ '--filter-index': Object.keys(labels.direction).indexOf(direction) }}
+              >
+                <span className="epc-filter-indicator" aria-hidden="true" />
+                {Object.entries(labels.direction).map(([value, label]) => {
+                  const FilterIcon = directionIcons[value]
+                  return (
+                    <button
+                      type="button"
+                      key={value}
+                      className={direction === value ? 'active' : ''}
+                      aria-label={label}
+                      aria-pressed={direction === value}
+                      onClick={() => setDirection(value)}
+                    >
+                      <FilterIcon size={15} aria-hidden="true" />
+                      <span>{label}</span>
+                      <small>{services.filter(service => value === 'ALL' || service.direction === value).length}</small>
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="epc-search">
+                <Search size={17} />
+                <input
+                  aria-label="Tìm dịch vụ"
+                  placeholder="Tìm tên hoặc mã dịch vụ…"
+                  value={search}
+                  onChange={event => setSearch(event.target.value)}
+                />
+              </div>
+              <select
+                className="epc-status-filter"
+                aria-label="Lọc trạng thái dịch vụ"
+                value={status}
+                onChange={event => setStatus(event.target.value)}
+              >
+                <option value="ALL">Mọi trạng thái</option>
+                <option value="ACTIVE">Đang cung cấp</option>
+                <option value="PAUSED">Tạm ngừng</option>
+              </select>
+            </div>
+            <div className="epc-layout">
+              <section className="epc-catalog" aria-labelledby="epc-catalog-heading">
+                <div className="epc-list-caption">
+                  <h2 id="epc-catalog-heading" tabIndex={-1} data-catalog-heading>Danh sách dịch vụ</h2>
+                  <span>{filtered.length} dịch vụ</span>
+                </div>
+                {!filtered.length ? (
+                  <div className="epc-empty">
+                    <Search size={28} />
+                    <h3>Không có dịch vụ phù hợp</h3>
+                    <p>Thử một từ khóa hoặc bộ lọc khác.</p>
+                    <button
+                      type="button"
+                      className="epc-button secondary"
+                      onClick={() => { setSearch(''); setDirection('ALL'); setStatus('ALL') }}
+                    >
+                      Xóa bộ lọc
+                    </button>
+                  </div>
+                ) : (
+                  <div className="epc-table-wrap">
+                    <table className="epc-table">
+                      <thead>
+                        <tr>
+                          <th>Dịch vụ</th>
+                          <th>Đơn vị / luồng</th>
+                          <th>Đơn giá hiện tại</th>
+                          <th><span className="epc-sr-only">Thao tác</span></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filtered.map(service => (
+                          <tr key={service.id}>
+                            <td>
+                              <button
+                                type="button"
+                                className="epc-service-link"
+                                onClick={() => choose(service.id)}
+                                aria-haspopup="dialog"
+                              >
+                                <ServiceIcon service={service} size={21} />
+                                <span>
+                                  <strong>{service.name}</strong>
+                                  <small>{service.code}</small>
+                                  <Badge tone={service.isActive ? 'green' : 'neutral'}>
+                                    {service.isActive ? 'Đang cung cấp' : 'Tạm ngừng'}
+                                  </Badge>
+                                </span>
+                              </button>
+                            </td>
+                            <td>
+                              <span>{labels.unit[service.unit]}</span>
+                              <small>{labels.direction[service.direction]}</small>
+                            </td>
+                            <td>
+                              <Price service={service} today={today} />
+                              <small>{liveRates(service, today).length} biểu phí hiệu lực</small>
+                            </td>
+                            <td>
+                              <button
+                                type="button"
+                                className="epc-icon-button"
+                                aria-label={`Chỉnh sửa ${service.name}`}
+                                onClick={() => setModal({ type: 'service', service })}
+                              >
+                                <Pencil size={16} />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                <div className="epc-footnote">
+                  <CircleHelp size={17} />
+                  <p>Đơn giá phụ thuộc kích thước, nhóm container và thời gian hiệu lực. Nhấp vào dịch vụ để xem biểu phí chi tiết.</p>
+                </div>
+              </section>
+            </div>
+          </>
+        )
+      )}
 
-    {selected && <ServiceWorkspace
-      key={selected.id} service={selected} today={today} management={management} tab={tab} onTab={setTab}
-      onClose={() => setSelectedId(null)}
-      onEdit={() => setModal({ type: 'service', service: selected })}
-      onAddTariff={() => setModal({ type: 'tariff', service: selected })}
-      onRetire={tariff => { retire.reset(); setConfirmRetire({ serviceId: selected.id, tariff }) }}
-      onRegister={canDraft ? () => startDraft(selected.id) : null}
-      notice={notice}
-    />}
-    {canDraft && showDraftList && <ServiceDraftList onClose={() => setShowDraftList(false)} onCreate={() => startDraft()} onEdit={editDraft} onReview={reviewDraft} />}
-    {canDraft && draftDialog && <ServiceDraftWizard key={draftDialog.draftId || 'new'} services={services} initialServiceId={draftDialog.initialServiceId} draftId={draftDialog.draftId} onClose={() => setDraftDialog(null)} onSaved={draftSaved} onReview={draft => reviewDraft(draft.id)} />}
-    {canDraft && registrationReview && <ServiceRegistrationReview key={registrationReview} draftId={registrationReview} onClose={() => setRegistrationReview(null)} onEdit={editDraft} onRegistered={registered} />}
-    {modal?.type === 'service' && <ServiceForm service={modal.service} onClose={() => setModal(null)} onSaved={updated} />}
-    {modal?.type === 'tariff' && <TariffForm service={modal.service} today={today} onClose={() => setModal(null)} onSaved={updated} />}
-    {confirmRetire && <Modal title="Ngừng áp dụng biểu phí?" description="Lịch sử giá vẫn được giữ lại. Biểu phí này sẽ không còn được dùng để dự tính mới." onClose={() => { setConfirmRetire(null); retire.reset() }}>
-      <div className="epc-confirm-body"><strong>{money(confirmRetire.tariff.amount)} / {labels.unit[confirmRetire.tariff.unit]}</strong><p>{labels.size[confirmRetire.tariff.size]} · {labels.equipment[confirmRetire.tariff.equipment]}</p>{retire.error && <div className="epc-error" role="alert">{getError(retire.error)}</div>}</div>
-      <footer><button type="button" className="epc-button secondary" onClick={() => setConfirmRetire(null)}>Giữ biểu phí</button><button type="button" className="epc-button destructive" disabled={retire.isPending} onClick={() => retire.mutate(confirmRetire)}>{retire.isPending && <Loader2 size={16} className="epc-spin" />}Ngừng áp dụng</button></footer>
-    </Modal>}
-  </div>
+      {selected && (
+        <ServiceWorkspace
+          key={selected.id}
+          service={selected}
+          today={today}
+          management={management}
+          tab={tab}
+          onTab={setTab}
+          onClose={() => setSelectedId(null)}
+          onEdit={() => setModal({ type: 'service', service: selected })}
+          onAddTariff={() => setModal({ type: 'tariff', service: selected })}
+          onRetire={tariff => { retire.reset(); setConfirmRetire({ serviceId: selected.id, tariff }) }}
+          onRegister={canDraft ? () => startDraft(selected.id) : null}
+          notice={notice}
+        />
+      )}
+
+      {canDraft && showDraftList && (
+        <ServiceDraftList
+          onClose={() => setShowDraftList(false)}
+          onCreate={() => startDraft()}
+          onEdit={editDraft}
+          onReview={reviewDraft}
+        />
+      )}
+
+      {canDraft && draftDialog && (
+        <ServiceDraftWizard
+          key={draftDialog.draftId || 'new'}
+          services={services}
+          initialServiceId={draftDialog.initialServiceId}
+          draftId={draftDialog.draftId}
+          onClose={() => setDraftDialog(null)}
+          onSaved={draftSaved}
+          onReview={draft => reviewDraft(draft.id)}
+        />
+      )}
+
+      {canDraft && registrationReview && (
+        <ServiceRegistrationReview
+          key={registrationReview}
+          draftId={registrationReview}
+          onClose={() => setRegistrationReview(null)}
+          onEdit={editDraft}
+          onRegistered={registered}
+        />
+      )}
+
+      {modal?.type === 'service' && (
+        <ServiceForm
+          service={modal.service}
+          onClose={() => setModal(null)}
+          onSaved={updated}
+        />
+      )}
+
+      {modal?.type === 'tariff' && (
+        <TariffForm
+          service={modal.service}
+          today={today}
+          onClose={() => setModal(null)}
+          onSaved={updated}
+        />
+      )}
+
+      {confirmRetire && (
+        <Modal
+          title="Ngừng áp dụng biểu phí?"
+          description="Lịch sử giá vẫn được giữ lại. Biểu phí này sẽ không còn được dùng để dự tính mới."
+          onClose={() => { setConfirmRetire(null); retire.reset() }}
+        >
+          <div className="epc-confirm-body">
+            <strong>{money(confirmRetire.tariff.amount)} / {labels.unit[confirmRetire.tariff.unit]}</strong>
+            <p>{labels.size[confirmRetire.tariff.size]} · {labels.equipment[confirmRetire.tariff.equipment]}</p>
+            {retire.error && <div className="epc-error" role="alert">{getError(retire.error)}</div>}
+          </div>
+          <footer>
+            <button type="button" className="epc-button secondary" onClick={() => setConfirmRetire(null)}>Giữ biểu phí</button>
+            <button type="button" className="epc-button destructive" disabled={retire.isPending} onClick={() => retire.mutate(confirmRetire)}>
+              {retire.isPending && <Loader2 size={16} className="epc-spin" />}Ngừng áp dụng
+            </button>
+          </footer>
+        </Modal>
+      )}
+    </div>
+  )
 }

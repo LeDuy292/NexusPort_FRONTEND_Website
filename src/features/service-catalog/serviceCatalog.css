@@ -1,4 +1,4 @@
-﻿.epc {
+.epc {
   --ec-ink: #172638; --ec-muted: #697786; --ec-line: #e2e8ee; --ec-brand: #e45b25; --ec-soft: #fff2e9;
   --ec-accent: #d85624; --ec-tint: #fff1e7;
   position: relative; width: 100%; max-width: 1600px; margin: auto; padding: 30px 32px 48px;
@@ -450,4 +450,64 @@
 @media (prefers-reduced-motion: reduce) {
   .epc *:not(.epc-spin), .epc *::before, .epc *::after, .epc-dialog::backdrop { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
   .epc-service-card:hover, .epc-service-card:active, .epc-service-card:hover .epc-card-top > .epc-icon, .epc-service-card:hover .epc-card-watermark, .epc-service-card:hover .epc-card-action > svg, .epc-button:hover:not(:disabled), .epc-button:active:not(:disabled), .epc-icon-button:hover { transform: none !important; }
+}
+
+
+/* ── SECTION TABS: Tab điều hướng giữa Đơn dịch vụ và Đăng ký ───────────── */
+.epc-section-tabs {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 28px;
+}
+.epc-section-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border: 1.5px solid #d6dde5;
+  border-radius: 999px;
+  background: #fff;
+  color: #9aaabb;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color .15s, border-color .15s, background .15s, box-shadow .15s;
+}
+.epc-section-tab svg { flex-shrink: 0; color: #c0cdd8; transition: color .15s; }
+.epc-section-tab:hover {
+  border-color: #b0bfcc;
+  color: #3a5068;
+}
+.epc-section-tab:hover svg { color: #3a5068; }
+.epc-section-tab.active {
+  border-color: var(--ec-accent, #d85624);
+  color: var(--ec-accent, #d85624);
+  font-weight: 700;
+  background: #fff8f5;
+  box-shadow: 0 0 0 3px #d8562418;
+}
+.epc-section-tab.active svg { color: var(--ec-accent, #d85624); }
+.epc-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #edf1f5;
+  color: #7a95a8;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  transition: background .15s, color .15s;
+}
+.epc-section-tab.active .epc-tab-count {
+  background: var(--ec-accent, #d85624);
+  color: #fff;
+}
+@media (max-width: 480px) {
+  .epc-section-tab { padding: 8px 14px; font-size: 12px; }
 }

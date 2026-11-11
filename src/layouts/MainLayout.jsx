@@ -7,8 +7,8 @@ import NotificationCenter from '../components/NotificationCenter'
 const sidebarItems = [
   {
     path: '/services',
-    label: 'Dịch Vụ Cảng',
-    icon: 'widgets',
+    label: 'Dịch Vụ ePort',
+    icon: 'assignment_turned_in',
     roles: [ROLES.TRANSPORT_COMPANY, 'Carrier', ROLES.CARRIER_STAFF],
   },
   {

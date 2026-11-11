@@ -1,0 +1,13 @@
+import { Anchor, FileText, Info, Truck } from 'lucide-react'
+
+export function OrderDeliveryInfo({ order }) {
+  const content = order.content || {}
+  const delivery = content.delivery || {}
+  if (content.workflowVersion !== 2) return null
+  return <section className="epo-panel"><div className="epo-panel-title">{delivery.transportMode === 'BARGE' ? <Anchor size={17} /> : <Truck size={17} />}<h3>Khai báo giao nhận</h3></div><dl className="epo-facts"><div><dt>Phương tiện</dt><dd>{delivery.transportMode === 'BARGE' ? 'Sà lan' : 'Xe đầu kéo'}</dd></div>{delivery.transportMode === 'BARGE' ? <><div><dt>Tên sà lan</dt><dd>{delivery.bargeName}</dd></div><div><dt>Năm / chuyến</dt><dd>{delivery.bargeYear} / {delivery.bargeVoyage}</dd></div></> : <><div><dt>Biển số xe</dt><dd>{delivery.truckPlate}</dd></div><div><dt>Tài xế / điện thoại</dt><dd>{delivery.driverName} · {delivery.driverPhone}</dd></div></>}<div><dt>Hạn lệnh giao nhận</dt><dd>{delivery.orderValidUntil || 'Không khai báo'}</dd></div></dl><div className="epo-note"><strong>Thông quan: {order.customsStatus === 'CLEARED_PORT_RECORD' ? 'Đã ghi nhận tại cảng khi xác nhận đăng ký' : 'Chờ cảng đối chiếu trước giao nhận'}</strong><p>{order.customsStatus === 'CLEARED_PORT_RECORD' ? 'Theo hồ sơ cảng đã lưu cùng đơn, chưa phải phản hồi trực tiếp từ VASSCM.' : 'Cảnh báo này không chặn xử lý đăng ký hoặc thanh toán sau khi duyệt. Việc giao nhận thực tế vẫn cần cảng kiểm tra điều kiện thông quan.'}</p></div><div className="epo-container-list">{(content.lines || []).filter(line => line.customsSealRequired).map(line => <p key={line.sourceContainerId}>Hàng phải niêm phong hải quan: {order.containers?.find(container => container.sourceContainerId === line.sourceContainerId)?.containerNumber || 'Container trong hồ sơ'}</p>)}</div></section>
+}
+
+export function OrderInvoiceInfo({ order }) {
+  const buyer = order.content?.invoiceBuyer || {}
+  return <section className="epo-panel"><div className="epo-panel-title"><FileText size={17} /><h3>Hóa đơn dịch vụ</h3></div><div className="epo-guidance"><Info size={19} /><p>Chưa có hóa đơn điện tử được phát hành cho đơn dịch vụ. Cần kết nối nhà cung cấp hóa đơn để phát hành và tra cứu bản hợp lệ; phiếu đăng ký và kết quả thanh toán PayOS không thay thế hóa đơn.</p></div><dl className="epo-facts"><div><dt>Đơn vị / người mua</dt><dd>{buyer.name || order.companyName || 'Chưa khai báo'}</dd></div><div><dt>Mã số thuế</dt><dd>{buyer.taxCode || 'Chưa khai báo'}</dd></div><div><dt>Địa chỉ</dt><dd>{buyer.address || 'Chưa khai báo'}</dd></div><div><dt>Email nhận hóa đơn</dt><dd>{buyer.email || 'Chưa khai báo'}</dd></div></dl></section>
+}
