@@ -1,0 +1,485 @@
+.epo-page { --epo-ink: #243950; --epo-muted: #778ba3; }
+.epo-page a.epc-button { text-decoration: none; }
+.epo-hero { position: relative; display: flex; justify-content: space-between; align-items: center; gap: 38px; overflow: hidden; margin-bottom: 28px; border: 1px solid #31475b; border-radius: 21px; padding: 31px 38px; background: radial-gradient(ellipse at 81% 5%, #9c6b4140, transparent 50%), linear-gradient(115deg, #14283d, #254459); color: #e2edf7; }
+.epo-hero-lines { position: absolute; inset: 0; background: linear-gradient(90deg, transparent 99%, #b8d5f00b 99%), linear-gradient(0deg, transparent 99%, #b8d5f00b 99%); background-size: 46px 46px; mask-image: linear-gradient(90deg, transparent, #000); pointer-events: none; }
+.epo-hero::after { position: absolute; right: 12%; bottom: -170px; width: 370px; height: 370px; border: 1px solid #b7d6ef17; border-radius: 50%; content: ''; pointer-events: none; }
+.epo-hero-copy, .epo-hero-summary { position: relative; z-index: 1; }
+.epo-brand { display: inline-flex; align-items: center; gap: 8px; color: #f2bd96; font-size: 10px; font-weight: 650; letter-spacing: 2px; }
+.epo-brand > span { width: 6px; height: 6px; border-radius: 50%; background: #e7a574; box-shadow: 0 0 0 4px #edb18415; }
+.epo-hero-copy h2 { margin: 17px 0 11px; color: #f1f6fb; font-size: clamp(25px, 2.7vw, 35px); font-weight: 700; letter-spacing: -1.1px; line-height: 1.35; }
+.epo-hero-copy h2 > span { color: #ecc19d; }
+.epo-hero-copy > p { max-width: 490px; color: #a9bed0; font-size: 12px; line-height: 1.9; }
+.epo-hero-assurance { display: inline-flex; align-items: center; gap: 7px; margin-top: 18px; color: #bad3d6; font-size: 10px; }
+.epo-hero-summary { display: flex; flex-direction: column; align-items: flex-start; width: 235px; flex-shrink: 0; border-left: 1px solid #ffffff18; padding-left: 34px; }
+.epo-summary-icon { display: flex; align-items: center; justify-content: center; width: 47px; height: 47px; margin-bottom: 13px; border: 1px solid #f0c29833; border-radius: 13px; background: #f6d9b709; color: #efc9a7; }
+.epo-hero-summary > span:not(.epo-summary-icon) { color: #a2bbce; font-size: 9px; letter-spacing: 1px; }
+.epo-hero-summary > strong { margin: 8px 0 4px; color: #f3dcc4; font-size: 44px; font-weight: 650; line-height: 1.3; }
+.epo-hero-summary > small { color: #98b1c4; font-size: 10px; }
+.epo-worklist { overflow: hidden; border: 1px solid #e0e8f0; border-radius: 17px; background: #fff; box-shadow: 0 8px 30px #25394e03; }
+.epo-worklist-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 23px 25px 18px; }
+.epo-caption { color: #9aabbc; font-size: 8px; font-weight: 650; letter-spacing: 1.6px; }
+.epo-worklist-heading h2 { margin: 6px 0 0; color: #29415a; font-size: 17px; font-weight: 700; letter-spacing: -.3px; }
+.epo-result-count { border: 1px solid #e6ebf2; border-radius: 20px; padding: 6px 11px; background: #f8fafc; color: #7b8ea4; font-size: 10px; white-space: nowrap; }
+.epo-filters { display: grid; grid-template-columns: minmax(180px, 1fr) 165px 156px 130px; gap: 10px; padding: 0 25px 21px; }
+.epo-filters > label { min-width: 0; }
+.epo-filters select { width: 100%; min-height: 43px; border: 1px solid #dfe7ef; border-radius: 10px; padding: 9px 29px 9px 11px; background-color: #fbfcfe; color: #60768f; font-size: 11px; }
+.epo-filters .epo-search { width: 100%; min-width: 0; min-height: 43px; border-radius: 10px; background: #fbfcfe; }
+.epo-search input { width: 100%; min-width: 0; font-size: 11px; }
+.epo-order-table { border-top: 1px solid #e9eef4; }
+.epo-table-head, .epo-order-row { display: grid; grid-template-columns: minmax(230px, 1.35fr) minmax(140px, .9fr) minmax(130px, .8fr) minmax(135px, .8fr) 24px; align-items: center; gap: 18px; }
+.epo-table-head { padding: 13px 25px; background: #f7f9fc; color: #8a9bb0; font-size: 9px; font-weight: 650; }
+.epo-table-head > span:nth-child(4) { text-align: right; }
+.epo-order-row { position: relative; width: 100%; border: 0; border-bottom: 1px solid #edf1f6; padding: 19px 25px; background: #fff; color: #627891; text-align: left; transition: background .18s ease; animation: epo-row-in .25s ease both; animation-delay: calc(var(--epo-row, 0) * 30ms); }
+.epo-order-row:last-child { border-bottom: 0; }
+.epo-order-row:hover { background: #f8faff; }
+.epo-order-row:focus-visible { z-index: 1; outline: 2px solid #cc9469; outline-offset: -3px; }
+.epo-order-identity { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.epo-order-icon { display: flex; align-items: center; justify-content: center; width: 37px; height: 41px; flex-shrink: 0; border: 1px solid #e2e9f1; border-radius: 10px; background: #f5f8fc; color: #8a9eb6; }
+.epo-order-identity > span:last-child { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.epo-order-identity strong { overflow-wrap: anywhere; color: #3e5873; font: 600 10px/1.7 ui-monospace, monospace; }
+.epo-order-identity > span:last-child > span { overflow-wrap: anywhere; color: #71869f; font-size: 11px; }
+.epo-order-identity small { overflow-wrap: anywhere; color: #9aabba; font-size: 9px; line-height: 1.6; }
+.epo-source { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.epo-source strong { overflow-wrap: anywhere; color: #647c96; font-size: 10px; font-weight: 600; line-height: 1.7; }
+.epo-source small { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; color: #9aaabd; font-size: 9px; }
+.epo-order-status { display: flex; align-items: flex-start; flex-direction: column; gap: 8px; }
+.epo-badge { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; border: 1px solid #e0e7ef; border-radius: 6px; padding: 5px 8px; background: #f5f8fc; color: #7d8da1; font-size: 9px; font-weight: 550; line-height: 1.6; }
+.epo-badge > span { width: 4px; height: 4px; flex-shrink: 0; border-radius: 50%; background: currentColor; }
+.epo-badge.green { border-color: #d3e6dc; background: #f0f8f3; color: #5e8b74; }
+.epo-badge.blue { border-color: #d9e5f1; background: #f1f6fc; color: #6b88a9; }
+.epo-badge.orange { border-color: #ebddca; background: #fbf6ef; color: #a1845f; }
+.epo-badge.red { border-color: #eddbd8; background: #fcf3f2; color: #ad7a73; }
+.epo-payment-label { color: #9babb9; font-size: 9px; }
+.epo-payment-label.green { color: #7f9b8b; }
+.epo-payment-label.orange { color: #aa9276; }
+.epo-payment-label.red { color: #af8882; }
+.epo-order-amount { display: flex; flex-direction: column; gap: 7px; text-align: right; }
+.epo-order-amount > strong { overflow-wrap: anywhere; color: #9b7856; font-size: 12px; font-weight: 650; }
+.epo-order-amount > small { color: #9aabba; font-size: 9px; }
+.epo-open-arrow { display: flex; align-items: center; justify-content: center; width: 25px; height: 25px; border: 1px solid #e8edf3; border-radius: 50%; color: #9badc1; transition: transform .18s; }
+.epo-order-row:hover .epo-open-arrow { transform: translate(1px, -1px); color: #b78056; }
+.epo-empty { display: flex; flex-direction: column; align-items: center; gap: 13px; padding: 55px 25px; color: #93a6bc; text-align: center; }
+.epo-empty h3 { margin: 0; color: #617b96; font-size: 15px; font-weight: 650; }
+.epo-empty p { max-width: 470px; margin: 0; color: #8d9db0; font-size: 12px; line-height: 1.9; }
+.epo-empty > .epc-button { margin-top: 4px; }
+.epo-pagination { display: flex; align-items: center; justify-content: space-between; gap: 15px; border-top: 1px solid #e8edf4; padding: 16px 25px; color: #8a9db3; font-size: 10px; }
+.epo-pagination > div { display: flex; gap: 7px; }
+.epo-loading-overlay { position: fixed; z-index: 80; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 15px; padding: 25px; background: #f7faffee; color: #637c97; font-size: 13px; }
+.epc-dialog.epo-detail-dialog { width: min(1180px, calc(100vw - 40px)); }
+.epo-detail-identity { display: flex; align-items: center; flex-shrink: 0; gap: 13px; border-bottom: 1px solid #e6edf4; padding: 21px 28px; background: #fbfcfe; }
+.epo-detail-file { display: flex; align-items: center; justify-content: center; width: 45px; height: 49px; flex-shrink: 0; border: 1px solid #e8dccf; border-radius: 12px; background: #faf4ed; color: #bb946b; }
+.epo-detail-identity > div { display: flex; flex-direction: column; flex: 1; gap: 5px; min-width: 0; }
+.epo-detail-identity > div > span { color: #8c9db2; font-size: 10px; }
+.epo-detail-identity strong { overflow-wrap: anywhere; color: #3b5876; font: 600 12px/1.7 ui-monospace, monospace; }
+.epo-detail-identity small { overflow-wrap: anywhere; color: #8a9db3; font-size: 10px; line-height: 1.7; }
+.epo-detail-tabs { display: flex; align-items: stretch; flex-shrink: 0; gap: 24px; border-bottom: 1px solid #e2eaf3; padding: 0 29px; background: #fff; }
+.epo-detail-tabs > button { display: flex; align-items: center; justify-content: center; gap: 7px; position: relative; border: 0; padding: 15px 0; background: none; color: #8b9db2; font-size: 11px; font-weight: 550; }
+.epo-detail-tabs > button[aria-selected="true"] { color: #b17e50; }
+.epo-detail-tabs > button[aria-selected="true"]::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; border-radius: 2px; background: #c39a70; content: ''; }
+.epo-detail-tabs > .epo-detail-refresh { margin-left: auto; color: #93a6ba; }
+.epo-detail-tabs > button:focus-visible { outline: 2px solid #c59a73; outline-offset: -3px; border-radius: 4px; }
+.epd-body.epo-detail-body { padding: 25px 28px 28px; background: #f6f8fc; }
+.epo-detail-layout { display: grid; grid-template-columns: minmax(0, 1fr) 273px; align-items: start; gap: 23px; }
+.epo-detail-content { min-width: 0; outline-offset: 4px; }
+.epo-info-sections, .epo-payment-sections { display: flex; flex-direction: column; gap: 17px; }
+.epo-panel { overflow: hidden; border: 1px solid #e2e9f1; border-radius: 13px; background: #fff; }
+.epo-panel-title { display: flex; align-items: center; gap: 8px; padding: 18px 19px; color: #9baec3; }
+.epo-panel-title h3 { margin: 0; color: #58738f; font-size: 12px; font-weight: 650; }
+.epo-panel-title > span { margin-left: auto; color: #99a9bb; font-size: 9px; }
+.epo-facts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 19px 24px; margin: 0; padding: 1px 19px 22px; }
+.epo-facts dt { margin-bottom: 5px; color: #9baabb; font-size: 9px; }
+.epo-facts dd { margin: 0; overflow-wrap: anywhere; color: #697f97; font-size: 11px; font-weight: 550; line-height: 1.8; }
+.epo-note { border-top: 1px solid #eaf0f5; padding: 15px 19px; background: #fcfdfe; }
+.epo-note > strong { color: #7e92a9; font-size: 10px; font-weight: 600; }
+.epo-note > p { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #8497ad; font-size: 11px; line-height: 1.9; }
+.epo-fee-line { display: flex; align-items: center; justify-content: space-between; gap: 17px; border-top: 1px solid #edf1f6; padding: 16px 19px; }
+.epo-fee-line > div { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.epo-container-id { display: flex; align-items: center; gap: 5px; color: #92a4b9; font: 9px/1.7 ui-monospace, monospace; }
+.epo-fee-line > div > strong { overflow-wrap: anywhere; color: #617b96; font-size: 11px; font-weight: 600; }
+.epo-fee-line small { color: #93a5b8; font-size: 9px; line-height: 1.8; }
+.epo-fee-line > strong { flex-shrink: 0; color: #a0805e; font-size: 12px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.epo-fee-note { display: flex; align-items: flex-start; gap: 7px; margin: 0; border-top: 1px solid #e7edf4; padding: 13px 19px; background: #fafbfd; color: #92a4b7; font-size: 9px; line-height: 1.9; }
+.epo-fee-note > svg { flex-shrink: 0; margin-top: 2px; }
+.epo-container-list > div { display: flex; align-items: center; gap: 10px; border-top: 1px solid #edf1f6; padding: 14px 19px; color: #9aadbf; }
+.epo-container-list strong, .epo-container-list small { display: block; margin: 3px 0; color: #7c91a9; font-size: 10px; }
+.epo-container-list small { color: #a0afbf; font-size: 9px; }
+.epo-panel-muted { padding: 0 19px 21px; color: #96a6b8; font-size: 11px; line-height: 1.9; }
+.epo-order-sidebar { position: sticky; top: 0; min-width: 0; border: 1px solid #314a60; border-radius: 14px; padding: 21px 19px; background: radial-gradient(ellipse at 95% 0, #94704844, transparent 58%), linear-gradient(130deg, #203449, #2b445a); color: #c7d7e6; }
+.epo-sidebar-heading { display: flex; align-items: center; gap: 10px; }
+.epo-sidebar-heading > span { display: flex; align-items: center; justify-content: center; width: 38px; height: 40px; flex-shrink: 0; border: 1px solid #ffffff23; border-radius: 10px; background: #ffffff06; color: #e1bd98; }
+.epo-sidebar-heading small { color: #a5b8cc; font-size: 8px; letter-spacing: 1px; }
+.epo-sidebar-heading h3 { margin: 6px 0 0; color: #dfeaf5; font-size: 12px; font-weight: 600; }
+.epo-sidebar-total { margin: 23px 0; }
+.epo-sidebar-total small { color: #9cb1c6; font-size: 9px; }
+.epo-sidebar-total > strong { display: block; margin-top: 9px; overflow-wrap: anywhere; color: #efd2b3; font-size: 25px; font-weight: 700; line-height: 1.5; letter-spacing: -.6px; }
+.epo-order-sidebar > dl { display: flex; flex-direction: column; gap: 14px; margin: 0 0 21px; }
+.epo-order-sidebar > dl > div { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; font-size: 10px; line-height: 1.7; }
+.epo-order-sidebar dt { color: #96afc5; }
+.epo-order-sidebar dd { margin: 0; color: #cbdbe9; text-align: right; }
+.epo-sidebar-actions { display: flex; flex-direction: column; gap: 9px; }
+.epo-sidebar-actions .epc-button { width: 100%; justify-content: center; font-size: 10px; }
+.epo-sidebar-actions .epc-button.secondary { border-color: #ffffff26; background: #ffffff09; color: #bdd0e2; }
+.epo-sidebar-actions .epc-button.secondary:hover { background: #ffffff13; }
+.epo-sidebar-actions .epc-button.epo-danger-button { color: #dfbaab; }
+.epo-sidebar-note { display: flex; align-items: flex-start; gap: 7px; margin-top: 19px; border-top: 1px solid #ffffff1b; padding-top: 16px; color: #c8ae90; }
+.epo-sidebar-note > svg { flex-shrink: 0; margin-top: 2px; }
+.epo-sidebar-note p { margin: 0; color: #9eb4c8; font-size: 9px; line-height: 1.9; }
+.epo-detail-footer { flex-shrink: 0; }
+.epo-detail-footer > span { display: flex; align-items: center; gap: 6px; color: #9aabbc; font-size: 9px; }
+.epo-tab-loading { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 13px; min-height: 230px; color: #8b9fb6; font-size: 12px; }
+.epo-inline-error { border: 1px solid #e9dad5; border-radius: 12px; padding: 20px; background: #fff9f7; color: #b18b80; }
+.epo-inline-error p { margin: 0 0 13px; font-size: 11px; line-height: 1.9; }
+.epo-detail-notice { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 18px; border: 1px solid #d7e7de; border-radius: 10px; padding: 12px 15px; background: #f0f8f4; color: #7b9c87; }
+.epo-detail-notice > svg { flex-shrink: 0; margin-top: 2px; }
+.epo-detail-notice p { margin: 0; font-size: 11px; line-height: 1.8; }
+.epo-detail-notice.warning { border-color: #e7d4b9; background: #fff8ec; color: #a77d40; }
+.epo-action-form { margin-bottom: 23px; border: 1px solid #dcc5ab; border-radius: 13px; padding: 19px; background: linear-gradient(125deg, #fffdf9, #fff); box-shadow: 0 5px 22px #855b3510; }
+.epo-action-form.destructive { border-color: #e6cfc8; background: #fffaf8; }
+.epo-action-form-title { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 17px; }
+.epo-action-form-title > span { display: flex; align-items: center; justify-content: center; width: 35px; height: 35px; flex-shrink: 0; border: 1px solid #e7d8c7; border-radius: 9px; background: #fcf4eb; color: #b79368; }
+.epo-action-form-title > div { flex: 1; }
+.epo-action-form-title h3 { margin: 1px 0 5px; color: #806a51; font-size: 13px; font-weight: 650; }
+.epo-action-form-title p { margin: 0; color: #9b9185; font-size: 10px; line-height: 1.9; }
+.epo-action-context { display: flex; align-items: center; justify-content: space-between; gap: 15px; margin: 0 0 17px; border: 1px solid #ebe4d9; border-radius: 8px; padding: 11px 13px; background: #fff; }
+.epo-action-context > span { overflow-wrap: anywhere; color: #9c9285; font: 10px/1.8 ui-monospace, monospace; }
+.epo-action-context > strong { flex-shrink: 0; color: #a08159; font-size: 13px; font-weight: 650; }
+.epo-action-form fieldset { min-width: 0; margin: 0; border: 0; padding: 0; }
+.epo-action-form fieldset:disabled { opacity: .65; }
+.epo-field { display: flex; flex-direction: column; gap: 7px; margin-bottom: 13px; }
+.epo-field > span { color: #7a8798; font-size: 10px; font-weight: 600; }
+.epo-field input, .epo-field textarea { width: 100%; min-height: 41px; border: 1px solid #dedfdf; border-radius: 8px; padding: 10px 11px; background: #fff; color: #5c7189; font-size: 11px; line-height: 1.7; }
+.epo-field textarea { resize: vertical; }
+.epo-field input::placeholder, .epo-field textarea::placeholder { color: #a4afbb; }
+.epo-field input:focus, .epo-field textarea:focus { border-color: #bda083; outline: 2px solid #bda08318; outline-offset: 1px; box-shadow: none; }
+.epo-form-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 15px; }
+.epo-acknowledge { display: flex; align-items: flex-start; gap: 9px; margin: 5px 0 12px; color: #8d806e; font-size: 11px; line-height: 1.9; cursor: pointer; }
+.epo-acknowledge > input { width: 15px; height: 15px; flex-shrink: 0; margin-top: 3px; border: 1px solid #c5b59e; border-radius: 3px; accent-color: #bc9770; }
+.epo-form-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+.epo-form-actions .epc-button { font-size: 10px; }
+.epo-form-error { display: flex; align-items: flex-start; gap: 8px; margin-top: 15px; border-radius: 8px; padding: 12px; background: #f9ebe6; color: #b28372; }
+.epo-form-error > svg { flex-shrink: 0; margin-top: 2px; }
+.epo-form-error p { margin: 0 0 4px; font-size: 11px; line-height: 1.8; }
+.epo-history { list-style: none; margin: 0; padding: 1px 21px 25px; }
+.epo-history > li { position: relative; display: flex; gap: 15px; padding: 0 0 26px; }
+.epo-history > li:last-child { padding-bottom: 0; }
+.epo-history > li:not(:last-child)::before { position: absolute; top: 12px; bottom: -1px; left: 5px; width: 1px; background: #e5edf5; content: ''; }
+.epo-history-dot { position: relative; z-index: 1; width: 11px; height: 11px; flex-shrink: 0; margin-top: 4px; border: 3px solid #edf3f9; border-radius: 50%; background: #9fb3c9; }
+.epo-history > li:first-child .epo-history-dot { border-color: #f5eade; background: #bf9c73; }
+.epo-history > li > div { flex: 1; min-width: 0; }
+.epo-history-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 13px; }
+.epo-history-heading > strong { color: #69829b; font-size: 11px; font-weight: 650; line-height: 1.8; }
+.epo-history-heading > time { flex-shrink: 0; color: #9dacbd; font-size: 9px; line-height: 2; }
+.epo-history > li > div > small { display: block; margin-top: 4px; overflow-wrap: anywhere; color: #a0afbe; font-size: 9px; line-height: 1.8; }
+.epo-history-transition { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 9px; color: #92a6bc; font-size: 9px; }
+.epo-history-transition > span { border-radius: 4px; padding: 3px 6px; background: #f1f5fa; }
+.epo-history-reason { margin: 10px 0 0; border-left: 2px solid #e8d9c7; padding: 8px 11px; background: #faf8f4; white-space: pre-wrap; overflow-wrap: anywhere; color: #978b7a; font-size: 10px; line-height: 1.9; }
+.epo-payment-summary { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 13px; border: 1px solid #e1e6ef; border-radius: 13px; padding: 20px; background: linear-gradient(125deg, #fff, #f7f9fd); }
+.epo-payment-summary.paid { border-color: #d8e6dd; background: #f5faf7; }
+.epo-payment-summary-icon { display: flex; align-items: center; justify-content: center; width: 47px; height: 48px; flex-shrink: 0; border: 1px solid #e0e7f0; border-radius: 13px; background: #f1f5fb; color: #8a9fb8; }
+.epo-payment-summary.paid .epo-payment-summary-icon { border-color: #d8e8dd; background: #edf6f0; color: #87a994; }
+.epo-payment-summary > div { flex: 1; min-width: 150px; }
+.epo-payment-summary > div > span { color: #97a8ba; font-size: 8px; letter-spacing: 1.3px; }
+.epo-payment-summary h3 { margin: 7px 0; color: #65809a; font-size: 15px; font-weight: 650; }
+.epo-payment-summary p { margin: 0; color: #91a1b4; font-size: 10px; line-height: 1.9; }
+.epo-payment-summary > button { margin-top: 3px; font-size: 10px; }
+.epo-bank-facts { margin: 0; padding: 0 19px; }
+.epo-bank-facts > div { display: flex; align-items: center; justify-content: space-between; gap: 20px; border-bottom: 1px solid #edf1f5; padding: 12px 0; }
+.epo-bank-facts > div:last-child { border: 0; }
+.epo-bank-facts dt { flex-shrink: 0; color: #9aa8b9; font-size: 10px; }
+.epo-bank-facts dd { display: flex; align-items: center; justify-content: flex-end; gap: 7px; margin: 0; overflow-wrap: anywhere; color: #758aa3; font-size: 11px; line-height: 1.8; text-align: right; }
+.epo-bank-facts dd > strong { overflow-wrap: anywhere; font-weight: 600; }
+.epo-bank-facts .epc-icon-button { width: 27px; height: 27px; min-height: 0; flex-shrink: 0; border-color: #e7edf3; padding: 4px; color: #9aabbd; }
+.epo-guidance { display: flex; align-items: flex-start; gap: 9px; margin: 0 19px 8px; border: 1px solid #e9dfd0; border-radius: 8px; padding: 12px; background: #fcf8f1; color: #b09b7b; }
+.epo-guidance > svg { flex-shrink: 0; margin-top: 2px; }
+.epo-guidance p { margin: 0; color: #a3947f; font-size: 10px; line-height: 1.9; }
+.epo-bank-footnote { margin: 0; border-top: 1px solid #eaf0f5; padding: 13px 19px; background: #fafcfe; color: #93a6bb; font-size: 10px; line-height: 1.9; }
+.epo-copy-note { margin: 0 19px 12px; color: #81a58d; font-size: 10px; }
+.epo-payment-attempt { border-top: 1px solid #e9eef4; padding: 17px 19px; }
+.epo-payment-attempt-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 15px; }
+.epo-payment-attempt-heading > div { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.epo-payment-attempt-heading strong { overflow-wrap: anywhere; color: #7589a2; font: 600 10px/1.8 ui-monospace, monospace; }
+.epo-payment-attempt-heading small { color: #a2b0c1; font-size: 9px; }
+.epo-payment-attempt-amount { margin: 15px 0 10px; color: #a18461; font-size: 19px; font-weight: 650; letter-spacing: -.4px; }
+.epo-payment-attempt > p { margin: 7px 0; overflow-wrap: anywhere; color: #8fa0b5; font-size: 10px; line-height: 1.9; }
+.epo-payment-attempt > p > span { color: #a2afbf; }
+.epo-payment-attempt > p.epo-attempt-reason { border-radius: 6px; padding: 8px 10px; background: #f7f8fb; white-space: pre-wrap; }
+.epo-payment-attempt > p.epo-attempt-warning { border: 1px solid #e8d7bb; border-radius: 7px; padding: 10px; background: #fff8ec; color: #a77d40; }
+.epo-attempt-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 13px; }
+.epo-attempt-actions:empty { display: none; }
+.epo-attempt-actions .epo-link-disabled { pointer-events: none; opacity: .55; }
+.epo-payment-security { display: flex; align-items: flex-start; gap: 8px; margin: 0; color: #8296ab; font-size: 10px; line-height: 1.9; }
+.epo-payment-security > svg { flex-shrink: 0; margin-top: 2px; }
+.epo-attempt-actions .epc-button { min-height: 33px; padding: 7px 10px; font-size: 9px; }
+.epo-payment-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 15px 25px 31px; color: #a7b6c6; text-align: center; }
+.epo-payment-empty > strong { color: #8a9cb1; font-size: 12px; font-weight: 550; }
+.epo-payment-empty > p { max-width: 350px; margin: 0; color: #a1afbf; font-size: 10px; line-height: 1.9; }
+@keyframes epo-row-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 1230px) {
+  .epo-filters { grid-template-columns: minmax(150px, 1fr) 150px 145px; }
+  .epo-filters > label:last-child { grid-column: 2; grid-row: 2; }
+  .epo-filters > .epo-search { grid-column: 1; grid-row: span 2; align-self: start; }
+  .epo-table-head, .epo-order-row { grid-template-columns: minmax(180px, 1.2fr) minmax(125px, .9fr) 125px minmax(115px, .8fr) 20px; gap: 13px; }
+  .epo-detail-layout { grid-template-columns: minmax(0, 1fr) 246px; gap: 18px; }
+  .epo-order-sidebar { padding: 18px 16px; }
+  .epo-sidebar-total > strong { font-size: 23px; }
+}
+@media (max-width: 1000px) {
+  .epo-hero { gap: 23px; padding: 26px; }
+  .epo-hero-summary { width: 175px; padding-left: 24px; }
+  .epo-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); }
+  .epo-filters > .epo-search { grid-column: 1 / -1; grid-row: 1; }
+  .epo-filters > label:last-child { grid-column: auto; grid-row: auto; }
+  .epo-table-head { display: none; }
+  .epo-order-row { grid-template-columns: minmax(0, 1fr) 138px 20px; gap: 15px; padding: 18px 22px; }
+  .epo-order-identity { grid-column: 1; grid-row: 1; }
+  .epo-source { grid-column: 1; grid-row: 2; margin-left: 49px; }
+  .epo-order-status { grid-column: 2; grid-row: 1; align-items: flex-end; }
+  .epo-order-amount { grid-column: 2; grid-row: 2; }
+  .epo-open-arrow { grid-column: 3; grid-row: 1 / 3; }
+}
+@media (max-width: 760px) {
+  .epo-hero { padding: 24px; }
+  .epo-hero-summary { width: 140px; padding-left: 21px; }
+  .epo-hero-summary > strong { font-size: 37px; }
+  .epo-hero-summary > span:not(.epo-summary-icon) { font-size: 8px; line-height: 1.9; }
+  .epo-hero-summary > small { line-height: 1.9; }
+  .epo-hero-copy h2 { font-size: 27px; }
+  .epo-detail-layout { grid-template-columns: minmax(0, 1fr); }
+  .epo-order-sidebar { position: static; grid-row: 1; }
+  .epo-detail-layout[data-tab="payments"] .epo-order-sidebar, .epo-detail-layout[data-tab="history"] .epo-order-sidebar { grid-row: auto; }
+  .epo-order-sidebar > dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px 22px; }
+  .epo-sidebar-total { margin: 17px 0; }
+  .epo-sidebar-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .epo-sidebar-note { margin-top: 16px; }
+  .epo-detail-footer > span { max-width: 240px; line-height: 1.9; }
+}
+@media (max-width: 560px) {
+  .epo-hero { display: block; margin-bottom: 20px; border-radius: 15px; padding: 23px 22px; }
+  .epo-hero-copy h2 { margin: 15px 0 12px; font-size: 27px; }
+  .epo-hero-copy > p { font-size: 11px; }
+  .epo-hero-assurance { margin-top: 15px; font-size: 9px; }
+  .epo-hero-summary { display: grid; grid-template-columns: 37px minmax(0, 1fr) auto; gap: 0 12px; width: 100%; margin-top: 23px; border-top: 1px solid #ffffff1a; border-left: 0; padding-top: 18px; padding-left: 0; }
+  .epo-summary-icon { grid-column: 1; grid-row: 1 / 3; width: 37px; height: 40px; margin: 0; border-radius: 10px; }
+  .epo-summary-icon svg { width: 22px; }
+  .epo-hero-summary > span:not(.epo-summary-icon) { grid-column: 2; align-self: end; font-size: 8px; }
+  .epo-hero-summary > small { grid-column: 2; align-self: start; font-size: 9px; }
+  .epo-hero-summary > strong { grid-column: 3; grid-row: 1 / 3; margin: 0; align-self: center; font-size: 32px; }
+  .epo-worklist-heading { padding: 20px 17px 17px; }
+  .epo-worklist-heading h2 { font-size: 15px; }
+  .epo-filters { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; padding: 0 17px 17px; }
+  .epo-filters > label:last-child { grid-column: 1 / -1; }
+  .epo-filters select { min-height: 40px; font-size: 10px; }
+  .epo-order-row { grid-template-columns: minmax(0, 1fr) 116px; gap: 14px 9px; padding: 18px 17px; }
+  .epo-order-icon { width: 29px; height: 35px; border-radius: 8px; }
+  .epo-order-icon > svg { width: 16px; }
+  .epo-order-identity { gap: 9px; }
+  .epo-order-identity strong { font-size: 8px; }
+  .epo-order-identity > span:last-child > span { font-size: 10px; line-height: 1.8; }
+  .epo-order-identity small { font-size: 8px; }
+  .epo-source { margin-left: 38px; }
+  .epo-source strong { font-size: 9px; }
+  .epo-source small { font-size: 8px; }
+  .epo-order-status { gap: 7px; }
+  .epo-order-status .epo-badge { font-size: 8px; padding: 4px 6px; }
+  .epo-order-amount > strong { font-size: 11px; }
+  .epo-order-amount > small { font-size: 8px; }
+  .epo-open-arrow { display: none; }
+  .epo-pagination { padding: 14px 17px; font-size: 9px; }
+  .epc-dialog.epo-detail-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 16px); border-radius: 15px; }
+  .epo-detail-dialog > .epd-header { padding: 21px 18px; gap: 10px; }
+  .epc-dialog.epo-detail-dialog .epd-header h2 { font-size: 23px; }
+  .epo-detail-dialog .epd-header p { font-size: 10px; line-height: 1.9; }
+  .epo-detail-identity { flex-wrap: wrap; gap: 10px; padding: 16px 18px; }
+  .epo-detail-file { width: 35px; height: 40px; border-radius: 9px; }
+  .epo-detail-identity > div { flex-basis: calc(100% - 46px); }
+  .epo-detail-identity strong { font-size: 10px; }
+  .epo-detail-identity > .epo-badge { margin-left: 45px; }
+  .epo-detail-tabs { gap: 19px; padding: 0 18px; }
+  .epo-detail-tabs > button { gap: 5px; padding: 13px 0; font-size: 10px; }
+  .epo-detail-tabs > button > svg { width: 14px; }
+  .epd-body.epo-detail-body { padding: 17px 13px; }
+  .epo-order-sidebar { padding: 18px 16px; }
+  .epo-sidebar-total > strong { font-size: 25px; }
+  .epo-order-sidebar > dl { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .epo-sidebar-actions { grid-template-columns: minmax(0, 1fr); }
+  .epo-panel-title { padding: 16px; }
+  .epo-panel-title h3 { font-size: 11px; }
+  .epo-facts { gap: 17px 15px; padding: 0 16px 19px; }
+  .epo-facts dd { font-size: 10px; }
+  .epo-facts dt { font-size: 8px; }
+  .epo-fee-line { align-items: flex-start; gap: 11px; padding: 15px 16px; }
+  .epo-fee-line > strong { max-width: 100px; font-size: 11px; text-align: right; }
+  .epo-fee-line > div > strong { font-size: 10px; }
+  .epo-fee-line small { font-size: 8px; }
+  .epo-detail-footer { flex-wrap: wrap; gap: 12px; padding: 14px 17px; }
+  .epo-detail-footer > span { max-width: 175px; font-size: 8px; }
+  .epo-detail-footer > .epc-button { font-size: 10px; }
+  .epo-action-form { padding: 15px 13px; }
+  .epo-action-form-title { gap: 8px; }
+  .epo-action-form-title > span { width: 28px; height: 30px; border-radius: 7px; }
+  .epo-action-form-title > span svg { width: 16px; }
+  .epo-action-form-title h3 { font-size: 12px; line-height: 1.7; }
+  .epo-action-form-title p { font-size: 9px; }
+  .epo-action-form-title > .epc-icon-button { width: 26px; height: 26px; flex-shrink: 0; }
+  .epo-action-context { flex-direction: column; align-items: flex-start; gap: 7px; }
+  .epo-action-context > span { font-size: 9px; }
+  .epo-form-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .epo-form-actions .epc-button { font-size: 9px; }
+  .epo-history { padding: 0 16px 22px; }
+  .epo-history-heading { flex-direction: column; gap: 3px; }
+  .epo-history-heading > strong { font-size: 10px; }
+  .epo-history-heading > time { font-size: 8px; }
+  .epo-history-reason { font-size: 9px; }
+  .epo-payment-summary { gap: 11px; padding: 17px 15px; }
+  .epo-payment-summary-icon { width: 38px; height: 40px; border-radius: 10px; }
+  .epo-payment-summary-icon > svg { width: 23px; }
+  .epo-payment-summary h3 { font-size: 13px; }
+  .epo-payment-summary > button { width: 100%; justify-content: center; }
+  .epo-bank-facts { padding: 0 16px; }
+  .epo-bank-facts > div { gap: 11px; }
+  .epo-bank-facts dt { max-width: 95px; font-size: 9px; line-height: 1.8; }
+  .epo-bank-facts dd { gap: 5px; font-size: 10px; }
+  .epo-guidance { margin-right: 16px; margin-left: 16px; padding: 10px; }
+  .epo-bank-footnote { padding: 12px 16px; font-size: 9px; }
+  .epo-payment-attempt { padding: 16px; }
+  .epo-payment-attempt-heading { flex-direction: column; gap: 9px; }
+  .epo-payment-attempt-heading strong { font-size: 9px; }
+  .epo-payment-attempt-amount { font-size: 18px; }
+  .epo-attempt-actions > .epc-button { flex: 1; justify-content: center; font-size: 9px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .epo-order-row { animation: none; }
+  .epo-order-row, .epo-open-arrow { transition: none; }
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   BẢNG ĐƠN DỊch VỤ — MÀU SẮC THEO LUỒNG & TRẠNG THÁI
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Row accent border theo luồng hàng ─────────────────────────── */
+.epo-order-row[data-flow="IMPORT"] {
+  border-left: 3px solid #4a9eca;
+}
+.epo-order-row[data-flow="EXPORT"] {
+  border-left: 3px solid #e07d3a;
+}
+.epo-order-row[data-flow="IMPORT"]:hover { background: #f4f9ff; }
+.epo-order-row[data-flow="EXPORT"]:hover { background: #fff9f5; }
+
+/* ── Icon box theo luồng ────────────────────────────────────────── */
+.epo-order-icon--import {
+  border-color: #c5dff0;
+  background: linear-gradient(135deg, #edf6fc, #daeef9);
+  color: #3b88bb;
+}
+.epo-order-icon--export {
+  border-color: #f0d5bc;
+  background: linear-gradient(135deg, #fff3ea, #fde6cf);
+  color: #c06b2a;
+}
+
+/* ── Source tag theo luồng ──────────────────────────────────────── */
+.epo-source--import > strong {
+  color: #3a7eab;
+}
+.epo-source--import > small {
+  color: #6aadd4;
+}
+.epo-source--export > strong {
+  color: #b05c20;
+}
+.epo-source--export > small {
+  color: #d48950;
+}
+
+/* ── Open arrow theo luồng ─────────────────────────────────────── */
+.epo-order-row[data-flow="IMPORT"]:hover .epo-open-arrow {
+  color: #3b88bb;
+  border-color: #c5dff0;
+  transform: translate(1px, -1px);
+}
+.epo-order-row[data-flow="EXPORT"]:hover .epo-open-arrow {
+  color: #c06b2a;
+  border-color: #f0d5bc;
+  transform: translate(1px, -1px);
+}
+
+/* ── Badge trạng thái nổi bật & đa sắc ─────────────────────────── */
+.epo-badge {
+  font-size: 10.5px;
+  font-weight: 650;
+  padding: 4px 11px;
+  gap: 6px;
+  border-radius: 999px;
+  letter-spacing: .01em;
+}
+.epo-badge > span { width: 6px; height: 6px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.6); }
+
+/* Xanh lá: Đã duyệt / Đã thanh toán */
+.epo-badge.green   { border-color: #a3e2bb; background: #eefbf3; color: #1e7e48; }
+.epo-badge.green > span { background: #22c55e; }
+
+/* Xanh nước biển: Đã xác nhận */
+.epo-badge.blue    { border-color: #bae6fd; background: #f0f9ff; color: #0369a1; }
+.epo-badge.blue > span { background: #0ea5e9; }
+
+/* Xanh ngọc / Teal: Đã tiếp nhận */
+.epo-badge.teal    { border-color: #a0e8de; background: #e8f9f6; color: #0d8272; }
+.epo-badge.teal > span { background: #14b8a6; }
+
+/* Cam ấm: Chờ cảng duyệt / Chờ thanh toán */
+.epo-badge.orange  { border-color: #ffd8a8; background: #fff8ee; color: #b45309; }
+.epo-badge.orange > span { background: #f59e0b; }
+
+/* Vàng hổ phách: Chưa thanh toán */
+.epo-badge.yellow  { border-color: #fed7aa; background: #fffbeb; color: #b45309; }
+.epo-badge.yellow > span { background: #f59e0b; }
+
+/* Tím: Đang đối chiếu */
+.epo-badge.purple  { border-color: #ddd6fe; background: #f5f3ff; color: #6d28d9; }
+.epo-badge.purple > span { background: #8b5cf6; }
+
+/* Đỏ: Từ chối / Thất bại */
+.epo-badge.red     { border-color: #fecaca; background: #fef2f2; color: #b91c1c; }
+.epo-badge.red > span { background: #ef4444; }
+
+/* Xám mờ / Hủy: Đã hủy / Hết hạn */
+.epo-badge.muted   { border-color: #e2e8f0; background: #f8fafc; color: #94a3b8; text-decoration: line-through; }
+.epo-badge.muted > span { background: #94a3b8; }
+
+/* Xám trung tính: Bản nháp / Không phí */
+.epo-badge.neutral { border-color: #e2e8f0; background: #f1f5f9; color: #64748b; }
+.epo-badge.neutral > span { background: #64748b; }
+
+/* ── Payment label đẹp hơn ─────────────────────────────────────── */
+.epo-payment-label         { font-size: 10px; font-weight: 650; }
+.epo-payment-label.green   { color: #1e7e48; }
+.epo-payment-label.blue    { color: #0284c7; }
+.epo-payment-label.teal    { color: #0d8272; }
+.epo-payment-label.orange  { color: #b45309; }
+.epo-payment-label.yellow  { color: #b45309; }
+.epo-payment-label.purple  { color: #6d28d9; }
+.epo-payment-label.red     { color: #b91c1c; }
+.epo-payment-label.muted   { color: #94a3b8; }
+.epo-payment-label.neutral { color: #64748b; }
+
+/* ── Amount: màu theo flow ──────────────────────────────────────── */
+.epo-order-row[data-flow="IMPORT"] .epo-order-amount > strong { color: #2e78a8; }
+.epo-order-row[data-flow="EXPORT"] .epo-order-amount > strong { color: #b55e1a; }
+
+/* ── Table head nhẹ hơn ─────────────────────────────────────────── */
+.epo-table-head {
+  background: linear-gradient(to right, #f4f8fc, #f8fafd);
+  border-bottom: 1px solid #e3eaf3;
+  letter-spacing: .06em;
+  font-size: 9.5px;
+  color: #7a93ae;
+  text-transform: uppercase;
+}
+
+/* ── Worklist container nổi hơn ─────────────────────────────────── */
+.epo-worklist {
+  border-color: #d8e5f0;
+  box-shadow: 0 4px 24px #2a4a6a0a, 0 1px 4px #2a4a6a08;
+}

@@ -1,0 +1,41 @@
+.epc-dialog.esr-dialog { width: min(990px, calc(100vw - 40px)); max-width: none; max-height: min(94dvh, 1200px); padding: 0; }
+.epc-dialog.esr-dialog[open] { display: flex; flex-direction: column; }
+.esr-dialog .epd-header { flex-shrink: 0; }
+.esr-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 25px; background: #fff; border-bottom: 1px solid #e3eaf2; flex-shrink: 0; }
+.esr-toolbar > span { display: flex; gap: 8px; align-items: center; font-size: 11px; color: #647a92; }
+.esr-toolbar .epc-text-button { font-size: 11px; }
+.esr-scroll { min-height: 150px; overflow: auto; overscroll-behavior: contain; padding: 24px; background: #eef2f6; }
+.esr-scope-picker { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px 16px; padding: 10px 25px; background: #fff; border-bottom: 1px solid #dbe4ec; flex-shrink: 0; color: #193247; font-size: 12px; }
+.esr-scope-picker select { width: 100%; min-width: 0; border: 1px solid #dbe4ec; border-radius: 9px; padding: 9px 30px 9px 12px; background: #f8fafc; color: #193247; font: inherit; }
+.esr-scope-picker small { grid-column: 1 / -1; color: #647a92; font-size: 10px; }
+.esr-export-error { display: flex; gap: 9px; margin: 0; padding: 12px 25px; color: #ad3928; background: #fff5f2; font-size: 12px; flex-shrink: 0; }
+.esr-export-error svg { flex-shrink: 0; }
+.esr-export-error .epc-text-button { display: block; margin-top: 5px; }
+.esr-footer { flex-shrink: 0; }
+.esr-footer > span { color: #647a92; font-size: 11px; }
+.esr-footer > div { display: flex; gap: 9px; }
+.epo-detail-footer .esr-entry-actions { display: flex; gap: 9px; align-items: center; }
+@media (max-width: 600px) {
+  .esr-scope-picker { grid-template-columns: 1fr; padding: 9px 12px; gap: 5px; }
+  .epc-dialog.esr-dialog { width: calc(100vw - 12px); max-height: calc(100dvh - 12px); }
+  .esr-toolbar { padding: 11px 12px; gap: 6px; }
+  .esr-toolbar > span, .esr-toolbar .epc-text-button { font-size: 10px; }
+  .esr-scroll { padding: 8px; }
+  .esr-scroll .esr-paper { padding: 18px 12px; font-size: 10px; }
+  .esr-scroll .esr-paper .esr-brand strong { font-size: 23px; }
+  .esr-scroll .esr-paper .esr-brand > span { font-size: 7px; }
+  .esr-scroll .esr-paper h2 { font-size: 19px; }
+  .esr-scroll .esr-paper h3 { font-size: 10px; }
+  .esr-scroll .esr-paper .esr-facts { gap: 10px; }
+  .esr-scroll .esr-paper dd { font-size: 10px; }
+  .esr-scroll .esr-paper dt { font-size: 9px; }
+  .esr-scroll .esr-paper table, .esr-scroll .esr-paper th { font-size: 7px; }
+  .esr-scroll .esr-paper th, .esr-scroll .esr-paper td { padding: 6px 3px; }
+  .esr-scroll .esr-paper td small { font-size: 6.5px; }
+  .esr-scroll .esr-paper .esr-totals > strong { font-size: 12px; }
+  .esr-footer { gap: 10px; padding: 12px; flex-wrap: wrap; }
+  .esr-footer > span { width: 100%; font-size: 10px; }
+  .esr-footer > div { width: 100%; }
+  .esr-footer > div > button { flex: 1; justify-content: center; }
+  .epo-detail-footer .esr-entry-actions { flex-wrap: wrap; justify-content: flex-end; }
+}

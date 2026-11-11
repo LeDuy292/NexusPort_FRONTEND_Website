@@ -145,7 +145,7 @@ function App() {
             <Route path="/admin/service-catalog" element={<ServiceCatalogPage management />} />
           </Route>
           <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
-            <Route path="/containers" element={<ContainerRoute />} />
+            <Route path="/containers" element={<ContainerManagement />} />
             <Route path="/container-intake" element={<Navigate to="/containers" replace />} />
             <Route path="/cargo" element={<Navigate to="/containers" replace />} />
           </Route>

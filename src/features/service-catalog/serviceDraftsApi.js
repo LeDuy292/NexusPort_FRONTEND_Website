@@ -17,6 +17,12 @@ export const serviceDraftsApi = {
   validate: async (id, body) => (await apiClient.post(`${root}/${id}/validate`, body)).data,
   confirm: async (id, body) => (await apiClient.post(`${root}/${id}/confirm`, body)).data,
   registration: async id => (await apiClient.get(`${root}/${id}/registration`)).data,
+  deliveryProfile: async () => (await apiClient.get(`${root}/delivery-profile`)).data,
+  sendEmail: async (id, body) => (await apiClient.post(`${root}/${id}/email-verification`, body)).data,
+  verifyEmail: async (id, body) => (await apiClient.post(`${root}/${id}/verify-email`, body)).data,
+  emailStatus: async (id, body) => (await apiClient.post(`${root}/${id}/email-status`, body)).data,
+  checkCustoms: async (id, body) => (await apiClient.post(`${root}/${id}/check-customs`, body)).data,
+  confirmCustoms: async (id, body) => (await apiClient.post(`${root}/${id}/confirm-customs`, body)).data,
 }
 export const draftError = error => error?.response?.data?.message || error?.response?.data?.Message || error?.message || 'Không thể hoàn tất thao tác. Vui lòng thử lại.'
 export const draftDateTime = value => value ? new Date(value).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' }) : 'Chưa khai báo'

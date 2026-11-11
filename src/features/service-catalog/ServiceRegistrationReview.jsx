@@ -1,13 +1,16 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { AlertCircle, CalendarDays, Check, CheckCircle2, ClipboardCheck, Container, FileText, Info, Loader2, LockKeyhole, Pencil, ReceiptText, RefreshCw, ShieldCheck, X } from 'lucide-react'
 import CatalogDialog from './CatalogDialog'
+import ServiceReceiptButton from './ServiceRegistrationReceipt'
 import { labels, money } from './catalogApi'
 import { draftDateTime, draftError, draftSession, serviceDraftKey, serviceDraftsApi } from './serviceDraftsApi'
+import { orderStatusLabels, paymentStatusLabels } from './serviceOrdersApi'
 
 const quantity = value => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(value)
-const statusLabel = status => status === 'PENDING_APPROVAL' ? 'Chờ cảng duyệt' : status === 'CONFIRMED' ? 'Đã xác nhận' : status === 'READY' ? 'Đủ điều kiện xác nhận' : 'Cần bổ sung thông tin'
-const paymentLabel = status => status === 'NOT_REQUIRED' ? 'Không phát sinh tiền dịch vụ' : 'Chưa thanh toán'
+const statusLabel = status => orderStatusLabels[status] || (status === 'READY' ? 'Đủ điều kiện xác nhận' : 'Cần bổ sung thông tin')
+const paymentLabel = status => paymentStatusLabels[status] || 'Chưa thanh toán'
 
 function FeeLines({ fees }) {
   if (!fees.length) return <div className="epr-fees-empty"><ReceiptText size={27} /><p>Chưa có dòng phí. Bổ sung container và dịch vụ để tính tiền.</p></div>
@@ -32,6 +35,7 @@ function Issues({ issues, fees, containers, confirmed }) {
   }
   return <section className="epr-issue-section" aria-label="Kết quả kiểm tra điều kiện">
     <div className="epr-section-heading"><ShieldCheck size={18} /><h3>Điều kiện đăng ký</h3><span>{errors.length ? `${errors.length} cần xử lý` : 'Đã kiểm tra'}</span></div>
+    {!errors.length && warnings.length > 0 && !confirmed && <p className="epd-muted">Các lưu ý dưới đây không chặn xác nhận đăng ký. Kiểm tra bảng phí và tích đồng ý ở cuối hồ sơ để xác nhận. Điều kiện giao nhận được cảng đối chiếu riêng.</p>}
     {!issues.length ? <div className="epr-all-clear"><CheckCircle2 size={21} /><div><strong>Hồ sơ đáp ứng các kiểm tra đăng ký</strong><p>{confirmed ? 'Kết quả kiểm tra được lưu cùng hồ sơ tại thời điểm xác nhận.' : 'Kiểm tra thông tin và các dòng phí trước khi xác nhận.'}</p></div></div> : <>
       {[...errors, ...warnings].map((issue, index) => <div className={`epr-issue ${issue.severity === 'ERROR' ? 'error' : 'warning'}`} key={`${issue.code}-${issue.sourceContainerId}-${issue.serviceId}-${index}`}>
         {issue.severity === 'ERROR' ? <AlertCircle size={18} /> : <Info size={18} />}<div>{context(issue) && <small>{context(issue)}</small>}<p>{issue.message}</p></div>
@@ -52,7 +56,8 @@ export default function ServiceRegistrationReview({ draftId, onClose, onEdit, on
     queryKey: [...serviceDraftKey, session, 'review', draftId],
     queryFn: async () => {
       const draft = await serviceDraftsApi.get(draftId)
-      if (draft.registrationId || (draft.status && draft.status !== 'DRAFT')) return { draft, registration: await serviceDraftsApi.registration(draftId) }
+      if (draft.registrationId) return { draft, registration: await serviceDraftsApi.registration(draftId) }
+      if (draft.status && draft.status !== 'DRAFT') return { draft, closed: true }
       return { draft, check: await serviceDraftsApi.validate(draftId, { expectedVersion: draft.version }) }
     },
     retry: false,
@@ -70,7 +75,9 @@ export default function ServiceRegistrationReview({ draftId, onClose, onEdit, on
   const total = registration?.total ?? check?.total
   const state = registration?.status || check?.status || 'INCOMPLETE'
   const confirmed = !!registration
-  const pendingApproval = state === 'PENDING_APPROVAL' || !!check?.requiresApproval || fees.some(fee => fee.requiresApproval)
+  const pendingApproval = confirmed
+    ? registration.approvalStatus === 'PENDING' || (!registration.approvalStatus && state === 'PENDING_APPROVAL')
+    : !!check?.requiresApproval || fees.some(fee => fee.requiresApproval)
   const canConfirm = !confirmed && !!check?.canConfirm && !!check?.quoteToken && !stale && !query.isFetching
   useEffect(() => { setAccepted(false) }, [check?.quoteToken])
   useEffect(() => { if (registration?.id) bodyRef.current?.scrollTo({ top: 0, behavior: 'instant' }) }, [registration?.id])
@@ -91,7 +98,7 @@ export default function ServiceRegistrationReview({ draftId, onClose, onEdit, on
   return <CatalogDialog className="epd-dialog epr-dialog" labelledBy={`${id}-title`} describedBy={`${id}-description`} onClose={requestClose}>
     <header className="epd-header"><div><span className="epc-eyebrow">NEXUSPORT / XÁC NHẬN DỊCH VỤ</span><h2 id={`${id}-title`} tabIndex={-1} data-dialog-initial-focus>{confirmed ? 'Hồ sơ đăng ký dịch vụ' : 'Kiểm tra & xác nhận đăng ký'}</h2><p id={`${id}-description`}>{confirmed ? 'Thông tin đăng ký và đơn giá được lưu tại thời điểm xác nhận.' : 'Đối chiếu điều kiện, xem từng dòng phí rồi xác nhận hồ sơ.'}</p></div><button type="button" className="epc-icon-button" aria-label="Đóng kiểm tra đăng ký" disabled={confirm.isPending} onClick={requestClose}><X size={21} /></button></header>
     <div className="epd-body epr-body" ref={bodyRef} aria-busy={query.isFetching || confirm.isPending}>
-      {query.isPending ? <div className="epd-loading" role="status"><Loader2 size={23} className="epc-spin" />Đang kiểm tra hồ sơ và tính các dòng phí…</div> : query.isError ? <div className="epd-empty"><AlertCircle size={32} /><h3>Chưa kiểm tra được hồ sơ</h3><p>{draftError(query.error)}</p><button type="button" className="epc-button secondary" onClick={refresh}><RefreshCw size={16} />Thử lại</button></div> : <>
+      {query.isPending ? <div className="epd-loading" role="status"><Loader2 size={23} className="epc-spin" />Đang kiểm tra hồ sơ và tính các dòng phí…</div> : query.data?.closed ? <div className="epd-empty"><LockKeyhole size={32} /><h3>{statusLabel(draft?.status)}</h3><p>Hồ sơ đã đóng và không thể tiếp tục xác nhận.</p><Link to={`/services?order=${draftId}`} className="epc-button primary">Xem đơn dịch vụ</Link></div> : query.isError ? <div className="epd-empty"><AlertCircle size={32} /><h3>Chưa kiểm tra được hồ sơ</h3><p>{draftError(query.error)}</p><button type="button" className="epc-button secondary" onClick={refresh}><RefreshCw size={16} />Thử lại</button></div> : <>
         <div className={`epr-state-banner ${confirmed ? 'confirmed' : check?.canConfirm ? 'ready' : 'incomplete'}`} role="status">
           <span className="epr-state-icon">{confirmed ? <LockKeyhole size={25} /> : check?.canConfirm ? <ClipboardCheck size={27} /> : <AlertCircle size={26} />}</span><div><span className="epr-status-label">{statusLabel(state)}</span><strong>{confirmed ? registration.number : draft?.number}</strong><p>{confirmed ? `Xác nhận lúc ${draftDateTime(registration.confirmedAt)}` : `Kiểm tra lúc ${draftDateTime(check?.checkedAt)}`}</p></div>{confirmed && <span className="epr-payment-badge">{paymentLabel(registration.paymentStatus)}</span>}
         </div>
@@ -109,13 +116,20 @@ export default function ServiceRegistrationReview({ draftId, onClose, onEdit, on
             {!confirmed && total == null && <p className="epr-partial">{check?.subtotal == null ? 'Chưa thể hiển thị số tiền. Kiểm tra lại biểu phí và số lượng theo thông báo của hồ sơ.' : <>Các dòng đã xác định: <strong>{money(check.subtotal)}</strong>. Đây chưa phải tổng tiền đăng ký.</>}</p>}
             {confirmed ? <div className="epr-lock-note"><LockKeyhole size={17} /><p>Đơn giá và dòng phí đã được lưu cùng hồ sơ. Biểu phí thay đổi sau đó không làm đổi số tiền này.</p></div> : <div className="epr-lock-note"><ShieldCheck size={17} /><p>Khi xác nhận, hệ thống kiểm tra lại hồ sơ và lưu đơn giá áp dụng cho từng dịch vụ.</p></div>}
             {pendingApproval && <div className="epr-approval-note"><Info size={16} /><p>{confirmed ? <>Hồ sơ đang <strong>Chờ cảng duyệt</strong>. Cảng cần kiểm tra các điều kiện tác nghiệp trước khi thực hiện.</> : <>Hồ sơ có dịch vụ cần cảng xem xét. Xác nhận sẽ lưu trạng thái <strong>Chờ cảng duyệt</strong>.</>}</p></div>}
-            {!confirmed && canConfirm && <label className="epr-accept"><input type="checkbox" checked={accepted} disabled={confirm.isPending} onChange={event => setAccepted(event.target.checked)} /><span>Tôi đã kiểm tra hồ sơ và đồng ý với các dòng phí trên.</span></label>}
           </aside>
         </div>
         <div className="epr-scope-note"><Info size={17} /><p>{confirmed ? 'Xác nhận đăng ký ghi nhận hồ sơ và phí dịch vụ. Tình trạng thanh toán, phê duyệt và điều kiện giao nhận được theo dõi riêng.' : 'Hồ sơ còn thiếu thông tin vẫn được giữ ở bản nháp. Bạn có thể quay lại chỉnh sửa và kiểm tra lại.'}</p></div>
         {confirm.error && <div className="epc-error" role="alert">{draftError(confirm.error)}{stale && <p>Thông tin hoặc biểu phí có thể đã thay đổi. Nhấn <strong>Kiểm tra lại</strong>, xem lại kết quả và số tiền trước khi xác nhận.</p>}</div>}
       </>}
     </div>
-    <footer className="epd-footer epr-footer"><div>{!confirmed && !query.isPending && <button type="button" className="epc-button secondary" disabled={confirm.isPending} onClick={() => onEdit(draftId)}><Pencil size={15} />Chỉnh sửa bản nháp</button>}</div><div>{!confirmed && !query.isPending && <button type="button" className="epc-button secondary" disabled={query.isFetching || confirm.isPending} onClick={refresh}><RefreshCw size={15} className={query.isFetching ? 'epc-spin' : ''} />Kiểm tra lại</button>}{confirmed ? <button type="button" className="epc-button primary" onClick={requestClose}><Check size={16} />Hoàn tất</button> : <button type="button" className="epc-button primary" disabled={!canConfirm || !accepted || confirm.isPending} onClick={() => confirm.mutate()}>{confirm.isPending ? <Loader2 size={16} className="epc-spin" /> : <CheckCircle2 size={16} />}Xác nhận đăng ký</button>}</div></footer>
+    <footer className="epd-footer epr-footer">
+      {!confirmed && canConfirm && <label className="epr-accept epr-footer-accept">
+        <input type="checkbox" checked={accepted} disabled={confirm.isPending} onChange={event => setAccepted(event.target.checked)} />
+        <span>Tôi đã kiểm tra hồ sơ và đồng ý với các dòng phí trên.<small>{accepted ? 'Bạn có thể xác nhận đăng ký.' : 'Tích ô đồng ý để bật nút Xác nhận đăng ký.'}</small></span>
+        <strong>{money(total)}</strong>
+      </label>}
+      <div>{!confirmed && !query.data?.closed && !query.isPending && <button type="button" className="epc-button secondary" disabled={confirm.isPending} onClick={() => onEdit(draftId)}><Pencil size={15} />Chỉnh sửa bản nháp</button>}</div>
+      <div>{!confirmed && !query.data?.closed && !query.isPending && <button type="button" className="epc-button secondary" disabled={query.isFetching || confirm.isPending} onClick={refresh}><RefreshCw size={15} className={query.isFetching ? 'epc-spin' : ''} />Kiểm tra lại</button>}{confirmed || query.data?.closed ? <>{confirmed && <ServiceReceiptButton orderId={draftId} />}<Link className="epc-button secondary" to={`/services?order=${draftId}`}><FileText size={16} />Quản lý đơn & thanh toán</Link><button type="button" className="epc-button primary" onClick={requestClose}><Check size={16} />Hoàn tất</button></> : <button type="button" className="epc-button primary" disabled={!canConfirm || !accepted || confirm.isPending} onClick={() => confirm.mutate()}>{confirm.isPending ? <Loader2 size={16} className="epc-spin" /> : <CheckCircle2 size={16} />}Xác nhận đăng ký</button>}</div>
+    </footer>
   </CatalogDialog>
 }
