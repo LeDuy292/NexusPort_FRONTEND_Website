@@ -213,7 +213,7 @@ export const formatFileSize = (bytes) => {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
 }
 
-export default function ContainerBookingForm({ onSaved, onClose }) {
+export default function ContainerBookingForm({ onSaved, onClose, exportContext }) {
   const navigate = useNavigate()
   const { state: context } = useLocation()
 
@@ -1646,7 +1646,7 @@ export default function ContainerBookingForm({ onSaved, onClose }) {
                 {!isReeferCargo ? 'Chỉ container hàng lạnh mới đăng ký cấp điện tại bãi.'
                   : !isReeferDropoff ? 'Booking Nhận container đưa hàng ra khỏi bãi nên không tạo yêu cầu cấp điện mới. Vẫn cần nhiệt độ bảo quản theo chỉ dẫn hàng lạnh.'
                     : canRequestReeferPower ? `Công suất theo bản khai: ${form.requiredPowerKw} kW. Chọn yêu cầu nếu cần cảng cấp điện trong thời gian lưu bãi.`
-                      : 'Bản khai chưa có công suất cấp điện hợp lệ. Cập nhật công suất trong khai báo container trước khi yêu cầu cấp điện.'}
+                      : 'Cần chọn bản khai hàng có công suất hợp lệ để yêu cầu cấp điện.'}
               </p>
               {isReeferCargo && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">

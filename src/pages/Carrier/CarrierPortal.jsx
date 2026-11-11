@@ -82,10 +82,10 @@ export default function CarrierPortal() {
             <div className="flex justify-between items-center border-b border-chalk pb-4">
               <h3 className="font-heading text-lg font-bold text-carbon">Container đang hoạt động</h3>
               <button
-                onClick={() => navigate('/cargo')}
+                onClick={() => navigate('/containers')}
                 className="text-xs font-bold text-signal-orange hover:underline"
               >
-                Xem tất cả ➔
+                Tra cứu lượt bãi ➔
               </button>
             </div>
 
@@ -179,11 +179,11 @@ export default function CarrierPortal() {
             </button>
 
             <button
-              onClick={() => navigate('/cargo')}
+              onClick={() => navigate('/containers')}
               className="bg-white border border-chalk rounded-xl h-24 flex flex-col items-center justify-center gap-2 hover:bg-fog hover:shadow-md transition-all shadow-sm group"
             >
               <span className="material-symbols-outlined text-signal-orange group-hover:scale-110 transition-transform">inventory_2</span>
-              <span className="font-bold text-carbon text-xs">Khai báo container</span>
+              <span className="font-bold text-carbon text-xs">Tra cứu lượt bãi</span>
             </button>
 
 
