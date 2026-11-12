@@ -18,6 +18,7 @@ export const serviceDraftsApi = {
   confirm: async (id, body) => (await apiClient.post(`${root}/${id}/confirm`, body)).data,
   registration: async id => (await apiClient.get(`${root}/${id}/registration`)).data,
   deliveryProfile: async () => (await apiClient.get(`${root}/delivery-profile`)).data,
+  fleetOptions: async body => (await apiClient.post(`${root}/fleet-options`, body)).data,
   sendEmail: async (id, body) => (await apiClient.post(`${root}/${id}/email-verification`, body)).data,
   verifyEmail: async (id, body) => (await apiClient.post(`${root}/${id}/verify-email`, body)).data,
   emailStatus: async (id, body) => (await apiClient.post(`${root}/${id}/email-status`, body)).data,

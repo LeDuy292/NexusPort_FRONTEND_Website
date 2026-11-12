@@ -1,5 +1,6 @@
 .epc-dialog.epr-dialog { width: min(1200px, calc(100vw - 40px)); }
 .epr-body { padding: 25px 29px 28px; }
+.epr-layout.epr-submission-layout { grid-template-columns: minmax(0,1fr); }
 .epr-state-banner { display: flex; align-items: center; gap: 15px; min-width: 0; margin-bottom: 23px; border: 1px solid #eed6bc; border-radius: 15px; padding: 18px 20px; background: linear-gradient(115deg, #fff9f0, #fffcf8); color: #a87942; }
 .epr-state-banner.ready, .epr-state-banner.confirmed { border-color: #cce1d8; background: linear-gradient(115deg, #edf7f2, #f9fcfa); color: #388069; }
 .epr-state-icon { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; flex-shrink: 0; border: 1px solid #e4d1b8; border-radius: 14px; background: #ffffffb3; }

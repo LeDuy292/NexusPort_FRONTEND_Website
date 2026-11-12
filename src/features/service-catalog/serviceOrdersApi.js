@@ -15,14 +15,14 @@ export const serviceOrdersApi = {
 }
 
 export const orderStatusLabels = {
-  DRAFT: 'Bản nháp', CONFIRMED: 'Đã xác nhận', PENDING_APPROVAL: 'Chờ cảng duyệt',
+  DRAFT: 'Bản nháp', CONFIRMED: 'Đã xác nhận', PENDING_APPROVAL: 'Chờ Dispatcher xác nhận',
   RECEIVED: 'Đã tiếp nhận', APPROVED: 'Đã duyệt', REJECTED: 'Đã từ chối', CANCELLED: 'Đã hủy',
 }
 export const paymentStatusLabels = {
   NOT_REQUIRED: 'Không phát sinh phí', UNPAID: 'Chưa thanh toán', PENDING: 'Chờ thanh toán',
   CREATING: 'Đang tạo liên kết', SUBMITTED: 'Đang đối chiếu', PAID: 'Đã thanh toán', SUCCEEDED: 'Đã thanh toán', FAILED: 'Không thành công', CANCELLED: 'Đã hủy yêu cầu', EXPIRED: 'Đã hết hạn',
 }
-export const paymentStateLabel = order => order.paymentReviewRequired
+export const paymentStateLabel = order => order.pricingStatus === 'AWAITING' ? 'Chờ Dispatcher trả phí' : order.paymentReviewRequired
   ? 'Cần cảng đối soát'
   : order.registrationId ? paymentStatusLabels[order.paymentStatus] || order.paymentStatus || 'Chưa xác nhận' : 'Chưa xác nhận phí'
 export function statusTone(status) {
