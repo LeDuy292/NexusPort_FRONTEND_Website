@@ -3,16 +3,49 @@
  */
 export const ROLES = {
   TRANSPORT_COMPANY: 'Transport Company',
+  CARRIER: 'Carrier',
   DRIVER: 'Driver',
   GATE_OFFICER: 'Gate Officer',
   DISPATCHER: 'Dispatcher',
   YARD_OPERATOR: 'Yard Operator',
   BERTH_STAFF: 'Berth Staff',
   ADMINISTRATOR: 'Administrator',
-  CARRIER_STAFF: 'Carrier Staff'
+  CARRIER_STAFF: 'Carrier Staff',
+  SHIPPING_LINE: 'Shipping Line'
 }
 
+export const CONTAINER_TRANSPORT_ROLES = [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF]
+export const YARD_VISIT_OPERATORS = [ROLES.ADMINISTRATOR, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER]
+
 export const routeConfig = [
+  { path: '/services', allowedRoles: [ROLES.TRANSPORT_COMPANY, 'Carrier', ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR] },
+  { path: '/admin/service-catalog', allowedRoles: [ROLES.ADMINISTRATOR] },
+  // Phân hệ Hãng tàu (Shipping Line)
+  {
+    path: '/shipping-line/dashboard',
+    allowedRoles: [ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/shipping-line/voyages',
+    allowedRoles: [ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/shipping-line/manifest',
+    allowedRoles: [ROLES.SHIPPING_LINE],
+  },
+  {
+    path: '/shipping-line/containers',
+    allowedRoles: [ROLES.SHIPPING_LINE],
+  },
+  {
+    path: '/shipping-line/bills-of-lading',
+    allowedRoles: [ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/shipping-line/delivery-orders',
+    allowedRoles: [ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR],
+  },
+
   // Public Routes
   {
     path: '/login',
@@ -22,7 +55,7 @@ export const routeConfig = [
   // Protected Routes
   {
     path: '/',
-    allowedRoles: Object.values(ROLES), // Tất cả các vai trò sau khi đăng nhập đều truy cập được trang Landing điều hướng
+    allowedRoles: Object.values(ROLES),
   },
   {
     path: '/dashboard',
@@ -30,7 +63,15 @@ export const routeConfig = [
   },
   {
     path: '/containers',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
+    allowedRoles: Object.values(ROLES),
+  },
+  {
+    path: '/containers/search',
+    allowedRoles: Object.values(ROLES),
+  },
+  {
+    path: '/containers/journeys',
+    allowedRoles: Object.values(ROLES),
   },
   {
     path: '/booking',
@@ -42,6 +83,10 @@ export const routeConfig = [
   },
   {
     path: '/yard/map',
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/yard/design',
     allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {
@@ -78,11 +123,11 @@ export const routeConfig = [
   },
   {
     path: '/cargo',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+    allowedRoles: Object.values(ROLES),
   },
   {
     path: '/transport/cargo-declarations',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+    allowedRoles: CONTAINER_TRANSPORT_ROLES,
   },
   {
     path: '/gate',
@@ -200,6 +245,10 @@ export const routeConfig = [
   {
     path: '/dispatcher/cameras',
     allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/admin/shipping-lines',
+    allowedRoles: [ROLES.ADMINISTRATOR],
   },
   {
     path: '/admin/carriers',

@@ -25,5 +25,10 @@ export const companyService = {
   changeStatus: async (id, status) => {
     const response = await apiClient.patch(`/v1/companies/${id}/status`, { status });
     return response.data;
+  },
+
+  provisionAccount: async (data) => {
+    const response = await apiClient.post('/users/carrier-account', data);
+    return response.data;
   }
 };

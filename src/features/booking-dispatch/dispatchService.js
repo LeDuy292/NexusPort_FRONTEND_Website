@@ -30,9 +30,10 @@ export function connectYardMonitor(onChange) {
   let token
   try { token = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || '{}').token } catch { return () => {} }
   if (!token) return () => {}
-  const socket = io(import.meta.env.VITE_REALTIME_URL || 'http://localhost:4000', {
-    auth: { token }, transports: ['websocket', 'polling'], reconnection: true,
-  })
+  const socket = io(
+    import.meta.env.VITE_NODE_REALTIME_URL || import.meta.env.VITE_REALTIME_URL || 'http://localhost:4000',
+    { auth: { token }, transports: ['websocket', 'polling'], reconnection: true }
+  )
   socket.on('connect', onChange)
   socket.on('dispatcher.status.updated', onChange)
   socket.on('yard.operation.completed', onChange)

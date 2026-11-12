@@ -121,7 +121,7 @@ export default function GateBookings() {
           dateStr: startIsoDate,
           appointmentStart: startRaw,
           appointmentEnd: b.appointmentEnd || b.validTo,
-          company: b.carrierName || b.carrier?.name || 'Công Ty Vận Tải',
+          company: b.carrierName || b.carrier?.name || (b.carrierId && b.carrierId.includes('c1010101') ? 'Bien Dong Logistics - Nexus Logistics' : 'Bien Dong Logistics - Nexus Logistics'),
           companyId: b.carrierId ? b.carrierId.substring(0, 8) : '—',
           licensePlate: formatPlateNumber(b.vehiclePlate || b.truckPlateNumber || b.truck?.licensePlate) || '—',
           trailerPlate: b.trailerPlate || '—',
@@ -513,7 +513,7 @@ export default function GateBookings() {
           >
             <option value="All">Tất cả cổng</option>
             <option value="GATE-01">GATE-01 · Cổng vào</option>
-            <option value="GATE-03">GATE-03 · Cổng ra</option>
+            <option value="GATE-02">GATE-02 · Cổng ra</option>
           </select>
 
         </div>

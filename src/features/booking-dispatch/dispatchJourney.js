@@ -4,7 +4,7 @@ export const journeySteps = [
   ['Đến điểm nhận', 'Xe đang trên đường tới điểm giao nhận. Tài xế xác nhận khi đã đến đúng điểm; chưa theo dõi GPS.'],
   ['Giao / nhận hàng', 'Nhân viên bãi hoàn tất thao tác hàng; tài xế kiểm tra và xác nhận từng container.'],
   ['Đến cổng ra', 'Đủ container của cùng booking đã hoàn tất. Tài xế đi theo tuyến tới cổng ra.'],
-  ['Gate Out', 'Cổng ra quét biển số và kiểm tra cùng booking, lượt vào và toàn bộ xác nhận container.'],
+  ['Qua cổng ra', 'Cổng ra quét biển số và kiểm tra cùng booking, lượt vào và toàn bộ xác nhận container.'],
   ['Hoàn thành', 'Xe đã được ghi nhận ra khỏi bãi; sức chứa được giải phóng cho xe tiếp theo.'],
 ]
 export function journeyStep(booking, route) {

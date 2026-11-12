@@ -1,4 +1,5 @@
-const REALTIME_URL = import.meta.env.VITE_REALTIME_URL || 'http://localhost:4000'
+const REALTIME_URL =
+  import.meta.env.VITE_NODE_REALTIME_URL || import.meta.env.VITE_REALTIME_URL || 'http://localhost:4000'
 const EVENT_NAME = 'dispatcher.status.updated'
 
 const getToken = () => {

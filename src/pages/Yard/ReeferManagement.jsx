@@ -266,8 +266,22 @@ export default function ReeferManagement() {
     // Kết nối SignalR Hub kèm hàm tự động đồng bộ khi kết nối lại
     reeferSignalRService.start(() => loadData());
 
-    // Chu kỳ đồng bộ dự phòng 45s
-    const timer = setInterval(loadData, 45000);
+    // Chu kỳ đồng bộ sự cố và giám sát bãi lạnh thời gian thực (Real-time 3s)
+    const timer = setInterval(async () => {
+      try {
+        const [alRes, ovRes] = await Promise.all([
+          reeferService.getAlerts().catch(() => null),
+          reeferService.getOverview().catch(() => null),
+        ]);
+        if (alRes) setAlerts(alRes);
+        if (ovRes) {
+          setOverview((prev) => ({
+            ...prev,
+            active_alerts: ovRes.active_alerts ?? prev.active_alerts,
+          }));
+        }
+      } catch {}
+    }, 3000);
 
     return () => {
       clearInterval(timer);
@@ -330,6 +344,13 @@ export default function ReeferManagement() {
         temp_tolerance: item?.temp_tolerance != null ? Number(item.temp_tolerance) : (chosenCont?.temp_tolerance || 2.0),
         cargo_description: item?.cargo_description || (chosenCont?.cargo_type === 'perishable' ? 'Hàng đông lạnh cần bảo quản' : 'Hàng container bãi'),
         note: '',
+      });
+    } else if (type === 'CREATE_PLUG') {
+      const nextNum = plugs.length + 1;
+      setModalForm({
+        plug_code: `PLUG-R02-${String(nextNum).padStart(2, '0')}`,
+        voltage_type: '380V-3Ph-32A',
+        max_power_kw: 15.0,
       });
     } else if (type === 'CONFIRM_POWER' && item) {
       setModalForm({
@@ -533,6 +554,17 @@ export default function ReeferManagement() {
       } else if (modalType === 'TRANSFER') {
         await reeferService.transferPlug(selectedItem.id, modalForm.new_plug_id, modalForm.reason);
         showToast('Đã chuyển sang ổ cắm mới thành công.');
+      } else if (modalType === 'CREATE_PLUG') {
+        if (!modalForm.plug_code?.trim()) {
+          showToast('Vui lòng nhập mã máy cấp điện.', 'error');
+          return;
+        }
+        await reeferService.createPlug({
+          plug_code: modalForm.plug_code.trim().toUpperCase(),
+          voltage_type: modalForm.voltage_type || '380V-3Ph-32A',
+          max_power_kw: Number(modalForm.max_power_kw || 15.0),
+        });
+        showToast(`Đã thêm mới máy cấp điện ${modalForm.plug_code.trim().toUpperCase()} thành công.`);
       } else if (modalType === 'RESOLVE_ALERT') {
         await reeferService.resolveAlert(selectedItem.id, modalForm.notes);
         showToast('Đã hoàn tất xử lý sự cố.');
@@ -548,12 +580,60 @@ export default function ReeferManagement() {
   };
 
   const handleAcknowledgeAlert = async (alertId) => {
+    // Cập nhật giao diện tức thì (Optimistic UI 0ms)
+    setAlerts((prev) => prev.map((a) => (a.id === alertId ? { ...a, status: 'ACKNOWLEDGED' } : a)));
     try {
       await reeferService.acknowledgeAlert(alertId);
       showToast('Đã tiếp nhận xử lý cảnh báo.');
-      loadData();
     } catch (err) {
       showToast(err.message || 'Lỗi tiếp nhận.', 'error');
+      loadData();
+    }
+  };
+
+  const handleQuickResolveAlert = async (alertId) => {
+    // Cập nhật giao diện tức thì (Optimistic UI 0ms)
+    setAlerts((prev) => prev.filter((a) => a.id !== alertId));
+    setOverview((prev) => ({
+      ...prev,
+      active_alerts: Math.max(0, (prev.active_alerts || 1) - 1),
+    }));
+    try {
+      await reeferService.resolveAlert(alertId, 'Đã kiểm tra an toàn và khôi phục nguồn điện tại bãi.');
+      showToast('Đã đóng sự cố thành công.');
+    } catch (err) {
+      showToast(err.message || 'Lỗi xử lý sự cố.', 'error');
+      loadData();
+    }
+  };
+
+  const handleResolveAllAlerts = async () => {
+    const activeAlerts = alerts.filter((a) => a.status === 'TRIGGERED' || a.status === 'ACKNOWLEDGED');
+    if (activeAlerts.length === 0) return;
+    // Cập nhật giao diện tức thì (Optimistic UI 0ms)
+    setAlerts((prev) => prev.map((a) => ({ ...a, status: 'RESOLVED' })));
+    setOverview((prev) => ({ ...prev, active_alerts: 0 }));
+    showToast(`Đang khắc phục toàn bộ ${activeAlerts.length} sự cố an toàn...`);
+    try {
+      await Promise.all(
+        activeAlerts.map((a) => reeferService.resolveAlert(a.id, 'Đã kiểm tra an toàn và xử lý đồng loạt.'))
+      );
+      showToast('Đã khắc phục toàn bộ sự cố bãi lạnh thành công.');
+    } catch (err) {
+      console.warn(err);
+    } finally {
+      loadData();
+    }
+  };
+
+  const handleTogglePlugPower = async (plug) => {
+    try {
+      const nextPower = !plug.is_power_on;
+      await reeferService.togglePlugPower(plug.id, nextPower);
+      showToast(`Đã ${nextPower ? 'BẬT nguồn điện' : 'NGẮT nguồn điện'} máy ${plug.plug_code}.`);
+      loadData();
+    } catch (err) {
+      showToast(err.message || 'Lỗi thao tác nguồn.', 'error');
     }
   };
 
@@ -749,15 +829,23 @@ export default function ReeferManagement() {
                   {alerts.filter((a) => a.status === 'TRIGGERED' || a.status === 'ACKNOWLEDGED').length} sự cố cần xử lý
                 </span>
               </div>
-              <div className="text-xs text-slate-600 mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <div className="text-xs text-slate-600 mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
                 {alerts
                   .filter((a) => a.status === 'TRIGGERED' || a.status === 'ACKNOWLEDGED')
                   .slice(0, 3)
                   .map((alert) => (
-                    <span key={alert.id} className="inline-flex items-center gap-1 font-medium bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs">
+                    <span key={alert.id} className="inline-flex items-center gap-1.5 font-medium bg-slate-50 px-2.5 py-1 rounded-md border border-slate-200 shadow-2xs">
                       <strong className="text-slate-900">{alert.container_no || alert.container_id || 'Container'}</strong>
                       <span className="text-slate-500">(Ổ: {alert.plug_code || 'Chưa rõ'}):</span>
                       <span className="text-rose-700 font-semibold">{alert.message}</span>
+                      <button
+                        type="button"
+                        onClick={() => handleQuickResolveAlert(alert.id)}
+                        className="ml-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white transition-colors cursor-pointer shadow-2xs"
+                        title="Khắc phục ngay sự cố này"
+                      >
+                        ✓ Khắc phục
+                      </button>
                     </span>
                   ))}
               </div>
@@ -766,28 +854,39 @@ export default function ReeferManagement() {
 
           <div className="flex items-center gap-2 shrink-0 self-end md:self-center flex-wrap">
             {alerts.find((a) => a.status === 'TRIGGERED' || a.status === 'ACKNOWLEDGED') && (
-              <button
-                type="button"
-                onClick={() => {
-                  const firstAlert = alerts.find((a) => a.status === 'TRIGGERED' || a.status === 'ACKNOWLEDGED');
-                  const relatedSession = sessions.find((s) => s.id === firstAlert?.session_id) || {
-                    id: firstAlert?.session_id,
-                    container_no: firstAlert?.container_no,
-                    plug_code: firstAlert?.plug_code,
-                    target_temperature: -18,
-                    temp_tolerance: 2,
-                  };
-                  openModal('TEMP_HISTORY', relatedSession);
-                }}
-                className="px-3.5 py-2 bg-white hover:bg-orange-50 text-orange-800 border border-orange-300 text-xs font-semibold rounded-lg shadow-2xs transition-all flex items-center gap-1.5"
-                title="Mở biểu đồ đối chiếu biến thiên nhiệt độ và mốc phát sinh sự cố"
-              >
-                <span>Biểu đồ đối chiếu</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleResolveAllAlerts}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Khắc phục toàn bộ các sự cố an toàn đang phát sinh"
+                >
+                  <span className="material-symbols-outlined text-sm">verified</span>
+                  <span>Khắc phục tất cả</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const firstAlert = alerts.find((a) => a.status === 'TRIGGERED' || a.status === 'ACKNOWLEDGED');
+                    const relatedSession = sessions.find((s) => s.id === firstAlert?.session_id) || {
+                      id: firstAlert?.session_id,
+                      container_no: firstAlert?.container_no,
+                      plug_code: firstAlert?.plug_code,
+                      target_temperature: -18,
+                      temp_tolerance: 2,
+                    };
+                    openModal('TEMP_HISTORY', relatedSession);
+                  }}
+                  className="px-3.5 py-2 bg-white hover:bg-orange-50 text-orange-800 border border-orange-300 text-xs font-semibold rounded-lg shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer"
+                  title="Mở biểu đồ đối chiếu biến thiên nhiệt độ và mốc phát sinh sự cố"
+                >
+                  <span>Biểu đồ đối chiếu</span>
+                </button>
+              </>
             )}
             <button
               onClick={() => setActiveTab('alerts')}
-              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-all flex items-center gap-1.5"
+              className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold rounded-lg shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <span>Xem chi tiết sự cố</span>
               <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -921,6 +1020,15 @@ export default function ReeferManagement() {
                 </button>
               ))}
             </div>
+
+            <button
+              type="button"
+              onClick={() => openModal('CREATE_PLUG')}
+              className="px-3.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-sm transition-colors cursor-pointer shrink-0"
+            >
+              <span className="material-symbols-outlined text-sm">add_circle</span>
+              <span>Thêm Máy Cấp Điện</span>
+            </button>
           </div>
 
           {/* Lưới Thẻ Ổ Cắm Doanh Nghiệp */}
@@ -987,14 +1095,16 @@ export default function ReeferManagement() {
                           </span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-slate-400">Điện áp:</span>
-                          <span className="font-mono text-slate-700">
-                            {plug.voltage_type || '380V - 32A'}
+                          <span className="text-slate-400">Điện áp & Công suất:</span>
+                          <span className="font-mono text-slate-800 font-semibold">
+                            {plug.voltage_type || '380V-3Ph-32A'} · {plug.max_power_kw ? `${Number(plug.max_power_kw).toFixed(0)} kW` : '15 kW'}
                           </span>
                         </div>
                         <div className="flex justify-between items-center pt-1 border-t border-slate-100/60">
                           <span className="text-slate-400">Nguồn điện:</span>
-                          <div>{renderPowerSupplyStatus(plug)}</div>
+                          <div className="flex items-center gap-2">
+                            {renderPowerSupplyStatus(plug)}
+                          </div>
                         </div>
                       </div>
 
@@ -1046,6 +1156,24 @@ export default function ReeferManagement() {
                               {plug.active_session.container_no || plug.active_session.container_id}
                             </span>
                           </div>
+
+                          {/* Thông tin Booking liên kết & Nguồn cấp theo Booking */}
+                          {plug.active_session.booking_code && (
+                            <div className="space-y-1 pt-0.5">
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-slate-500 font-medium">Lịch hẹn Booking:</span>
+                                <span className="font-mono font-bold text-sky-800 bg-sky-50 px-1.5 py-0.2 rounded border border-sky-200">
+                                  ❄️ {plug.active_session.booking_code}
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center text-[11px]">
+                                <span className="text-slate-500 font-medium">Cấp điện theo Booking:</span>
+                                <span className="font-mono font-bold text-emerald-800 bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                  ⚡ 380V · {plug.active_session.required_power_kw || plug.max_power_kw || 15} kW (3 Pha)
+                                </span>
+                              </div>
+                            </div>
+                          )}
 
                           {/* Khối Nhiệt Độ Đo Đạc Thời Gian Thực (Live Telemetry - Tone Trắng Cam) */}
                           <div
@@ -1515,7 +1643,101 @@ export default function ReeferManagement() {
         </div>
       )}
 
-      {/* ======================= CÁC HỘP THOẠI (MODALS) ======================= */}
+      {/* ======================= HỘP THOẠI THÊM MÁY CẤP ĐIỆN KHO LẠNH ======================= */}
+      {modalType === 'CREATE_PLUG' && (
+        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl max-w-md w-full p-6 shadow-xl">
+            <div className="flex items-start justify-between pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Thêm Máy Cấp Điện Kho Đông Lạnh</h3>
+                <p className="text-slate-500 text-xs mt-0.5">
+                  Đăng ký máy/trụ cấp điện 3 pha mới tại Bãi Kho Lạnh Block R
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeModal}
+                className="text-slate-400 hover:text-slate-600 text-xl font-semibold leading-none p-1 cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            <form onSubmit={handleModalSubmit} className="space-y-4 mt-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Mã Máy Cấp Điện (Plug Code) <span className="text-rose-600">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={modalForm.plug_code || ''}
+                  onChange={(e) => setModalForm({ ...modalForm, plug_code: e.target.value.toUpperCase() })}
+                  placeholder="VD: PLUG-R02-07"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-900 font-mono font-bold focus:outline-none focus:bg-white focus:border-orange-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Chuẩn Điện Áp
+                  </label>
+                  <select
+                    value={modalForm.voltage_type || '380V-3Ph-32A'}
+                    onChange={(e) => setModalForm({ ...modalForm, voltage_type: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:bg-white focus:border-orange-500"
+                  >
+                    <option value="380V-3Ph-32A">380V - 3 Pha - 32A</option>
+                    <option value="440V-3Ph-32A">440V - 3 Pha - 32A</option>
+                    <option value="220V-1Ph-16A">220V - 1 Pha - 16A</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Công Suất Tối Đa (kW)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    value={modalForm.max_power_kw || 15}
+                    onChange={(e) => setModalForm({ ...modalForm, max_power_kw: e.target.value })}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:bg-white focus:border-orange-500"
+                  />
+                </div>
+              </div>
+
+              <div className="p-3 rounded-lg bg-sky-50 border border-sky-200 text-xs text-sky-900 space-y-1">
+                <div className="font-semibold flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm text-sky-600">info</span>
+                  <span>Vị trí đặt máy:</span>
+                </div>
+                <p className="text-[11px] text-sky-800">
+                  Máy sẽ tự động được gán vào khu vực Kho Đông Lạnh Block R, trang bị rơ-le ngắt quá tải và IoT Telematics đo nhiệt độ liên tục.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={closeModal}
+                  className="px-4 py-2 border border-slate-300 rounded-lg text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  disabled={modalSubmitting}
+                  className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-lg text-xs font-semibold shadow-sm transition-colors cursor-pointer"
+                >
+                  {modalSubmitting ? 'Đang tạo...' : 'Tạo Máy Cấp Điện'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ======================= HỘP THOẠI GÁN Ổ CẮM (BƯỚC 1 CỦA ĐIỀU ĐỘ) ======================= */}
       {modalType === 'ALLOCATE_POWER' && (

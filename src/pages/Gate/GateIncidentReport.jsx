@@ -20,7 +20,7 @@ const SEVERITY_OPTIONS = [
   { value: 'CRITICAL', label: '🔴 Nghiêm Trọng — Phải đóng cổng / gọi an ninh', cls: 'bg-red-200 text-red-950 border-red-500' },
 ]
 
-const GATE_OPTIONS = ['GATE-01 · Cổng vào', 'GATE-03 · Cổng ra']
+const GATE_OPTIONS = ['GATE-01 · Cổng vào', 'GATE-02 · Cổng ra']
 
 export default function GateIncidentReport() {
   const [timeString, setTimeString] = useState('')

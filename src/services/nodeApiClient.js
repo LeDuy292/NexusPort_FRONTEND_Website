@@ -37,7 +37,7 @@ const request = async (method, path, { params, body } = {}) => {
       sessionStorage.removeItem('token')
     } catch (_) {}
     if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-      window.location.href = '/login?kicked=true'
+      window.location.href = '/login'
     }
     const error = new Error('Phiên làm việc đã kết thúc. Vui lòng đăng nhập lại.')
     error.status = 401

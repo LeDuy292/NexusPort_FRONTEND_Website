@@ -190,8 +190,15 @@ export default function NotificationCenter() {
           </div>
 
           {/* Footer */}
-          <div className="p-3 bg-slate-50 border-t border-slate-200 text-center">
-            <span className="text-[10px] font-bold text-slate-500 font-mono">NexusPort Notification Center · Realtime DB</span>
+          <div className="p-2.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between px-4">
+            <span className="text-[10px] font-bold text-slate-500 font-mono">Realtime DB</span>
+            <a
+              href="/cargo/notifications"
+              onClick={() => setIsOpen(false)}
+              className="text-xs font-bold text-orange-600 hover:text-orange-700"
+            >
+              Mở Trung tâm chứng từ & Việc cần làm →
+            </a>
           </div>
 
         </div>

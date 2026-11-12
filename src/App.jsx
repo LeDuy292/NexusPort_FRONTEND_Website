@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './routes/ProtectedRoute'
 import RoleRoute from './routes/RoleRoute'
-import { ROLES } from './routes/routeConfig'
+import { CONTAINER_TRANSPORT_ROLES, ROLES } from './routes/routeConfig'
 import MainLayout from './layouts/MainLayout'
 import SessionListener from './components/SessionListener'
 
@@ -10,19 +10,22 @@ import BerthOps from './pages/Ships/BerthOps'
 import CargoDeclaration from './pages/Containers/CargoDeclaration'
 import DamageReport from './pages/Containers/DamageReport'
 import ContainerManagement from './pages/Containers/ContainerManagement'
+import ContainerRegistration from './pages/ShippingLine/ContainerRegistration'
+import ShippingLineDirectory from './pages/Admin/ShippingLineDirectory'
 import CarrierProfile from './pages/Ships/CarrierProfile'
 import EquipmentDispatch from './pages/Dispatch/EquipmentDispatch'
 
-// Import các trang mới tạo
+// Import các trang hệ thống
 import Login from './pages/Auth/Login'
 import Unauthorized from './pages/Auth/Unauthorized'
 import OperatorDashboard from './pages/Dashboard/OperatorDashboard'
 import BookingManagement from './pages/Booking/BookingManagement'
-import YardMap from './pages/Yard/YardMap'
+import YardDesignPreview from './pages/Yard/YardDesignPreview'
 import BillingPayment from './pages/Billing/BillingPayment'
 import UserRoleManagement from './pages/Users/UserRoleManagement'
 import CarrierPortal from './pages/Carrier/CarrierPortal'
 import CarrierStaffManagement from './pages/Carrier/CarrierStaffManagement'
+import CargoDocumentTracking from './pages/Cargo/CargoDocumentTracking'
 import DashboardIndex from './pages/Dashboard/DashboardIndex'
 import GateControl from './pages/Gate/GateControl'
 import GateDashboard from './pages/Gate/GateDashboard'
@@ -36,7 +39,6 @@ import IncidentManagement from './pages/Incident/IncidentManagement'
 import DriverManagement from './pages/Carrier/DriverManagement'
 import YardOperations from './pages/Yard/YardOperations'
 import YardOperationsDashboard from './pages/Yard/YardOperationsDashboard'
-import YardMapContainerManagement from './pages/Yard/YardMapContainerManagement'
 import YardMovementOperations from './pages/Yard/YardMovementOperations'
 import ContainerGateOutPreparation from './pages/Yard/ContainerGateOutPreparation'
 import ContainerDetail from './pages/Yard/ContainerDetail'
@@ -49,7 +51,7 @@ import DischargingProgress from './pages/BerthStaff/DischargingProgress'
 import OperationControl from './pages/BerthStaff/OperationControl'
 import BerthIncidentReporting from './pages/BerthStaff/BerthIncidentReporting'
 
-// Import các trang Dispatcher Control Center mới
+// Import các trang Dispatcher Control Center
 import VehicleDispatch from './pages/Dispatch/VehicleDispatch'
 import VehicleManagement from './pages/Fleet/VehicleManagement'
 import TrafficManagement from './pages/Traffic/TrafficManagement'
@@ -59,12 +61,21 @@ import DispatchHistory from './pages/Dispatch/DispatchHistory'
 import CameraMonitoring from './pages/Camera/CameraMonitoring'
 import GateBookingRequests from './pages/Dispatch/GateBookingRequests'
 
-// Import các trang Admin Portal mới
+// Import các trang Admin Portal
 import CarrierManagement from './pages/Admin/CarrierManagement'
+import TransportCompanyManagement from './pages/Admin/TransportCompanyManagement'
 import BerthManagement from './pages/Admin/BerthManagement'
 import GateManagement from './pages/Admin/GateManagement'
 import EquipmentManagement from './pages/Admin/EquipmentManagement'
 import BillingChargesManagement from './pages/Admin/BillingChargesManagement'
+
+// Import phân hệ Hãng tàu (Shipping Line)
+import ShippingDashboard from './pages/ShippingLine/ShippingDashboard'
+import VesselVoyagePage from './pages/ShippingLine/VesselVoyagePage'
+import ManifestManagementPage from './pages/ShippingLine/ManifestManagementPage'
+import BillOfLadingPage from './pages/ShippingLine/BillOfLadingPage'
+import DeliveryOrderPage from './pages/ShippingLine/DeliveryOrderPage'
+import ServiceCatalogPage from './features/service-catalog/ServiceCatalogPage'
 
 // Component chuyển hướng trang chủ dựa trên vai trò (Role-based Home Redirect)
 function HomeRedirect() {
@@ -97,21 +108,14 @@ function HomeRedirect() {
   if (role === 'berth staff' || role === 'berth') {
     return <Navigate to="/berth-staff/dashboard" replace />
   }
+  if (role === 'shipping line' || role === 'shipping') {
+    return <Navigate to="/shipping-line/dashboard" replace />
+  }
   if (role === 'administrator' || role === 'admin') {
     return <Navigate to="/dashboard" replace />
   }
 
   return <Navigate to="/unauthorized" replace />
-}
-
-function ContainerRoute() {
-  const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
-  let role = ''
-  try { role = JSON.parse(storedUser || '{}')?.role?.trim().toLowerCase() || '' } catch { role = '' }
-  if (['transport company', 'carrier staff', 'carrier'].includes(role)) {
-    return <Navigate to="/cargo" replace />
-  }
-  return <ContainerManagement />
 }
 
 function App() {
@@ -121,6 +125,7 @@ function App() {
       <Routes>
         {/* Route Công khai */}
         <Route path="/login" element={<Login />} />
+        {import.meta.env.DEV && <Route element={<MainLayout previewUser={{username:'Bản xem trước',role:ROLES.DISPATCHER}} />}><Route path="/preview/yard" element={<YardDesignPreview previewOnly />} /></Route>}
 
         {/* Tuyến đường được Bảo vệ (Yêu cầu Đăng nhập) */}
         <Route element={<ProtectedRoute />}>
@@ -133,20 +138,29 @@ function App() {
 
         {/* Toàn bộ các trang quản trị dùng chung cấu trúc Sidebar thông qua MainLayout */}
         <Route element={<MainLayout />}>
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, 'Carrier', ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
+            <Route path="/services" element={<ServiceCatalogPage />} />
+          </Route>
+          <Route element={<RoleRoute allowedRoles={[ROLES.ADMINISTRATOR]} />}>
+            <Route path="/admin/service-catalog" element={<ServiceCatalogPage management />} />
+          </Route>
           <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
-            <Route path="/containers" element={<ContainerRoute />} />
+            <Route path="/containers" element={<ContainerManagement />} />
             <Route path="/container-intake" element={<Navigate to="/containers" replace />} />
+            <Route path="/cargo" element={<Navigate to="/containers" replace />} />
           </Route>
 
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF]} />}>
-            <Route path="/cargo" element={<CargoDeclaration />} />
+          <Route element={<RoleRoute allowedRoles={CONTAINER_TRANSPORT_ROLES} />}>
             <Route path="/transport/cargo-declarations" element={<CargoDeclaration />} />
           </Route>
           
-          {/* 1. Nhóm Hãng tàu / Doanh nghiệp ngoài cảng (Transport Company) */}
+          {/* 1. Nhóm Doanh nghiệp vận tải (Transport Company) */}
           <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
             <Route path="/carrier-profile" element={<CarrierProfile />} />
             <Route path="/carrier-portal" element={<CarrierPortal />} />
+            <Route path="/cargo/tracking" element={<CargoDocumentTracking />} />
+            <Route path="/cargo/notifications" element={<CargoDocumentTracking />} />
+            <Route path="/cargo/documents" element={<CargoDocumentTracking />} />
             <Route path="/booking" element={<BookingManagement />} />
             <Route path="/billing" element={<BillingPayment />} />
             <Route path="/fleet" element={<VehicleManagement />} />
@@ -166,17 +180,37 @@ function App() {
             <Route path="/dispatcher/cameras" element={<CameraMonitoring />} />
           </Route>
 
-          {/* Nhóm Nhân viên Cầu tàu (Berth Staff) */}
+          {/* Nhóm Nhân viên Cầu bến (Berth Staff) */}
           <Route element={<RoleRoute allowedRoles={[ROLES.BERTH_STAFF, ROLES.ADMINISTRATOR]} />}>
             <Route path="/berth" element={<BerthOps />} />
+            <Route path="/berth-staff/dashboard" element={<BerthOperationsDashboard />} />
+            <Route path="/berth-staff/vessel-operation-control" element={<VesselOperationControl />} />
+            <Route path="/berth-staff/discharging-progress" element={<DischargingProgress />} />
+            <Route path="/berth-staff/operation-control" element={<OperationControl />} />
+            <Route path="/berth-staff/incident-reporting" element={<BerthIncidentReporting />} />
+          </Route>
+
+          {/* Phân hệ Hãng tàu (Shipping Line) */}
+          <Route element={<RoleRoute allowedRoles={[ROLES.SHIPPING_LINE]} />}>
+            <Route path="/shipping-line/containers" element={<ContainerRegistration />} />
+            <Route path="/shipping-line/manifest" element={<ManifestManagementPage />} />
+          </Route>
+          <Route element={<RoleRoute allowedRoles={[ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR]} />}>
+            <Route path="/shipping-line" element={<Navigate to="/shipping-line/dashboard" replace />} />
+            <Route path="/shipping-line/dashboard" element={<ShippingDashboard />} />
+            <Route path="/shipping-line/voyages" element={<VesselVoyagePage />} />
+            <Route path="/shipping-line/bills-of-lading" element={<BillOfLadingPage />} />
+            <Route path="/shipping-line/delivery-orders" element={<DeliveryOrderPage />} />
           </Route>
 
           {/* 3. Nhóm Vận hành Bãi (Yard Operator) */}
           <Route element={<RoleRoute allowedRoles={[ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
             <Route path="/dashboard" element={<DashboardIndex />} />
             <Route path="/yard-staff/dashboard" element={<YardOperationsDashboard />} />
-            <Route path="/yard" element={<YardOperations />} />
-            <Route path="/yard-staff/map" element={<YardMap />} />
+            <Route path="/yard" element={<YardDesignPreview />} />
+            <Route path="/yard/map" element={<YardDesignPreview />} />
+            <Route path="/yard/design" element={<Navigate to="/yard" replace />} />
+            <Route path="/yard-staff/map" element={<YardDesignPreview />} />
             <Route path="/yard-ops" element={<YardOperations />} />
             <Route path="/yard/receiving" element={<YardReceiving />} />
             <Route path="/yard-staff/movement-operations" element={<YardMovementOperations />} />
@@ -198,18 +232,11 @@ function App() {
             <Route path="/gate/camera" element={<GateCameras />} />
           </Route>
 
-          {/* Nhóm Nhân viên Cầu Bến (Berth Staff) */}
-          <Route element={<RoleRoute allowedRoles={[ROLES.BERTH_STAFF, ROLES.ADMINISTRATOR]} />}>
-            <Route path="/berth-staff/dashboard" element={<VesselOperationControl />} />
-            <Route path="/berth-staff/vessel-operation-control" element={<VesselOperationControl />} />
-            <Route path="/berth-staff/incident-reporting" element={<BerthIncidentReporting />} />
-            <Route path="/berth" element={<VesselOperationControl />} />
-          </Route>
-
           {/* Nhóm Tài xế Container (Driver Portal) */}
           <Route element={<RoleRoute allowedRoles={[ROLES.DRIVER, ROLES.ADMINISTRATOR]} />}>
             <Route path="/driver-portal" element={<DriverPortalContainer />} />
             <Route path="/driver-home" element={<DriverPortalContainer />} />
+            <Route path="/driver" element={<DriverPortalContainer />} />
           </Route>
 
           {/* Báo cáo hư hỏng (Dành cho Yard Operator & Quản trị viên) */}
@@ -223,6 +250,8 @@ function App() {
             <Route path="/users" element={<UserRoleManagement />} />
             <Route path="/reports" element={<ReportsAnalytics />} />
             <Route path="/admin/carriers" element={<CarrierManagement />} />
+            <Route path="/admin/shipping-lines" element={<ShippingLineDirectory />} />
+            <Route path="/admin/transport-companies" element={<TransportCompanyManagement />} />
             <Route path="/admin/berths" element={<BerthManagement />} />
             <Route path="/admin/gates" element={<GateManagement />} />
             <Route path="/admin/equipment" element={<EquipmentManagement />} />

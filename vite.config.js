@@ -17,7 +17,7 @@ export default defineConfig({
         target: 'http://localhost:5000',
         changeOrigin: true,
       },
-      // Chuyển tiếp /api/* sang Backend Express (:3001)
+      // Chuyển tiếp /api/* (bao gồm cả /api/shipping) sang Backend Express (:3001)
       '/api': {
         target: 'http://localhost:3001',
         changeOrigin: true,

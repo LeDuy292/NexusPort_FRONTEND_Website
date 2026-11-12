@@ -1,0 +1,92 @@
+.epd-steps.epd-delivery-steps { grid-template-columns: repeat(var(--epd-step-count, 5), minmax(0, 1fr)); gap: 9px; }
+.epd-delivery-steps > button { gap: 7px; }
+.epd-required { color: #cf453a; font-weight: bold; }
+.epd-top-alert { position: fixed; z-index: 99999; top: 24px; right: 24px; max-width: min(500px, calc(100% - 48px)); display: flex; gap: 12px; align-items: flex-start; padding: 16px 20px; border: 1.5px solid #f29f8f; border-radius: 14px; background: #fff5f2; color: #a63928; font-size: 13px; font-weight: 500; line-height: 1.6; box-shadow: 0 16px 48px rgba(25, 50, 71, 0.28); animation: epd-delivery-in .25s ease-out; }
+.epd-top-alert > svg { flex-shrink: 0; margin-top: 2px; color: #cf453a; }
+.epd-top-alert > span { flex: 1; }
+.epd-top-alert > button { border: 0; background: none; color: inherit; cursor: pointer; padding: 2px; border-radius: 6px; }
+.epd-top-alert > button:hover { background: rgba(166, 57, 40, 0.1); }
+
+.epd-email-panel { display: flex; gap: 18px; margin: 22px 0; border: 1px solid #cbdde8; border-radius: 18px; padding: 25px; background: linear-gradient(135deg,#f5f9fc,#fff); box-shadow: 0 10px 30px #19324708; }
+.epd-email-panel > div { min-width: 0; flex: 1; }
+.epd-email-icon { display: grid; place-items: center; flex-shrink: 0; width: 50px; height: 50px; border-radius: 15px; color: #c25425; background: #fff0e5; }
+.epd-email-panel h4 { margin: 8px 0; font-size: 18px; color: #193247; }
+.epd-email-panel p { font-size: 12px; line-height: 1.8; color: #607589; }
+.epd-otp-actions { display: flex; gap: 12px; align-items: flex-end; margin: 20px 0; flex-wrap: wrap; }
+.epd-otp-actions label { display: grid; gap: 7px; font-size: 12px; color: #193247; }
+.epd-otp-actions input { width: 180px; border: 1px solid #cad7e1; border-radius: 10px; padding: 12px; color: #193247; background: white; font-size: 23px; letter-spacing: 6px; font-variant-numeric: tabular-nums; }
+.epd-otp-actions input:focus-visible { outline: 2px solid #d36c3b; outline-offset: 3px; }
+
+.epd-manual-add { display: flex; gap: 12px; align-items: center; padding: 18px; margin: 18px 0; background: #f3f7fa; border: 1px solid #dbe4ec; border-radius: 13px; }
+.epd-manual-add > label { flex: 1; min-width: 0; }
+.epd-customs-skip { display: flex; gap: 11px; align-items: flex-start; border: 1px solid #dbe4ec; border-radius: 11px; padding: 15px; margin: 15px 0; font-size: 12px; line-height: 1.8; color: #193247; cursor: pointer; }
+.epd-customs-skip input { flex-shrink: 0; margin-top: 4px; accent-color: #c25425; width: 16px; height: 16px; }
+.epd-customs-card { background: #f6f9fc; border: 1px solid #dbe4ec; border-radius: 17px; padding: 28px; color: #193247; }
+.epd-customs-card > svg { color: #b47a24; }
+.epd-customs-card h4 { font-size: 17px; margin: 17px 0 9px; }
+.epd-customs-card p { font-size: 12px; line-height: 1.8; color: #607589; }
+.epd-customs-card .epd-warning { margin-top: 18px; }
+
+.epd-declaration { border-bottom: 1px solid #dbe4ec; padding-bottom: 18px; margin-bottom: 18px; }
+.epd-declaration > summary { color: #193247; cursor: pointer; font-weight: 700; font-size: 13px; padding: 5px 0 16px; }
+.epd-declaration .epd-form-grid { margin-top: 8px; }
+
+.epd-checkbox-inline { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #193247; font-weight: 600; cursor: pointer; margin-bottom: 10px; }
+.epd-checkbox-inline input { width: 17px; height: 17px; accent-color: #c25425; cursor: pointer; }
+.epd-expiry-wrapper { margin-top: 10px; padding: 14px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; }
+
+.epd-export-container-card { background: #ffffff; border: 1px solid #dbe4ec; border-radius: 16px; padding: 20px; margin-bottom: 18px; box-shadow: 0 4px 16px rgba(25, 50, 71, 0.04); transition: border-color 0.2s; }
+.epd-export-container-card:hover { border-color: #cad7e1; }
+.epd-export-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #edf2f7; }
+.epd-export-card-title { display: flex; align-items: center; gap: 10px; font-size: 15px; color: #193247; }
+.epd-badge-num { background: #e2e8f0; color: #334155; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 8px; }
+.epd-badge-iso { background: #e0f2fe; color: #0369a1; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 8px; }
+.epd-btn-delete { color: #dc2626 !important; border-color: #fecaca !important; background: #fef2f2 !important; padding: 6px 12px !important; font-size: 12px !important; }
+.epd-btn-delete:hover { background: #fee2e2 !important; }
+.epd-export-fields-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+
+/* 2-Service Portal for Transport Company */
+.epc-eport-portal { display: grid; grid-template-columns: repeat(2, 1fr); gap: 24px; margin: 28px 0; }
+.epc-portal-card { background: #ffffff; border: 1.5px solid #dbe4ec; border-radius: 20px; padding: 28px; box-shadow: 0 10px 30px rgba(25, 50, 71, 0.05); display: flex; flex-direction: column; justify-content: space-between; position: relative; overflow: hidden; transition: all 0.25s ease; }
+.epc-portal-card:hover { transform: translateY(-4px); box-shadow: 0 16px 40px rgba(25, 50, 71, 0.1); border-color: #c25425; }
+.epc-portal-card.import-card { border-top: 5px solid #0284c7; }
+.epc-portal-card.export-card { border-top: 5px solid #d97706; }
+.epc-portal-card-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+.epc-portal-icon-wrapper { width: 56px; height: 56px; border-radius: 16px; display: grid; place-items: center; }
+.epc-portal-card.import-card .epc-portal-icon-wrapper { background: #e0f2fe; color: #0284c7; }
+.epc-portal-card.export-card .epc-portal-icon-wrapper { background: #fef3c7; color: #d97706; }
+.epc-portal-card h3 { font-size: 20px; font-weight: 800; color: #193247; margin: 12px 0 8px; }
+.epc-portal-desc { font-size: 13px; line-height: 1.7; color: #475569; margin-bottom: 20px; }
+.epc-portal-steps-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 16px; margin-bottom: 24px; }
+.epc-portal-steps-title { font-size: 11px; font-weight: 700; color: #64748b; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 10px; display: flex; align-items: center; gap: 6px; }
+.epc-portal-steps-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 7px; }
+.epc-portal-steps-list li { display: flex; align-items: center; gap: 9px; font-size: 12px; color: #334155; }
+.epc-portal-step-num { width: 20px; height: 20px; border-radius: 50%; background: #ffffff; border: 1px solid #cbd5e1; font-size: 10px; font-weight: 700; display: grid; place-items: center; color: #475569; flex-shrink: 0; }
+.epc-portal-card-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 18px; border-top: 1px solid #edf2f7; gap: 14px; flex-wrap: wrap; }
+.epc-portal-price { display: flex; flex-direction: column; }
+.epc-portal-price span { font-size: 11px; color: #64748b; }
+.epc-portal-price strong { font-size: 16px; color: #0f172a; font-weight: 800; }
+.epc-portal-btn { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; padding: 13px 22px; border-radius: 12px; font-size: 14px; border: none; cursor: pointer; transition: background 0.2s; }
+.epc-portal-card.import-card .epc-portal-btn { background: #0284c7; color: #ffffff; }
+.epc-portal-card.import-card .epc-portal-btn:hover { background: #0369a1; }
+.epc-portal-card.export-card .epc-portal-btn { background: #d97706; color: #ffffff; }
+.epc-portal-card.export-card .epc-portal-btn:hover { background: #b45309; }
+
+@keyframes epd-delivery-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+@media (max-width: 900px) {
+  .epd-steps.epd-delivery-steps { overflow-x: auto; grid-template-columns: repeat(var(--epd-step-count, 5), minmax(110px, 1fr)); }
+  .epc-eport-portal { grid-template-columns: 1fr; }
+}
+@media (max-width: 600px) {
+  .epd-email-panel { padding: 16px; gap: 10px; }
+  .epd-email-icon { width: 36px; height: 36px; }
+  .epd-email-panel h4 { font-size: 16px; }
+  .epd-manual-add { flex-wrap: wrap; }
+  .epd-manual-add > label { flex-basis: 100%; }
+  .epd-top-alert { right: 12px; top: 12px; max-width: calc(100% - 24px); }
+  .epc-portal-card { padding: 20px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .epd-top-alert { animation: none; }
+  .epc-portal-card { transition: none; }
+}
