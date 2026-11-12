@@ -1,0 +1,22 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/api/v1/:path*",
+      "destination": "https://csharp-core-production.up.railway.app/api/v1/:path*"
+    },
+    {
+      "source": "/api/:path*",
+      "destination": "https://nexusport-backend-website-production.up.railway.app/api/:path*"
+    },
+    {
+      "source": "/node-api/:path*",
+      "destination": "https://node-core-production.up.railway.app/api/v1/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+
