@@ -46,7 +46,8 @@ const DocumentCard = ({ url, title, alt }) => (
 export const resolveMediaUrl = (url) => {
   if (!url) return null;
   if (url.startsWith('http://') || url.startsWith('https://')) return url;
-  return `http://localhost:5000${url.startsWith('/') ? '' : '/'}${url}`;
+  const csharpBase = (import.meta.env.VITE_CSHARP_API_URL || 'http://localhost:5000').replace(/\/$/, '');
+  return `${csharpBase}${url.startsWith('/') ? '' : '/'}${url}`;
 };
 
 export default function DriverDetailModal({ driverId, isOpen, onClose }) {
