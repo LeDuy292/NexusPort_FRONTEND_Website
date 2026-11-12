@@ -23,6 +23,7 @@ import CatalogDialog from './CatalogDialog'
 import BookingSourceSelect from './BookingSourceSelect'
 import ServiceSourceEmailPanel from './ServiceSourceEmailPanel'
 import { CustomsStep, DeliveryFields, ExportDeclarationFields } from './ServiceDeliveryFields'
+import { ServiceTripSummary } from './ServiceTripFleet'
 import { blankDelivery, blankBuyer, validContainer } from './serviceDeliveryRules'
 import './serviceDelivery.css'
 import { createServiceDraftSamples } from './serviceDraftSamples'
@@ -134,7 +135,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         ['Dịch vụ đính kèm', Layers3],
         ['Xác nhận thông quan', ShieldCheck],
         ['Khai báo giao nhận', CalendarDays],
-        ['Kiểm tra & Tính tiền', FileCheck2],
+        ['Kiểm tra & Gửi đăng ký', FileCheck2],
       ]
     : [
         ['Booking & Email', FileText],
@@ -142,7 +143,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         ['Dịch vụ đính kèm', Layers3],
         ['Xác nhận thông quan', ShieldCheck],
         ['Khai báo giao nhận', CalendarDays],
-        ['Kiểm tra & Tính tiền', FileCheck2],
+        ['Kiểm tra & Gửi đăng ký', FileCheck2],
       ]
 
   const deliveryStep = 4
@@ -276,7 +277,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     const matches = sources.data.items.filter(row => row.bookingNumber?.trim().toUpperCase() === number)
     const nextId = matches.length === 1 ? matches[0].id : null
     if (nextId !== form.source.bookingId || (matches.length === 1 && form.source.referenceNumber !== matches[0].bookingNumber)) {
-      setForm(previous => ({ ...previous, source: { ...previous.source, bookingId: nextId, referenceNumber: matches.length === 1 ? matches[0].bookingNumber : previous.source.referenceNumber }, lines: [], delivery: { ...previous.delivery, customsConfirmationScope: '', customsCheckSkipped: false } }))
+      setForm(previous => ({ ...previous, source: { ...previous.source, bookingId: nextId, referenceNumber: matches.length === 1 ? matches[0].bookingNumber : previous.source.referenceNumber }, lines: [], delivery: { ...previous.delivery, trips: [], customsConfirmationScope: '', customsCheckSkipped: false } }))
       setSnapshots({})
       setManualContainer('')
     }
@@ -348,7 +349,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       (form.flow !== 'EXPORT' || row.bookingId === form.source.bookingId)).map(containerId))
     const removed = form.lines.filter(line => !allowed.has(line.sourceContainerId))
     if (!removed.length) return
-    setForm(previous => ({ ...previous, lines: previous.lines.filter(line => allowed.has(line.sourceContainerId)), delivery: { ...previous.delivery, customsConfirmationScope: '', customsCheckSkipped: false } }))
+    setForm(previous => ({ ...previous, lines: previous.lines.filter(line => allowed.has(line.sourceContainerId)), delivery: { ...previous.delivery, trips: [], customsConfirmationScope: '', customsCheckSkipped: false } }))
     setDirty(true)
     setFeedback(`Đã bỏ ${removed.length} container không còn đủ điều kiện hoặc không thuộc hồ sơ nguồn hiện tại. Vui lòng kiểm tra và lưu lại bản nháp.`)
   }, [containerScopeMatches, containers.data, containers.isFetching, search, containerTerm, form.flow, form.source.bookingId, form.lines])
@@ -362,6 +363,11 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   const mutate = updater => {
     setForm(previous => {
       const next = updater(previous)
+      const selectedIds = new Set(next.lines.map(line => line.sourceContainerId))
+      const sourceChanged = JSON.stringify([previous.flow, previous.source]) !== JSON.stringify([next.flow, next.source])
+      const timeChanged = previous.plannedAt !== next.plannedAt
+      next.delivery = { ...next.delivery, trips: sourceChanged || timeChanged ? [] : (next.delivery.trips || [])
+        .filter(trip => selectedIds.has(trip.sourceContainerId)) }
       const scope = value => JSON.stringify([value.flow, value.mainServiceId, value.source, value.lines.map(line => line.sourceContainerId).sort()])
       return scope(previous) === scope(next) ? next : { ...next, delivery: { ...next.delivery, customsConfirmationScope: '', customsCheckSkipped: false } }
     })
@@ -696,12 +702,12 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     if (step === deliveryStep) {
       const data = form.delivery
       if (data.transportMode === 'TRUCK') {
-        const missing = []
-        if (!data.truckPlate?.trim()) missing.push('Biển số xe')
-        if (!data.driverName?.trim()) missing.push('Tên tài xế')
-        if (!data.driverPhone?.trim() || data.driverPhone.replace(/\D/g, '').length < 7) missing.push('Điện thoại tài xế')
-        if (missing.length > 0) {
-          return setFeedback(`Vui lòng nhập đầy đủ thông tin phương tiện (*): ${missing.join(', ')}!`)
+        if (form.lines.some(line => {
+          const trip = data.trips?.find(t => t.sourceContainerId === line.sourceContainerId)
+          return !trip?.truckId || !trip?.driverId || !trip?.appointmentStart || !trip?.appointmentEnd
+            || new Date(trip.appointmentEnd) <= new Date(trip.appointmentStart)
+        })) {
+          return setFeedback('Chọn lịch, xe rảnh và tài xế rảnh cho từng container trước khi tiếp tục.')
         }
       } else if (data.transportMode === 'BARGE') {
         const missing = []
@@ -746,8 +752,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           </h2>
           <p id={`${headingId}-description`}>
             {form.flow === 'IMPORT'
-              ? 'Thực hiện 7 bước đăng ký nhận container hàng nhập từ cảng, kiểm tra hải quan và thanh toán PayOS.'
-              : 'Thực hiện 6 bước khai báo Booking, danh sách container xuất bãi, kiểm tra thông tin và thanh toán PayOS.'}
+              ? 'Khai báo nhận container nhập và gửi Dispatcher. Thanh toán sau khi nhận kết quả và số tiền.'
+              : 'Khai báo Booking, container xuất và gửi Dispatcher. Thanh toán sau khi nhận kết quả và số tiền.'}
           </p>
         </div>
         <button
@@ -1354,6 +1360,9 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                   buyer={form.invoiceBuyer}
                   flow={form.flow}
                   sourceExpiry={form.source.validUntil}
+                  request={payload()}
+                  containers={snapshots}
+                  sampleMode={sampleMode}
                   onDelivery={(field, value) => update('delivery', { ...form.delivery, [field]: value })}
                   onBuyer={(field, value) => update('invoiceBuyer', { ...form.invoiceBuyer, [field]: value })}
                 />
@@ -1365,8 +1374,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                   <div className="epd-stage-heading">
                     <span>{String(reviewStep + 1).padStart(2, '0')}</span>
                     <div>
-                      <h3>Kiểm tra thông tin & Tính tiền</h3>
-                      <p>Xác nhận lại hồ sơ trước khi chuyển sang bảng kê tính phí và thanh toán PayOS.</p>
+                      <h3>Kiểm tra thông tin & Gửi đăng ký</h3>
+                      <p>Xác nhận thông tin để gửi Dispatcher. Bạn sẽ thanh toán sau khi nhận kết quả và số tiền.</p>
                     </div>
                   </div>
 
@@ -1423,9 +1432,10 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                       <SummaryItem label="Phương tiện">
                         {form.delivery.transportMode === 'BARGE'
                           ? `Sà lan ${form.delivery.bargeName} · ${form.delivery.bargeYear} / ${form.delivery.bargeVoyage}`
-                          : `${form.delivery.truckPlate} · ${form.delivery.driverName}`}
+                          : `${form.delivery.trips?.length || 0} chuyến đã khai báo theo container`}
                       </SummaryItem>
                       <SummaryItem label="Hạn lệnh">{form.delivery.orderValidUntil || form.source.validUntil || 'Không giới hạn'}</SummaryItem>
+                      {form.delivery.transportMode === 'TRUCK' && <ServiceTripSummary trips={form.delivery.trips} containers={Object.values(snapshots)} />}
                       <SummaryItem label="Người mua">{form.invoiceBuyer.name || 'Theo tài khoản'}</SummaryItem>
                       <SummaryItem label="Cổng thanh toán">Duy nhất PayOS (QR Code chuyển khoản ngân hàng 24/7)</SummaryItem>
                     </dl>
@@ -1434,7 +1444,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                   <div className="epd-info">
                     <ShieldCheck size={18} />
                     <p>
-                      Bấm nút <strong>“Kiểm tra thông tin & tính tiền”</strong> để xem chi tiết bảng tính cước, đơn giá và chuyển sang thanh toán PayOS.
+                      Bấm <strong>Kiểm tra thông tin và gửi đăng ký</strong> để gửi hồ sơ cho Dispatcher xác nhận và tính tiền.
                     </p>
                   </div>
                 </section>
@@ -1532,7 +1542,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                 onClick={() => save.mutate('review')}
               >
                 <FileCheck2 size={16} />
-                <span>Kiểm tra thông tin và tính tiền</span>
+                <span>Kiểm tra thông tin và gửi đăng ký</span>
               </button>
             )
           )}

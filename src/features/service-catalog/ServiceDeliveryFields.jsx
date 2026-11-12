@@ -2,6 +2,7 @@ import { AlertCircle, Anchor, ClipboardCheck, FileText, Loader2, ShieldCheck, Tr
 import { useState } from 'react'
 import { draftError, serviceDraftsApi } from './serviceDraftsApi'
 import { validContainer } from './serviceDeliveryRules'
+import ServiceTripFleet from './ServiceTripFleet'
 
 function Field({ label, required, children, wide = false, hint }) {
   return (
@@ -73,7 +74,7 @@ export function CustomsStep({ draftId, payload, confirmed, onConfirmed, sampleMo
   )
 }
 
-export function DeliveryFields({ delivery, buyer, onDelivery, onBuyer, flow, sourceExpiry }) {
+export function DeliveryFields({ delivery, buyer, onDelivery, onBuyer, flow, sourceExpiry, request, containers, sampleMode }) {
   const mode = delivery.transportMode
   const hasExpiry = Boolean(delivery.orderValidUntil)
 
@@ -122,36 +123,8 @@ export function DeliveryFields({ delivery, buyer, onDelivery, onBuyer, flow, sou
         </div>
         <div className="epd-form-grid">
           {mode === 'TRUCK' ? (
-            <>
-              <Field label="Biển số xe" required>
-                <input
-                  aria-label="Biển số xe giao nhận"
-                  maxLength={20}
-                  value={delivery.truckPlate}
-                  onChange={event => onDelivery('truckPlate', event.target.value.toUpperCase())}
-                  placeholder="Ví dụ: 15C-123.45"
-                />
-              </Field>
-              <Field label="Tên tài xế" required>
-                <input
-                  aria-label="Tên tài xế giao nhận"
-                  maxLength={120}
-                  value={delivery.driverName}
-                  onChange={event => onDelivery('driverName', event.target.value)}
-                  placeholder="Họ và tên tài xế"
-                />
-              </Field>
-              <Field label="Điện thoại tài xế" required>
-                <input
-                  aria-label="Điện thoại tài xế"
-                  type="tel"
-                  maxLength={30}
-                  value={delivery.driverPhone}
-                  onChange={event => onDelivery('driverPhone', event.target.value)}
-                  placeholder="Số điện thoại di động"
-                />
-              </Field>
-            </>
+            <ServiceTripFleet request={request} containers={containers} disabled={sampleMode}
+              onTrips={trips => onDelivery('trips', trips)} />
           ) : (
             <>
               <Field label="Tên sà lan" required>
