@@ -221,45 +221,45 @@ export default function ManifestManagementPage() {
             </div>
 
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left border-collapse text-xs">
+              <table className="w-full min-w-[900px] border-collapse text-left text-xs [&_td]:align-middle [&_th]:align-middle">
                 <thead>
                   <tr className="bg-fog text-slate font-bold uppercase text-[10px] border-b border-chalk">
                     <th className="py-3 px-3 w-32 whitespace-nowrap">Mã bản khai</th>
-                    <th className="py-3 px-3 w-20 whitespace-nowrap">Vận đơn</th>
+                    <th className="py-3 px-3 w-20 text-right whitespace-nowrap">Vận đơn</th>
                     <th className="py-3 px-3 w-28 whitespace-nowrap">Chuyến tàu</th>
                     <th className="py-3 px-3 w-28 whitespace-nowrap">Hướng khai</th>
-                    <th className="py-3 px-3 w-28 whitespace-nowrap">Số container</th>
+                    <th className="py-3 px-3 w-28 text-right whitespace-nowrap">Số container</th>
                     <th className="py-3 px-3 w-32 whitespace-nowrap">Trạng thái</th>
                     <th className="py-3 px-3 w-36 whitespace-nowrap">Ngày tạo</th>
-                    <th className="py-3 px-3 w-24 text-right whitespace-nowrap">Thao tác</th>
+                    <th className="py-3 px-3 w-[132px] min-w-[132px] text-center whitespace-nowrap">Thao tác</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-chalk font-medium font-mono">
+                <tbody className="divide-y divide-chalk font-medium">
                   {!manifests.length && <tr><td colSpan={8} className="p-8 text-center font-sans text-slate">{loadingList ? 'Đang tải bản khai…' : 'Chưa có bản khai. Chọn “Tạo Bản Khai Mới” để bắt đầu.'}</td></tr>}
                   {manifests
                     .slice((manifestPage - 1) * manifestPageSize, manifestPage * manifestPageSize)
                     .map((mnf) => (
-                    <tr key={mnf.id} className="hover:bg-fog/60 transition-colors">
-                      <td className="py-3.5 px-3 font-bold text-carbon text-sm whitespace-nowrap">{mnf.manifestNumber}</td>
-                      <td className="py-3.5 px-3 font-mono">{manifestCounts(mnf).bills}</td>
-                      <td className="py-3.5 px-3 whitespace-nowrap"><span className="font-bold text-carbon">{mnf.voyageNumber}</span><span className="mt-1 block text-[11px] font-sans text-slate">{mnf.vesselName || '—'}</span></td>
-                      <td className="py-3.5 px-3 font-sans whitespace-nowrap">
+                    <tr key={mnf.id} className="hover:bg-fog/50 transition-colors">
+                      <td className="py-3 px-3 font-mono font-bold text-carbon whitespace-nowrap">{mnf.manifestNumber}</td>
+                      <td className="py-3 px-3 text-right font-mono tabular-nums">{manifestCounts(mnf).bills}</td>
+                      <td className="py-3 px-3 whitespace-nowrap"><span className="font-bold text-carbon">{mnf.voyageNumber}</span><span className="mt-1 block text-[11px] font-sans text-slate">{mnf.vesselName || '—'}</span></td>
+                      <td className="py-3 px-3 font-sans whitespace-nowrap">
                         <span className={`inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                           mnf.direction === 'EXPORT' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'
                         }`}>
                           {mnf.direction === 'EXPORT' ? 'Xuất khẩu' : 'Nhập khẩu'}
                         </span>
                       </td>
-                      <td className="py-3.5 px-3 font-bold text-carbon whitespace-nowrap">{manifestCounts(mnf).containers} Cont</td>
+                      <td className="py-3 px-3 text-right font-mono tabular-nums text-carbon whitespace-nowrap">{manifestCounts(mnf).containers}</td>
 
-                      <td className="py-3.5 px-3 font-sans whitespace-nowrap">
+                      <td className="py-3 px-3 font-sans whitespace-nowrap">
                         <ShippingBadge status={mnf.status} />
                       </td>
-                      <td className="py-3.5 px-3 text-slate text-[11px] whitespace-nowrap">{formatManifestDate(mnf.createdAt || mnf.created_at)}</td>
-                      <td className="py-3.5 px-3 text-right font-sans whitespace-nowrap">
+                      <td className="py-3 px-3 text-slate text-[11px] whitespace-nowrap">{formatManifestDate(mnf.createdAt || mnf.created_at)}</td>
+                      <td className="py-3 px-3 text-center font-sans whitespace-nowrap">
                         <button
                           onClick={() => handleSelectManifest(mnf)}
-                          className="px-3 py-1.5 text-xs font-bold text-carbon bg-fog hover:bg-chalk border border-chalk rounded-xl transition-colors cursor-pointer whitespace-nowrap"
+                          className="inline-flex items-center whitespace-nowrap rounded-xl border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-bold text-signal-orange transition-colors hover:bg-orange-100 cursor-pointer"
                         >
                           Chi tiết &rarr;
                         </button>

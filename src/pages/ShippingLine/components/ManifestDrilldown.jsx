@@ -40,7 +40,7 @@ export default function ManifestDrilldown({ manifest, billNumber, containerNumbe
       ]} />
     </section>
     <section className="space-y-4 rounded-2xl border border-chalk bg-white p-5 shadow-sm md:p-6">
-      <div><h3 className="font-heading text-lg font-extrabold">Container trong vận đơn ({bill.containers.length})</h3><p className="mt-1 text-xs text-slate">10 container / trang. Chọn “Xem hàng hóa” để xem thông tin từng container.</p></div>
+      <div><h3 className="font-heading text-lg font-extrabold">Container trong vận đơn ({bill.containers.length})</h3><p className="mt-1 text-xs text-slate">10 container / trang. Chọn “Chi tiết” để xem thông tin từng container.</p></div>
       <ManifestContainerList containers={bill.containers} showCommodity={false} onView={index => onContainer(bill.containers[index].containerNumber)} />
     </section>
   </div>
@@ -63,8 +63,15 @@ export default function ManifestDrilldown({ manifest, billNumber, containerNumbe
     </section>
     <section className="overflow-hidden rounded-2xl border border-chalk bg-white shadow-sm">
       <div className="border-b border-chalk p-5 md:p-6"><h3 className="font-heading text-lg font-extrabold">Danh sách vận đơn ({bills.length})</h3><p className="mt-1 text-xs text-slate">Chọn một vận đơn để xem thông tin người gửi, người nhận và container.</p></div>
-      <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-xs"><thead className="border-b border-chalk bg-fog text-slate"><tr>{['Số vận đơn', 'Người gửi hàng', 'Người nhận hàng', 'Số container', 'Trọng lượng', 'Thao tác'].map(label => <th key={label} className="px-4 py-3 font-bold">{label}</th>)}</tr></thead>
-        <tbody className="divide-y divide-chalk">{bills.slice((billPage - 1) * 10, billPage * 10).map(item => <tr key={item.blNumber} className="hover:bg-fog/50"><td className="px-4 py-3 font-mono font-bold">{item.blNumber || '—'}</td><td className="px-4 py-3">{item.shipper || '—'}</td><td className="px-4 py-3">{item.consignee || '—'}</td><td className="px-4 py-3 font-mono">{item.containers.length}</td><td className="whitespace-nowrap px-4 py-3 font-mono">{kg(item.grossWeightKg)}</td><td className="px-4 py-3"><button type="button" onClick={() => onBill(item.blNumber)} className={`${button} whitespace-nowrap`}>Xem vận đơn →</button></td></tr>)}
+      <div className="overflow-x-auto"><table className="w-full min-w-[760px] border-collapse text-left text-xs [&_td]:align-middle [&_th]:align-middle"><thead className="border-b border-chalk bg-fog text-[10px] font-bold uppercase text-slate"><tr>{['Số vận đơn', 'Người gửi hàng', 'Người nhận hàng', 'Số container', 'Trọng lượng (kg)', 'Thao tác'].map(label => <th key={label} className={`px-3 py-3 font-bold ${label === 'Thao tác' ? 'w-[132px] min-w-[132px] text-center' : label === 'Số container' || label === 'Trọng lượng (kg)' ? 'text-right' : 'text-left'}`}>{label}</th>)}</tr></thead>
+        <tbody className="divide-y divide-chalk font-medium">{bills.slice((billPage - 1) * 10, billPage * 10).map(item => <tr key={item.blNumber} className="hover:bg-fog/50">
+          <td className="px-3 py-3 font-mono font-bold">{item.blNumber || '—'}</td>
+          <td className="px-3 py-3">{item.shipper || '—'}</td>
+          <td className="px-3 py-3">{item.consignee || '—'}</td>
+          <td className="px-3 py-3 text-right font-mono tabular-nums">{item.containers.length}</td>
+          <td className="whitespace-nowrap px-3 py-3 text-right font-mono tabular-nums">{Number(item.grossWeightKg || 0).toLocaleString('vi-VN')}</td>
+          <td className="whitespace-nowrap px-3 py-3 text-center"><button type="button" onClick={() => onBill(item.blNumber)} className="inline-flex items-center whitespace-nowrap rounded-xl border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-bold text-signal-orange transition-colors hover:bg-orange-100 cursor-pointer">Chi tiết →</button></td>
+        </tr>)}
           {!bills.length && <tr><td colSpan={6} className="p-8 text-center text-slate">Bản khai chưa có vận đơn.</td></tr>}
         </tbody></table></div>
       <ShippingPagination currentPage={billPage} totalItems={bills.length} pageSize={10} onPageChange={setBillPage} itemName="vận đơn" />

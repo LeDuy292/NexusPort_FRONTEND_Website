@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ManifestContainerEditor from './ManifestContainerEditor'
 import ManifestContainerList from './ManifestContainerList'
+import ManifestConfirmDialog from './ManifestConfirmDialog'
 import { clearManifestComposerSession, saveManifestComposerSession } from '../utils/manifestComposerSession'
 import { shippingLineApi, formatApiErrorMessage } from '../api/shippingLineApi'
 
@@ -23,6 +24,7 @@ export default function ManifestComposer({ voyages, initialManifest, resumeSessi
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [confirmation, setConfirmation] = useState(null)
   const update = (patch) => { setForm(f => ({ ...f, ...patch })); setDirty(true) }
   const openBill = (index = null) => {
     setBillIndex(index)
@@ -43,9 +45,23 @@ export default function ManifestComposer({ voyages, initialManifest, resumeSessi
     setError('')
   }
   const removeContainer = (index) => {
-    if (!window.confirm(`Xóa container ${editingBill.containers[index].containerNumber || ''} khỏi vận đơn?`)) return
-    setEditingBill(b => ({ ...b, containers: b.containers.filter((_, i) => i !== index) }))
-    setContainerPage(page => Math.min(page, Math.max(1, Math.ceil((editingBill.containers.length - 1) / 10))))
+    setConfirmation({
+      title: 'Xóa container khỏi vận đơn?',
+      message: `Container ${editingBill.containers[index].containerNumber || ''} sẽ được bỏ khỏi vận đơn đang nhập.`,
+      confirmLabel: 'Xóa container', danger: true,
+      action: () => {
+        setEditingBill(b => ({ ...b, containers: b.containers.filter((_, i) => i !== index) }))
+        setContainerPage(page => Math.min(page, Math.max(1, Math.ceil((editingBill.containers.length - 1) / 10))))
+      },
+    })
+  }
+  const removeBill = index => {
+    const bill = form.bills[index]
+    setConfirmation({ title: 'Xóa vận đơn khỏi bản khai?',
+      message: `Vận đơn ${bill.blNumber} và ${bill.containers.length} container sẽ được bỏ khỏi bản khai đang nhập.`,
+      confirmLabel: 'Xóa vận đơn', danger: true,
+      action: () => update({ bills: form.bills.filter((_, i) => i !== index) }),
+    })
   }
   const registerContainer = (number, container) => {
     try {
@@ -83,11 +99,19 @@ export default function ManifestComposer({ voyages, initialManifest, resumeSessi
     } catch (e) { setError(formatApiErrorMessage(e, 'Không thể lưu bản khai. Vui lòng thử lại.')) }
     finally { setSaving(false) }
   }
-  const close = () => { if ((!dirty && !editingBill) || window.confirm('Đóng và bỏ các thay đổi chưa lưu?')) { clearManifestComposerSession(); onClose() } }
+  const close = () => {
+    if (saving) return
+    const discard = () => { clearManifestComposerSession(); onClose() }
+    if (!dirty && !editingBill) { discard(); return }
+    setConfirmation({ title: 'Bỏ các thay đổi chưa lưu?',
+      message: 'Thông tin bạn đang nhập chưa được lưu. Bạn muốn tiếp tục chỉnh sửa hay đóng bản khai?',
+      cancelLabel: 'Tiếp tục chỉnh sửa', confirmLabel: 'Bỏ thay đổi và đóng', action: discard,
+    })
+  }
   const total = form.bills.reduce((sum, b) => sum + b.containers.length, 0)
   return (
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-3 md:p-6">
-      <section role="dialog" aria-modal={!containerEditor} aria-hidden={containerEditor ? true : undefined} inert={Boolean(containerEditor)} aria-labelledby="manifest-composer-title" className="bg-white rounded-2xl shadow-xl w-full max-w-6xl max-h-[94vh] flex flex-col">
+      <section role="dialog" aria-modal={!containerEditor && !confirmation} aria-hidden={containerEditor || confirmation ? true : undefined} inert={Boolean(containerEditor)} aria-labelledby="manifest-composer-title" className="bg-white rounded-2xl shadow-xl w-full max-w-6xl max-h-[94vh] flex flex-col">
         <header className="p-5 border-b border-chalk flex items-start justify-between gap-4">
           <div><h2 id="manifest-composer-title" className="text-xl font-bold">{editingBill ? 'Thêm thông tin vận đơn' : initialManifest ? 'Tiếp tục bản khai nháp' : 'Tạo bản khai Manifest mới'}</h2>
             <p className="text-sm text-slate mt-1">Manifest → Vận đơn → Container</p></div>
@@ -117,7 +141,7 @@ export default function ManifestComposer({ voyages, initialManifest, resumeSessi
               <div className="flex justify-between items-center gap-3"><h3 className="font-bold">{form.bills.length} vận đơn · {total} container</h3><button type="button" className={buttonClass} onClick={() => openBill()}>+ Tạo thêm vận đơn</button></div>
               {!form.bills.length && <div className="p-8 text-center border border-dashed border-chalk rounded-xl text-slate">Thêm vận đơn, sau đó khai báo các container và hàng hóa trong vận đơn đó.</div>}
               {form.bills.map((b, i) => <article key={i} className="border border-chalk rounded-xl overflow-hidden">
-                <div className="p-4 bg-fog flex flex-wrap justify-between gap-3 items-center"><div><h4 className="font-bold">B/L {b.blNumber}</h4><p className="text-sm text-slate">{b.shipper} → {b.consignee}</p></div><div className="flex gap-2"><button type="button" className={buttonClass} onClick={() => openBill(i)}>Sửa vận đơn</button><button type="button" className={buttonClass} onClick={() => { if (window.confirm(`Xóa vận đơn ${b.blNumber} và các container khỏi bản khai?`)) update({ bills: form.bills.filter((_, j) => i !== j) }) }}>Xóa</button></div></div>
+                <div className="p-4 bg-fog flex flex-wrap justify-between gap-3 items-center"><div><h4 className="font-bold">B/L {b.blNumber}</h4><p className="text-sm text-slate">{b.shipper} → {b.consignee}</p></div><div className="flex gap-2"><button type="button" className={buttonClass} onClick={() => openBill(i)}>Sửa vận đơn</button><button type="button" className={buttonClass} onClick={() => removeBill(i)}>Xóa</button></div></div>
                 <details className="p-4"><summary className="cursor-pointer text-sm font-semibold text-slate">Danh sách container ({b.containers.length})</summary><div className="mt-3"><ManifestContainerList containers={b.containers} /></div></details>
               </article>)}
             </>
@@ -133,6 +157,11 @@ export default function ManifestComposer({ voyages, initialManifest, resumeSessi
       </section>
       {containerEditor && <ManifestContainerEditor initialValue={containerEditor.value} editing={containerEditor.index !== null}
         onClose={() => setContainerEditor(null)} onSave={saveContainer} onRegister={registerContainer} />}
+      {confirmation && <ManifestConfirmDialog {...confirmation} onCancel={() => setConfirmation(null)} onConfirm={() => {
+        const action = confirmation.action
+        setConfirmation(null)
+        action()
+      }} />}
     </div>
   )
 }
