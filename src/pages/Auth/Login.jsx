@@ -75,7 +75,13 @@ export default function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [rememberMe, setRememberMe] = useState(false)
+  const [rememberMe, setRememberMe] = useState(() => {
+    try {
+      return localStorage.getItem('rememberMe') === 'true'
+    } catch {
+      return false
+    }
+  })
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState(null)
 
@@ -95,7 +101,7 @@ export default function Login() {
   const [forgotStep, setForgotStep] = useState(1) // 1: nhập email/username -> nhận OTP, 2: nhập OTP + mật khẩu mới
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotOtp, setForgotOtp] = useState('')
-  const [generatedOtp, setGeneratedOtp] = useState('')
+  const [maskedEmailSent, setMaskedEmailSent] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [forgotLoading, setForgotLoading] = useState(false)
@@ -106,13 +112,18 @@ export default function Login() {
     confirmPassword: '',
   })
 
-  // Điền sẵn username nếu đã tích "Ghi nhớ đăng nhập" từ trước
+  // Điền sẵn thông tin đăng nhập nếu đã tích "Ghi nhớ đăng nhập" từ trước
   useEffect(() => {
-    const savedUsername = localStorage.getItem('rememberedUsername')
-    if (savedUsername) {
-      setUsername(savedUsername)
-      setRememberMe(true)
-    }
+    try {
+      const isRemembered = localStorage.getItem('rememberMe') === 'true'
+      const savedUsername = localStorage.getItem('rememberedUsername')
+      const savedPassword = localStorage.getItem('rememberedPassword')
+      if (isRemembered && savedUsername) {
+        setUsername(savedUsername)
+        if (savedPassword) setPassword(savedPassword)
+        setRememberMe(true)
+      }
+    } catch (_) {}
   }, [])
 
   const roles = [
@@ -185,15 +196,35 @@ export default function Login() {
 
   const handleSelectRole = (roleObj) => {
     setSelectedRole(roleObj)
-    const defaultUsers = { carrier: 'carrier01', gate: 'gate01', operator: 'dispatcher01', yard: 'yard01', shipping: 'shipping01', admin: 'admin' }
-    setUsername(defaultUsers[roleObj.id] || '')
-    setPassword('NexusPort@2026')
+    const isRemembered = localStorage.getItem('rememberMe') === 'true'
+    if (isRemembered) {
+      setUsername(localStorage.getItem('rememberedUsername') || '')
+      setPassword(localStorage.getItem('rememberedPassword') || '')
+    } else {
+      setUsername('')
+      setPassword('')
+    }
     setErrors({ username: '', password: '', general: '' })
     setShowDuplicateWarning(false)
     window.history.replaceState({}, '', '/login')
     setTimeout(() => {
       setStep(2)
     }, 150)
+  }
+
+  const toggleRememberMe = () => {
+    setRememberMe((prev) => {
+      const nextVal = !prev
+      if (!nextVal) {
+        try {
+          localStorage.removeItem('rememberMe')
+          localStorage.removeItem('rememberedUsername')
+          localStorage.removeItem('rememberedPassword')
+          localStorage.removeItem('rememberedRole')
+        } catch (_) {}
+      }
+      return nextVal
+    })
   }
 
   // Validate form đăng nhập phía client
@@ -278,9 +309,17 @@ export default function Login() {
         sessionStorage.setItem('token', token)
       }
       if (rememberMe) {
-        localStorage.setItem('rememberedUsername', user.username)
+        localStorage.setItem('rememberMe', 'true')
+        localStorage.setItem('rememberedUsername', username.trim())
+        localStorage.setItem('rememberedPassword', password)
+        if (selectedRole?.id) {
+          localStorage.setItem('rememberedRole', selectedRole.id)
+        }
       } else {
+        localStorage.removeItem('rememberMe')
         localStorage.removeItem('rememberedUsername')
+        localStorage.removeItem('rememberedPassword')
+        localStorage.removeItem('rememberedRole')
       }
       if (loginWithToken) {
         loginWithToken(user, token, rememberMe)
@@ -456,8 +495,9 @@ export default function Login() {
         return
       }
 
-      setGeneratedOtp(data.data.otp)
-      showToastMessage(`Mã OTP đã khởi tạo: ${data.data.otp}`, 'check_circle', 'success')
+      const maskedEmail = data.data?.maskedEmail || data.data?.email || forgotEmail.trim()
+      setMaskedEmailSent(maskedEmail)
+      showToastMessage(data.message || 'Mã OTP đã được gửi về email của bạn!', 'check_circle', 'success')
       setForgotStep(2)
       setForgotLoading(false)
     } catch (err) {
@@ -802,7 +842,7 @@ export default function Login() {
                             if (errors.username) setErrors((prev) => ({ ...prev, username: '' }))
                             if (errors.general) setErrors((prev) => ({ ...prev, general: '' }))
                           }}
-                          placeholder="nguyen.van.a@nexusport.vn"
+                          placeholder="Nhập tên đăng nhập hoặc email..."
                           className={`w-full rounded-lg py-3 pl-11 pr-4 text-white text-[14px] font-medium outline-none transition-all placeholder:text-white/30 ${
                             errors.username
                               ? 'bg-red-500/[0.06] border border-red-500/70 focus:border-red-400 focus:ring-2 focus:ring-red-500/20'
@@ -862,17 +902,22 @@ export default function Login() {
                     </div>
 
                     <div className="flex items-center justify-between pt-1">
-                      <label className="flex items-center gap-2.5 cursor-pointer group select-none">
+                      <button
+                        type="button"
+                        onClick={toggleRememberMe}
+                        className="flex items-center gap-2.5 cursor-pointer group select-none bg-transparent border-0 p-0 text-left focus:outline-none"
+                      >
                         <div
-                          onClick={() => setRememberMe(!rememberMe)}
                           className={`w-4 h-4 rounded border transition-colors flex items-center justify-center ${
                             rememberMe ? 'bg-[#ff682c] border-[#ff682c]' : 'border-white/20 group-hover:border-[#ff682c]/50'
                           }`}
                         >
-                          {rememberMe && <span className="material-symbols-outlined text-white text-[12px]">check</span>}
+                          {rememberMe && <span className="material-symbols-outlined text-white text-[12px] font-bold">check</span>}
                         </div>
-                        <span className="text-white/40 text-[13px] font-medium">Ghi nhớ đăng nhập</span>
-                      </label>
+                        <span className={`text-[13px] font-medium transition-colors ${rememberMe ? 'text-white' : 'text-white/40 group-hover:text-white/70'}`}>
+                          Ghi nhớ đăng nhập
+                        </span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -1013,26 +1058,31 @@ export default function Login() {
               </form>
             ) : (
               <form onSubmit={handleResetPassword} className="space-y-3.5 mt-4" noValidate>
-                {generatedOtp && (
-                  <div className="bg-[#ff682c]/10 border border-[#ff682c]/30 rounded-lg p-3 text-[12px] text-[#ff682c] font-medium flex items-center justify-between">
-                    <span>Mã OTP thử nghiệm: <strong>{generatedOtp}</strong></span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForgotOtp(generatedOtp)
-                        if (forgotErrors.otp) setForgotErrors((prev) => ({ ...prev, otp: '' }))
-                      }}
-                      className="text-[11px] underline font-semibold hover:text-white"
-                    >
-                      Tự điền
-                    </button>
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 text-[12px] text-emerald-300 flex items-start gap-2.5">
+                  <span className="material-symbols-outlined text-emerald-400 text-base flex-shrink-0 mt-0.5">mark_email_read</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-semibold text-emerald-200">Đã gửi mã OTP đến email:</span>
+                    <div className="font-mono text-emerald-300 text-[13px] font-bold mt-0.5 truncate">{maskedEmailSent || forgotEmail}</div>
+                    <div className="text-emerald-400/80 text-[11px] mt-1 leading-relaxed">
+                      Vui lòng kiểm tra hộp thư đến (hoặc mục Spam/Rác) và nhập mã xác thực 6 số bên dưới.
+                    </div>
                   </div>
-                )}
+                </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-white/45 uppercase tracking-wider mb-1.5">
-                    Mã OTP (6 chữ số) <span className="text-[#ff682c]">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-[11px] font-semibold text-white/45 uppercase tracking-wider">
+                      Mã OTP (6 chữ số) <span className="text-[#ff682c]">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      disabled={forgotLoading}
+                      onClick={handleRequestOtp}
+                      className="text-[11px] text-[#ff682c] hover:underline font-semibold disabled:opacity-50"
+                    >
+                      Gửi lại mã?
+                    </button>
+                  </div>
                   <input
                     type="text"
                     maxLength={6}

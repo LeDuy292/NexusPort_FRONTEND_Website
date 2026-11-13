@@ -26,7 +26,7 @@ export default function GateIncidents() {
 
   const [createForm, setCreateForm] = useState({
     bookingId: '', vehicleId: '', licensePlate: '', driverName: '', containerId: '',
-    gate: 'Gate A', type: '', severity: 'Medium', description: '',
+    gate: 'Cổng Vào', type: '', severity: 'Medium', description: '',
   })
 
   const showToast = (msg) => { setToastMessage(msg); setTimeout(() => setToastMessage(''), 3500) }
@@ -61,7 +61,7 @@ export default function GateIncidents() {
     }
     setIncidents(prev => [newInc, ...prev])
     setShowCreateModal(false)
-    setCreateForm({ bookingId: '', vehicleId: '', licensePlate: '', driverName: '', containerId: '', gate: 'Gate A', type: '', severity: 'Medium', description: '' })
+    setCreateForm({ bookingId: '', vehicleId: '', licensePlate: '', driverName: '', containerId: '', gate: 'Cổng Vào', type: '', severity: 'Medium', description: '' })
     showToast(`📋 Đã tạo sự cố ${newInc.id} và gửi đến Điều độ.`)
   }
 
@@ -109,7 +109,7 @@ export default function GateIncidents() {
         {[
           ['Trạng thái', statusFilter, setStatusFilter, ['All', 'Pending', 'Under Review', 'Resolved', 'Rejected']],
           ['Mức độ', severityFilter, setSeverityFilter, ['All', 'Low', 'Medium', 'High', 'Critical']],
-          ['Làn cổng', gateFilter, setGateFilter, ['All', 'Gate A', 'Gate B', 'Gate C']],
+          ['Làn cổng', gateFilter, setGateFilter, ['All', 'Cổng Vào', 'Cổng Ra']],
         ].map(([label, val, setter, opts]) => (
           <select key={label} value={val} onChange={e => setter(e.target.value)}
             className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange">
