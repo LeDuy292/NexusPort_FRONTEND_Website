@@ -588,10 +588,12 @@ export default function Login() {
         {/* LEFT BRANDING */}
         <div className="hidden lg:flex flex-col justify-between w-[480px] flex-shrink-0 p-12">
           <div>
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 bg-[#ff682c] rounded-lg flex items-center justify-center">
-                <span className="material-symbols-outlined text-white text-[20px]">anchor</span>
-              </div>
+            <div className="flex items-center gap-3">
+              <img
+                src="/nexusport-logo.png"
+                alt="NexusPort Logo"
+                className="w-11 h-11 object-contain rounded-xl shadow-lg border border-white/10 bg-white/5 p-1"
+              />
               <h1 className="text-[26px] font-bold tracking-tight text-white font-[#Space_Grotesk]">
                 NexusPort<span className="text-[#ff682c]">.</span>
               </h1>
