@@ -1,5 +1,12 @@
-// Lấy API base URL từ biến môi trường, mặc định là /api (được proxy sang backend qua Vite)
-const API_URL = import.meta.env.VITE_API_URL || '/api'
+// Lấy API base URL từ biến môi trường, tự động chuẩn hóa tiền tố /api
+const getApiBaseUrl = () => {
+  const raw = (import.meta.env.VITE_API_URL || '/api').trim().replace(/\/+$/, '')
+  if (raw.startsWith('http') && !raw.endsWith('/api')) {
+    return `${raw}/api`
+  }
+  return raw
+}
+const API_URL = getApiBaseUrl()
 
 const handleUnauthorized = async (res) => {
   const errorData = await res.json().catch(() => ({}))
@@ -8,7 +15,7 @@ const handleUnauthorized = async (res) => {
     localStorage.removeItem('token')
     sessionStorage.removeItem('user')
     sessionStorage.removeItem('token')
-  } catch (_) {}
+  } catch (_) { }
 
   const isKicked = errorData?.code === 'SESSION_KICKED'
   if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
@@ -39,7 +46,7 @@ const apiClient = {
       }
     }
 
-    const headers = { 
+    const headers = {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-cache, no-store, must-revalidate',
       'Pragma': 'no-cache',
@@ -51,7 +58,7 @@ const apiClient = {
       if (user && user.token) {
         headers['Authorization'] = `Bearer ${user.token}`
       }
-    } catch (e) {}
+    } catch (e) { }
 
     const res = await fetch(fullUrl, { method: 'GET', headers })
     if (res.status === 401) {
@@ -80,7 +87,7 @@ const apiClient = {
       if (user && user.token) {
         headers['Authorization'] = `Bearer ${user.token}`
       }
-    } catch (e) {}
+    } catch (e) { }
 
     const res = await fetch(fullUrl, {
       method: 'POST',
@@ -113,7 +120,7 @@ const apiClient = {
       if (user && user.token) {
         headers['Authorization'] = `Bearer ${user.token}`
       }
-    } catch (e) {}
+    } catch (e) { }
 
     const res = await fetch(fullUrl, { method: 'PUT', headers, body: isFormData ? data : JSON.stringify(data) })
     if (res.status === 401) {
@@ -142,7 +149,7 @@ const apiClient = {
       if (user && user.token) {
         headers['Authorization'] = `Bearer ${user.token}`
       }
-    } catch (e) {}
+    } catch (e) { }
 
     const res = await fetch(fullUrl, { method: 'PATCH', headers, body: isFormData ? data : JSON.stringify(data) })
     if (res.status === 401) {
@@ -180,7 +187,7 @@ const apiClient = {
       if (user && user.token) {
         headers['Authorization'] = `Bearer ${user.token}`
       }
-    } catch (e) {}
+    } catch (e) { }
 
     const res = await fetch(fullUrl, { method: 'DELETE', headers })
     if (res.status === 401) {

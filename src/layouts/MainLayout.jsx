@@ -274,18 +274,6 @@ const sidebarItems = [
     roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
   },
   {
-    path: '/cargo/tracking',
-    label: 'Theo Dõi Chứng Từ',
-    icon: 'description',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
-  },
-  {
-    path: '/cargo/notifications',
-    label: 'Việc Cần Làm & Cảnh Báo',
-    icon: 'notifications_active',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
-  },
-  {
     path: '/booking',
     label: 'Đặt Lịch Cảng',
     icon: 'calendar_month',
@@ -359,8 +347,8 @@ export default function MainLayout({ previewUser = null }) {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         }
-      }).catch(() => {})
-    } catch (_) {}
+      }).catch(() => { })
+    } catch (_) { }
     localStorage.removeItem('user')
     sessionStorage.removeItem('user')
     localStorage.removeItem('token')
@@ -419,7 +407,7 @@ export default function MainLayout({ previewUser = null }) {
             const linkClass = `group flex items-center px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150 ${isActive
               ? 'bg-orange-50/80 text-orange-700 font-semibold shadow-2xs border border-orange-200/70'
               : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-            }`
+              }`
 
             if (item.external) {
               return (
@@ -430,9 +418,8 @@ export default function MainLayout({ previewUser = null }) {
                   rel="noreferrer"
                   className={linkClass}
                 >
-                  <span className={`material-symbols-outlined mr-2.5 text-[18px] shrink-0 select-none flex items-center justify-center w-7 h-7 rounded-lg transition-colors ${
-                    isActive ? 'bg-[#ff6b00] text-white shadow-2xs' : 'text-slate-400 group-hover:text-slate-600 bg-slate-50'
-                  }`}>
+                  <span className={`material-symbols-outlined mr-2.5 text-[18px] shrink-0 select-none flex items-center justify-center w-7 h-7 rounded-lg transition-colors ${isActive ? 'bg-[#ff6b00] text-white shadow-2xs' : 'text-slate-400 group-hover:text-slate-600 bg-slate-50'
+                    }`}>
                     {item.icon}
                   </span>
                   <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis">{item.label}</span>
@@ -447,9 +434,8 @@ export default function MainLayout({ previewUser = null }) {
                 className={linkClass}
               >
                 {/* Material Icon */}
-                <span className={`material-symbols-outlined mr-2.5 text-[18px] shrink-0 select-none flex items-center justify-center w-7 h-7 rounded-lg transition-colors ${
-                  isActive ? 'bg-[#ff6b00] text-white shadow-2xs' : 'text-slate-400 group-hover:text-slate-600 bg-slate-50'
-                }`}>
+                <span className={`material-symbols-outlined mr-2.5 text-[18px] shrink-0 select-none flex items-center justify-center w-7 h-7 rounded-lg transition-colors ${isActive ? 'bg-[#ff6b00] text-white shadow-2xs' : 'text-slate-400 group-hover:text-slate-600 bg-slate-50'
+                  }`}>
                   {item.icon}
                 </span>
                 <span className="flex-1 whitespace-nowrap overflow-hidden text-ellipsis">{item.label}</span>
@@ -495,8 +481,8 @@ export default function MainLayout({ previewUser = null }) {
               {user.role === 'Berth Staff'
                 ? 'Cầu Bến'
                 : user.role === 'Shipping Line'
-                ? 'Hãng Tàu'
-                : 'Terminal Portal'}
+                  ? 'Hãng Tàu'
+                  : 'Terminal Portal'}
             </span>
             <span className="material-symbols-outlined text-[14px] text-slate-300">chevron_right</span>
             <span className="text-slate-900 font-semibold text-sm">{currentTitle}</span>
