@@ -11,9 +11,9 @@ const blankBill = () => ({ blNumber: '', shipper: '', consignee: '', containers:
 const fieldClass = 'w-full border border-chalk rounded-lg px-3 py-2 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-200'
 const buttonClass = 'px-3 py-2 rounded-lg border border-chalk text-sm font-semibold hover:bg-fog disabled:opacity-50'
 
-export default function ManifestComposer({ voyages, initialManifest, resumeSession, onClose, onSaved }) {
+export default function ManifestComposer({ voyages, initialManifest, importedManifest, resumeSession, onClose, onSaved }) {
   const navigate = useNavigate()
-  const [form, setForm] = useState(() => resumeSession?.form || initialManifest || {
+  const [form, setForm] = useState(() => resumeSession?.form || importedManifest || initialManifest || {
     requestKey: crypto.randomUUID(), voyageNumber: voyages[0]?.voyageNumber || '',
     vesselName: voyages[0]?.vesselName || '', direction: 'EXPORT', bills: [],
   })
@@ -23,7 +23,7 @@ export default function ManifestComposer({ voyages, initialManifest, resumeSessi
   const [containerPage, setContainerPage] = useState(resumeSession?.containerPage || 1)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
-  const [dirty, setDirty] = useState(false)
+  const [dirty, setDirty] = useState(Boolean(importedManifest || resumeSession))
   const [confirmation, setConfirmation] = useState(null)
   const update = (patch) => { setForm(f => ({ ...f, ...patch })); setDirty(true) }
   const openBill = (index = null) => {
@@ -113,7 +113,7 @@ export default function ManifestComposer({ voyages, initialManifest, resumeSessi
     <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-3 md:p-6">
       <section role="dialog" aria-modal={!containerEditor && !confirmation} aria-hidden={containerEditor || confirmation ? true : undefined} inert={Boolean(containerEditor)} aria-labelledby="manifest-composer-title" className="bg-white rounded-2xl shadow-xl w-full max-w-6xl max-h-[94vh] flex flex-col">
         <header className="p-5 border-b border-chalk flex items-start justify-between gap-4">
-          <div><h2 id="manifest-composer-title" className="text-xl font-bold">{editingBill ? 'Thêm thông tin vận đơn' : initialManifest ? 'Tiếp tục bản khai nháp' : 'Tạo bản khai Manifest mới'}</h2>
+          <div><h2 id="manifest-composer-title" className="text-xl font-bold">{editingBill ? 'Thêm thông tin vận đơn' : initialManifest ? 'Tiếp tục bản khai nháp' : importedManifest ? 'Xem lại bản khai từ Excel' : 'Tạo bản khai Manifest mới'}</h2>
             <p className="text-sm text-slate mt-1">Manifest → Vận đơn → Container</p></div>
           <button type="button" onClick={close} disabled={saving} aria-label="Đóng" className={buttonClass}>✕</button>
         </header>
@@ -134,6 +134,7 @@ export default function ManifestComposer({ voyages, initialManifest, resumeSessi
             <>
               <div className="grid md:grid-cols-2 gap-4">
                 <label className="text-sm font-semibold">Chuyến tàu *<select className={fieldClass} value={form.voyageNumber} onChange={e => { const v = voyages.find(v => v.voyageNumber === e.target.value); update({ voyageNumber: e.target.value, vesselName: v?.vesselName || '' }) }}><option value="">Chọn chuyến tàu</option>
+                  {form.voyageNumber && !voyages.some(v => v.voyageNumber === form.voyageNumber) && <option value={form.voyageNumber}>{form.voyageNumber} · {form.vesselName}</option>}
                   {voyages.map(v => <option key={v.id || v.voyageNumber} value={v.voyageNumber}>{v.voyageNumber} · {v.vesselName}</option>)}
                 </select></label>
                 <label className="text-sm font-semibold">Hướng khai<select className={fieldClass} value={form.direction} onChange={e => update({ direction: e.target.value })}><option value="EXPORT">Xuất khẩu</option><option value="IMPORT">Nhập khẩu</option></select></label>
