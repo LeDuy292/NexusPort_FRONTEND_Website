@@ -123,7 +123,7 @@ export default function BerthManagement() {
       <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex gap-3 text-xs text-orange-800">
         <span className="material-symbols-outlined text-signal-orange text-lg">construction</span>
         <div>
-          <strong className="font-bold">Quy định quyền khai thác Cầu bến:</strong> Quản trị viên (Admin) chỉ cấu hình Master Data kỹ thuật (độ sâu, chiều dài, loại tàu hỗ trợ). Việc chỉ định luồng tàu cập bến, điều khiển cẩu giàn xếp dỡ container thực tế (Berth Allocation & Stowage Planning) do **Điều độ cảng (Dispatcher)** và **Nhân viên Cầu tàu (Berth Staff)** phối hợp thực hiện.
+          <strong className="font-bold">Quy định quyền khai thác Cầu bến:</strong> Quản trị viên (Admin) chỉ cấu hình Master Data kỹ thuật (độ sâu, chiều dài, loại tàu hỗ trợ). Việc chỉ định luồng tàu cập bến, điều khiển cẩu giàn xếp dỡ container thực tế (Berth Allocation & Stowage Planning) do Điều độ cảng (Dispatcher) thực hiện.
         </div>
       </div>
 

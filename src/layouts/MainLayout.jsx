@@ -158,26 +158,6 @@ const sidebarItems = [
     roles: [ROLES.GATE_OFFICER],
   },
 
-  // ── BERTH STAFF (Nhân Viên Cầu Bến) ──────────────────────
-  {
-    path: '/berth-staff/dashboard',
-    label: 'Tổng Quan Cầu Bến',
-    icon: 'dashboard',
-    roles: [ROLES.BERTH_STAFF],
-  },
-  {
-    path: '/berth-staff/vessel-operation-control',
-    label: 'Điều Hành Tác Nghiệp Tàu',
-    icon: 'anchor',
-    roles: [ROLES.BERTH_STAFF],
-  },
-  {
-    path: '/berth-staff/incident-reporting',
-    label: 'Báo Cáo Sự Cố Cầu Bến',
-    icon: 'report',
-    roles: [ROLES.BERTH_STAFF],
-  },
-
   // ── SHIPPING LINE (Hãng Tàu) ──────────────────────────────
   {
     path: '/shipping-line/containers',
@@ -394,7 +374,7 @@ export default function MainLayout({ previewUser = null }) {
               NexusPort<span className="text-[#ff6b00] text-2xl leading-none">.</span>
             </h1>
             <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider font-semibold">
-              {user.role === 'Berth Staff' ? 'Cổng Nhân Viên Cầu Bến' : user.role === 'Shipping Line' ? 'Cổng Doanh Nghiệp Hãng Tàu' : `${user.role} Portal`}
+              {user.role === 'Shipping Line' ? 'Cổng Doanh Nghiệp Hãng Tàu' : `${user.role} Portal`}
             </p>
           </div>
         </div>
@@ -480,9 +460,7 @@ export default function MainLayout({ previewUser = null }) {
           {catalogPage && <details key={location.pathname} className="epc-mobile-nav"><summary aria-label="Mở menu điều hướng"><span className="material-symbols-outlined">menu</span></summary><nav>{allowedItems.map(item => <Link key={item.path} to={item.path} aria-current={location.pathname === item.path ? 'page' : undefined}>{item.label}</Link>)}</nav></details>}
           <div className="text-slate-500 text-xs font-medium flex items-center gap-2">
             <span>
-              {user.role === 'Berth Staff'
-                ? 'Cầu Bến'
-                : user.role === 'Shipping Line'
+              {user.role === 'Shipping Line'
                 ? 'Hãng Tàu'
                 : 'Terminal Portal'}
             </span>

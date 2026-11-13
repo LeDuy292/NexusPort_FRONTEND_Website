@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react'
 import driverService from '../../services/driverService'
-import { createDriverAccount } from '../../services/userService'
+import nodeApi from '../../services/nodeApiClient'
+import AccountRequests from '../Users/components/AccountRequests'
 import vehicleService from '../../services/vehicleService'
 import { bookingService } from '../../services/bookingService'
-import { companyService } from '../../services/companyService'
+
 
 import { resolveMediaUrl } from '../../utils/mediaUtils'
 
@@ -18,6 +19,9 @@ const STATUS_CONFIG = {
   inactive: { label: 'Tạm nghỉ / Bận', color: 'bg-amber-100 text-amber-800 border border-amber-200' },
   banned: { label: 'Đã bị đình chỉ', color: 'bg-red-100 text-red-800 border border-red-200' },
 }
+const driverStatus = driver => driver.invitationPending
+  ? { label: 'Chặn — chờ liên kết email', color: 'bg-amber-100 text-amber-800 border border-amber-200' }
+  : STATUS_CONFIG[driver.status] || STATUS_CONFIG.inactive
 
 const getExpiryWarning = (dateStr) => {
   if (!dateStr) return null;
@@ -105,6 +109,9 @@ function DocumentCard({ url, title, alt, onClick }) {
 
 export default function DriverManagement() {
   const [drivers, setDrivers] = useState([])
+  const [requestRevision, setRequestRevision] = useState(0)
+  const [submittingRequest, setSubmittingRequest] = useState(false)
+  const requestProfile = (data, driverId) => Object.fromEntries(['username','email','fullName','phone','idCardNumber','licenseNumber','photoUrl','idCardFrontUrl','idCardBackUrl','licenseImageUrl','licenseBackImageUrl','idCardExpiryDate','licenseExpiryDate'].filter(k => data[k] !== undefined).map(k => [k,data[k]]).concat([['driverId',driverId]]))
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('drivers')
   const [selectedDriver, setSelectedDriver] = useState(null)
@@ -263,13 +270,9 @@ export default function DriverManagement() {
   })
 
   const [ocrLoading, setOcrLoading] = useState(false)
-  const emptyForm = { fullName: '', phone: '', idCardNumber: '', licenseNumber: '', photoUrl: '', idCardFrontUrl: '', idCardBackUrl: '', licenseImageUrl: '', licenseBackImageUrl: '', email: '', password: 'Driver@123' }
+  const emptyForm = { fullName: '', phone: '', idCardNumber: '', licenseNumber: '', photoUrl: '', idCardFrontUrl: '', idCardBackUrl: '', licenseImageUrl: '', licenseBackImageUrl: '', email: '', username: '' }
   const [form, setForm] = useState({ ...emptyForm })
   const [editForm, setEditForm] = useState(null)
-  const [showPassword, setShowPassword] = useState(false)
-  const [modalShowPassword, setModalShowPassword] = useState(false)
-  const [rememberAccount, setRememberAccount] = useState(true)
-  const [createdAccountModal, setCreatedAccountModal] = useState(null)
   const [previews, setPreviews] = useState({ idCardFront: null, idCardBack: null, licenseFront: null, licenseBack: null })
 
   const showToast = (msg) => {
@@ -523,7 +526,9 @@ export default function DriverManagement() {
   const loadDrivers = async () => {
     setLoading(true)
     try {
-      const data = await driverService.getAllDrivers({})
+      const [profiles, links] = await Promise.all([driverService.getAllDrivers({}), nodeApi.get('/account-requests/driver-links')])
+      const byId = new Map(links.map(row => [row.id,row]))
+      const data = (Array.isArray(profiles) ? profiles : []).map(row => ({...row,...byId.get(row.id)}))
       setDrivers(Array.isArray(data) ? data : [])
       if (selectedDriver) {
         const updated = (Array.isArray(data) ? data : []).find(d => d.id === selectedDriver.id)
@@ -685,6 +690,7 @@ export default function DriverManagement() {
 
   const handleAddDriver = async (e) => {
     e.preventDefault()
+    if (submittingRequest) return
     if (!form.fullName.trim() || !form.phone.trim() || !form.licenseNumber.trim() || !form.idCardNumber.trim()) {
       showToast('⚠️ Vui lòng nhập đầy đủ các thông tin bắt buộc!')
       return
@@ -702,92 +708,15 @@ export default function DriverManagement() {
       return
     }
 
-    // Validate Tên đăng nhập / Email & Mật khẩu như đăng nhập thông thường
-    const driverLoginId = (form.email || '').trim()
-    if (!driverLoginId) {
-      showToast('⚠️ Vui lòng nhập Tên đăng nhập hoặc Email cho tài xế!')
-      return
-    }
-    if (driverLoginId.length < 3) {
-      showToast('⚠️ Tên đăng nhập hoặc Email phải có ít nhất 3 ký tự!')
-      return
-    }
-
-    if (!form.password || form.password.length < 6) {
-      showToast('⚠️ Mật khẩu cho tài xế phải có ít nhất 6 ký tự!')
-      return
-    }
-
+    setSubmittingRequest(true)
     try {
-      // Auto assign or create "Cảng Tiên Sa"
-      try {
-        const companies = await companyService.getAll();
-        let tienSa = companies.find(c => c.companyName === 'Cảng Tiên Sa');
-        if (!tienSa) {
-          tienSa = await companyService.create({
-            companyName: 'Cảng Tiên Sa',
-            taxCode: '0400123456',
-            contactPerson: 'Admin',
-            phone: '0912345678',
-            email: 'admin@cangtiensa.com'
-          });
-        }
-        if (tienSa && tienSa.id) {
-          form.carrierId = tienSa.id;
-        }
-      } catch (compErr) {
-        console.warn("Could not setup company automatically", compErr);
-      }
-
-      // 1. Tạo hồ sơ tài xế
-      const createdDriver = await driverService.createDriver(form);
-      const createdDriverId = createdDriver?.id || createdDriver?.Id;
-      const targetCarrierId = createdDriver?.carrierId || createdDriver?.CarrierId || form.carrierId;
-
-      // 2. Cấp tài khoản đăng nhập Driver Portal
-      let accountInfo = null;
-      try {
-        const accRes = await createDriverAccount({
-          email: form.email.trim(),
-          password: form.password,
-          fullName: form.fullName.trim(),
-          driverId: createdDriverId,
-          carrierId: targetCarrierId,
-        });
-        accountInfo = {
-          email: form.email.trim(),
-          password: form.password,
-          fullName: form.fullName.trim(),
-          success: true,
-          message: accRes?.message || 'Cấp tài khoản thành công',
-        };
-      } catch (accErr) {
-        console.warn("Account provision warning:", accErr);
-        accountInfo = {
-          email: form.email.trim(),
-          password: form.password,
-          fullName: form.fullName.trim(),
-          success: false,
-          message: accErr.response?.data?.message || accErr.message,
-        };
-      }
-
+      await nodeApi.post('/account-requests', form);
       setShowAddModal(false);
-      const createdEmail = form.email.trim();
-      const createdPassword = form.password;
       setForm({ ...emptyForm });
       setPreviews({ idCardFront: null, idCardBack: null, licenseFront: null, licenseBack: null });
-
-      if (accountInfo?.success) {
-        setCreatedAccountModal(accountInfo);
-        showToast(`✅ Đã tạo hồ sơ & cấp tài khoản Driver: ${createdEmail} | MK: ${createdPassword}`);
-      } else {
-        showToast(`✅ Đã tạo hồ sơ tài xế ${form.fullName}! (${accountInfo?.message || 'Chưa cấp tài khoản'})`);
-      }
-      loadDrivers();
-    } catch (err) {
-      showToast('❌ Lỗi tạo tài xế: ' + (err.response?.data?.message || err.message));
-    }
+      showToast('Đã gửi yêu cầu thêm tài xế cho admin. Sau khi được duyệt, tài xế nhận email để liên kết và tạo mật khẩu trong 24 giờ.');
+      setRequestRevision(v => v + 1);
+    } catch (err) { showToast('Không gửi được yêu cầu: ' + err.message); } finally { setSubmittingRequest(false) }
   }
 
   const handleSaveEdit = async (e) => {
@@ -810,46 +739,12 @@ export default function DriverManagement() {
         if (typeof loadVehicles === 'function') await loadVehicles()
       }
 
-      // XỬ LÝ CẤP HOẶC CẬP NHẬT TÀI KHOẢN DRIVER KHI CHỈNH SỬA
-      let accountInfo = null;
-      const editLoginId = (editForm.email || '').trim();
-      if (editLoginId) {
-        if (editLoginId.length < 3) {
-          showToast('⚠️ Tên đăng nhập hoặc Email phải có ít nhất 3 ký tự!');
-          return;
-        }
-        if (editForm.password && editForm.password.length < 6) {
-          showToast('⚠️ Mật khẩu tài xế phải có ít nhất 6 ký tự!');
-          return;
-        }
-        try {
-          const accRes = await createDriverAccount({
-            email: editForm.email.trim(),
-            password: editForm.password || 'Driver@123',
-            fullName: editForm.fullName.trim(),
-            driverId: editForm.id,
-            carrierId: editForm.carrierId || selectedDriver?.carrierId,
-          });
-          accountInfo = {
-            email: editForm.email.trim(),
-            password: editForm.password || 'Driver@123',
-            fullName: editForm.fullName.trim(),
-            success: true,
-            message: accRes?.message || 'Cấp/Cập nhật tài khoản thành công',
-          };
-          setCreatedAccountModal(accountInfo);
-        } catch (accErr) {
-          console.warn("Account provision warning on edit:", accErr);
-          showToast('⚠️ Lỗi cấp tài khoản: ' + (accErr.response?.data?.message || accErr.message));
-        }
+      if (!editForm.userId && editForm.email && editForm.username) {
+        await nodeApi.post('/account-requests', requestProfile(editForm, editForm.id));
+        setRequestRevision(v => v + 1);
       }
-
       setEditMode(false)
-      if (accountInfo?.success) {
-        showToast(`✅ Đã cập nhật hồ sơ & cấp tài khoản Driver: ${editForm.email.trim()} (MK: ${editForm.password || 'Driver@123'})`)
-      } else {
-        showToast(`✅ Đã cập nhật hồ sơ tài xế ${editForm.fullName}!`)
-      }
+      showToast('Đã lưu hồ sơ. Yêu cầu tài khoản (nếu có) đang chờ admin duyệt.')
       loadDrivers()
     } catch (err) {
       showToast('❌ Lỗi cập nhật: ' + (err.response?.data?.message || err.message))
@@ -859,11 +754,12 @@ export default function DriverManagement() {
   const openDriverDetails = (drv) => {
     setSelectedDriver(drv)
     setEditMode(false)
-    setEditForm({ ...drv, email: drv.email || "", password: "Driver@123" })
+    setEditForm({ ...drv, email: drv.email || "", username: drv.username || "" })
   }
 
   return (
-    <div className="p-8 w-full font-sans flex flex-col lg:flex-row gap-8 relative items-start">
+    <div className="p-8 w-full font-sans flex flex-col gap-8 relative items-stretch">
+      <AccountRequests key={requestRevision} />
 
       {/* Toast Notification */}
       {toastMessage && (
@@ -898,7 +794,7 @@ export default function DriverManagement() {
             {activeTab === 'drivers' && (
               <button onClick={() => { setForm({ ...emptyForm }); setShowAddModal(true) }}
                 className="h-9 px-4 bg-carbon text-white rounded-lg font-bold text-xs hover:bg-black transition-colors flex items-center gap-2 shadow-sm">
-                <span className="material-symbols-outlined text-sm">person_add</span> Thêm Tài Xế Mới
+                <span className="material-symbols-outlined text-sm">person_add</span> Yêu cầu thêm tài xế
               </button>
             )}
             {activeTab === 'vehicles' && (
@@ -1085,7 +981,7 @@ export default function DriverManagement() {
                 ? nameParts[nameParts.length - 1].charAt(0) + nameParts[0].charAt(0)
                 : nameParts[0].substring(0, 2).toUpperCase()
 
-              const statusCfg = STATUS_CONFIG[d.status] || STATUS_CONFIG.inactive
+              const statusCfg = driverStatus(d)
               const assignedVehicle = vehicles.find(v => String(v.driverId).toLowerCase() === String(d.id).toLowerCase())
               const activeBooking = activeBookings.find(b => b.driverId === d.id || b.truckId === assignedVehicle?.id || b.vehiclePlate === assignedVehicle?.plateNumber)
               const containerNo = activeBooking ? (activeBooking.containerNumbers?.[0] || activeBooking.containerNo || activeBooking.bookingCode) : null
@@ -1682,67 +1578,11 @@ export default function DriverManagement() {
                       </div>
                       
                       
-                      {/* Khu vực Cấp / Cập nhật tài khoản Driver khi SỬA */}
-                      <div className="col-span-2 bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50 border-2 border-emerald-300 rounded-2xl p-4 mt-2 shadow-sm">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="material-symbols-outlined text-emerald-700 text-xl font-bold">badge</span>
-                            <span className="text-xs font-black uppercase tracking-wider text-emerald-950">
-                              Cấp / Cập nhật tài khoản Driver Portal
-                            </span>
-                          </div>
-                          <span className="text-[10px] font-bold bg-emerald-600 text-white px-2 py-0.5 rounded-full shadow-sm">
-                            Kích hoạt / Đổi mật khẩu
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-emerald-800 mb-3 leading-relaxed">
-                          Nhập Email và Mật khẩu để <strong>tạo tài khoản mới</strong> hoặc <strong>cập nhật mật khẩu</strong> cho tài xế này đăng nhập vào Driver Portal.
-                        </p>
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="block text-[10px] font-bold text-emerald-950 uppercase mb-1 tracking-wider">
-                              Tên đăng nhập / Email *
-                            </label>
-                            <input
-                              type="email"
-                              placeholder="VD: taixe01 hoặc taixe@gmail.com"
-                              className="w-full h-10 px-3 border border-emerald-300 rounded-xl text-xs text-carbon focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all bg-white"
-                              value={editForm.email || ''}
-                              onChange={e => setEditForm({ ...editForm, email: e.target.value })}
-                            />
-                          </div>
-                          <div>
-                            <div className="flex justify-between items-center mb-1">
-                              <label className="block text-[10px] font-bold text-emerald-950 uppercase tracking-wider">
-                                Mật khẩu mới / Khởi tạo *
-                              </label>
-                              <button
-                                type="button"
-                                onClick={() => setEditForm({ ...editForm, password: 'TX@' + Math.floor(100000 + Math.random() * 900000) })}
-                                className="text-[10px] font-bold text-emerald-700 hover:text-emerald-950 underline cursor-pointer"
-                              >
-                                Tự sinh MK
-                              </button>
-                            </div>
-                            <div className="relative">
-                              <input
-                                type={showPassword ? 'text' : 'password'}
-                                placeholder="VD: Driver@123"
-                                className="w-full h-10 px-3 pr-8 border border-emerald-300 rounded-xl text-xs font-mono text-carbon focus:border-emerald-600 focus:ring-2 focus:ring-emerald-500/20 outline-none transition-all bg-white font-semibold"
-                                value={editForm.password || ''}
-                                onChange={e => setEditForm({ ...editForm, password: e.target.value })}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setShowPassword(p => !p)}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate hover:text-carbon p-1"
-                              >
-                                <span className="material-symbols-outlined text-sm">{showPassword ? 'visibility_off' : 'visibility'}</span>
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+                      {!editForm.userId && <div className="col-span-2 rounded-xl border border-chalk p-4 space-y-3">
+                        <p>Yêu cầu cấp tài khoản cho hồ sơ này (admin duyệt, tài xế tự đặt mật khẩu).</p>
+                        <input className="border rounded-lg p-3 w-full" placeholder="Tên đăng nhập" value={editForm.username || ''} onChange={e => setEditForm({...editForm, username:e.target.value})} />
+                        <input className="border rounded-lg p-3 w-full" type="email" placeholder="Email nhận liên kết" value={editForm.email || ''} onChange={e => setEditForm({...editForm, email:e.target.value})} />
+                      </div>}
 
 <div className="flex gap-3 pt-6 mt-6 border-t border-chalk">
                         <button type="button" onClick={() => setEditMode(false)}
@@ -1760,8 +1600,8 @@ export default function DriverManagement() {
                     <div className="md:col-span-4 flex flex-col items-center space-y-4">
                       <DriverAvatar photoUrl={selectedDriver.photoUrl || selectedDriver.idCardFrontUrl} fullName={selectedDriver.fullName} status={selectedDriver.status} className="w-32 h-32 text-4xl shadow-md" />
                       <div className="text-center">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${STATUS_CONFIG[selectedDriver.status]?.color || ''}`}>
-                          {STATUS_CONFIG[selectedDriver.status]?.label || selectedDriver.status}
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${driverStatus(selectedDriver).color}`}>
+                          {driverStatus(selectedDriver).label}
                         </span>
                       </div>
                       <button
@@ -1997,8 +1837,8 @@ export default function DriverManagement() {
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto animate-scale-up" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-chalk sticky top-0 bg-white z-10">
                 <div>
-                  <h3 className="text-xl font-bold text-carbon">Thêm Tài Xế Mới</h3>
-                  <p className="text-sm text-slate mt-1">Hệ thống AI sẽ tự động phân tích ảnh CCCD và GPLX</p>
+                  <h3 className="text-xl font-bold text-carbon">Yêu cầu thêm tài xế</h3>
+                  <p className="text-sm text-slate mt-1">Gửi hồ sơ cho admin duyệt. Tài khoản bị chặn cho đến khi tài xế mở email và tự tạo mật khẩu trong 24 giờ.</p>
                 </div>
                 <button onClick={() => setShowAddModal(false)} className="text-slate hover:text-carbon p-1 rounded-full hover:bg-fog">
                   <span className="material-symbols-outlined">close</span>
@@ -2099,6 +1939,11 @@ export default function DriverManagement() {
                   {/* Right Column: Form Fields (7 columns wide) */}
                   <div className="md:col-span-7 flex flex-col justify-between">
                     <div className="grid grid-cols-2 gap-4">
+                      <div className="col-span-2 p-4 bg-blue-50 rounded-xl space-y-3">
+                        <p className="text-sm">Admin duyệt yêu cầu; tài xế nhận link qua email và tự tạo mật khẩu trong 24 giờ.</p>
+                        <input className="border rounded-lg p-3 w-full" required pattern="[a-zA-Z0-9_.-]{3,100}" placeholder="Tên đăng nhập" value={form.username} onChange={e => setForm({...form, username:e.target.value})} />
+                        <input className="border rounded-lg p-3 w-full" required type="email" placeholder="Email nhận liên kết" value={form.email} onChange={e => setForm({...form, email:e.target.value})} />
+                      </div>
                       <div className="col-span-2">
                         <label className="block text-[10px] font-bold text-slate uppercase mb-1.5 tracking-wider">Họ và Tên *</label>
                         <input type="text" placeholder="VD: Nguyễn Văn A"
@@ -2144,8 +1989,8 @@ export default function DriverManagement() {
                     <div className="flex gap-3 pt-6 mt-6 border-t border-chalk">
                       <button type="button" onClick={() => setShowAddModal(false)}
                         className="flex-1 h-12 border border-chalk rounded-xl text-sm font-bold text-graphite hover:bg-fog transition-colors">Hủy</button>
-                      <button type="submit"
-                        className="flex-1 h-12 bg-carbon text-white rounded-xl text-sm font-bold hover:bg-black shadow-lg shadow-carbon/20 transition-all active:scale-[0.98]">Lưu Tài Xế</button>
+                      <button type="submit" disabled={submittingRequest}
+                        className="flex-1 h-12 bg-carbon text-white rounded-xl text-sm font-bold hover:bg-black shadow-lg shadow-carbon/20 transition-all active:scale-[0.98]">{submittingRequest ? 'Đang gửi yêu cầu…' : 'Gửi yêu cầu thêm tài xế'}</button>
                     </div>
                   </div>
                 </div>
@@ -2156,128 +2001,6 @@ export default function DriverManagement() {
       )}
 
     
-      {/* Modal Thông báo Cấp Tài Khoản Tài Xế Thành Công */}
-      {createdAccountModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-carbon/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-chalk overflow-hidden transform transition-all animate-scale-in">
-            <div className="bg-gradient-to-r from-emerald-600 to-teal-600 p-6 text-white text-center relative">
-              <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-inner">
-                <span className="material-symbols-outlined text-3xl">verified_user</span>
-              </div>
-              <h3 className="text-lg font-black tracking-tight">ĐÃ CẤP TÀI KHOẢN TÀI XẾ THÀNH CÔNG!</h3>
-              <p className="text-xs text-emerald-100 mt-1">Thông tin đăng nhập ứng dụng Driver Portal</p>
-            </div>
-
-            <div className="p-6 space-y-4">
-              <div className="bg-fog rounded-xl p-4 border border-chalk space-y-3">
-                <div className="flex justify-between items-center text-xs pb-2 border-b border-chalk">
-                  <span className="text-slate font-medium">Họ và tên tài xế:</span>
-                  <span className="font-bold text-carbon text-sm">{createdAccountModal.fullName}</span>
-                </div>
-                
-                <div className="flex justify-between items-center text-xs pb-2 border-b border-chalk">
-                  <span className="text-slate font-medium">Email đăng nhập:</span>
-                  <div className="flex items-center gap-1.5 font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
-                    <span>{createdAccountModal.email}</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(createdAccountModal.email);
-                        showToast('📋 Đã chép Email vào clipboard!');
-                      }}
-                      className="hover:text-emerald-950 p-0.5"
-                      title="Sao chép"
-                    >
-                      <span className="material-symbols-outlined text-xs">content_copy</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center text-xs pb-2 border-b border-chalk">
-                  <span className="text-slate font-medium">Mật khẩu tài xế:</span>
-                  <div className="flex items-center gap-2 font-mono font-bold text-carbon bg-slate-100 px-2.5 py-1 rounded border border-chalk">
-                    <span className="tracking-wider">
-                      {modalShowPassword ? createdAccountModal.password : '••••••••••••'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setModalShowPassword(v => !v)}
-                      className="text-slate-600 hover:text-carbon p-0.5 ml-1 transition-colors"
-                      title={modalShowPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'}
-                    >
-                      <span className="material-symbols-outlined text-sm">
-                        {modalShowPassword ? 'visibility_off' : 'visibility'}
-                      </span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(createdAccountModal.password);
-                        showToast('📋 Đã sao chép Mật khẩu vào clipboard!');
-                      }}
-                      className="hover:text-carbon p-0.5 transition-colors"
-                      title="Sao chép"
-                    >
-                      <span className="material-symbols-outlined text-xs">content_copy</span>
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex justify-between items-center text-xs">
-                  <span className="text-slate font-medium">Vai trò hệ thống:</span>
-                  <span className="px-2 py-0.5 bg-cyan-100 text-cyan-800 font-bold rounded-full text-[10px]">Driver (Tài xế)</span>
-                </div>
-              </div>
-
-              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2">
-                <span className="material-symbols-outlined text-amber-600 text-base flex-shrink-0 mt-0.5">info</span>
-                <span>Tài xế có thể truy cập trang <strong>/login</strong>, chọn vai trò <strong>Driver</strong> và nhập Email + Mật khẩu trên để bắt đầu nhận chuyến và xem sơ đồ luồng xe.</span>
-              </div>
-
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const text = `NEXUSPORT - THÔNG TIN TÀI KHOẢN TÀI XẾ\n=====================================\nHọ và tên: ${createdAccountModal.fullName}\nTên đăng nhập / Email: ${createdAccountModal.email}\nMật khẩu: ${createdAccountModal.password}\nVai trò: Driver (Tài xế)\nCổng đăng nhập: ${window.location.origin}/login\nThời gian cấp: ${new Date().toLocaleString('vi-VN')}\n`;
-                    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-                    const url = URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `TaiKhoan_Driver_${createdAccountModal.email.replace(/[^a-zA-Z0-9]/g, '_')}.txt`;
-                    a.click();
-                    URL.revokeObjectURL(url);
-                    showToast('💾 Đã lưu thông tin tài khoản tài xế về máy!');
-                  }}
-                  className="flex-1 h-11 border border-emerald-400 bg-emerald-50 text-emerald-900 rounded-xl text-xs font-bold hover:bg-emerald-100 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
-                >
-                  <span className="material-symbols-outlined text-sm text-emerald-700">save_alt</span>
-                  Lưu file tài khoản
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const text = `Tài khoản Driver NexusPort:\n- Họ tên: ${createdAccountModal.fullName}\n- Tên đăng nhập/Email: ${createdAccountModal.email}\n- Mật khẩu: ${createdAccountModal.password}\n- Đăng nhập tại: ${window.location.origin}/login`;
-                    navigator.clipboard.writeText(text);
-                    showToast('📋 Đã sao chép toàn bộ thông tin tài khoản!');
-                  }}
-                  className="h-11 px-3 border border-chalk bg-white text-carbon rounded-xl text-xs font-bold hover:bg-fog transition-colors flex items-center justify-center gap-1"
-                  title="Sao chép toàn bộ"
-                >
-                  <span className="material-symbols-outlined text-sm">content_copy</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCreatedAccountModal(null)}
-                  className="flex-1 h-11 bg-carbon text-white rounded-xl text-xs font-bold hover:bg-black transition-colors"
-                >
-                  Xong & Đóng
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
     </div>
   )
 }

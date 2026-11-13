@@ -295,8 +295,7 @@ export default function Login() {
         redirectPath = '/dashboard'
       } else if (normalizedRole === 'gate officer' || normalizedRole === 'gate') {
         redirectPath = '/gate'
-      } else if (normalizedRole === 'berth staff' || normalizedRole === 'berth') {
-        redirectPath = '/berth-staff/dashboard'
+
       } else if (normalizedRole === 'shipping line' || normalizedRole === 'shipping') {
         redirectPath = '/shipping-line/dashboard'
       } else if (normalizedRole === 'transport company' || normalizedRole === 'carrier' || normalizedRole === 'carrier staff' || normalizedRole === 'công ty vận tải') {
@@ -330,7 +329,7 @@ export default function Login() {
       redirectPath = '/dashboard'
     } else if (normalizedRole === 'gate officer' || normalizedRole === 'gate') {
       redirectPath = '/gate'
-    } else if (normalizedRole === 'berth staff' || normalizedRole === 'berth' || normalizedRole === 'hãng tàu' || normalizedRole === 'shipping line') {
+    } else if (normalizedRole === 'hãng tàu' || normalizedRole === 'shipping line') {
       redirectPath = '/shipping-line/overview'
     } else if (normalizedRole === 'transport company' || normalizedRole === 'carrier' || normalizedRole === 'carrier staff' || normalizedRole === 'công ty vận tải') {
       redirectPath = '/carrier-portal'
