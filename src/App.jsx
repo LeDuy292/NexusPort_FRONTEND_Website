@@ -31,6 +31,7 @@ import GateControl from './pages/Gate/GateControl'
 import GateDashboard from './pages/Gate/GateDashboard'
 import GateBookings from './pages/Gate/GateBookings'
 import GateVerification from './pages/Gate/GateVerification'
+import ContainerVerification from './pages/Gate/ContainerVerification'
 import GateIncidents from './pages/Gate/GateIncidents'
 import GateHistory from './pages/Gate/GateHistory'
 import GateCameras from './pages/Gate/GateCameras'
@@ -72,7 +73,6 @@ import BillingChargesManagement from './pages/Admin/BillingChargesManagement'
 import ShippingDashboard from './pages/ShippingLine/ShippingDashboard'
 import VesselVoyagePage from './pages/ShippingLine/VesselVoyagePage'
 import ManifestManagementPage from './pages/ShippingLine/ManifestManagementPage'
-import BillOfLadingPage from './pages/ShippingLine/BillOfLadingPage'
 import DeliveryOrderPage from './pages/ShippingLine/DeliveryOrderPage'
 import ServiceCatalogPage from './features/service-catalog/ServiceCatalogPage'
 
@@ -198,7 +198,7 @@ function App() {
             <Route path="/shipping-line" element={<Navigate to="/shipping-line/dashboard" replace />} />
             <Route path="/shipping-line/dashboard" element={<ShippingDashboard />} />
             <Route path="/shipping-line/voyages" element={<VesselVoyagePage />} />
-            <Route path="/shipping-line/bills-of-lading" element={<BillOfLadingPage />} />
+            <Route path="/shipping-line/bills-of-lading" element={<Navigate to="/shipping-line/manifest" replace />} />
             <Route path="/shipping-line/delivery-orders" element={<DeliveryOrderPage />} />
           </Route>
 
@@ -226,6 +226,7 @@ function App() {
             <Route path="/gate/dashboard" element={<GateDashboard />} />
             <Route path="/gate/bookings" element={<GateBookings />} />
             <Route path="/gate/verification" element={<GateVerification />} />
+            <Route path="/gate/container" element={<ContainerVerification />} />
             <Route path="/gate/incidents" element={<GateIncidents />} />
             <Route path="/gate/history" element={<GateHistory />} />
             <Route path="/gate/camera" element={<GateCameras />} />

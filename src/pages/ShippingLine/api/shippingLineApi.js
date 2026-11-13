@@ -1,4 +1,7 @@
+import nodeApiClient from '../../../services/nodeApiClient';
 import expressApiClient from '../../../services/expressApiClient';
+
+const isNodeManifest = (id) => /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(id);
 
 export const shippingLineApi = {
   // 1. Dashboard
@@ -16,16 +19,26 @@ export const shippingLineApi = {
   updateVoyage: (id, payload) => expressApiClient.put(`/shipping-line/voyages/${id}`, payload),
 
   // 3. Bản khai Hàng hóa (Manifest)
-  getManifests: (params = {}) => {
-    const query = new URLSearchParams(params).toString();
-    return expressApiClient.get(`/shipping-line/manifests${query ? `?${query}` : ''}`);
+  getManifestImportTemplate: () => nodeApiClient.get('/shipping-line/manifests/import/template'),
+  previewManifestImport: (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return nodeApiClient.postForm('/shipping-line/manifests/import/preview', form);
   },
-  getManifestDetail: (id) => expressApiClient.get(`/shipping-line/manifests/${id}`),
-  createManifest: (payload) => expressApiClient.post('/shipping-line/manifests', payload),
+  lookupManifestContainer: (containerNumber) => nodeApiClient.get('/shipping-line/manifests/container-lookup', { containerNumber }),
+  getManifests: async (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    const [current, legacy] = await Promise.all([nodeApiClient.get('/shipping-line/manifests', params), expressApiClient.get(`/shipping-line/manifests${query ? `?${query}` : ''}`)]);
+    return [...current, ...legacy];
+  },
+  getManifestDetail: (id) => isNodeManifest(id) ? nodeApiClient.get(`/shipping-line/manifests/${id}`) : expressApiClient.get(`/shipping-line/manifests/${id}`),
+  createManifest: (payload) => nodeApiClient.post('/shipping-line/manifests', payload),
+  updateManifest: (id, payload) => nodeApiClient.put(`/shipping-line/manifests/${id}`, payload),
+  recallManifest: (id) => nodeApiClient.post(`/shipping-line/manifests/${id}/recall`),
   resolveException: (manifestId, recordId, updatedData) =>
     expressApiClient.post(`/shipping-line/manifests/${manifestId}/resolve-exception`, { recordId, ...updatedData }),
   reconcileManifest: (manifestId) => expressApiClient.post(`/shipping-line/manifests/${manifestId}/reconcile`),
-  sendManifestToPort: (manifestId) => expressApiClient.post(`/shipping-line/manifests/${manifestId}/send-to-port`),
+  sendManifestToPort: (manifestId) => isNodeManifest(manifestId) ? nodeApiClient.post(`/shipping-line/manifests/${manifestId}/send-to-port`) : expressApiClient.post(`/shipping-line/manifests/${manifestId}/send-to-port`),
   getSyncedManifests: () => expressApiClient.get('/shipping-line/manifests/port/synced'),
   lookupContainerManifest: (containerNo) => expressApiClient.get(`/shipping-line/manifests/port/lookup/${containerNo}`),
 

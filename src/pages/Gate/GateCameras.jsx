@@ -5,11 +5,10 @@ export default function GateCameras() {
   const [currentTime, setCurrentTime] = useState('')
   const [fullscreen, setFullscreen] = useState(null)
   const [cameras, setCameras] = useState([
-    { id: 'CAM-01', gate: 'Cổng A (Nhận diện tự động)', status: 'Checking...', anpr: true, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
-    { id: 'CAM-02', gate: 'Cổng B (Làn ra)', status: 'Online', anpr: true, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
-    { id: 'CAM-03', gate: 'Cổng C (Dự phòng)', status: 'Offline', anpr: false, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
+    { id: 'CAM-01', gate: 'Cổng Vào (Làn kiểm soát)', status: 'Checking...', anpr: true, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
+    { id: 'CAM-02', gate: 'Cổng Ra (Làn xuất cảng)', status: 'Online', anpr: true, lastPlate: '—', lastConfidence: 0, lastTime: '—', vehiclesProcessed: 0 },
   ])
-  const [confidences, setConfidences] = useState({ 'CAM-01': 0, 'CAM-02': 0, 'CAM-03': 0 })
+  const [confidences, setConfidences] = useState({ 'CAM-01': 0, 'CAM-02': 0 })
 
   useEffect(() => {
     gateService.checkAiHealth().then((res) => {
@@ -33,7 +32,6 @@ export default function GateCameras() {
       setConfidences(prev => ({
         'CAM-01': 97 + Math.random() * 3,
         'CAM-02': 95 + Math.random() * 4,
-        'CAM-03': 0,
       }))
     }, 2000)
     return () => clearInterval(pulse)
