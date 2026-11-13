@@ -19,6 +19,12 @@ export const shippingLineApi = {
   updateVoyage: (id, payload) => expressApiClient.put(`/shipping-line/voyages/${id}`, payload),
 
   // 3. Bản khai Hàng hóa (Manifest)
+  getManifestImportTemplate: () => nodeApiClient.get('/shipping-line/manifests/import/template'),
+  previewManifestImport: (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return nodeApiClient.postForm('/shipping-line/manifests/import/preview', form);
+  },
   lookupManifestContainer: (containerNumber) => nodeApiClient.get('/shipping-line/manifests/container-lookup', { containerNumber }),
   getManifests: async (params = {}) => {
     const query = new URLSearchParams(params).toString();

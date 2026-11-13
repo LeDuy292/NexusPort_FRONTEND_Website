@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { shippingLineApi, formatApiErrorMessage } from './api/shippingLineApi'
 import ManifestComposer from './components/ManifestComposer'
+import ManifestImportDialog from './components/ManifestImportDialog'
 import ManifestDrilldown from './components/ManifestDrilldown'
 import ShippingBadge from './components/ShippingBadge'
 import ShippingPagination from './components/ShippingPagination'
@@ -31,6 +32,8 @@ export default function ManifestManagementPage() {
   const [resumeSession, setResumeSession] = useState(readManifestComposerSession)
   const [showCreateModal, setShowCreateModal] = useState(() => Boolean(readManifestComposerSession()))
   const [editingDraft, setEditingDraft] = useState(() => readManifestComposerSession()?.initialManifest || null)
+  const [showImport, setShowImport] = useState(false)
+  const [importedManifest, setImportedManifest] = useState(null)
   const manifests = useMemo(() => allManifests.filter(m => !directionFilter || m.direction === directionFilter), [allManifests, directionFilter])
   const manifestPage = Math.min(requestedManifestPage, Math.max(1, Math.ceil(manifests.length / manifestPageSize)))
   const loading = loadingList || loadingDetail
@@ -44,7 +47,7 @@ export default function ManifestManagementPage() {
     setParams(next)
   }, [setParams])
   const handleSelectManifest = manifest => { setError(''); goTo(manifest.id) }
-  const handleOpenCreateModal = () => { setResumeSession(null); setEditingDraft(null); setShowCreateModal(true) }
+  const handleOpenCreateModal = () => { setResumeSession(null); setEditingDraft(null); setImportedManifest(null); setShowCreateModal(true) }
 
   useEffect(() => {
     let cancelled = false
@@ -136,6 +139,9 @@ export default function ManifestManagementPage() {
             </button>
           )}
 
+          <button type="button" onClick={() => setShowImport(true)} className="flex items-center gap-1.5 rounded-xl border border-orange-200 bg-white px-4 py-2 text-xs font-bold text-signal-orange hover:bg-orange-50">
+            <span className="material-symbols-outlined text-base">upload_file</span>Import Excel
+          </button>
           <button
             onClick={handleOpenCreateModal}
             className="px-4 py-2 text-xs font-bold text-white bg-signal-orange hover:opacity-90 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
@@ -298,14 +304,17 @@ export default function ManifestManagementPage() {
           {(billNumber || containerNumber) && <button type="button" className="self-start rounded-xl border border-chalk bg-white px-3.5 py-2 text-xs font-bold hover:bg-fog" onClick={() => goTo(manifestId, containerNumber ? billNumber : '')}>← {containerNumber ? 'Quay lại vận đơn' : 'Quay lại bản khai'}</button>}
           <ManifestDrilldown key={manifestId} manifest={selectedManifest} billNumber={billNumber} containerNumber={containerNumber}
             onBill={bill => goTo(manifestId, bill)} onContainer={container => goTo(manifestId, billNumber, container)}
-            onEdit={() => { setResumeSession(null); setEditingDraft(selectedManifest); setShowCreateModal(true) }}
+            onEdit={() => { setResumeSession(null); setImportedManifest(null); setEditingDraft(selectedManifest); setShowCreateModal(true) }}
             onSend={sendManifest} onRecall={recallManifest} acting={acting} />
         </>}
         {!loadingDetail && !selectedManifest && <div className="rounded-2xl border border-chalk bg-white p-8 text-sm text-slate">Không tải được bản khai. Chọn tải lại hoặc quay về danh sách.</div>}
       </>}
-      {showCreateModal && <ManifestComposer voyages={voyages} initialManifest={editingDraft} resumeSession={resumeSession}
-        onClose={() => { setShowCreateModal(false); setResumeSession(null) }} onSaved={document => {
-          setShowCreateModal(false); setResumeSession(null)
+      {showImport && <ManifestImportDialog onClose={() => setShowImport(false)} onReview={manifest => {
+        setShowImport(false); setResumeSession(null); setEditingDraft(null); setImportedManifest(manifest); setShowCreateModal(true)
+      }} />}
+      {showCreateModal && <ManifestComposer voyages={voyages} initialManifest={editingDraft} importedManifest={importedManifest} resumeSession={resumeSession}
+        onClose={() => { setShowCreateModal(false); setResumeSession(null); setImportedManifest(null) }} onSaved={document => {
+          setShowCreateModal(false); setResumeSession(null); setImportedManifest(null)
           setSuccessMsg(document.status === 'DRAFT' ? 'Đã lưu bản khai nháp.' : 'Đã hoàn tất bản khai.')
           setDirectionFilter(''); goTo(); loadData()
         }} />}
