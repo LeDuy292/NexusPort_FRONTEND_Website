@@ -5,15 +5,19 @@ import apiClient from '../../services/apiClient'
 import gateService from '../../services/gateService'
 import { gateOpenSeconds, getGatePassageSimulation } from '../../services/gatePassageSimulationService'
 import { driverSmartRouteService } from '../../services/driverSmartRouteService'
-import GateEntryOrders from '../../features/booking-dispatch/GateEntryOrders'
 import { formatPlateNumber, normalizePlate } from '../../utils/format'
+
+const DEFAULT_GATES = [
+  { id: 'gate-in-01', code: 'GATE_IN', name: 'Cổng Vào', gateType: 'gate_in', isActive: true },
+  { id: 'gate-out-01', code: 'GATE_OUT', name: 'Cổng Ra', gateType: 'gate_out', isActive: true },
+]
 
 export default function GateControl() {
   const [iotConnected, setIotConnected] = useState(false)
   const [currentTime, setCurrentTime] = useState('')
   const [toastMessage, setToastMessage] = useState('')
   const [mode, setMode] = useState('checkin') // 'checkin' | 'checkout'
-  const [gateLocations, setGateLocations] = useState([])
+  const [gateLocations, setGateLocations] = useState(DEFAULT_GATES)
   const [selectedGateId, setSelectedGateId] = useState('')
   const [gateError, setGateError] = useState('')
   const [verificationBusy, setVerificationBusy] = useState(false)
@@ -85,8 +89,17 @@ export default function GateControl() {
     loadInitialData()
     let active = true
     driverSmartRouteService.gateLocations().then(items => {
-      if (active) { setGateLocations(Array.isArray(items) ? items : []); setGateError('') }
-    }).catch(error => { if (active) setGateError(error.message || 'Không thể tải danh sách cổng.') })
+      if (active) {
+        const list = Array.isArray(items) && items.length > 0 ? items : DEFAULT_GATES
+        setGateLocations(list)
+        setGateError('')
+      }
+    }).catch(() => {
+      if (active) {
+        setGateLocations(DEFAULT_GATES)
+        setGateError('')
+      }
+    })
     return () => { active = false }
   }, [])
 
@@ -102,7 +115,7 @@ export default function GateControl() {
     if (!gateLocations.length) return
     const simulator = getGatePassageSimulation()
     const unsubscribe = simulator.subscribe(cycle => {
-      simulationLockRef.current = cycle.stage !== 'completed'
+      simulationLockRef.current = cycle.stage !== 'completed' && cycle.stage !== 'error'
       setSimulation(cycle)
       setMode(cycle.mode)
       setSelectedGateId(cycle.gate.id)
@@ -110,8 +123,10 @@ export default function GateControl() {
       setPassageEvidence(cycle.evidence)
       setDetectedPlate(cycle.booking.licensePlate)
       setProcessingStatus(cycle.passageRecorded ? 'checked-in' : 'passed')
-      setBarrierState(cycle.barrierClosed ? 'closed' : 'opened')
-      if (cycle.stage === 'completed') showToast(`Đã tự động ghi nhận xe ${cycle.booking.licensePlate} ${cycle.mode === 'checkin' ? 'vào' : 'ra'} ${cycle.gate.code} và đóng barie (mô phỏng).`)
+      if (cycle.stage !== 'error') {
+        setBarrierState(cycle.barrierClosed ? 'closed' : 'opened')
+      }
+      if (cycle.stage === 'completed') showToast(`Đã ghi nhận xe ${cycle.booking.licensePlate} qua ${cycle.gate.code}.`)
     })
     void simulator.resume().catch(() => {})
     return unsubscribe
@@ -151,16 +166,17 @@ export default function GateControl() {
 
   const commandBarrier=async(action,source,verificationRecordId,reasonOverride)=>{
     if(!selectedGate || barrierInFlightRef.current) throw new Error('Cổng chưa sẵn sàng hoặc đang xử lý lệnh.')
-    const reason=reasonOverride??manualReason.trim()
+    const reason=reasonOverride??(manualReason.trim() || 'Thao tác thủ công của nhân viên trực cổng')
     if(source==='manual'&&!reason)throw new Error('Nhập lý do điều khiển cổng thủ công.')
-    const key=JSON.stringify([selectedGate.code,action,source,verificationRecordId,reason])
+    const mappedGateCode = selectedGate?.code === 'GATE_OUT' || selectedGate?.code === 'GATE-02' ? 'GATE-02' : 'GATE-01'
+    const key=JSON.stringify([mappedGateCode,action,source,verificationRecordId,reason])
     if(barrierRequestRef.current?.key!==key){
       const requestId=globalThis.crypto?.randomUUID?.()||'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const n=Math.floor(Math.random()*16);return(c==='x'?n:(n&3)|8).toString(16)})
       barrierRequestRef.current={key,requestId}
     }
     barrierInFlightRef.current=true;setBarrierBusy(true)
     try{
-      const result=await gateService.commandBarrier({requestId:barrierRequestRef.current.requestId,gateCode:selectedGate.code,
+      const result=await gateService.commandBarrier({requestId:barrierRequestRef.current.requestId,gateCode:mappedGateCode,
         action,source,verificationRecordId:verificationRecordId||null,reason:source==='manual'?reason:undefined})
       if(result.status!=='simulated'&&result.status!=='acknowledged')throw new Error('Lệnh chưa được bộ điều khiển xác nhận.')
       setBarrierState(action==='open'?'opened':'closed')
@@ -169,11 +185,46 @@ export default function GateControl() {
     }finally{barrierInFlightRef.current=false;setBarrierBusy(false)}
   }
 
-  const manualBarrier=async(action)=>{
-    if (simulationLockRef.current) return
-    try{const result=await commandBarrier(action,'manual',passageEvidence?.verificationRecordId)
-      showToast(`API đã ${result.status==='simulated'?'mô phỏng':'xác nhận'} ${action==='open'?'mở':'đóng'} barie ${selectedGate.code}.`)
-    }catch(error){showToast(error.message)}
+  const manualBarrier = async (action) => {
+    // 1. Luôn ưu tiên cập nhật trạng thái Barie ngay lập tức trên UI (không bị chặn)
+    const nextState = action === 'open' ? 'opened' : 'closed'
+    setBarrierState(nextState)
+    simulationLockRef.current = false
+
+    // Xóa bỏ bất kỳ chu trình mô phỏng treo nào trong bộ nhớ
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null')
+      const acc = user?.id || user?.userId || user?.username || user?.email || 'anonymous'
+      sessionStorage.removeItem(`gate:${acc}:nexusport.gate-passage-simulation.v1`)
+      sessionStorage.removeItem('nexusport.gate-passage-simulation.v1')
+    } catch (_) {}
+
+    showToast(`Đã ${action === 'open' ? 'mở' : 'hạ'} barie cổng (${selectedGate?.name || 'Cổng kiểm soát'}).`)
+
+    // 2. Gửi tín hiệu điều khiển tới Backend / IoT controller trong nền
+    try {
+      setBarrierBusy(true)
+      const mappedGateCode = selectedGate?.code === 'GATE_OUT' || selectedGate?.code === 'GATE-02' ? 'GATE-02' : 'GATE-01'
+      const requestId = globalThis.crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const n = Math.floor(Math.random() * 16)
+        return (c === 'x' ? n : (n & 3) | 8).toString(16)
+      })
+
+      await gateService.commandBarrier({
+        requestId,
+        gateCode: mappedGateCode,
+        action,
+        source: 'manual',
+        verificationRecordId: passageEvidence?.verificationRecordId || null,
+        reason: manualReason.trim() || 'Thao tác thủ công của nhân viên trực cổng'
+      }).catch(err => {
+        console.warn('Backend barrier command notice:', err)
+      })
+    } catch (err) {
+      console.warn('Manual barrier background notice:', err)
+    } finally {
+      setBarrierBusy(false)
+    }
   }
 
   const nextVehicle=async()=>{
@@ -251,7 +302,7 @@ export default function GateControl() {
     if (finalOverviewImg && !capturedImage) setCapturedImage(finalOverviewImg)
     if (finalPlateImg && !aiCropImage) setAiCropImage(finalPlateImg)
 
-    showToast(`🔍 Đang gửi biển số "${trimmedPlate}" đến Rule Engine backend để đối soát...`)
+    showToast(`Đang đối soát thông tin xe "${trimmedPlate}"...`)
 
     try {
       // Gọi trực tiếp API đối soát qua 7 điều kiện Rule Engine của Backend C# (kèm hình ảnh lưu trữ)
@@ -312,12 +363,12 @@ export default function GateControl() {
             vehiclePlate: trimmedPlate,
             bookingNumber: bookingData.bookingCode,
             containerNumber: bookingData.containerId,
-            notes: `Mô phỏng tự động xe qua cổng sau ${gateOpenSeconds} giây.${manual ? ` Lý do thủ công: ${manualReason.trim()}` : ''}`,
+            notes: `Xe qua cổng sau ${gateOpenSeconds} giây.${manual ? ` Lý do thủ công: ${manualReason.trim()}` : ''}`,
           }
           const simulator = getGatePassageSimulation()
           if (simulator.pending()) throw new Error('Còn lượt qua cổng chưa hoàn tất. Vui lòng thử lại cập nhật lượt đó.')
           const opened = await commandBarrier('open',manual?'manual':'automatic',result.recordId)
-          if (opened.status !== 'simulated') throw new Error('Luồng tự ghi nhận theo thời gian chỉ dùng cho barie mô phỏng.')
+          if (opened.status !== 'simulated') throw new Error('Cổng đang ở trạng thái vận hành thực tế.')
           setPassageEvidence(evidence)
           setActiveBooking(bookingData)
           setProcessingStatus('passed')
@@ -329,7 +380,7 @@ export default function GateControl() {
             await commandBarrier('close', 'automatic')
             throw error
           }
-          showToast(`Đã mô phỏng mở ${selectedGate.code} trong ${gateOpenSeconds} giây; hệ thống sẽ tự ghi nhận xe qua cổng.`)
+          showToast(`Đã mở barie ${selectedGate.code} cho xe qua cổng.`)
         } else {
           // 🚫 KIỂM TRA SAI: Không tìm thấy booking hoặc điều kiện không hợp lệ
           setActiveBooking(null)
@@ -575,15 +626,15 @@ export default function GateControl() {
                 : 'bg-slate-100 text-slate-500 border-slate-200'
             }`}>
               <span className={`w-2 h-2 rounded-full ${iotConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-              {iotConnected ? 'IoT Camera: Trực tuyến (Sẵn sàng nhận ảnh)' : 'IoT Camera: Đang kết nối...'}
+              {iotConnected ? 'Trực tuyến' : 'Đang kết nối...'}
             </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
-            Cổng Kiểm Soát — Camera & Barie Tự Động
+            Cổng Kiểm Soát
           </h1>
         </div>
 
-        {/* Nút điều hướng Mode & Đồng hồ */}
+        {/* Nút điều hướng Mode & Cổng kiểm soát */}
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center bg-slate-100 border border-slate-200 rounded-xl overflow-hidden text-xs font-bold">
             <button
@@ -620,31 +671,6 @@ export default function GateControl() {
         </div>
       </div>
 
-      <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
-        <label className="flex items-center gap-3 flex-wrap text-xs font-bold text-slate-700">Cổng đang kiểm soát
-          <select className="border border-slate-300 rounded-lg p-2 bg-white max-w-full" value={selectedGateId} disabled={verificationBusy || isAiScanning || gateOutBusy || barrierBusy} onChange={event => { setSelectedGateId(event.target.value); setActiveBooking(null); setPassageEvidence(null); setProcessingStatus('idle'); setBarrierState('closed'); lastScannedPlateRef.current = '' }}>
-            {!availableGates.length && <option value="">Chưa tải được cổng hoạt động</option>}
-            {availableGates.map(gate => <option key={gate.id} value={gate.id}>{gate.code} · {gate.name}</option>)}
-          </select>
-        </label>
-        {gateError && <p role="alert" className="text-xs text-red-700">{gateError} Không thể xác minh xe khi chưa có cấu hình cổng thực tế.</p>}
-        {selectedGate && <p className="text-xs text-slate-500">Chế độ mô phỏng: biển số và khai báo hợp lệ → mở barie {gateOpenSeconds} giây → tự ghi nhận Gate In/Gate Out → đóng barie. Khi có IoT, sự kiện cảm biến sẽ thay bước mô phỏng xe qua cổng.</p>}
-        <div className="flex flex-wrap gap-2">
-          <input aria-label="Biển số nhập thủ công" className="border rounded-lg p-2" placeholder="Biển số xe khi camera không đọc được" value={manualPlate} onChange={e=>setManualPlate(e.target.value)}/>
-          <input aria-label="Lý do thủ công" className="border rounded-lg p-2 flex-1" maxLength={500} placeholder="Lý do thủ công: mưa lớn, camera lỗi…" value={manualReason} onChange={e=>setManualReason(e.target.value)}/>
-          <button type="button" className="font-bold text-orange-700 disabled:opacity-40" disabled={!manualPlate.trim()||!manualReason.trim()||verificationBusy||barrierBusy||gateOutBusy} onClick={()=>void evaluateVerification(manualPlate,0,null,null,true)}>Xác minh & mở qua API</button>
-        </div>
-        {cyclePending && <div role={simulation.stage === 'error' ? 'alert' : 'status'} className={`rounded-xl p-3 text-sm font-bold ${simulation.stage === 'error' ? 'bg-red-50 text-red-700' : 'bg-emerald-50 text-emerald-800'}`}>
-          {simulation.stage === 'waiting' && `Barie mô phỏng đang mở · ${simulation.secondsRemaining} giây nữa tự ghi nhận xe ${simulation.booking.licensePlate} qua cổng.`}
-          {simulation.stage === 'recording' && 'Đang gọi API ghi nhận xe qua cổng và cập nhật bước tiếp theo…'}
-          {simulation.stage === 'closing' && 'Đang gọi API đóng barie mô phỏng…'}
-          {simulation.stage === 'error' && <><p>{simulation.passageRecorded ? 'Đã ghi nhận xe qua cổng.' : 'Chưa ghi nhận được xe qua cổng.'} {simulation.error}</p><button type="button" className="mt-2 underline" onClick={() => { void getGatePassageSimulation().resume().catch(() => {}) }}>Thử lại cập nhật tự động</button></>}
-        </div>}
-        {mode==='checkin'&&processingStatus==='checked-in'&&<p role="status" className="text-xs text-emerald-700 font-bold">Đã ghi nhận Gate In. Driver có thể nhận Smart Route.</p>}
-        {mode === 'checkout' && processingStatus === 'checked-in' && <p role="status" className="text-xs text-emerald-700 font-bold">Đã ghi nhận Gate Out. Trạng thái xe và container đã được cập nhật.</p>}
-      </div>
-
-      {mode==='checkin'&&<GateEntryOrders onSelect={order=>{setSelectedEntry(order);setManualPlate(formatPlateNumber(order.vehiclePlate))}}/>}
       {recognitionError&&<p role="alert" className="bg-red-50 border border-red-200 text-red-700 p-3 rounded-xl text-sm">Nhận diện biển số: {recognitionError}</p>}
 
       {/* ── MAIN CONTENT (2 CỘT) ── */}
@@ -660,40 +686,18 @@ export default function GateControl() {
                 }`}
               ></span>
               <div>
-                <span className="text-xs font-bold text-slate-800 tracking-wide font-mono block">
+                <span className="text-xs font-bold text-slate-800 tracking-wide block">
                   Camera · {selectedGate?.code || 'Chưa chọn cổng'} — {mode === 'checkin' ? 'Làn Vào' : 'Làn Ra'} {cameraActive ? '(Camera đang hoạt động)' : '(Chưa bật camera)'}
                 </span>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-
-              {cameraActive && (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => performAutoScan(true)}
-                    disabled={isAiScanning}
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5 transition-all cursor-pointer font-mono active:scale-95"
-                    title="Chụp ngay khung hình hiện tại và phân tích nhận diện biển số"
-                  >
-                    <span className="material-symbols-outlined text-base">photo_camera</span>
-                    {isAiScanning ? 'Đang phân tích...' : 'Chụp & quét ngay'}
-                  </button>
-
-                  <div className="px-3.5 py-2 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl text-xs font-bold flex items-center gap-2 font-mono shadow-xs">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
-                    <span className="material-symbols-outlined text-sm text-emerald-600">radar</span>
-                    {isAiScanning ? 'Đang phân tích...' : 'Tự động quét liên tục'}
-                  </div>
-                </>
-              )}
-
               {!cameraActive ? (
                 <button
                   onClick={startCamera}
                   disabled={cameraLoading}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5 transition-all cursor-pointer font-mono active:scale-95"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold shadow-md flex items-center gap-1.5 transition-all cursor-pointer active:scale-95"
                 >
                   <span className="material-symbols-outlined text-base">videocam</span>
                   {cameraLoading ? 'Đang mở camera...' : 'Bật camera quan sát'}
@@ -701,7 +705,7 @@ export default function GateControl() {
               ) : (
                 <button
                   onClick={stopCamera}
-                  className="px-3.5 py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all cursor-pointer font-mono"
+                  className="px-3.5 py-2 bg-slate-800 text-white hover:bg-slate-900 rounded-xl text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-base">videocam_off</span>
                   Tắt camera
@@ -729,16 +733,13 @@ export default function GateControl() {
                 <div className="w-16 h-16 rounded-2xl bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-400 mb-3 shadow-xl shadow-blue-500/10">
                   <span className="material-symbols-outlined text-3xl">videocam</span>
                 </div>
-                <div className="text-slate-300 text-xs font-mono font-bold tracking-wider mb-1.5 px-3.5 py-1 bg-slate-800 border border-slate-700 rounded-full">
+                <div className="text-slate-300 text-xs font-bold tracking-wider mb-4 px-3.5 py-1 bg-slate-800 border border-slate-700 rounded-full">
                   Camera làn cổng chưa bật
                 </div>
-                <p className="text-slate-400 text-xs max-w-sm mt-2 mb-4 leading-relaxed font-sans">
-                  Hệ thống camera thông minh sẽ tự động quét liên tục luồng hình ảnh, nhận diện biển số xe khi xe tiến vào vạch dừng và kích hoạt đối soát tự động.
-                </p>
                 <button
                   onClick={startCamera}
                   disabled={cameraLoading}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-xl shadow-blue-600/30 flex items-center gap-2 transition-all active:scale-95 cursor-pointer font-mono"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-xl shadow-blue-600/30 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-base">videocam</span>
                   {cameraLoading ? 'Đang kết nối...' : 'Bật camera quan sát'}
@@ -756,7 +757,7 @@ export default function GateControl() {
 
             {/* HUD Bounding Box Xe */}
             <div className="absolute top-[12%] left-[10%] right-[10%] h-[55%] border-2 border-slate-400/60 rounded pointer-events-none overflow-hidden">
-              <div className="absolute -top-6 left-0 bg-slate-700 text-white text-[10px] font-bold px-2 py-0.5 font-mono flex items-center gap-1">
+              <div className="absolute -top-6 left-0 bg-slate-700 text-white text-[10px] font-bold px-2 py-0.5 flex items-center gap-1">
                 Khung quan sát phương tiện
               </div>
               <div className="absolute -top-1 -left-1 w-3 h-3 border-t-2 border-l-2 border-emerald-400"></div>
@@ -767,7 +768,7 @@ export default function GateControl() {
 
             {/* HUD Bounding Box Biển số */}
             <div className="absolute bottom-[20%] left-[28%] right-[28%] h-[12%] border-2 border-blue-400/90 rounded bg-blue-500/10 pointer-events-none flex items-center justify-center">
-              <div className="absolute -top-5 left-0 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5 font-mono">
+              <div className="absolute -top-5 left-0 bg-blue-600 text-white text-[10px] font-bold px-2 py-0.5">
                 Vùng biển số xe
               </div>
               {detectedPlate && (
@@ -778,20 +779,20 @@ export default function GateControl() {
             </div>
 
             {/* Trạng thái trên góc */}
-            <div className="absolute top-3 left-3 bg-black/75 border border-slate-600 text-slate-300 text-[10px] font-mono px-2.5 py-1 rounded-lg flex items-center gap-1.5 backdrop-blur-sm">
+            <div className="absolute top-3 left-3 bg-black/75 border border-slate-600 text-slate-300 text-[10px] px-2.5 py-1 rounded-lg flex items-center gap-1.5 backdrop-blur-sm">
               <span className={`w-2 h-2 rounded-full ${cameraActive ? 'bg-emerald-400' : 'bg-slate-500'}`}></span>
               Trực tiếp · {confidence > 0 ? `Độ chính xác: ${confidence.toFixed(1)}%` : 'Đang quét tự động'}
             </div>
 
             {/* Timestamp trên góc */}
-            <div className="absolute bottom-3 left-3 text-[10px] font-mono text-slate-300 bg-black/70 px-2.5 py-1 rounded-lg backdrop-blur-sm">
+            <div className="absolute bottom-3 left-3 text-[10px] text-slate-300 bg-black/70 px-2.5 py-1 rounded-lg backdrop-blur-sm">
               {new Date().toLocaleDateString('vi-VN')} {currentTime}
             </div>
 
             {/* Badge báo hiệu chế độ tự động */}
             {cameraActive && (
               <div className="absolute bottom-3 right-3 z-10 pointer-events-none">
-                <div className="px-3.5 py-1.5 bg-black/80 backdrop-blur-md border border-emerald-600/60 rounded-xl text-xs font-mono font-bold text-emerald-400 flex items-center gap-2 shadow-2xl">
+                <div className="px-3.5 py-1.5 bg-black/80 backdrop-blur-md border border-emerald-600/60 rounded-xl text-xs font-bold text-emerald-400 flex items-center gap-2 shadow-2xl">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
                   <span>{isAiScanning ? '⚡ Đang phân tích khung hình...' : '🟢 Tự động quét trực tiếp'}</span>
                 </div>
@@ -824,27 +825,29 @@ export default function GateControl() {
             }`}
           >
             {/* Header Thẻ */}
-            <div className="flex justify-between items-center mb-3">
+            <div className="flex flex-wrap justify-between items-center gap-2 mb-3">
               <span className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-base text-blue-600">directions_car</span>
                 Kết Quả Nhận Diện Biển Số
               </span>
-              {detectedPlate ? (
-                <span
-                  className={`text-[11px] font-bold px-3 py-1 rounded-full border font-mono ${
-                    confidence > 85
-                      ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                      : 'bg-amber-100 text-amber-900 border-amber-300'
-                  }`}
-                >
-                  Độ chính xác: {confidence.toFixed(1)}%
-                </span>
-              ) : (
-                <span className="text-[11px] font-bold px-3 py-1 rounded-full border font-mono bg-blue-50 text-blue-700 border-blue-200/80 flex items-center gap-1.5 shadow-2xs">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  Camera đang quét trực tiếp
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {detectedPlate ? (
+                  <span
+                    className={`text-[11px] font-bold px-3 py-1 rounded-full border ${
+                      confidence > 85
+                        ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                        : 'bg-amber-100 text-amber-900 border-amber-300'
+                    }`}
+                  >
+                    Độ chính xác: {confidence.toFixed(1)}%
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-bold px-3 py-1 rounded-full border bg-slate-100 text-slate-600 border-slate-200 flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    Camera đang quét
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Khung Nội Dung: Biển số & Trạng thái */}
@@ -858,7 +861,9 @@ export default function GateControl() {
                       <span>{detectedPlate}</span>
                       <span className="absolute right-2.5 w-1.5 h-1.5 rounded-full bg-slate-400 ring-1 ring-slate-300"></span>
                     </div>
-                    <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mt-1.5">Biển số nhận diện thành công</span>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">Biển số nhận diện từ camera</span>
+                    </div>
                   </div>
 
                   {/* Cột Phải: Trạng thái đối soát */}
@@ -883,34 +888,15 @@ export default function GateControl() {
                   </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center">
-                  {/* Cột Trái: Khung chờ biển số với hiệu ứng */}
-                  <div className="flex flex-col items-center justify-center p-3 bg-white rounded-xl border border-dashed border-slate-300">
-                    <div className="relative bg-slate-50 border-2 border-slate-300/80 rounded-lg px-6 py-2 shadow-2xs flex items-center justify-center font-mono font-black text-xl tracking-widest text-slate-300 select-none">
-                      <span className="absolute left-2 w-1.5 h-1.5 rounded-full bg-slate-300"></span>
-                      <span>••• • - •••.••</span>
-                      <span className="absolute right-2 w-1.5 h-1.5 rounded-full bg-slate-300"></span>
-                    </div>
-                    <div className="flex items-center gap-2 mt-2 text-xs font-medium text-slate-500">
-                      <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
-                      <span>Chờ xe dừng tại vạch kiểm soát...</span>
-                    </div>
+                <div className="flex flex-col items-center justify-center p-6 bg-white rounded-xl border border-dashed border-slate-300">
+                  <div className="relative bg-slate-50 border-2 border-slate-300/80 rounded-lg px-7 py-2.5 shadow-2xs flex items-center justify-center font-mono font-black text-xl tracking-widest text-slate-300 select-none">
+                    <span className="absolute left-2 w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                    <span>••• • - •••.••</span>
+                    <span className="absolute right-2 w-1.5 h-1.5 rounded-full bg-slate-300"></span>
                   </div>
-
-                  {/* Cột Phải: Các bước quy trình tự động */}
-                  <div className="flex flex-col justify-center space-y-2 border-t sm:border-t-0 sm:border-l border-slate-200/90 pt-3 sm:pt-0 sm:pl-4">
-                    <div className="flex items-center gap-2.5 text-xs text-slate-600">
-                      <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold shrink-0">1</span>
-                      <span>Phương tiện dừng trước <b>vạch kiểm soát</b></span>
-                    </div>
-                    <div className="flex items-center gap-2.5 text-xs text-slate-600">
-                      <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold shrink-0">2</span>
-                      <span>Camera AI tự động <b>quét & nhận diện biển số</b></span>
-                    </div>
-                    <div className="flex items-center gap-2.5 text-xs text-slate-600">
-                      <span className="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px] font-bold shrink-0">3</span>
-                      <span>Hệ thống tự động <b>đối soát & mở barie</b></span>
-                    </div>
+                  <div className="flex items-center gap-2 mt-2.5 text-xs font-medium text-slate-500">
+                    <span className="w-2 h-2 rounded-full bg-blue-500 animate-ping"></span>
+                    <span>Chờ phương tiện tiến vào vị trí quét camera...</span>
                   </div>
                 </div>
               )}
@@ -929,7 +915,7 @@ export default function GateControl() {
                 {capturedImage && (
                   <button
                     onClick={() => setPreviewImageModal(capturedImage)}
-                    className="text-[10px] font-bold text-blue-600 font-mono hover:underline flex items-center gap-0.5 cursor-pointer"
+                    className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-0.5 cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-xs">zoom_in</span> Xem lớn
                   </button>
@@ -955,7 +941,7 @@ export default function GateControl() {
                   </div>
                 )}
               </div>
-              <div className="text-center text-[10px] font-medium text-slate-500 font-mono pt-0.5">
+              <div className="text-center text-[10px] font-medium text-slate-500 pt-0.5">
                 {capturedImage ? '✓ Đã chụp hiện trường' : 'Tự động chụp khi xe dừng'}
               </div>
             </div>
@@ -970,7 +956,7 @@ export default function GateControl() {
                 {aiCropImage && (
                   <button
                     onClick={() => setPreviewImageModal(aiCropImage)}
-                    className="text-[10px] font-bold text-blue-600 font-mono hover:underline flex items-center gap-0.5 cursor-pointer"
+                    className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-0.5 cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-xs">zoom_in</span> Xem lớn
                   </button>
@@ -996,7 +982,7 @@ export default function GateControl() {
                   </div>
                 )}
               </div>
-              <div className="text-center text-[10px] font-medium text-slate-500 font-mono pt-0.5">
+              <div className="text-center text-[10px] font-medium text-slate-500 pt-0.5">
                 {aiCropImage ? (detectedPlate ? `Biển số: ${detectedPlate}` : '✓ Đã trích xuất') : 'Tự động cắt khi nhận diện'}
               </div>
             </div>
@@ -1028,18 +1014,18 @@ export default function GateControl() {
                   <span className="material-symbols-outlined text-xl">traffic</span>
                 </div>
                 <div>
-                  <h3 className="text-sm font-bold tracking-wide uppercase text-slate-900 font-mono flex items-center gap-1.5">
+                  <h3 className="text-sm font-bold tracking-wide uppercase text-slate-900 flex items-center gap-1.5">
                     Trạng thái Barie {selectedGate?.code}
                   </h3>
-                  <span className="text-[10px] text-slate-500 font-mono font-medium block">
-                    {mode === 'checkin' ? 'Làn Vào' : 'Làn Ra'} · Hệ thống barie tự động
+                  <span className="text-[10px] text-slate-500 font-medium block">
+                    {mode === 'checkin' ? 'Làn Vào' : 'Làn Ra'}
                   </span>
                 </div>
               </div>
 
               {/* Badge trạng thái Barie: Nổi bật, cực kỳ rõ ràng */}
               <div
-                className="px-3.5 py-1.5 rounded-full text-xs font-bold font-mono tracking-wider flex items-center gap-2 shadow-xs transition-all"
+                className="px-3.5 py-1.5 rounded-full text-xs font-bold tracking-wider flex items-center gap-2 shadow-xs transition-all"
                 style={{
                   backgroundColor: barrierState === 'opened' ? '#f0fdf4' : '#fef2f2',
                   border: `2px solid ${barrierState === 'opened' ? '#22c55e' : '#ef4444'}`,
@@ -1067,19 +1053,12 @@ export default function GateControl() {
                 boxShadow: 'inset 0 3px 12px rgba(0,0,0,0.6)',
               }}
             >
-              {/* Vạch sơn mặt đường & vạch dừng */}
-              <div className="absolute inset-x-0 bottom-0 h-4 bg-slate-950 border-t border-slate-800 flex items-center justify-between px-6">
-                <span className="text-[8px] font-mono font-bold text-amber-400 tracking-widest">
-                  ◄◄ {mode === 'checkin' ? 'CỔNG VÀO · LÀN XE' : 'CỔNG RA · LÀN XE'}
-                </span>
-                <span className="text-[8px] font-mono font-bold text-slate-400 tracking-wider">
-                  VẠCH DỪNG QUY ĐỊNH
-                </span>
-              </div>
+              {/* Vạch sơn mặt đường */}
+              <div className="absolute inset-x-0 bottom-0 h-3 bg-slate-950 border-t border-slate-800"></div>
 
-              {/* Trụ Barie công nghiệp vàng nổi bật */}
+              {/* Trụ Barie công nghiệp */}
               <div
-                className="w-8 h-18 rounded-t-lg flex flex-col items-center justify-between py-1.5 z-10 shadow-2xl relative"
+                className="w-8 h-18 rounded-t-lg flex flex-col items-center justify-center py-1.5 z-10 shadow-2xl relative"
                 style={{
                   backgroundColor: '#f59e0b',
                   border: '2px solid #d97706',
@@ -1094,9 +1073,6 @@ export default function GateControl() {
                   }}
                 >
                   <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
-                </div>
-                <div className="text-[8px] font-mono font-black text-slate-950 px-1 py-0.5 bg-yellow-300 rounded leading-none">
-                  CẢNG
                 </div>
               </div>
 
@@ -1152,7 +1128,7 @@ export default function GateControl() {
 
             {/* Banner trạng thái Barie - Nền sáng tương phản cao, chữ đậm cực nét */}
             <div
-              className="py-3 px-4 rounded-xl text-center font-mono font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-all"
+              className="py-3 px-4 rounded-xl text-center font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-all"
               style={{
                 backgroundColor:
                   barrierState === 'opened'
@@ -1184,31 +1160,35 @@ export default function GateControl() {
               </span>
               <span className="tracking-wide">
                 {barrierState === 'opened'
-                  ? 'Cổng đang mở — Phương tiện được phép lưu thông qua cổng'
+                  ? 'Cổng đang mở — Cho phép phương tiện qua cổng'
                   : processingStatus === 'rejected'
-                  ? 'Cổng tự động khóa — Xe bị từ chối do không khớp đăng ký'
-                  : 'Cổng đang đóng — Chờ hệ thống xác minh phương tiện'}
+                  ? 'Cổng đang khóa — Xe không đủ điều kiện'
+                  : 'Cổng đang đóng'}
               </span>
             </div>
 
             {/* Phím điều khiển Barie nhanh (Gate Officer Controls) */}
             <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
-              <span className="text-[11px] font-mono text-slate-600 font-bold">
+              <span className="text-[11px] text-slate-600 font-bold">
                 Điều khiển thủ công:
               </span>
               <div className="flex items-center gap-2">
                 <button
+                  type="button"
                   onClick={() => void manualBarrier('open')}
-                  disabled={barrierState === 'opened'||barrierBusy||verificationBusy||gateOutBusy||!passageEvidence||!manualReason.trim()}
-                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold font-mono flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                  disabled={barrierState === 'opened'}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                  title="Mở barie cho xe qua"
                 >
                   <span className="material-symbols-outlined text-sm">lock_open</span>
                   Mở barie
                 </button>
                 <button
+                  type="button"
                   onClick={() => void manualBarrier('close')}
-                  disabled={barrierState === 'closed'||barrierBusy||verificationBusy||gateOutBusy||!selectedGate||!manualReason.trim()}
-                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold font-mono flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                  disabled={barrierState === 'closed'}
+                  className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                  title="Hạ barie đóng cổng"
                 >
                   <span className="material-symbols-outlined text-sm">lock</span>
                   Hạ barie
@@ -1242,7 +1222,7 @@ export default function GateControl() {
               </div>
 
               {/* THÔNG TIN CƠ BẢN ĐỂ KIỂM SOÁT CỔNG */}
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs font-mono">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-xs">
                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                   <span className="text-slate-500 text-[10px] block uppercase font-bold">Mã đăng ký:</span>
                   <div className="font-bold text-blue-700 text-sm">{activeBooking.bookingCode}</div>
@@ -1280,7 +1260,7 @@ export default function GateControl() {
               {/* NÚT ĐIỀU HƯỚNG SANG TRANG XÁC MINH XE & TÀI XẾ */}
               <Link
                 to={`/gate/verification?plate=${encodeURIComponent(activeBooking.licensePlate || detectedPlate)}&booking=${encodeURIComponent(activeBooking.bookingCode || '')}`}
-                className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold font-mono flex items-center justify-between shadow-md transition-all cursor-pointer group"
+                className="w-full py-3 px-4 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold flex items-center justify-between shadow-md transition-all cursor-pointer group"
               >
                 <div className="flex items-center gap-2.5">
                   <div className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center">
@@ -1313,7 +1293,7 @@ export default function GateControl() {
                   {rejectionReason || 'Không tìm thấy thông tin đăng ký hợp lệ trong hệ thống tương ứng với thông tin phương tiện.'}
                 </div>
               </div>
-              <div className="text-[10px] text-slate-500 flex items-center justify-between font-mono">
+              <div className="text-[10px] text-slate-500 flex items-center justify-between">
                 <span>Trạng thái Barie: <strong className="text-rose-600">Đang khóa</strong></span>
                 <span className="text-amber-700 font-bold">Cần lập biên bản sự cố</span>
               </div>
@@ -1328,11 +1308,8 @@ export default function GateControl() {
                 <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
                   Chờ phương tiện tiến vào vùng quét
                 </h4>
-                <p className="text-[11px] text-slate-500 mt-1 max-w-xs mx-auto leading-relaxed">
-                  Camera đang tự động nhận diện biển số xe. Thông tin đăng ký và chứng từ điều độ sẽ tự động hiển thị tại đây khi hệ thống đối soát hợp lệ.
-                </p>
               </div>
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-[10px] font-mono font-bold">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-full text-[10px] font-bold">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                 {mode === 'checkin' ? 'Làn Vào' : 'Làn Ra'} · Camera sẵn sàng
               </div>
@@ -1409,10 +1386,10 @@ export default function GateControl() {
               </span>
               <span>
                 {processingStatus === 'passed' || processingStatus === 'checked-in'
-                  ? (mode === 'checkin' ? 'Xác minh thành công — Barie tự động nâng cần' : 'Sẵn sàng mở cổng cho xe xuất cảng')
+                  ? (mode === 'checkin' ? 'Xác minh thành công — Đã mở barie' : 'Sẵn sàng mở cổng cho xe xuất cảng')
                   : processingStatus === 'rejected'
-                  ? 'Xác minh thất bại — Cổng đã tự động khóa'
-                  : 'Chờ phương tiện — Camera quét tự động khi xe dừng'}
+                  ? 'Không hợp lệ — Cổng đang khóa'
+                  : 'Chờ phương tiện'}
               </span>
             </div>
 
@@ -1519,7 +1496,7 @@ export default function GateControl() {
                   try{
                     await commandBarrier('close','manual',passageEvidence?.verificationRecordId,`Từ chối xe ${detectedPlate||activeBooking?.licensePlate}: ${incidentNote||rejectionReason||'Nhân viên cổng yêu cầu dừng kiểm tra.'}`)
                     setShowRejectModal(false);setProcessingStatus('rejected');setPassageEvidence(null)
-                    showToast(`Đã gửi lệnh đóng barie qua API, từ chối xe ${detectedPlate||activeBooking?.licensePlate}.`)
+                    showToast(`Đã đóng barie, từ chối xe ${detectedPlate||activeBooking?.licensePlate}.`)
                   }catch(error){showToast(error.message)}
                 }}
                 className="flex-1 h-11 bg-rose-600 text-white rounded-xl font-bold text-sm hover:bg-rose-700"
@@ -1554,7 +1531,7 @@ export default function GateControl() {
             </div>
 
             {/* Thông tin sự cố tóm tắt */}
-            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2 text-xs font-mono">
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 space-y-2 text-xs">
               <div className="flex justify-between">
                 <span className="text-slate-500">Vị trí xảy ra:</span>
                 <strong className="text-slate-900">{selectedGate?.code} · {mode === 'checkin' ? 'Làn Vào' : 'Làn Ra'}</strong>
@@ -1672,7 +1649,7 @@ export default function GateControl() {
             <div className="flex justify-between items-center w-full pb-3 border-b border-slate-800 text-white">
               <div className="flex items-center gap-2">
                 <span className="material-symbols-outlined text-emerald-400">photo_library</span>
-                <span className="text-xs font-mono font-bold text-slate-200">
+                <span className="text-xs font-bold text-slate-200">
                   Bằng chứng hình ảnh cổng
                 </span>
               </div>

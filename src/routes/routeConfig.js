@@ -62,15 +62,15 @@ export const routeConfig = [
   },
   {
     path: '/containers',
-    allowedRoles: Object.values(ROLES),
+    allowedRoles: Object.values(ROLES).filter(role => role !== ROLES.GATE_OFFICER),
   },
   {
     path: '/containers/search',
-    allowedRoles: Object.values(ROLES),
+    allowedRoles: Object.values(ROLES).filter(role => role !== ROLES.GATE_OFFICER),
   },
   {
     path: '/containers/journeys',
-    allowedRoles: Object.values(ROLES),
+    allowedRoles: Object.values(ROLES).filter(role => role !== ROLES.GATE_OFFICER),
   },
   {
     path: '/booking',
@@ -138,6 +138,10 @@ export const routeConfig = [
   },
   {
     path: '/gate/verification',
+    allowedRoles: [ROLES.GATE_OFFICER],
+  },
+  {
+    path: '/gate/container',
     allowedRoles: [ROLES.GATE_OFFICER],
   },
   {

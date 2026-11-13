@@ -29,7 +29,7 @@ export default function Login() {
           window.opener.postMessage({ type: 'GOOGLE_AUTH_CALLBACK', accessToken, idToken }, window.location.origin)
           window.close()
           return
-        } catch (_) {}
+        } catch (_) { }
       }
 
       window.history.replaceState({}, '', window.location.pathname)
@@ -59,7 +59,7 @@ export default function Login() {
       localStorage.removeItem('token')
       sessionStorage.removeItem('user')
       sessionStorage.removeItem('token')
-    } catch (_) {}
+    } catch (_) { }
 
     if (kickedParam === 'duplicate') {
       setShowDuplicateWarning(true)
@@ -75,7 +75,13 @@ export default function Login() {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
-  const [rememberMe, setRememberMe] = useState(false)
+  const [rememberMe, setRememberMe] = useState(() => {
+    try {
+      return localStorage.getItem('rememberMe') === 'true'
+    } catch {
+      return false
+    }
+  })
   const [loading, setLoading] = useState(false)
   const [toast, setToast] = useState(null)
 
@@ -95,7 +101,7 @@ export default function Login() {
   const [forgotStep, setForgotStep] = useState(1) // 1: nhập email/username -> nhận OTP, 2: nhập OTP + mật khẩu mới
   const [forgotEmail, setForgotEmail] = useState('')
   const [forgotOtp, setForgotOtp] = useState('')
-  const [generatedOtp, setGeneratedOtp] = useState('')
+  const [maskedEmailSent, setMaskedEmailSent] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [forgotLoading, setForgotLoading] = useState(false)
@@ -106,20 +112,25 @@ export default function Login() {
     confirmPassword: '',
   })
 
-  // Điền sẵn username nếu đã tích "Ghi nhớ đăng nhập" từ trước
+  // Điền sẵn thông tin đăng nhập nếu đã tích "Ghi nhớ đăng nhập" từ trước
   useEffect(() => {
-    const savedUsername = localStorage.getItem('rememberedUsername')
-    if (savedUsername) {
-      setUsername(savedUsername)
-      setRememberMe(true)
-    }
+    try {
+      const isRemembered = localStorage.getItem('rememberMe') === 'true'
+      const savedUsername = localStorage.getItem('rememberedUsername')
+      const savedPassword = localStorage.getItem('rememberedPassword')
+      if (isRemembered && savedUsername) {
+        setUsername(savedUsername)
+        if (savedPassword) setPassword(savedPassword)
+        setRememberMe(true)
+      }
+    } catch (_) { }
   }, [])
 
   const roles = [
     {
       id: 'carrier',
       title: 'Công ty vận tải',
-      desc: 'Doanh nghiệp vận tải / Quản lý đội xe container',
+      desc: 'Quản lý đội xe container',
       roleName: 'Transport Company',
       icon: 'corporate_fare',
       iconBg: 'rgba(99,179,237,0.12)',
@@ -128,8 +139,8 @@ export default function Login() {
     },
     {
       id: 'gate',
-      title: 'Kiểm soát viên cổng',
-      desc: 'Kiểm soát viên cổng vào ra',
+      title: 'Kiểm soát cổng',
+      desc: 'Kiểm soát cổng vào / ra',
       roleName: 'Gate Officer',
       icon: 'shield_with_heart',
       iconBg: 'rgba(72,187,120,0.12)',
@@ -139,7 +150,7 @@ export default function Login() {
     {
       id: 'operator',
       title: 'Điều phối viên',
-      desc: 'Điều phối viên vận hành cảng',
+      desc: 'Điều phối vận hành cảng',
       roleName: 'Dispatcher',
       icon: 'settings_suggest',
       iconBg: 'rgba(255,104,44,0.15)',
@@ -148,8 +159,8 @@ export default function Login() {
     },
     {
       id: 'yard',
-      title: 'Nhân viên vận hành bãi',
-      desc: 'Nhân viên vận hành bãi container',
+      title: 'Vận hành bãi',
+      desc: 'Quản lý bãi container',
       roleName: 'Yard Operator',
       icon: 'forklift',
       iconBg: 'rgba(246,173,85,0.12)',
@@ -159,7 +170,7 @@ export default function Login() {
     {
       id: 'shipping',
       title: 'Hãng tàu',
-      desc: 'Quản lý lịch tàu, Manifest, B/L & eDO',
+      desc: 'Lịch tàu, Manifest, eDO',
       roleName: 'Shipping Line',
       icon: 'directions_boat',
       iconBg: 'rgba(255,107,0,0.12)',
@@ -169,7 +180,7 @@ export default function Login() {
     {
       id: 'admin',
       title: 'Quản trị viên',
-      desc: 'Quản trị viên hệ thống',
+      desc: 'Quản trị hệ thống',
       roleName: 'Administrator',
       icon: 'admin_panel_settings',
       iconBg: 'rgba(159,122,234,0.12)',
@@ -185,15 +196,35 @@ export default function Login() {
 
   const handleSelectRole = (roleObj) => {
     setSelectedRole(roleObj)
-    const defaultUsers = { carrier: 'carrier01', gate: 'gate01', operator: 'dispatcher01', yard: 'yard01', shipping: 'shipping01', admin: 'admin' }
-    setUsername(defaultUsers[roleObj.id] || '')
-    setPassword('NexusPort@2026')
+    const isRemembered = localStorage.getItem('rememberMe') === 'true'
+    if (isRemembered) {
+      setUsername(localStorage.getItem('rememberedUsername') || '')
+      setPassword(localStorage.getItem('rememberedPassword') || '')
+    } else {
+      setUsername('')
+      setPassword('')
+    }
     setErrors({ username: '', password: '', general: '' })
     setShowDuplicateWarning(false)
     window.history.replaceState({}, '', '/login')
     setTimeout(() => {
       setStep(2)
     }, 150)
+  }
+
+  const toggleRememberMe = () => {
+    setRememberMe((prev) => {
+      const nextVal = !prev
+      if (!nextVal) {
+        try {
+          localStorage.removeItem('rememberMe')
+          localStorage.removeItem('rememberedUsername')
+          localStorage.removeItem('rememberedPassword')
+          localStorage.removeItem('rememberedRole')
+        } catch (_) { }
+      }
+      return nextVal
+    })
   }
 
   // Validate form đăng nhập phía client
@@ -222,6 +253,14 @@ export default function Login() {
     return isValid
   }
 
+  const getAuthBaseUrl = () => {
+    const raw = (import.meta.env.VITE_API_URL || '/api').trim().replace(/\/+$/, '')
+    if (raw.startsWith('http') && !raw.endsWith('/api')) {
+      return `${raw}/api`
+    }
+    return raw
+  }
+
   const handleSubmit = async (e) => {
     if (e) e.preventDefault()
     if (!validateLoginForm()) {
@@ -233,7 +272,7 @@ export default function Login() {
     setErrors({ username: '', password: '', general: '' })
 
     try {
-      const apiBase = import.meta.env.VITE_API_URL || '/api'
+      const apiBase = getAuthBaseUrl()
       const response = await fetch(`${apiBase}/auth/login`, {
         method: 'POST',
         headers: {
@@ -269,7 +308,7 @@ export default function Login() {
 
       const { token, user } = result.data
       showToastMessage(`Chào mừng ${user.fullName || user.username}! Đang chuyển hướng...`, 'check_circle', 'success')
-      
+
       const authUser = { ...user, token }
       localStorage.setItem('user', JSON.stringify(authUser))
       sessionStorage.setItem('user', JSON.stringify(authUser))
@@ -278,9 +317,17 @@ export default function Login() {
         sessionStorage.setItem('token', token)
       }
       if (rememberMe) {
-        localStorage.setItem('rememberedUsername', user.username)
+        localStorage.setItem('rememberMe', 'true')
+        localStorage.setItem('rememberedUsername', username.trim())
+        localStorage.setItem('rememberedPassword', password)
+        if (selectedRole?.id) {
+          localStorage.setItem('rememberedRole', selectedRole.id)
+        }
       } else {
+        localStorage.removeItem('rememberMe')
         localStorage.removeItem('rememberedUsername')
+        localStorage.removeItem('rememberedPassword')
+        localStorage.removeItem('rememberedRole')
       }
       if (loginWithToken) {
         loginWithToken(user, token, rememberMe)
@@ -348,7 +395,7 @@ export default function Login() {
     setErrors({ username: '', password: '', general: '' })
 
     try {
-      const apiBase = import.meta.env.VITE_API_URL || '/api'
+      const apiBase = getAuthBaseUrl()
       const response = await fetch(`${apiBase}/auth/google`, {
         method: 'POST',
         headers: {
@@ -440,7 +487,7 @@ export default function Login() {
     setForgotErrors({ email: '', otp: '', newPassword: '', confirmPassword: '' })
     setForgotLoading(true)
     try {
-      const apiBase = import.meta.env.VITE_API_URL || '/api'
+      const apiBase = getAuthBaseUrl()
       const res = await fetch(`${apiBase}/auth/forgot-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -455,8 +502,9 @@ export default function Login() {
         return
       }
 
-      setGeneratedOtp(data.data.otp)
-      showToastMessage(`Mã OTP đã khởi tạo: ${data.data.otp}`, 'check_circle', 'success')
+      const maskedEmail = data.data?.maskedEmail || data.data?.email || forgotEmail.trim()
+      setMaskedEmailSent(maskedEmail)
+      showToastMessage(data.message || 'Mã OTP đã được gửi về email của bạn!', 'check_circle', 'success')
       setForgotStep(2)
       setForgotLoading(false)
     } catch (err) {
@@ -501,7 +549,7 @@ export default function Login() {
 
     setForgotLoading(true)
     try {
-      const apiBase = import.meta.env.VITE_API_URL || '/api'
+      const apiBase = getAuthBaseUrl()
       const res = await fetch(`${apiBase}/auth/reset-password`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -534,14 +582,14 @@ export default function Login() {
   return (
     <div className="min-h-screen overflow-x-hidden relative bg-[#080808] text-white font-sans selection:bg-[#ff682c] selection:text-white">
       {/* Background layers */}
-      <div 
+      <div
         className="absolute inset-0 pointer-events-none opacity-4"
         style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E")`
         }}
       />
-      
-      <div 
+
+      <div
         className="absolute inset-0 pointer-events-none"
         style={{
           backgroundImage: `linear-gradient(rgba(255,104,44,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,104,44,0.04) 1px, transparent 1px)`,
@@ -557,13 +605,13 @@ export default function Login() {
       {/* Port Silhouette SVG */}
       <div className="absolute bottom-0 left-0 right-0 opacity-[0.035] pointer-events-none select-none">
         <svg viewBox="0 0 1440 200" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" className="w-full">
-          <path d="M0,200 L0,140 L40,140 L40,80 L50,80 L50,60 L60,60 L60,80 L70,80 L70,140 L120,140 L120,100 L140,100 L140,60 L160,60 L160,40 L170,40 L170,60 L190,60 L190,100 L210,100 L210,140 L280,140 L280,120 L300,120 L300,100 L320,100 L320,80 L330,80 L330,60 L340,60 L340,80 L350,80 L350,100 L370,100 L370,120 L390,120 L390,140 L500,140 L500,120 L510,120 L510,40 L515,40 L515,30 L520,30 L520,40 L525,40 L525,120 L560,120 L560,140 L650,140 L650,100 L680,100 L680,80 L700,80 L700,60 L710,60 L710,40 L720,40 L720,60 L730,60 L730,80 L750,80 L750,100 L780,100 L780,140 L900,140 L900,160 L1000,160 L1000,130 L1010,130 L1010,100 L1020,100 L1020,80 L1030,80 L1030,60 L1040,60 L1040,80 L1050,80 L1050,100 L1060,100 L1060,130 L1070,130 L1070,160 L1200,160 L1200,140 L1250,140 L1250,80 L1260,80 L1260,50 L1270,50 L1270,80 L1280,80 L1280,140 L1440,140 L1440,200 Z" fill="#ff682c"/>
+          <path d="M0,200 L0,140 L40,140 L40,80 L50,80 L50,60 L60,60 L60,80 L70,80 L70,140 L120,140 L120,100 L140,100 L140,60 L160,60 L160,40 L170,40 L170,60 L190,60 L190,100 L210,100 L210,140 L280,140 L280,120 L300,120 L300,100 L320,100 L320,80 L330,80 L330,60 L340,60 L340,80 L350,80 L350,100 L370,100 L370,120 L390,120 L390,140 L500,140 L500,120 L510,120 L510,40 L515,40 L515,30 L520,30 L520,40 L525,40 L525,120 L560,120 L560,140 L650,140 L650,100 L680,100 L680,80 L700,80 L700,60 L710,60 L710,40 L720,40 L720,60 L730,60 L730,80 L750,80 L750,100 L780,100 L780,140 L900,140 L900,160 L1000,160 L1000,130 L1010,130 L1010,100 L1020,100 L1020,80 L1030,80 L1030,60 L1040,60 L1040,80 L1050,80 L1050,100 L1060,100 L1060,130 L1070,130 L1070,160 L1200,160 L1200,140 L1250,140 L1250,80 L1260,80 L1260,50 L1270,50 L1270,80 L1280,80 L1280,140 L1440,140 L1440,200 Z" fill="#ff682c" />
         </svg>
       </div>
 
       {/* Main Container */}
       <div className="relative z-10 min-h-screen flex">
-        
+
         {/* LEFT BRANDING */}
         <div className="hidden lg:flex flex-col justify-between w-[480px] flex-shrink-0 p-12">
           <div>
@@ -589,8 +637,8 @@ export default function Login() {
             </div>
 
             <h2 className="text-[52px] leading-[1.05] tracking-[-1.5px] font-bold text-white">
-              Quản lý<br/>
-              cảng biển<br/>
+              Quản lý<br />
+              cảng biển<br />
               <span className="text-[#ff682c]">thông minh.</span>
             </h2>
 
@@ -621,11 +669,11 @@ export default function Login() {
         </div>
 
         {/* RIGHT CARD CONTAINER */}
-        <div className="flex-1 flex items-center justify-center p-6 sm:p-12">
-          <div className="w-full max-w-[440px]">
-            
+        <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
+          <div className="w-full max-w-[490px]">
+
             {/* Mobile Header */}
-            <div className="flex items-center gap-2 mb-10 lg:hidden">
+            <div className="flex items-center gap-2 mb-8 lg:hidden">
               <div className="w-8 h-8 bg-[#ff682c] rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-white text-[18px]">anchor</span>
               </div>
@@ -633,16 +681,16 @@ export default function Login() {
             </div>
 
             {/* Glass Card */}
-            <div className="bg-white/[0.03] border border-white/10 backdrop-blur-2xl rounded-2xl p-8 shadow-2xl transition-all">
-              
+            <div className="bg-white/[0.03] border border-white/10 backdrop-blur-2xl rounded-2xl p-6 sm:p-7 shadow-2xl transition-all">
+
               {/* Banner cảnh báo phiên cũ đã bị đăng xuất vì có phiên mới đăng nhập */}
               {showDuplicateWarning && (
-                <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-3 animate-fadeIn">
-                  <span className="material-symbols-outlined text-amber-400 text-xl flex-shrink-0 mt-0.5">warning</span>
+                <div className="mb-5 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-3 animate-fadeIn">
+                  <span className="material-symbols-outlined text-amber-400 text-lg flex-shrink-0 mt-0.5">warning</span>
                   <div className="flex-1">
-                    <div className="font-bold text-amber-200 text-[13px]">Phiên đăng nhập đã kết thúc</div>
-                    <div className="text-amber-300/80 mt-1 leading-relaxed">
-                      Tài khoản của bạn vừa được đăng nhập trên một thiết bị hoặc trình duyệt khác. Để bảo vệ an toàn tài khoản, phiên làm việc trước đó đã tự động đăng xuất.
+                    <div className="font-bold text-amber-200 text-[12.5px]">Phiên đăng nhập đã kết thúc</div>
+                    <div className="text-amber-300/80 mt-0.5 leading-relaxed text-[11.5px]">
+                      Tài khoản của bạn vừa được đăng nhập trên một thiết bị hoặc trình duyệt khác. Phiên làm việc trước đó đã tự động đăng xuất.
                     </div>
                   </div>
                   <button
@@ -660,7 +708,7 @@ export default function Login() {
               )}
 
               {/* Step indicator */}
-              <div className="flex items-center gap-2 mb-8">
+              <div className="flex items-center gap-2 mb-5">
                 <div className="flex items-center gap-2 cursor-pointer" onClick={() => step === 2 && setStep(1)}>
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${step === 1 ? 'bg-[#ff682c] text-white' : 'bg-white/10 text-white/40'}`}>
                     {step === 1 ? '1' : <span className="material-symbols-outlined text-[14px]">check</span>}
@@ -683,39 +731,35 @@ export default function Login() {
               {/* STEP 1: CHỌN VAI TRÒ */}
               {step === 1 && (
                 <div className="animate-fadeIn">
-                  <div className="mb-6">
-                    <h2 className="text-white font-bold text-[22px] tracking-[-0.3px]">Xin chào!</h2>
-                    <p className="text-white/40 text-[13px] mt-1.5 font-medium">Chọn vai trò của bạn để tiếp tục đăng nhập</p>
+                  <div className="mb-4">
+                    <h2 className="text-white font-bold text-[20px] tracking-[-0.3px]">Xin chào!</h2>
+                    <p className="text-white/40 text-[12px] mt-1 font-medium">Chọn vai trò của bạn để tiếp tục đăng nhập</p>
                   </div>
 
-                  <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                  <div className="grid grid-cols-2 gap-2.5">
                     {roles.map((r) => {
                       const isSelected = selectedRole?.id === r.id
                       return (
                         <div
                           key={r.id}
                           onClick={() => handleSelectRole(r)}
-                          className={`relative bg-white/[0.04] border rounded-xl p-4 cursor-pointer transition-all duration-200 overflow-hidden hover:-translate-y-0.5 hover:shadow-lg ${
-                            isSelected
+                          className={`relative bg-white/[0.04] border rounded-xl p-3 cursor-pointer transition-all duration-200 overflow-hidden hover:-translate-y-0.5 hover:shadow-lg ${isSelected
                               ? 'border-[#ff682c] bg-[#ff682c]/10 shadow-[0_0_0_1px_rgba(255,104,44,0.3)]'
-                              : 'border-white/10 hover:border-[#ff682c]/40'
-                          }`}
+                              : 'border-white/10 hover:border-[#ff682c]/40 hover:bg-white/[0.07]'
+                            }`}
                         >
-                          <div className="flex items-center gap-3 relative z-10">
-                            <div 
-                              className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0"
+                          <div className="flex items-center gap-2.5 relative z-10">
+                            <div
+                              className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
                               style={{ backgroundColor: r.iconBg }}
                             >
-                              <span className="material-symbols-outlined text-[20px]" style={{ color: r.iconColor }}>
+                              <span className="material-symbols-outlined text-[19px]" style={{ color: r.iconColor }}>
                                 {r.icon}
                               </span>
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="text-white text-[13px] font-semibold leading-tight">{r.title}</div>
-                              <div className="text-white/40 text-[11px] mt-0.5">{r.desc}</div>
-                            </div>
-                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 transition-all ${isSelected ? 'bg-[#ff682c] border-[#ff682c]' : 'border-white/25'}`}>
-                              {isSelected && <span className="material-symbols-outlined text-white text-[12px]">check</span>}
+                              <div className="text-white text-[12.5px] font-semibold leading-tight truncate">{r.title}</div>
+                              <div className="text-white/40 text-[10px] mt-0.5 truncate">{r.desc}</div>
                             </div>
                           </div>
                         </div>
@@ -723,9 +767,7 @@ export default function Login() {
                     })}
                   </div>
 
-                  <p className="text-center text-white/20 text-[11px] mt-4 font-medium">Nhấn vào vai trò để tiếp tục</p>
-
-                  <div className="relative my-4 flex items-center justify-center">
+                  <div className="relative my-3.5 flex items-center justify-center">
                     <div className="border-t border-white/10 w-full" />
                     <span className="bg-[#121212] px-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider">
                       hoặc
@@ -740,10 +782,10 @@ export default function Login() {
                     className="w-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 text-white font-medium text-[13px] py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-3 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
                   >
                     <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
-                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
-                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
-                      <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                      <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z" />
+                      <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
+                      <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z" />
+                      <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
                     </svg>
                     <span>Đăng nhập nhanh với Google</span>
                   </button>
@@ -806,12 +848,11 @@ export default function Login() {
                             if (errors.username) setErrors((prev) => ({ ...prev, username: '' }))
                             if (errors.general) setErrors((prev) => ({ ...prev, general: '' }))
                           }}
-                          placeholder="nguyen.van.a@nexusport.vn"
-                          className={`w-full rounded-lg py-3 pl-11 pr-4 text-white text-[14px] font-medium outline-none transition-all placeholder:text-white/30 ${
-                            errors.username
+                          placeholder="Nhập tên đăng nhập hoặc email..."
+                          className={`w-full rounded-lg py-3 pl-11 pr-4 text-white text-[14px] font-medium outline-none transition-all placeholder:text-white/30 ${errors.username
                               ? 'bg-red-500/[0.06] border border-red-500/70 focus:border-red-400 focus:ring-2 focus:ring-red-500/20'
                               : 'bg-white/5 border border-white/12 focus:border-[#ff682c]/60 focus:bg-white/[0.07] focus:ring-2 focus:ring-[#ff682c]/10'
-                          }`}
+                            }`}
                         />
                       </div>
                       {errors.username && (
@@ -840,11 +881,10 @@ export default function Login() {
                             if (errors.general) setErrors((prev) => ({ ...prev, general: '' }))
                           }}
                           placeholder="••••••••••••"
-                          className={`w-full rounded-lg py-3 pl-11 pr-11 text-white text-[14px] font-medium outline-none transition-all placeholder:text-white/30 ${
-                            errors.password
+                          className={`w-full rounded-lg py-3 pl-11 pr-11 text-white text-[14px] font-medium outline-none transition-all placeholder:text-white/30 ${errors.password
                               ? 'bg-red-500/[0.06] border border-red-500/70 focus:border-red-400 focus:ring-2 focus:ring-red-500/20'
                               : 'bg-white/5 border border-white/12 focus:border-[#ff682c]/60 focus:bg-white/[0.07] focus:ring-2 focus:ring-[#ff682c]/10'
-                          }`}
+                            }`}
                         />
                         <button
                           type="button"
@@ -866,17 +906,21 @@ export default function Login() {
                     </div>
 
                     <div className="flex items-center justify-between pt-1">
-                      <label className="flex items-center gap-2.5 cursor-pointer group select-none">
+                      <button
+                        type="button"
+                        onClick={toggleRememberMe}
+                        className="flex items-center gap-2.5 cursor-pointer group select-none bg-transparent border-0 p-0 text-left focus:outline-none"
+                      >
                         <div
-                          onClick={() => setRememberMe(!rememberMe)}
-                          className={`w-4 h-4 rounded border transition-colors flex items-center justify-center ${
-                            rememberMe ? 'bg-[#ff682c] border-[#ff682c]' : 'border-white/20 group-hover:border-[#ff682c]/50'
-                          }`}
+                          className={`w-4 h-4 rounded border transition-colors flex items-center justify-center ${rememberMe ? 'bg-[#ff682c] border-[#ff682c]' : 'border-white/20 group-hover:border-[#ff682c]/50'
+                            }`}
                         >
-                          {rememberMe && <span className="material-symbols-outlined text-white text-[12px]">check</span>}
+                          {rememberMe && <span className="material-symbols-outlined text-white text-[12px] font-bold">check</span>}
                         </div>
-                        <span className="text-white/40 text-[13px] font-medium">Ghi nhớ đăng nhập</span>
-                      </label>
+                        <span className={`text-[13px] font-medium transition-colors ${rememberMe ? 'text-white' : 'text-white/40 group-hover:text-white/70'}`}>
+                          Ghi nhớ đăng nhập
+                        </span>
+                      </button>
                       <button
                         type="button"
                         onClick={() => {
@@ -900,8 +944,8 @@ export default function Login() {
                         {loading ? (
                           <span className="flex items-center gap-2">
                             <svg className="animate-spin w-4 h-4 text-white" viewBox="0 0 24 24" fill="none">
-                              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40" strokeDashoffset="10" opacity="0.4"/>
-                              <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3"/>
+                              <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="40" strokeDashoffset="10" opacity="0.4" />
+                              <path d="M12 2a10 10 0 0110 10" stroke="currentColor" strokeWidth="3" />
                             </svg>
                             Đang xác thực...
                           </span>
@@ -926,10 +970,10 @@ export default function Login() {
                       className="w-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 hover:border-white/20 text-white font-medium text-[13px] py-3 px-4 rounded-xl transition-all flex items-center justify-center gap-3 shadow-sm hover:shadow-md hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50"
                     >
                       <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
-                        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
-                        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z"/>
-                        <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z"/>
-                        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+                        <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z" />
+                        <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.25v3.15C3.26 21.36 7.33 24 12 24z" />
+                        <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.25C.45 8.18 0 9.99 0 12s.45 3.82 1.25 5.42l4.03-3.15z" />
+                        <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.33 0 3.26 2.64 1.25 6.58l4.03 3.15c.95-2.83 3.6-4.98 6.72-4.98z" />
                       </svg>
                       <span>Đăng nhập bằng Google</span>
                     </button>
@@ -983,11 +1027,10 @@ export default function Login() {
                         if (forgotErrors.email) setForgotErrors((prev) => ({ ...prev, email: '' }))
                       }}
                       placeholder="admin hoặc admin@nexusport.vn"
-                      className={`w-full rounded-lg py-2.5 pl-10 pr-4 text-white text-[13px] outline-none transition-all ${
-                        forgotErrors.email
+                      className={`w-full rounded-lg py-2.5 pl-10 pr-4 text-white text-[13px] outline-none transition-all ${forgotErrors.email
                           ? 'bg-red-500/[0.06] border border-red-500/70 focus:border-red-400'
                           : 'bg-white/5 border border-white/12 focus:border-[#ff682c]'
-                      }`}
+                        }`}
                     />
                   </div>
                   {forgotErrors.email && (
@@ -1017,26 +1060,31 @@ export default function Login() {
               </form>
             ) : (
               <form onSubmit={handleResetPassword} className="space-y-3.5 mt-4" noValidate>
-                {generatedOtp && (
-                  <div className="bg-[#ff682c]/10 border border-[#ff682c]/30 rounded-lg p-3 text-[12px] text-[#ff682c] font-medium flex items-center justify-between">
-                    <span>Mã OTP thử nghiệm: <strong>{generatedOtp}</strong></span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setForgotOtp(generatedOtp)
-                        if (forgotErrors.otp) setForgotErrors((prev) => ({ ...prev, otp: '' }))
-                      }}
-                      className="text-[11px] underline font-semibold hover:text-white"
-                    >
-                      Tự điền
-                    </button>
+                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-3 text-[12px] text-emerald-300 flex items-start gap-2.5">
+                  <span className="material-symbols-outlined text-emerald-400 text-base flex-shrink-0 mt-0.5">mark_email_read</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="font-semibold text-emerald-200">Đã gửi mã OTP đến email:</span>
+                    <div className="font-mono text-emerald-300 text-[13px] font-bold mt-0.5 truncate">{maskedEmailSent || forgotEmail}</div>
+                    <div className="text-emerald-400/80 text-[11px] mt-1 leading-relaxed">
+                      Vui lòng kiểm tra hộp thư đến (hoặc mục Spam/Rác) và nhập mã xác thực 6 số bên dưới.
+                    </div>
                   </div>
-                )}
+                </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-white/45 uppercase tracking-wider mb-1.5">
-                    Mã OTP (6 chữ số) <span className="text-[#ff682c]">*</span>
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-[11px] font-semibold text-white/45 uppercase tracking-wider">
+                      Mã OTP (6 chữ số) <span className="text-[#ff682c]">*</span>
+                    </label>
+                    <button
+                      type="button"
+                      disabled={forgotLoading}
+                      onClick={handleRequestOtp}
+                      className="text-[11px] text-[#ff682c] hover:underline font-semibold disabled:opacity-50"
+                    >
+                      Gửi lại mã?
+                    </button>
+                  </div>
                   <input
                     type="text"
                     maxLength={6}
@@ -1046,11 +1094,10 @@ export default function Login() {
                       if (forgotErrors.otp) setForgotErrors((prev) => ({ ...prev, otp: '' }))
                     }}
                     placeholder="123456"
-                    className={`w-full rounded-lg py-2 pl-3 text-white text-[14px] font-mono tracking-widest outline-none ${
-                      forgotErrors.otp
+                    className={`w-full rounded-lg py-2 pl-3 text-white text-[14px] font-mono tracking-widest outline-none ${forgotErrors.otp
                         ? 'bg-red-500/[0.06] border border-red-500/70 focus:border-red-400'
                         : 'bg-white/5 border border-white/12 focus:border-[#ff682c]'
-                    }`}
+                      }`}
                   />
                   {forgotErrors.otp && (
                     <p className="mt-1 text-[11px] text-red-400 flex items-center gap-1 font-medium">
@@ -1072,11 +1119,10 @@ export default function Login() {
                       if (forgotErrors.newPassword) setForgotErrors((prev) => ({ ...prev, newPassword: '' }))
                     }}
                     placeholder="Nhập mật khẩu mới"
-                    className={`w-full rounded-lg py-2 pl-3 text-white text-[13px] outline-none ${
-                      forgotErrors.newPassword
+                    className={`w-full rounded-lg py-2 pl-3 text-white text-[13px] outline-none ${forgotErrors.newPassword
                         ? 'bg-red-500/[0.06] border border-red-500/70 focus:border-red-400'
                         : 'bg-white/5 border border-white/12 focus:border-[#ff682c]'
-                    }`}
+                      }`}
                   />
                   {forgotErrors.newPassword && (
                     <p className="mt-1 text-[11px] text-red-400 flex items-center gap-1 font-medium">
@@ -1098,11 +1144,10 @@ export default function Login() {
                       if (forgotErrors.confirmPassword) setForgotErrors((prev) => ({ ...prev, confirmPassword: '' }))
                     }}
                     placeholder="Nhập lại mật khẩu mới"
-                    className={`w-full rounded-lg py-2 pl-3 text-white text-[13px] outline-none ${
-                      forgotErrors.confirmPassword
+                    className={`w-full rounded-lg py-2 pl-3 text-white text-[13px] outline-none ${forgotErrors.confirmPassword
                         ? 'bg-red-500/[0.06] border border-red-500/70 focus:border-red-400'
                         : 'bg-white/5 border border-white/12 focus:border-[#ff682c]'
-                    }`}
+                      }`}
                   />
                   {forgotErrors.confirmPassword && (
                     <p className="mt-1 text-[11px] text-red-400 flex items-center gap-1 font-medium">

@@ -115,7 +115,7 @@ export default function GateHistory() {
           </span>
           <h2 className="font-heading text-3xl font-black text-slate-900 mt-1">Lịch Sử Kiểm Soát Cổng</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Toàn bộ lịch sử xác thực xe ra vào cổng cảng, hình ảnh chụp hiện trường và ảnh cắt biển số lưu trữ từ hệ thống.
+            Lịch sử phương tiện lưu thông qua cổng cảng.
           </p>
         </div>
         <button
@@ -160,7 +160,7 @@ export default function GateHistory() {
           {[
             ['Tác vụ', actionFilter, setActionFilter, ['All', 'CHECK-IN', 'CHECK-OUT']],
             ['Kết quả', resultFilter, setResultFilter, ['All', 'Passed', 'Rejected', 'Pending']],
-            ['Làn cổng', gateFilter, setGateFilter, ['All', 'Cổng A', 'Cổng B', 'Gate A']],
+            ['Làn cổng', gateFilter, setGateFilter, ['All', 'Cổng Vào', 'Cổng Ra']],
           ].map(([label, val, setter, opts]) => (
             <select
               key={label}
@@ -182,7 +182,7 @@ export default function GateHistory() {
         <div className="overflow-x-auto">
           {loading ? (
             <div className="py-12 text-center text-slate-500 font-bold text-sm">
-              Đang tải dữ liệu từ Backend API...
+              Đang tải dữ liệu...
             </div>
           ) : (
             <table className="w-full text-left text-xs border-collapse">

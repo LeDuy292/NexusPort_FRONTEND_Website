@@ -32,6 +32,7 @@ import GateControl from './pages/Gate/GateControl'
 import GateDashboard from './pages/Gate/GateDashboard'
 import GateBookings from './pages/Gate/GateBookings'
 import GateVerification from './pages/Gate/GateVerification'
+import ContainerVerification from './pages/Gate/ContainerVerification'
 import GateIncidents from './pages/Gate/GateIncidents'
 import GateHistory from './pages/Gate/GateHistory'
 import GateCameras from './pages/Gate/GateCameras'
@@ -210,6 +211,7 @@ function App() {
             <Route path="/gate/dashboard" element={<GateDashboard />} />
             <Route path="/gate/bookings" element={<GateBookings />} />
             <Route path="/gate/verification" element={<GateVerification />} />
+            <Route path="/gate/container" element={<ContainerVerification />} />
             <Route path="/gate/incidents" element={<GateIncidents />} />
             <Route path="/gate/history" element={<GateHistory />} />
             <Route path="/gate/camera" element={<GateCameras />} />
