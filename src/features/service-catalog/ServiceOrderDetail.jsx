@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, ArrowDownToLine, ArrowUpRight, Ban, Check, CheckCircle2, ChevronRight, ClipboardCheck, Clock3, Container, CreditCard, FileText, History, Info, Loader2, LockKeyhole, Pencil, Plus, RefreshCw, ShieldCheck, X, XCircle } from 'lucide-react'
+import { AlertCircle, ArrowDownToLine, ArrowUpRight, Ban, Building2, Check, CheckCircle2, ChevronRight, ClipboardCheck, Clock3, Container, CreditCard, FileCheck, FileText, History, Info, Loader2, LockKeyhole, Mail, Pencil, Phone, Plus, QrCode, RefreshCw, ShieldCheck, User, X, XCircle } from 'lucide-react'
 import CatalogDialog from './CatalogDialog'
 import ServiceReceiptButton from './ServiceRegistrationReceipt'
 import { OrderDeliveryInfo, OrderInvoiceInfo } from './ServiceOrderDeliveryInfo'
@@ -10,8 +10,8 @@ import { labels, money } from './catalogApi'
 import { draftDateTime, draftError, draftSession, serviceDraftKey } from './serviceDraftsApi'
 import { orderStatusLabels, paymentStateLabel, paymentStatusLabels, serviceOrderKey, serviceOrdersApi } from './serviceOrdersApi'
 
-const actionNames = { CANCEL: 'Hủy đơn dịch vụ', RECEIVE: 'Tiếp nhận hồ sơ', APPROVE: 'Duyệt đăng ký', REJECT: 'Từ chối đăng ký', CREATE_PAYMENT: 'Tạo thanh toán PayOS', SYNC_PAYMENT: 'Kiểm tra kết quả PayOS', CANCEL_PAYMENT: 'Hủy yêu cầu thanh toán' }
-const eventNames = { DRAFT_CREATED: 'Tạo bản nháp', DRAFT_UPDATED: 'Cập nhật bản nháp', BASELINE_RECORDED: 'Ghi nhận hồ sơ hiện có', REGISTERED: 'Xác nhận đăng ký', REGISTRATION_CONFIRMED: 'Xác nhận đăng ký', CONFIRMED: 'Xác nhận đăng ký', CANCEL: 'Hủy đơn dịch vụ', CANCELLED: 'Hủy đơn dịch vụ', RECEIVE: 'Cảng tiếp nhận hồ sơ', RECEIVED: 'Cảng tiếp nhận hồ sơ', APPROVE: 'Cảng duyệt đăng ký', APPROVED: 'Cảng duyệt đăng ký', REJECT: 'Cảng từ chối đăng ký', REJECTED: 'Cảng từ chối đăng ký', PAYMENT_CREATED: 'Tạo yêu cầu thanh toán', PAYMENT_SYNCED: 'Kiểm tra kết quả từ PayOS', PAYMENT_SUCCEEDED: 'PayOS xác nhận thanh toán', PAYMENT_FAILED: 'Thanh toán không thành công', PAYMENT_CANCELLED: 'Hủy yêu cầu thanh toán', PAYMENT_REVIEW_REQUIRED: 'Giao dịch cần đối soát', PAYMENT_REFERENCE_OBSERVED: 'Bổ sung tham chiếu giao dịch', MIGRATED: 'Ghi nhận hồ sơ hiện có' }
+const actionNames = { CANCEL: 'Hủy đơn dịch vụ', RECEIVE: 'Tiếp nhận hồ sơ', APPROVE: 'Duyệt đăng ký', REJECT: 'Từ chối đăng ký', CREATE_PAYMENT: 'Tạo mã thanh toán VietQR', SYNC_PAYMENT: 'Kiểm tra giao dịch VietQR', CANCEL_PAYMENT: 'Hủy yêu cầu thanh toán' }
+const eventNames = { DRAFT_CREATED: 'Tạo bản nháp', DRAFT_UPDATED: 'Cập nhật bản nháp', BASELINE_RECORDED: 'Ghi nhận hồ sơ hiện có', REGISTERED: 'Xác nhận đăng ký', REGISTRATION_CONFIRMED: 'Xác nhận đăng ký', CONFIRMED: 'Xác nhận đăng ký', CANCEL: 'Hủy đơn dịch vụ', CANCELLED: 'Hủy đơn dịch vụ', RECEIVE: 'Cảng tiếp nhận hồ sơ', RECEIVED: 'Cảng tiếp nhận hồ sơ', APPROVE: 'Cảng duyệt đăng ký', APPROVED: 'Cảng duyệt đăng ký', REJECT: 'Cảng từ chối đăng ký', REJECTED: 'Cảng từ chối đăng ký', PAYMENT_CREATED: 'Tạo mã thanh toán VietQR', PAYMENT_SYNCED: 'Kiểm tra kết quả thanh toán', PAYMENT_SUCCEEDED: 'Xác nhận thanh toán thành công', PAYMENT_FAILED: 'Thanh toán không thành công', PAYMENT_CANCELLED: 'Hủy yêu cầu thanh toán', PAYMENT_REVIEW_REQUIRED: 'Giao dịch cần đối soát', PAYMENT_REFERENCE_OBSERVED: 'Bổ sung tham chiếu giao dịch', MIGRATED: 'Ghi nhận hồ sơ hiện có' }
 const actionIcons = { CANCEL: Ban, RECEIVE: ArrowDownToLine, APPROVE: CheckCircle2, REJECT: XCircle }
 const amountFormat = value => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(value)
 
@@ -55,35 +55,194 @@ function checkoutAddress(value) {
   try { const url = new URL(value); return url.protocol === 'https:' && url.hostname === 'pay.payos.vn' && !url.username && !url.password ? url.href : null } catch { return null }
 }
 
+function VietQrPaymentCard({ payment, order }) {
+  const content = order?.content || {}
+  const source = content.source || order?.sourceSnapshot || {}
+  const containers = order?.containers || []
+  const buyer = content.invoiceBuyer || {}
+  const contactName = content.contactName || buyer.name || order?.companyName || 'Người đặt dịch vụ'
+  const companyName = order?.companyName || buyer.name || 'Công ty đăng ký dịch vụ'
+  const contactPhone = content.contactPhone || '—'
+  const invoiceEmail = buyer.email || content.contactEmail || 'tvan20152@gmail.com'
+  const containerNumbers = containers.map(c => `${c.containerNumber}${c.typeCode ? ` (${c.typeCode})` : ''}`).join(', ')
+  const bookingBl = source.bookingNumber || source.blNumber || order?.sourceLabel || '—'
+
+  const qrSrc = payment.qrCode
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payment.qrCode)}`
+    : `https://img.vietqr.io/image/MB-VQRQANOSG2264-compact2.png?amount=${payment.amount || 0}&addInfo=${encodeURIComponent(payment.orderCode || payment.number || 'NEXUSPORT')}&accountName=TRAN%20VAN%20TUNG`
+
+  return (
+    <div style={{
+      margin: '16px 0',
+      padding: '20px',
+      background: '#ffffff',
+      border: '1.5px solid #0284c7',
+      borderRadius: '12px',
+      boxShadow: '0 4px 16px -2px rgba(2, 132, 199, 0.12)'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ display: 'inline-flex', padding: '6px', background: '#e0f2fe', borderRadius: '8px', color: '#0369a1' }}>
+            <QrCode size={20} />
+          </span>
+          <div>
+            <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 700, color: '#0f172a' }}>QUÉT MÃ VIETQR THANH TOÁN TỰ ĐỘNG 24/7</h4>
+            <span style={{ fontSize: '12px', color: '#64748b' }}>Hỗ trợ tất cả ứng dụng Ngân hàng (MB, VCB, BIDV, Techcombank,...) & Ví điện tử</span>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {payment.status === 'SUCCEEDED' ? (
+            <span style={{ display: 'inline-flex', padding: '4px 12px', background: '#dcfce7', border: '1px solid #86efac', borderRadius: '6px', fontSize: '12px', fontWeight: 700, color: '#166534' }}>
+              ✓ ĐÃ THANH TOÁN THÀNH CÔNG
+            </span>
+          ) : (
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 12px', background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '6px', fontSize: '12px', fontWeight: 700, color: '#166534' }}>
+              <span>Ngân hàng Quân Đội (MB Bank)</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px', alignItems: 'start' }}>
+        {/* Cột trái: QR Code và Thông báo PDF về email */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ textAlign: 'center', padding: '16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '10px' }}>
+            <div style={{ background: '#ffffff', padding: '10px', borderRadius: '8px', display: 'inline-block', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', border: '1px solid #e2e8f0' }}>
+              <img
+                src={qrSrc}
+                alt="Mã VietQR chuyển khoản"
+                style={{ width: '190px', height: '190px', display: 'block', margin: '0 auto' }}
+              />
+            </div>
+            <div style={{ marginTop: '10px', fontSize: '18px', fontWeight: 800, color: payment.status === 'SUCCEEDED' ? '#166534' : '#0369a1' }}>
+              {money(payment.amount)} {payment.status === 'SUCCEEDED' && '(ĐÃ HOÀN TẤT)'}
+            </div>
+            {payment.status === 'PENDING' && (
+              <>
+                <div style={{ margin: '6px 0 4px', padding: '5px 10px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '11px', fontWeight: 600, color: '#1d4ed8' }}>
+                  ⚡ Test chuyển khoản thực tế: Quét mã QR chuyển đúng <strong>2.000 đ</strong> để hoàn tất đơn
+                </div>
+                <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', margin: '2px 0 6px', padding: '4px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', fontSize: '11px', color: '#64748b' }}>
+                  <Loader2 size={12} className="epc-spin" style={{ color: '#0284c7' }} />
+                  <span>Hệ thống đang tự động kiểm tra giao dịch (mỗi 2-3s)...</span>
+                </div>
+              </>
+            )}
+            <div style={{ fontSize: '12px', color: '#1e293b', marginTop: '4px' }}>
+              Chủ tài khoản: <strong>TRAN VAN TUNG</strong>
+            </div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+              Nội dung chuyển khoản: <strong style={{ color: '#0f172a' }}>{payment.orderCode || payment.number}</strong>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '10px',
+            padding: '12px 14px',
+            background: payment.status === 'SUCCEEDED' ? 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%)' : 'linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%)',
+            border: '1px solid #a7f3d0',
+            borderRadius: '8px',
+            color: '#065f46'
+          }}>
+            <FileCheck size={20} style={{ color: '#059669', flexShrink: 0, marginTop: '2px' }} />
+            <div style={{ fontSize: '12px', lineHeight: 1.5 }}>
+              <strong style={{ color: '#047857', display: 'block', fontSize: '13px', marginBottom: '2px' }}>
+                {payment.status === 'SUCCEEDED'
+                  ? 'Đã gửi hóa đơn điện tử & biên lai PDF về email'
+                  : 'Hóa đơn điện tử và Biểu mẫu dịch vụ (PDF) sẽ được tự động gửi về email'}
+              </strong>
+              {payment.status === 'SUCCEEDED'
+                ? `Hệ thống đã phát hành hóa đơn GTGT điện tử và gửi 01 tệp PDF biên lai & chứng từ đến email ${invoiceEmail}. Quý khách có thể mở tab "Hóa đơn" hoặc bấm nút "In biên lai & biểu mẫu" bên dưới để xem và tải về.`
+                : `Sau khi thanh toán thành công, hệ thống tự động xuất Hóa đơn GTGT và gửi 01 tệp PDF biên lai & chứng từ trực tiếp đến email ${invoiceEmail} để doanh nghiệp lưu trữ và xuất trình tại cổng cảng.`}
+            </div>
+          </div>
+        </div>
+
+        {/* Cột phải: Thông tin chủ sở hữu & doanh nghiệp và Thông tin đơn hàng */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div style={{ padding: '12px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#0369a1', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Building2 size={14} /> Thông tin chủ sở hữu & Doanh nghiệp
+            </div>
+            <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '12px' }}>
+              <div>
+                <dt style={{ color: '#64748b', fontSize: '11px' }}>Tên công ty / Doanh nghiệp</dt>
+                <dd style={{ margin: 0, fontWeight: 700, color: '#0f172a' }}>{companyName}</dd>
+              </div>
+              <div>
+                <dt style={{ color: '#64748b', fontSize: '11px' }}>Chủ sở hữu / Người liên hệ</dt>
+                <dd style={{ margin: 0, fontWeight: 600, color: '#0f172a' }}>{contactName}</dd>
+              </div>
+              <div>
+                <dt style={{ color: '#64748b', fontSize: '11px' }}>Số điện thoại</dt>
+                <dd style={{ margin: 0, fontWeight: 600, color: '#0f172a' }}>{contactPhone}</dd>
+              </div>
+              <div>
+                <dt style={{ color: '#64748b', fontSize: '11px' }}>Email nhận hóa đơn</dt>
+                <dd style={{ margin: 0, fontWeight: 600, color: '#0284c7' }}>{invoiceEmail}</dd>
+              </div>
+            </dl>
+          </div>
+
+          <div style={{ padding: '12px 14px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, textTransform: 'uppercase', color: '#0369a1', letterSpacing: '0.5px', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <FileText size={14} /> Thông tin dịch vụ cảng & Đơn hàng
+            </div>
+            <dl style={{ margin: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px', fontSize: '12px' }}>
+              <div>
+                <dt style={{ color: '#64748b', fontSize: '11px' }}>Mã đơn dịch vụ</dt>
+                <dd style={{ margin: 0, fontWeight: 700, color: '#0f172a' }}>{order?.number}</dd>
+              </div>
+              <div>
+                <dt style={{ color: '#64748b', fontSize: '11px' }}>Dịch vụ đăng ký</dt>
+                <dd style={{ margin: 0, fontWeight: 600, color: '#0f172a' }}>{order?.mainServiceName || 'Lấy container'}</dd>
+              </div>
+              <div>
+                <dt style={{ color: '#64748b', fontSize: '11px' }}>Container ({containers.length})</dt>
+                <dd style={{ margin: 0, fontWeight: 600, color: '#0f172a' }}>{containerNumbers || '—'}</dd>
+              </div>
+              <div>
+                <dt style={{ color: '#64748b', fontSize: '11px' }}>Số Booking / B/L</dt>
+                <dd style={{ margin: 0, fontWeight: 600, color: '#0f172a' }}>{bookingBl}</dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function PaymentPanel({ query, order, pending, onAction }) {
   if (query.isPending) return <div className="epo-tab-loading" role="status"><Loader2 size={23} className="epc-spin" />Đang tải thanh toán…</div>
   if (query.isError) return <div className="epo-inline-error"><p role="alert">{draftError(query.error)}</p><button className="epc-button secondary" type="button" onClick={() => query.refetch()}><RefreshCw size={15} />Thử lại</button></div>
   const items = query.data?.items || []
   const configured = query.data?.configured === true
   const canCreate = order.allowedActions?.includes('CREATE_PAYMENT')
-  const [simulating, setSimulating] = useState(false)
-  const client = useQueryClient()
-
-  const handleSimulatePayment = async () => {
-    if (simulating) return
-    setSimulating(true)
-    try {
-      await serviceOrdersApi.simulateSuccess(order.id)
-      await client.invalidateQueries({ queryKey: [...serviceOrderKey] })
-      await query.refetch()
-    } catch (e) {
-      alert(draftError(e))
-    } finally {
-      setSimulating(false)
-    }
-  }
 
   return <div className="epo-payment-sections">
     {order.paymentReviewRequired && <div className="epo-guidance" role="status"><Info size={17} /><p>Có giao dịch cần cảng đối soát. Hồ sơ giữ nguyên trạng thái; vui lòng liên hệ bộ phận thanh toán của cảng trước khi tiếp tục thanh toán hoặc hủy đơn.</p></div>}
-    <section className={`epo-payment-summary ${order.paymentStatus === 'PAID' ? 'paid' : ''}`}><span className="epo-payment-summary-icon">{order.paymentStatus === 'PAID' ? <CheckCircle2 size={27} /> : <CreditCard size={27} />}</span><div><span>THANH TOÁN QUA PAYOS</span><h3>{paymentStateLabel(order)}</h3><p>{order.paymentReviewRequired ? 'Giao dịch phát sinh cần được cảng kiểm tra trước khi tiếp tục xử lý.' : order.paymentStatus === 'PAID' ? 'PayOS đã xác nhận khoản thanh toán cho đơn dịch vụ này.' : !order.registrationId ? 'Xác nhận đăng ký và kiểm tra số tiền trước khi thanh toán.' : order.paymentStatus === 'NOT_REQUIRED' ? 'Đơn đã xác nhận không phát sinh tiền dịch vụ.' : order.approvalStatus === 'PENDING' ? 'Hồ sơ cần được cảng duyệt trước khi tạo yêu cầu thanh toán.' : 'Thanh toán trên trang PayOS; kết quả được cập nhật sau khi hệ thống xác minh.'}</p></div><div className="flex items-center gap-2 flex-wrap">{order.paymentStatus !== 'PAID' && <button type="button" className="epc-button secondary bg-emerald-50! text-emerald-800! border-emerald-300! hover:bg-emerald-100!" disabled={pending || simulating} onClick={handleSimulatePayment}>{simulating ? <Loader2 size={16} className="epc-spin" /> : <CheckCircle2 size={16} />}Thanh toán Test thành công ngay</button>}{canCreate && <button type="button" className="epc-button primary" disabled={pending || !configured} onClick={() => onAction('CREATE_PAYMENT')}><Plus size={16} />{items.length ? 'Tạo yêu cầu mới' : 'Tạo thanh toán PayOS'}</button>}</div></section>
-    {!configured && order.paymentStatus !== 'PAID' && order.paymentStatus !== 'NOT_REQUIRED' && <div className="epo-guidance"><Info size={17} /><p>{query.data?.instructions || 'Cổng thanh toán PayOS chưa sẵn sàng. Vui lòng liên hệ cảng để được hỗ trợ thanh toán.'}</p></div>}
-    <section className="epo-panel"><div className="epo-panel-title"><CreditCard size={17} /><h3>Các yêu cầu thanh toán</h3><span>{items.length} yêu cầu</span></div>{items.length ? <div className="epo-payment-list">{items.map(payment => { const checkoutUrl = checkoutAddress(payment.checkoutUrl); return <article className="epo-payment-attempt" key={payment.id}><div className="epo-payment-attempt-heading"><div><strong>{payment.number}</strong><small>PayOS · {draftDateTime(payment.createdAt)}</small></div><OrderBadge status={payment.status} payment /></div><div className="epo-payment-attempt-amount">{money(payment.amount)}</div>{payment.bankReference && <p><span>Mã giao dịch:</span> {payment.bankReference}</p>}{payment.reason && <p className="epo-attempt-reason">{payment.reason}</p>}{payment.gatewayError && <p className="epo-attempt-warning" role="status">{payment.gatewayError}</p>}{!payment.gatewayError && !checkoutUrl && payment.status === 'PENDING' && <p>Liên kết chưa sẵn sàng. Kiểm tra kết quả để cập nhật thông tin từ PayOS.</p>}<div className="epo-attempt-actions">{checkoutUrl && payment.allowedActions?.includes('OPEN_CHECKOUT') && <a className={`epc-button primary ${pending ? 'epo-link-disabled' : ''}`} aria-disabled={pending} tabIndex={pending ? -1 : 0} href={pending ? undefined : checkoutUrl} target="_blank" rel="noopener noreferrer">Thanh toán trên PayOS<ArrowUpRight size={14} /></a>}{payment.allowedActions?.includes('SYNC') && <button type="button" className="epc-button secondary" disabled={pending || !configured} onClick={() => onAction('SYNC_PAYMENT', payment)}><RefreshCw size={14} />Kiểm tra kết quả</button>}{payment.allowedActions?.includes('CANCEL') && <button type="button" className="epc-button secondary" disabled={pending || !configured} onClick={() => onAction('CANCEL_PAYMENT', payment)}><X size={14} />Hủy yêu cầu</button>}</div></article> })}</div> : <div className="epo-payment-empty"><CreditCard size={28} /><strong>Chưa có yêu cầu thanh toán</strong><p>{canCreate ? 'Tạo yêu cầu để nhận liên kết thanh toán riêng cho đơn dịch vụ.' : 'Yêu cầu thanh toán sẽ được ghi nhận tại đây khi hồ sơ đủ điều kiện.'}</p></div>}</section>
-    <p className="epo-payment-security"><ShieldCheck size={15} />Kết quả thanh toán được xác minh từ PayOS. Việc quay lại trang này chưa xác nhận giao dịch thành công.</p>
+    {!configured && order.paymentStatus !== 'PAID' && order.paymentStatus !== 'NOT_REQUIRED' && <div className="epo-guidance"><Info size={17} /><p>{query.data?.instructions || 'Kênh thanh toán trực tuyến chưa sẵn sàng. Vui lòng liên hệ cảng để được hỗ trợ thanh toán.'}</p></div>}
+    <section className="epo-panel">
+      <div className="epo-panel-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <CreditCard size={17} />
+          <h3>Thông tin thanh toán dịch vụ</h3>
+          <span>{items.length} yêu cầu</span>
+        </div>
+        {canCreate && (
+          <button type="button" className="epc-button primary" disabled={pending || !configured} onClick={() => onAction('CREATE_PAYMENT')}>
+            <Plus size={16} />{items.length ? 'Tạo mã thanh toán mới' : 'Tạo mã thanh toán VietQR'}
+          </button>
+        )}
+      </div>
+      {items.length ? <div className="epo-payment-list">{items.map(payment => { const checkoutUrl = checkoutAddress(payment.checkoutUrl); return <article className="epo-payment-attempt" key={payment.id}><div className="epo-payment-attempt-heading"><div><strong>{payment.number}</strong><small>VietQR · {draftDateTime(payment.createdAt)}</small></div><OrderBadge status={payment.status} payment /></div><div className="epo-payment-attempt-amount">{money(payment.amount)}</div>{payment.bankReference && <p><span>Mã giao dịch:</span> {payment.bankReference}</p>}{payment.reason && <p className="epo-attempt-reason">{payment.reason}</p>}{payment.gatewayError && <p className="epo-attempt-warning" role="status">{payment.gatewayError}</p>}{!payment.gatewayError && !checkoutUrl && payment.status === 'PENDING' && <p>Liên kết chưa sẵn sàng. Kiểm tra kết quả để cập nhật thông tin thanh toán.</p>}{(payment.status === 'PENDING' || payment.status === 'SUCCEEDED') && (
+        <VietQrPaymentCard payment={payment} order={order} />
+      )}<div className="epo-attempt-actions">{checkoutUrl && payment.allowedActions?.includes('OPEN_CHECKOUT') && <a className={`epc-button primary ${pending ? 'epo-link-disabled' : ''}`} aria-disabled={pending} tabIndex={pending ? -1 : 0} href={pending ? undefined : checkoutUrl} target="_blank" rel="noopener noreferrer">Mở cổng thanh toán trực tuyến<ArrowUpRight size={14} /></a>}{payment.allowedActions?.includes('SYNC') && <button type="button" className="epc-button secondary" disabled={pending || !configured} onClick={() => onAction('SYNC_PAYMENT', payment)}><RefreshCw size={14} />Kiểm tra kết quả</button>}{payment.allowedActions?.includes('CANCEL') && <button type="button" className="epc-button secondary" disabled={pending || !configured} onClick={() => onAction('CANCEL_PAYMENT', payment)}><X size={14} />Hủy yêu cầu</button>}</div></article> })}</div> : <div className="epo-payment-empty"><CreditCard size={28} /><strong>Chưa có yêu cầu thanh toán</strong><p>{canCreate ? 'Tạo yêu cầu để nhận mã QR chuyển khoản và thông tin thanh toán cho đơn dịch vụ.' : 'Yêu cầu thanh toán sẽ được ghi nhận tại đây khi hồ sơ được Dispatcher phê duyệt.'}</p>{canCreate && <button type="button" className="epc-button primary" style={{ marginTop: '12px' }} disabled={pending || !configured} onClick={() => onAction('CREATE_PAYMENT')}><Plus size={16} />Tạo mã thanh toán VietQR</button>}</div>}
+    </section>
+    <p className="epo-payment-security"><ShieldCheck size={15} />Kết quả thanh toán được hệ thống ngân hàng và cảng tự động xác thực. Hóa đơn và biên lai điện tử PDF sẽ được gửi về email ngay sau khi thanh toán thành công.</p>
   </div>
 }
 
@@ -97,9 +256,9 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
   const [notice, setNotice] = useState('')
   const [noticeWarning, setNoticeWarning] = useState(false)
   const formRef = useRef(null)
-  const orderQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'detail', orderId], queryFn: () => serviceOrdersApi.get(orderId), retry: false, refetchOnWindowFocus: true, refetchInterval: query => query.state.data?.pricingStatus === 'AWAITING' || query.state.data?.paymentStatus === 'PENDING' || query.state.data?.emailNotifications?.some(item => ['PENDING','SENDING'].includes(item.status)) ? 5000 : false })
+  const orderQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'detail', orderId], queryFn: () => serviceOrdersApi.get(orderId), retry: false, refetchOnWindowFocus: true, refetchInterval: query => query.state.data?.pricingStatus === 'AWAITING' || query.state.data?.paymentStatus === 'PENDING' || query.state.data?.emailNotifications?.some(item => ['PENDING','SENDING'].includes(item.status)) ? 2000 : false })
   const historyQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'history', orderId], queryFn: () => serviceOrdersApi.history(orderId), enabled: tab === 'history', retry: false, refetchOnWindowFocus: false })
-  const paymentQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'payments', orderId], queryFn: () => serviceOrdersApi.payments(orderId), enabled: tab === 'payments', retry: false, refetchOnWindowFocus: false })
+  const paymentQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'payments', orderId], queryFn: () => serviceOrdersApi.payments(orderId), enabled: tab === 'payments', retry: false, refetchOnWindowFocus: true, refetchInterval: () => tab === 'payments' && orderQuery.data?.paymentStatus === 'PENDING' ? 2000 : false })
   const order = orderQuery.data
   const canReceipt = order?.registrationId && (order.pricingMode !== 'DISPATCHER' || order.paymentStatus === 'PAID' || order.pricingStatus === 'PUBLISHED' && order.paymentStatus === 'NOT_REQUIRED')
   const mutation = useMutation({
@@ -115,7 +274,17 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
       setForm(null)
       const uncertain = !!result.payment?.gatewayError
       setNoticeWarning(uncertain)
-      setNotice(uncertain ? result.payment.gatewayError : value.kind === 'SYNC_PAYMENT' ? `Đã kiểm tra từ PayOS. ${paymentStatusLabels[result.paymentStatus] || 'Kết quả đã được cập nhật'}.` : value.kind === 'CREATE_PAYMENT' ? result.paymentStatus === 'PAID' ? 'PayOS đã xác nhận thanh toán cho đơn dịch vụ.' : result.payment?.checkoutUrl ? 'Đã tạo yêu cầu thanh toán. Mở trang PayOS để tiếp tục.' : 'Yêu cầu đã được lưu. Kiểm tra kết quả để nhận liên kết thanh toán từ PayOS.' : `${actionNames[value.kind]} thành công.`)
+      if (value.kind === 'SYNC_PAYMENT') {
+        if (result.paymentStatus === 'PAID') {
+          setNotice('✓ Xác nhận thanh toán thành công! Hệ thống đã ghi nhận và gửi hóa đơn & biên lai (PDF) về email.')
+        } else if (!value.silent) {
+          setNotice(`Đã kiểm tra kết quả giao dịch. ${paymentStatusLabels[result.paymentStatus] || 'Kết quả đã được cập nhật'}.`)
+        }
+      } else if (value.kind === 'CREATE_PAYMENT') {
+        setNotice(result.paymentStatus === 'PAID' ? 'Hệ thống đã xác nhận thanh toán thành công cho đơn dịch vụ.' : result.payment?.checkoutUrl ? 'Đã tạo mã thanh toán VietQR. Quét mã QR hoặc mở cổng thanh toán để tiếp tục.' : 'Yêu cầu thanh toán đã được lưu. Quét mã QR để hoàn tất.')
+      } else {
+        setNotice(`${actionNames[value.kind]} thành công.`)
+      }
       if (value.kind.includes('PAYMENT')) setTab('payments')
       await Promise.all([client.invalidateQueries({ queryKey: serviceOrderKey }), client.invalidateQueries({ queryKey: serviceDraftKey })])
     },
@@ -126,6 +295,26 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
   const openAction = (kind, payment = null) => { mutation.reset(); setConflict(false); setNotice(''); const value = { kind, payment, requestId: crypto.randomUUID(), expectedVersion: order.version, reason: '', acknowledged: false }; setForm(value); if (kind === 'SYNC_PAYMENT') mutation.mutate(value) }
   const update = (name, value) => { if (!pending) { setForm(previous => ({ ...previous, [name]: value, requestId: crypto.randomUUID() })); mutation.reset() } }
   const refresh = async () => { setForm(null); setConflict(false); mutation.reset(); await Promise.all([orderQuery.refetch(), tab === 'payments' ? paymentQuery.refetch() : Promise.resolve(), tab === 'history' ? historyQuery.refetch() : Promise.resolve()]) }
+
+  // Tự động kiểm tra đối soát giao dịch ngân hàng mỗi 2.5s khi có yêu cầu đang chờ thanh toán
+  const pendingPayment = paymentQuery.data?.items?.find(p => p.status === 'PENDING')
+  useEffect(() => {
+    if (!pendingPayment || order?.paymentStatus === 'PAID') return
+    const timer = setInterval(() => {
+      if (!mutation.isPending && !form) {
+        mutation.mutate({
+          kind: 'SYNC_PAYMENT',
+          payment: pendingPayment,
+          requestId: crypto.randomUUID(),
+          expectedVersion: order?.version,
+          reason: '',
+          acknowledged: false,
+          silent: true,
+        })
+      }
+    }, 2500)
+    return () => clearInterval(timer)
+  }, [pendingPayment?.id, pendingPayment?.status, order?.paymentStatus, order?.version, mutation.isPending, !!form])
   useEffect(() => { if (form?.kind) { formRef.current?.scrollIntoView({ block: 'nearest', behavior: 'instant' }); formRef.current?.querySelector('input:not([type="checkbox"]),textarea,button')?.focus({ preventScroll: true }) } }, [form?.kind])
   const changeTab = value => { if (!pending) { setTab(value); setNotice('') } }
   const tabs = [['information', 'Thông tin', FileText], ['payments', 'Thanh toán', CreditCard], ['invoice', 'Hóa đơn', FileText], ['history', 'Lịch sử', History]]
@@ -161,13 +350,13 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
       <div className="epo-detail-tabs" role="tablist" aria-label="Nội dung hồ sơ">{tabs.map(([value, label, Icon], index) => <button key={value} type="button" id={`${id}-tab-${value}`} role="tab" aria-controls={`${id}-panel`} aria-selected={tab === value} tabIndex={tab === value ? 0 : -1} disabled={pending} onClick={() => changeTab(value)} onKeyDown={event => handleTabKey(event, index)}><Icon size={16} />{label}{value === 'payments' && order.paymentStatus === 'PAID' && <Check size={12} />}</button>)}<button type="button" className="epo-detail-refresh" aria-label="Tải lại hồ sơ" disabled={pending || orderQuery.isFetching} onClick={refresh}><RefreshCw size={16} className={orderQuery.isFetching ? 'epc-spin' : ''} /></button></div>
       <div className="epd-body epo-detail-body" aria-busy={pending || orderQuery.isFetching}>
         {notice && <div className={`epo-detail-notice ${noticeWarning ? 'warning' : ''}`} role="status">{noticeWarning ? <Info size={17} /> : <CheckCircle2 size={17} />}<p>{notice}</p></div>}
-        {form && <form className={`epo-action-form ${destructive ? 'destructive' : ''}`} ref={formRef} onSubmit={event => { event.preventDefault(); if (!pending && !conflict) mutation.mutate(form) }} aria-label={actionNames[form.kind]}><div className="epo-action-form-title"><span><ShieldCheck size={19} /></span><div><h3>{actionNames[form.kind]}</h3><p>{form.kind === 'CREATE_PAYMENT' ? 'Tạo liên kết PayOS theo số tiền Dispatcher đã trả về.' : form.kind === 'SYNC_PAYMENT' ? 'Hệ thống đối chiếu trạng thái giao dịch trực tiếp với PayOS.' : form.kind === 'CANCEL' ? 'Hồ sơ và lịch sử vẫn được giữ lại sau khi hủy.' : form.kind === 'REJECT' ? 'Lý do từ chối sẽ được hiển thị cho doanh nghiệp đăng ký.' : 'Kiểm tra nội dung trước khi ghi nhận vào lịch sử xử lý.'}</p></div><button type="button" className="epc-icon-button" disabled={pending} aria-label="Đóng thao tác" onClick={() => { setForm(null); mutation.reset() }}><X size={17} /></button></div>
+        {form && <form className={`epo-action-form ${destructive ? 'destructive' : ''}`} ref={formRef} onSubmit={event => { event.preventDefault(); if (!pending && !conflict) mutation.mutate(form) }} aria-label={actionNames[form.kind]}><div className="epo-action-form-title"><span><ShieldCheck size={19} /></span><div><h3>{actionNames[form.kind]}</h3><p>{form.kind === 'CREATE_PAYMENT' ? 'Tạo mã thanh toán trực tuyến (VietQR) theo số tiền đã phê duyệt.' : form.kind === 'SYNC_PAYMENT' ? 'Hệ thống đối chiếu trạng thái giao dịch trực tiếp với ngân hàng.' : form.kind === 'CANCEL' ? 'Hồ sơ và lịch sử vẫn được giữ lại sau khi hủy.' : form.kind === 'REJECT' ? 'Lý do từ chối sẽ được hiển thị cho doanh nghiệp đăng ký.' : 'Kiểm tra nội dung trước khi ghi nhận vào lịch sử xử lý.'}</p></div><button type="button" className="epc-icon-button" disabled={pending} aria-label="Đóng thao tác" onClick={() => { setForm(null); mutation.reset() }}><X size={17} /></button></div>
           {form.payment && <div className="epo-action-context"><span>{form.payment.number}</span><strong>{money(form.payment.amount)}</strong></div>}
           {form.kind === 'CREATE_PAYMENT' && <div className="epo-action-context"><span>Số tiền phải thanh toán do Dispatcher gửi</span><strong>{displayAmount}</strong></div>}
           <fieldset disabled={pending || conflict}>
             {needsSourceReview && <><label className="epo-field"><span>Tham chiếu chứng từ đã đối chiếu *</span><input aria-label="Tham chiếu đối chiếu DO/eDO" required minLength={3} maxLength={200} value={form.sourceEvidenceReference || ''} onChange={event => update('sourceEvidenceReference', event.target.value)} placeholder="Số chứng từ / mã xác minh làm căn cứ duyệt…" /></label><label className="epo-acknowledge"><input type="checkbox" required checked={!!form.sourceDocumentsChecked} onChange={event => update('sourceDocumentsChecked', event.target.checked)} /><span>Tôi đã đối chiếu DO/eDO, hiệu lực lệnh, đúng container và quyền nhận hàng của doanh nghiệp. Thao tác này không xác nhận thông quan hoặc cấp phép qua cổng.</span></label></>}
             {!['CREATE_PAYMENT', 'SYNC_PAYMENT'].includes(form.kind) && <label className="epo-field"><span>{needsReason ? 'Lý do / ghi chú xử lý *' : 'Ghi chú xử lý (không bắt buộc)'}</span><textarea required={needsReason} maxLength={1000} rows={3} value={form.reason} onChange={event => update('reason', event.target.value)} placeholder={needsReason ? 'Ghi rõ căn cứ hoặc lý do xử lý hồ sơ…' : 'Bổ sung thông tin để khách hàng cùng theo dõi…'} /></label>}
-            {needsAck && <label className="epo-acknowledge"><input type="checkbox" checked={form.acknowledged} required onChange={event => update('acknowledged', event.target.checked)} /><span>Tôi đã kiểm tra số tiền dịch vụ và muốn thanh toán đơn này qua PayOS.</span></label>}
+            {needsAck && <label className="epo-acknowledge"><input type="checkbox" checked={form.acknowledged} required onChange={event => update('acknowledged', event.target.checked)} /><span>Tôi đã kiểm tra số tiền dịch vụ và muốn thanh toán đơn này bằng mã chuyển khoản VietQR (Hóa đơn và PDF sẽ gửi về email).</span></label>}
           </fieldset>
           {mutation.error && <div className="epo-form-error" role="alert"><AlertCircle size={16} /><div><p>{draftError(mutation.error)}</p>{conflict && <p>Hồ sơ đã thay đổi. Tải lại và kiểm tra trạng thái mới trước khi thao tác tiếp.</p>}</div></div>}
           <div className="epo-form-actions"><button type="button" className="epc-button secondary" disabled={pending} onClick={() => { setForm(null); mutation.reset() }}>Quay lại</button>{conflict ? <button type="button" className="epc-button primary" disabled={pending} onClick={refresh}><RefreshCw size={15} />Tải lại hồ sơ</button> : <button type="submit" className={`epc-button ${destructive ? 'destructive' : 'primary'}`} disabled={pending || (needsAck && !form.acknowledged)}>{pending ? <Loader2 size={15} className="epc-spin" /> : <Check size={15} />}{pending ? 'Đang ghi nhận…' : actionNames[form.kind]}</button>}</div>

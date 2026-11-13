@@ -329,7 +329,7 @@ export default function ServiceCatalogPage({ management = false }) {
               <span>Tác nghiệp chính (Xuất & Nhập)</span>
             </div>
             <div>
-              <strong>PayOS</strong>
+              <strong>Cổng thanh toán VietQR 24/7</strong>
               <span>Cổng thanh toán điện tử</span>
             </div>
             <div>
@@ -411,7 +411,7 @@ export default function ServiceCatalogPage({ management = false }) {
                   <li><span className="epc-portal-step-num">3</span>Khai báo dịch vụ đính kèm (Lưu bãi, Cắm điện lạnh, Clone)</li>
                   <li><span className="epc-portal-step-num">4</span>Kiểm tra thông quan qua hệ thống VASSCM</li>
                   <li><span className="epc-portal-step-num">5</span>Khai báo giao nhận (Xe / Sà lan, Hạn lệnh)</li>
-                  <li><span className="epc-portal-step-num">6</span>Gửi Dispatcher → Nhận thông báo → Thanh toán PayOS</li>
+                  <li><span className="epc-portal-step-num">6</span>Gửi Dispatcher → Nhận thông báo → Thanh toán trực tuyến (VietQR)</li>
                   <li><span className="epc-portal-step-num">7</span>Hoàn tất: In phiếu giao nhận từng cont & Hóa đơn</li>
                 </ul>
               </div>
@@ -458,7 +458,7 @@ export default function ServiceCatalogPage({ management = false }) {
                   <li><span className="epc-portal-step-num">2</span>Khai báo Container (Thêm dòng, xóa dòng, seal, VGM, IMO/UN)</li>
                   <li><span className="epc-portal-step-num">3</span>Khai báo dịch vụ đính kèm & Clone dịch vụ</li>
                   <li><span className="epc-portal-step-num">4</span>Khai báo giao nhận (Xe / Sà lan, Hạn lệnh)</li>
-                  <li><span className="epc-portal-step-num">5</span>Gửi Dispatcher → Nhận thông báo → Thanh toán PayOS</li>
+                  <li><span className="epc-portal-step-num">5</span>Gửi Dispatcher → Nhận thông báo → Thanh toán trực tuyến (VietQR)</li>
                   <li><span className="epc-portal-step-num">6</span>Hoàn tất: In phiếu giao nhận từng cont & Hóa đơn</li>
                 </ul>
               </div>

@@ -92,7 +92,7 @@ export function OrderInvoiceInfo({ order }) {
           <Info size={19} />
           <p>
             {order.paymentStatus === 'AWAITING_PAYMENT'
-              ? 'Hồ sơ đang chờ thanh toán theo bảng phí Dispatcher đã duyệt. Sau khi thanh toán PayOS thành công, hóa đơn điện tử sẽ tự động xuất tại đây.'
+              ? 'Hồ sơ đang chờ thanh toán theo bảng phí Dispatcher đã duyệt. Sau khi thanh toán trực tuyến thành công, hóa đơn điện tử sẽ tự động xuất tại đây và gửi tệp PDF về email của doanh nghiệp.'
               : 'Chưa có hóa đơn điện tử được phát hành. Hóa đơn sẽ tự động tạo ngay khi lệnh dịch vụ hoàn tất thanh toán.'}
           </p>
         </div>

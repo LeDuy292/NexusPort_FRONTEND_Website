@@ -1707,7 +1707,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                       <SummaryItem label="Hạn lệnh">{form.delivery.orderValidUntil || form.source.validUntil || 'Không giới hạn'}</SummaryItem>
                       {form.delivery.transportMode === 'TRUCK' && <ServiceTripSummary trips={form.delivery.trips} containers={Object.values(snapshots)} />}
                       <SummaryItem label="Người mua">{form.invoiceBuyer.name || 'Theo tài khoản'}</SummaryItem>
-                      <SummaryItem label="Cổng thanh toán">Duy nhất PayOS (QR Code chuyển khoản ngân hàng 24/7)</SummaryItem>
+                      <SummaryItem label="Cổng thanh toán">Cổng thanh toán điện tử (Mã QR VietQR chuyển khoản ngân hàng 24/7)</SummaryItem>
                     </dl>
                   </div>
 
@@ -1743,7 +1743,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                 <SummaryItem label="Số lượng cont">
                   <span className="epd-summary-count">{form.lines.length.toString().padStart(2, '0')}</span>
                 </SummaryItem>
-                <SummaryItem label="Thanh toán">PayOS</SummaryItem>
+                <SummaryItem label="Thanh toán">Trực tuyến VietQR</SummaryItem>
               </dl>
               {form.flow === 'IMPORT' && (
                 <div className="epd-summary-note">
