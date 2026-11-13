@@ -119,7 +119,7 @@ export default function Login() {
     {
       id: 'carrier',
       title: 'Công ty vận tải',
-      desc: 'Doanh nghiệp vận tải / Quản lý đội xe container',
+      desc: 'Quản lý đội xe container',
       roleName: 'Transport Company',
       icon: 'corporate_fare',
       iconBg: 'rgba(99,179,237,0.12)',
@@ -128,8 +128,8 @@ export default function Login() {
     },
     {
       id: 'gate',
-      title: 'Kiểm soát viên cổng',
-      desc: 'Kiểm soát viên cổng vào ra',
+      title: 'Kiểm soát cổng',
+      desc: 'Kiểm soát cổng vào / ra',
       roleName: 'Gate Officer',
       icon: 'shield_with_heart',
       iconBg: 'rgba(72,187,120,0.12)',
@@ -139,7 +139,7 @@ export default function Login() {
     {
       id: 'operator',
       title: 'Điều phối viên',
-      desc: 'Điều phối viên vận hành cảng',
+      desc: 'Điều phối vận hành cảng',
       roleName: 'Dispatcher',
       icon: 'settings_suggest',
       iconBg: 'rgba(255,104,44,0.15)',
@@ -148,8 +148,8 @@ export default function Login() {
     },
     {
       id: 'yard',
-      title: 'Nhân viên vận hành bãi',
-      desc: 'Nhân viên vận hành bãi container',
+      title: 'Vận hành bãi',
+      desc: 'Quản lý bãi container',
       roleName: 'Yard Operator',
       icon: 'forklift',
       iconBg: 'rgba(246,173,85,0.12)',
@@ -159,7 +159,7 @@ export default function Login() {
     {
       id: 'shipping',
       title: 'Hãng tàu',
-      desc: 'Quản lý lịch tàu, Manifest, B/L & eDO',
+      desc: 'Lịch tàu, Manifest, eDO',
       roleName: 'Shipping Line',
       icon: 'directions_boat',
       iconBg: 'rgba(255,107,0,0.12)',
@@ -169,7 +169,7 @@ export default function Login() {
     {
       id: 'admin',
       title: 'Quản trị viên',
-      desc: 'Quản trị viên hệ thống',
+      desc: 'Quản trị hệ thống',
       roleName: 'Administrator',
       icon: 'admin_panel_settings',
       iconBg: 'rgba(159,122,234,0.12)',
@@ -622,11 +622,11 @@ export default function Login() {
         </div>
 
         {/* RIGHT CARD CONTAINER */}
-        <div className="flex-1 flex items-center justify-center p-6 sm:p-12">
-          <div className="w-full max-w-[440px]">
+        <div className="flex-1 flex items-center justify-center p-4 sm:p-8">
+          <div className="w-full max-w-[490px]">
             
             {/* Mobile Header */}
-            <div className="flex items-center gap-2 mb-10 lg:hidden">
+            <div className="flex items-center gap-2 mb-8 lg:hidden">
               <div className="w-8 h-8 bg-[#ff682c] rounded-lg flex items-center justify-center">
                 <span className="material-symbols-outlined text-white text-[18px]">anchor</span>
               </div>
@@ -634,16 +634,16 @@ export default function Login() {
             </div>
 
             {/* Glass Card */}
-            <div className="bg-white/[0.03] border border-white/10 backdrop-blur-2xl rounded-2xl p-8 shadow-2xl transition-all">
+            <div className="bg-white/[0.03] border border-white/10 backdrop-blur-2xl rounded-2xl p-6 sm:p-7 shadow-2xl transition-all">
               
               {/* Banner cảnh báo phiên cũ đã bị đăng xuất vì có phiên mới đăng nhập */}
               {showDuplicateWarning && (
-                <div className="mb-6 p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-3 animate-fadeIn">
-                  <span className="material-symbols-outlined text-amber-400 text-xl flex-shrink-0 mt-0.5">warning</span>
+                <div className="mb-5 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-start gap-3 animate-fadeIn">
+                  <span className="material-symbols-outlined text-amber-400 text-lg flex-shrink-0 mt-0.5">warning</span>
                   <div className="flex-1">
-                    <div className="font-bold text-amber-200 text-[13px]">Phiên đăng nhập đã kết thúc</div>
-                    <div className="text-amber-300/80 mt-1 leading-relaxed">
-                      Tài khoản của bạn vừa được đăng nhập trên một thiết bị hoặc trình duyệt khác. Để bảo vệ an toàn tài khoản, phiên làm việc trước đó đã tự động đăng xuất.
+                    <div className="font-bold text-amber-200 text-[12.5px]">Phiên đăng nhập đã kết thúc</div>
+                    <div className="text-amber-300/80 mt-0.5 leading-relaxed text-[11.5px]">
+                      Tài khoản của bạn vừa được đăng nhập trên một thiết bị hoặc trình duyệt khác. Phiên làm việc trước đó đã tự động đăng xuất.
                     </div>
                   </div>
                   <button
@@ -661,7 +661,7 @@ export default function Login() {
               )}
 
               {/* Step indicator */}
-              <div className="flex items-center gap-2 mb-8">
+              <div className="flex items-center gap-2 mb-5">
                 <div className="flex items-center gap-2 cursor-pointer" onClick={() => step === 2 && setStep(1)}>
                   <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold ${step === 1 ? 'bg-[#ff682c] text-white' : 'bg-white/10 text-white/40'}`}>
                     {step === 1 ? '1' : <span className="material-symbols-outlined text-[14px]">check</span>}
@@ -684,39 +684,36 @@ export default function Login() {
               {/* STEP 1: CHỌN VAI TRÒ */}
               {step === 1 && (
                 <div className="animate-fadeIn">
-                  <div className="mb-6">
-                    <h2 className="text-white font-bold text-[22px] tracking-[-0.3px]">Xin chào!</h2>
-                    <p className="text-white/40 text-[13px] mt-1.5 font-medium">Chọn vai trò của bạn để tiếp tục đăng nhập</p>
+                  <div className="mb-4">
+                    <h2 className="text-white font-bold text-[20px] tracking-[-0.3px]">Xin chào!</h2>
+                    <p className="text-white/40 text-[12px] mt-1 font-medium">Chọn vai trò của bạn để tiếp tục đăng nhập</p>
                   </div>
 
-                  <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+                  <div className="grid grid-cols-2 gap-2.5">
                     {roles.map((r) => {
                       const isSelected = selectedRole?.id === r.id
                       return (
                         <div
                           key={r.id}
                           onClick={() => handleSelectRole(r)}
-                          className={`relative bg-white/[0.04] border rounded-xl p-4 cursor-pointer transition-all duration-200 overflow-hidden hover:-translate-y-0.5 hover:shadow-lg ${
+                          className={`relative bg-white/[0.04] border rounded-xl p-3 cursor-pointer transition-all duration-200 overflow-hidden hover:-translate-y-0.5 hover:shadow-lg ${
                             isSelected
                               ? 'border-[#ff682c] bg-[#ff682c]/10 shadow-[0_0_0_1px_rgba(255,104,44,0.3)]'
-                              : 'border-white/10 hover:border-[#ff682c]/40'
+                              : 'border-white/10 hover:border-[#ff682c]/40 hover:bg-white/[0.07]'
                           }`}
                         >
-                          <div className="flex items-center gap-3 relative z-10">
+                          <div className="flex items-center gap-2.5 relative z-10">
                             <div 
-                              className="w-11 h-11 rounded-lg flex items-center justify-center flex-shrink-0"
+                              className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
                               style={{ backgroundColor: r.iconBg }}
                             >
-                              <span className="material-symbols-outlined text-[20px]" style={{ color: r.iconColor }}>
+                              <span className="material-symbols-outlined text-[19px]" style={{ color: r.iconColor }}>
                                 {r.icon}
                               </span>
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="text-white text-[13px] font-semibold leading-tight">{r.title}</div>
-                              <div className="text-white/40 text-[11px] mt-0.5">{r.desc}</div>
-                            </div>
-                            <div className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 transition-all ${isSelected ? 'bg-[#ff682c] border-[#ff682c]' : 'border-white/25'}`}>
-                              {isSelected && <span className="material-symbols-outlined text-white text-[12px]">check</span>}
+                              <div className="text-white text-[12.5px] font-semibold leading-tight truncate">{r.title}</div>
+                              <div className="text-white/40 text-[10px] mt-0.5 truncate">{r.desc}</div>
                             </div>
                           </div>
                         </div>
@@ -724,9 +721,7 @@ export default function Login() {
                     })}
                   </div>
 
-                  <p className="text-center text-white/20 text-[11px] mt-4 font-medium">Nhấn vào vai trò để tiếp tục</p>
-
-                  <div className="relative my-4 flex items-center justify-center">
+                  <div className="relative my-3.5 flex items-center justify-center">
                     <div className="border-t border-white/10 w-full" />
                     <span className="bg-[#121212] px-3 text-[11px] font-semibold text-white/30 uppercase tracking-wider">
                       hoặc
