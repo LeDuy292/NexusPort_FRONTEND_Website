@@ -18,7 +18,6 @@ const VALID_ROLES = [
   'Dispatcher',
   'Gate Officer',
   'Yard Operator',
-  'Berth Staff',
 ]
 
 const ROLE_COLORS = {
@@ -27,7 +26,6 @@ const ROLE_COLORS = {
   'Dispatcher':        'bg-blue-100 text-blue-800 border-blue-200',
   'Gate Officer':      'bg-green-100 text-green-800 border-green-200',
   'Yard Operator':     'bg-orange-100 text-orange-800 border-orange-200',
-  'Berth Staff':       'bg-teal-100 text-teal-800 border-teal-200',
   'Transport Company': 'bg-yellow-100 text-yellow-800 border-yellow-200',
   'Driver':            'bg-red-100 text-red-800 border-red-200',
 }
@@ -38,7 +36,6 @@ const ROLE_DESCS = {
   'Dispatcher':        'Quản lý điều độ phương tiện & theo dõi tàu biển',
   'Gate Officer':      'Nhận diện OCR AI & phê duyệt xe ra vào cổng',
   'Yard Operator':     'Quản lý sơ đồ xếp chồng container & điều phối thiết bị bãi',
-  'Berth Staff':       'Nhân viên kiểm soát cầu tàu bến cảng',
   'Transport Company': 'Doanh nghiệp vận tải & quản lý đội xe container',
   'Driver':            'Tài xế container thực hiện chuyến hàng',
 }
@@ -367,7 +364,7 @@ function AssignRoleModal({ user, onClose, onSaved }) {
         )}
 
         <div className="space-y-2">
-          {VALID_ROLES.map(role => (
+          {VALID_ROLES.filter(role => role !== 'Driver').map(role => (
             <button
               key={role}
               onClick={() => setSelectedRole(role)}
@@ -608,13 +605,7 @@ export default function UserRoleManagement() {
               className="w-full pl-10 pr-4 py-2.5 bg-white border border-chalk rounded-xl text-sm text-primary placeholder:text-slate focus:outline-none focus:ring-2 focus:ring-signal-orange/30 focus:border-signal-orange shadow-sm"
             />
           </div>
-          <button
-            onClick={() => setDrawer({ mode: 'create' })}
-            className="flex items-center gap-2 bg-carbon text-white h-10 px-5 rounded-full text-sm font-bold hover:bg-black transition-all shadow-lg hover:shadow-xl whitespace-nowrap"
-          >
-            <span className="material-symbols-outlined text-[18px]">add</span>
-            Thêm người dùng
-          </button>
+
         </div>
       </div>
 
