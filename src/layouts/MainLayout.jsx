@@ -50,17 +50,11 @@ const sidebarItems = [
     icon: 'alt_route',
     roles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
-  // 4. Giám sát thực địa: Bãi & Giao thông & Camera
+  // 4. Giám sát thực địa: Bãi & Camera
   {
     path: '/yard',
     label: 'Bản Đồ Bãi',
     icon: 'grid_view',
-    roles: [ROLES.DISPATCHER],
-  },
-  {
-    path: '/traffic',
-    label: 'Quản Lý Giao Thông',
-    icon: 'traffic',
     roles: [ROLES.DISPATCHER],
   },
   {

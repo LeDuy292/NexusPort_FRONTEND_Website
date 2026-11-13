@@ -876,7 +876,6 @@ export default function CameraMonitoring() {
                           { href: '/fleet',           icon: 'local_shipping', label: 'Quản Lý Đội Xe',       sub: 'Xem trạng thái xe',         color: 'hover:border-blue-500 hover:text-blue-600' },
                           { href: '/dispatcher/drivers', icon: 'badge',       label: 'Quản Lý Tài Xế',       sub: 'Xem danh sách tài xế',      color: 'hover:border-purple-500 hover:text-purple-600' },
                           { href: '/yard',            icon: 'grid_view',      label: 'Bản Đồ Bãi',           sub: 'Xem vị trí trên bãi',       color: 'hover:border-teal-500 hover:text-teal-600' },
-                          { href: '/traffic',         icon: 'traffic',        label: 'Quản Lý Giao Thông',   sub: 'Xem tình trạng đường',      color: 'hover:border-amber-500 hover:text-amber-600' },
                           { href: '/dispatch-history',icon: 'history',        label: 'Lịch Sử Điều Phối',   sub: 'Tra cứu lệnh cũ',           color: 'hover:border-slate-500 hover:text-slate-600' },
                         ].map(link => (
                           <a key={link.href} href={link.href}
