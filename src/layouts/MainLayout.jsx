@@ -6,6 +6,12 @@ import NotificationCenter from '../components/NotificationCenter'
 // Danh sách các mục trong Sidebar tương ứng với các route
 const sidebarItems = [
   {
+    path: '/service-orders',
+    label: 'Đơn đăng ký dịch vụ',
+    icon: 'receipt_long',
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
+  },
+  {
     path: '/services',
     label: 'Dịch Vụ ePort',
     icon: 'assignment_turned_in',

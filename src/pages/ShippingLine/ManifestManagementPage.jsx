@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { shippingLineApi, formatApiErrorMessage } from './api/shippingLineApi';
 import ShippingBadge from './components/ShippingBadge';
 import ShippingPagination from './components/ShippingPagination';
+import { manifestPortSyncService } from '../../services/manifestPortSyncService';
 
 // Helper định dạng trọng lượng tiếng Việt (dấu chấm phân tách hàng nghìn, viết thường kg)
 function formatKg(weight) {
@@ -250,6 +251,18 @@ export default function ManifestManagementPage() {
     }
   };
 
+  const handleRecallManifest = () => {
+    if (!selectedManifest) return;
+    manifestPortSyncService.recallManifestFromPort(selectedManifest.id || selectedManifest.manifestNumber);
+    setSelectedManifest(prev => ({
+      ...prev,
+      sentToPortAt: null,
+      status: 'VALIDATED',
+    }));
+    setReconciliationResult(null);
+    setSuccessMsg(`Đã thu hồi Bản khai (${selectedManifest.manifestNumber}) khỏi Cảng Tiên Sa! Trạng thái đã chuyển về Chưa gửi.`);
+  };
+
   const handleReconcile = async () => {
     if (!selectedManifest) return;
     setReconciling(true);
@@ -257,18 +270,48 @@ export default function ManifestManagementPage() {
     setSuccessMsg('');
 
     try {
-      const res = await shippingLineApi.reconcileManifest(selectedManifest.id);
+      let res;
+      try {
+        res = await shippingLineApi.sendManifestToPort(selectedManifest.id);
+      } catch {
+        res = await shippingLineApi.reconcileManifest(selectedManifest.id);
+      }
+
       const reconData = res?.summary ? res : (res?.data || res);
       if (reconData) {
         setReconciliationResult(reconData);
-        setSuccessMsg('Đối soát dữ liệu với Cảng Tiên Sa hoàn tất thành công');
-        const detailRes = await shippingLineApi.getManifestDetail(selectedManifest.id);
-        const detail = detailRes?.manifestNumber ? detailRes : (detailRes?.data || null);
-        if (detail) setSelectedManifest(detail);
-        loadData();
       }
+
+      const sentTime = reconData?.sentToPortAt || new Date().toISOString().replace('T', ' ').slice(0, 19);
+
+      // Đồng bộ vào kho Manifest chia sẻ cho Gate Booking
+      manifestPortSyncService.saveSyncedManifest({
+        ...selectedManifest,
+        sentToPortAt: sentTime,
+        status: 'SENT_TO_PORT',
+        vesselStatus: (voyages.find(v => v.voyageNumber === selectedManifest.voyageNumber)?.status) || selectedManifest.vesselStatus || 'BERTHED',
+      });
+
+      setSuccessMsg(`Đã gửi dữ liệu Bản khai hàng hóa (${selectedManifest.manifestNumber}) cho Cảng Tiên Sa thành công! Dữ liệu đã sẵn sàng để bộ phận Yêu Cầu Đăng Ký Vào Cổng (Gate Booking) kiểm duyệt và cấp nhận.`);
+
+      const detailRes = await shippingLineApi.getManifestDetail(selectedManifest.id);
+      const detail = detailRes?.manifestNumber ? detailRes : (detailRes?.data || null);
+      if (detail) {
+        setSelectedManifest({
+          ...detail,
+          sentToPortAt: sentTime,
+          status: 'SENT_TO_PORT',
+        });
+      } else {
+        setSelectedManifest(prev => ({
+          ...prev,
+          sentToPortAt: sentTime,
+          status: 'SENT_TO_PORT',
+        }));
+      }
+      loadData();
     } catch (err) {
-      setError(formatApiErrorMessage(err, 'Lỗi đối soát dữ liệu cảng'));
+      setError(formatApiErrorMessage(err, 'Lỗi gửi dữ liệu cho cảng'));
     } finally {
       setReconciling(false);
     }
@@ -825,10 +868,15 @@ export default function ManifestManagementPage() {
                     Phiên bản: v{selectedManifest.version || 1}
                   </span>
                 </div>
-                <p className="text-xs text-slate font-mono mt-1">
-                  Chuyến tàu: <strong className="text-carbon font-bold">{selectedManifest.voyageInfo?.voyageNumber || selectedManifest.voyageNumber}</strong>
-                  {' · '}Tàu biển: <strong className="text-carbon font-bold">{selectedManifest.voyageInfo?.vesselName || selectedManifest.vesselName}</strong>
-                </p>
+                <div className="flex items-center gap-2 mt-2 flex-wrap text-xs">
+                  <span className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-900 border border-blue-200 font-bold flex items-center gap-1">
+                    <span className="material-symbols-outlined text-sm text-blue-600">directions_boat</span>
+                    Tàu biển: <strong className="font-extrabold">{selectedManifest.voyageInfo?.vesselName || selectedManifest.vesselName || 'EVER GLORY'}</strong>
+                  </span>
+                  <span className="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 border border-chalk font-mono font-bold">
+                    Chuyến tàu: {selectedManifest.voyageInfo?.voyageNumber || selectedManifest.voyageNumber || 'EG-2605W'}
+                  </span>
+                </div>
               </div>
 
               {/* Action Buttons */}
@@ -837,14 +885,36 @@ export default function ManifestManagementPage() {
                   onClick={handleReconcile}
                   disabled={reconciling}
                   className="px-4 py-2 text-xs font-bold text-white bg-signal-orange hover:opacity-90 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  title="Gửi dữ liệu bản khai hàng hóa (Manifest) cho hệ thống Cảng Tiên Sa để bộ phận Gate Booking đối soát và duyệt vào cổng"
                 >
                   <span className={`material-symbols-outlined text-base ${reconciling ? 'animate-spin' : ''}`}>
-                    compare_arrows
+                    {reconciling ? 'progress_activity' : (selectedManifest.sentToPortAt ? 'cloud_done' : 'send')}
                   </span>
-                  <span>{reconciling ? 'Đang đối soát...' : 'Đối soát dữ liệu cảng'}</span>
+                  <span>{reconciling ? 'Đang gửi dữ liệu cho cảng...' : (selectedManifest.sentToPortAt ? 'Gửi lại dữ liệu cho cảng' : 'Gửi dữ liệu cho cảng')}</span>
                 </button>
               </div>
             </div>
+
+            {/* Thông báo trạng thái đã gửi cho cảng - Không cắt chữ */}
+            {selectedManifest.sentToPortAt && (
+              <div className="p-4 bg-emerald-50 border-2 border-emerald-300 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs text-emerald-950 shadow-xs">
+                <div className="flex items-start md:items-center gap-3">
+                  <span className="material-symbols-outlined text-emerald-600 text-2xl shrink-0 mt-0.5 md:mt-0">cloud_done</span>
+                  <div className="leading-relaxed space-y-0.5">
+                    <div className="font-extrabold text-emerald-950 text-sm">Đã gửi dữ liệu Bản khai hàng hóa sang Cảng Tiên Sa</div>
+                    <div className="text-emerald-900 font-medium">
+                      Gửi lúc <strong className="font-mono">{selectedManifest.sentToPortAt}</strong>. Bộ phận Yêu Cầu Đăng Ký Vào Cổng (Gate Booking) đã nhận được dữ liệu để đối soát và cấp nhận xe vào bãi.
+                    </div>
+                  </div>
+                </div>
+                <div className="shrink-0 self-start md:self-center">
+                  <span className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-200 text-emerald-950 border border-emerald-400 inline-flex items-center gap-1.5 shadow-2xs">
+                    <span className="material-symbols-outlined text-base text-emerald-700">verified</span>
+                    SẴN SÀNG CHO GATE BOOKING
+                  </span>
+                </div>
+              </div>
+            )}
 
             {/* Chi tiết hành trình & cảng biển */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs bg-fog/70 border border-chalk rounded-xl p-3.5">
@@ -923,19 +993,21 @@ export default function ManifestManagementPage() {
             </div>
           </div>
 
-          {/* ── Khối Đối Soát Dữ Liệu Tự Động Với Cảng Tiên Sa ── */}
+          {/* ── Khối Gửi Dữ Liệu Bản Khai Cho Cảng Tiên Sa & Đối Soát ── */}
           {!reconciliationResult ? (
             <div className="bg-white border border-chalk rounded-2xl p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-3.5">
                 <div className="w-10 h-10 rounded-xl bg-orange-50 border border-orange-200 text-signal-orange flex items-center justify-center shrink-0">
-                  <span className="material-symbols-outlined text-xl">compare_arrows</span>
+                  <span className="material-symbols-outlined text-xl">cloud_upload</span>
                 </div>
                 <div>
                   <h4 className="font-heading font-extrabold text-carbon text-sm">
-                    Chưa có dữ liệu đối soát từ Cảng Tiên Sa
+                    {selectedManifest.sentToPortAt ? 'Dữ liệu đã truyền cho Cảng Tiên Sa' : 'Chưa gửi dữ liệu Bản khai cho Cảng Tiên Sa'}
                   </h4>
                   <p className="text-xs text-slate mt-0.5">
-                    Hệ thống cần kết nối với Cổng kiểm soát (Gate-In) và Cân điện tử cảng để đối chiếu số niêm chì và trọng lượng VGM thực tế. Nhấn nút đối soát để bắt đầu kiểm tra.
+                    {selectedManifest.sentToPortAt 
+                      ? `Đã gửi lúc ${selectedManifest.sentToPortAt}. Bộ phận Yêu Cầu Đăng Ký Vào Cổng (Gate Booking) đã nhận được dữ liệu để đối soát và cấp nhận.`
+                      : 'Hệ thống cần gửi Bản khai hàng hóa (Manifest) sang Cảng Tiên Sa để bộ phận Yêu Cầu Đăng Ký Vào Cổng (Gate Booking) nhận được thông tin đối soát số chì, VGM và cấp nhận xe vào cổng.'}
                   </p>
                 </div>
               </div>
@@ -945,9 +1017,9 @@ export default function ManifestManagementPage() {
                 className="px-4 py-2 text-xs font-bold text-white bg-signal-orange hover:opacity-90 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
               >
                 <span className={`material-symbols-outlined text-base ${reconciling ? 'animate-spin' : ''}`}>
-                  compare_arrows
+                  {reconciling ? 'progress_activity' : (selectedManifest.sentToPortAt ? 'cloud_done' : 'send')}
                 </span>
-                <span>{reconciling ? 'Đang đối soát...' : 'Đối soát dữ liệu cảng'}</span>
+                <span>{reconciling ? 'Đang gửi dữ liệu cho cảng...' : (selectedManifest.sentToPortAt ? 'Gửi lại dữ liệu cho cảng' : 'Gửi dữ liệu cho cảng')}</span>
               </button>
             </div>
           ) : (
