@@ -72,7 +72,6 @@ import BillingChargesManagement from './pages/Admin/BillingChargesManagement'
 import ShippingDashboard from './pages/ShippingLine/ShippingDashboard'
 import VesselVoyagePage from './pages/ShippingLine/VesselVoyagePage'
 import ManifestManagementPage from './pages/ShippingLine/ManifestManagementPage'
-import BillOfLadingPage from './pages/ShippingLine/BillOfLadingPage'
 import DeliveryOrderPage from './pages/ShippingLine/DeliveryOrderPage'
 import ServiceCatalogPage from './features/service-catalog/ServiceCatalogPage'
 
@@ -198,7 +197,7 @@ function App() {
             <Route path="/shipping-line" element={<Navigate to="/shipping-line/dashboard" replace />} />
             <Route path="/shipping-line/dashboard" element={<ShippingDashboard />} />
             <Route path="/shipping-line/voyages" element={<VesselVoyagePage />} />
-            <Route path="/shipping-line/bills-of-lading" element={<BillOfLadingPage />} />
+            <Route path="/shipping-line/bills-of-lading" element={<Navigate to="/shipping-line/manifest" replace />} />
             <Route path="/shipping-line/delivery-orders" element={<DeliveryOrderPage />} />
           </Route>
 

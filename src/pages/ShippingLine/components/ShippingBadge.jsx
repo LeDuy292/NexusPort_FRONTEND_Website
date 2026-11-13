@@ -10,6 +10,7 @@ const STATUS_CONFIG = {
   COMPLETED: { label: 'Hoàn tất', bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-300' },
 
   // Manifest statuses
+  SENT_TO_PORT: { label: 'Đã gửi cảng', bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-300' },
   DRAFT: { label: 'Bản nháp', bg: 'bg-slate-100', text: 'text-slate-600', border: 'border-slate-300' },
   SUBMITTED: { label: 'Đã nộp', bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-300' },
   VALID: { label: 'Hợp lệ', bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-300' },

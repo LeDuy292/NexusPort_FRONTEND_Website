@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import ContainerEquipmentSearch from '../Containers/ContainerEquipmentSearch'
 import { containerService } from '../../services/containerService'
+import { readManifestComposerSession } from './utils/manifestComposerSession'
 
 const fieldClass = 'w-full rounded-xl border border-chalk bg-fog px-3.5 py-2.5 text-sm outline-none focus:border-signal-orange focus:bg-white'
 const emptyForm = {
@@ -12,6 +13,14 @@ const format = value => value.toLocaleString('vi-VN', { maximumFractionDigits: 2
 
 export default function ContainerRegistration() {
   const [params] = useSearchParams()
+  const navigate = useNavigate()
+  const returningToManifest = params.get('returnTo') === 'manifest' && Boolean(readManifestComposerSession())
+  const returnToManifest = () => navigate('/shipping-line/manifest')
+  const tabLink = (equipment) => {
+    const next = new URLSearchParams(params)
+    if (equipment) next.set('tab', 'equipment'); else next.delete('tab')
+    return `/shipping-line/containers?${next}`
+  }
   const showEquipment = params.get('tab') === 'equipment'
   const tabClass = active => `rounded-xl border px-4 py-2 text-sm font-bold ${active ? 'border-signal-orange bg-orange-50 text-carbon' : 'border-chalk bg-white text-slate'}`
 
@@ -21,21 +30,23 @@ export default function ContainerRegistration() {
         <p className="text-xs font-bold uppercase text-signal-orange">Hãng tàu</p>
         <h1 className="mt-2 font-heading text-3xl font-bold text-carbon">Khai báo container</h1>
       </div>
-      <Link to="/containers" className="rounded-xl border border-chalk bg-white px-4 py-2 text-sm font-bold">Tra cứu lượt bãi</Link>
+      {returningToManifest ? <button type="button" onClick={returnToManifest} className="rounded-xl border border-chalk bg-white px-4 py-2 text-sm font-bold">← Quay lại vận đơn đang khai báo</button>
+        : <Link to="/containers" className="rounded-xl border border-chalk bg-white px-4 py-2 text-sm font-bold">Tra cứu lượt bãi</Link>}
     </header>
     <nav aria-label="Khai báo container" className="flex flex-wrap gap-2">
-      <Link to="/shipping-line/containers" className={tabClass(!showEquipment)} aria-current={showEquipment ? undefined : 'page'}>Đăng ký mới</Link>
-      <Link to="?tab=equipment" className={tabClass(showEquipment)} aria-current={showEquipment ? 'page' : undefined}>Container của hãng</Link>
+      <Link to={tabLink(false)} className={tabClass(!showEquipment)} aria-current={showEquipment ? undefined : 'page'}>Đăng ký mới</Link>
+      <Link to={tabLink(true)} className={tabClass(showEquipment)} aria-current={showEquipment ? 'page' : undefined}>Container của hãng</Link>
     </nav>
-    <div hidden={showEquipment}><ContainerRegistrationForm /></div>
+    {returningToManifest && <p className="rounded-xl bg-orange-50 p-3 text-sm">Thông tin Manifest và vận đơn đang được giữ lại. Lưu container để quay lại tiếp tục.</p>}
+    <div hidden={showEquipment}><ContainerRegistrationForm initialNumber={params.get('containerNumber') || ''} onRegistered={returningToManifest ? returnToManifest : undefined} /></div>
     {showEquipment && <ContainerEquipmentSearch />}
   </div>
 }
 
-function ContainerRegistrationForm() {
+function ContainerRegistrationForm({ initialNumber, onRegistered }) {
   const [isoTypes, setIsoTypes] = useState([])
   const [line, setLine] = useState(null)
-  const [form, setForm] = useState(emptyForm)
+  const [form, setForm] = useState(() => ({ ...emptyForm, containerNumber: initialNumber }))
   const [registered, setRegistered] = useState(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -84,6 +95,7 @@ function ContainerRegistrationForm() {
       })
       setRegistered(identity)
       setForm(emptyForm)
+      onRegistered?.(identity)
     } catch (error) {
       setError(error.details ? Object.values(error.details).flat().join(' ') : error.message)
     } finally {
@@ -151,7 +163,7 @@ function ContainerRegistrationForm() {
         {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
         {registered && <p role="status" className="text-sm text-emerald-700">Đã đăng ký {registered.containerNumber} · {registered.containerTypeCode}</p>}
         <button disabled={submitting || loading || !matchesPrefix || !equipment || invalidWeights} className="rounded-xl bg-signal-orange px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50">
-          {submitting ? 'Đang đăng ký…' : 'Đăng ký Container'}
+          {submitting ? 'Đang đăng ký…' : onRegistered ? 'Lưu container và quay lại vận đơn' : 'Đăng ký Container'}
         </button>
       </form>
     </div>
