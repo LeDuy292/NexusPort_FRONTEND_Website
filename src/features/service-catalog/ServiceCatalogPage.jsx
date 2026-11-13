@@ -30,6 +30,7 @@ function ServiceIcon({ service, size = 24 }) {
 }
 function Badge({ children, tone = '' }) { return <span className={`epc-badge ${tone}`}>{children}</span> }
 function Price({ service, today }) {
+  if (service.pricingManagedByDispatcher) return <span className="epc-unpriced">Dispatcher xác nhận phí sau đăng ký</span>
   const rates = liveRates(service, today)
   if (!rates.length) return <span className="epc-unpriced">Chưa có biểu phí</span>
   return <span className="epc-card-price"><small>Từ </small>{money(Math.min(...rates.map(r => r.amount)))}<small> / {labels.unit[service.unit]}</small></span>
@@ -97,7 +98,7 @@ function HistoryPanel({ id }) {
 
 function ServiceWorkspace({ service, today, management, tab, onTab, onClose, onEdit, onAddTariff, onRetire, onRegister, notice }) {
   const id = useId()
-  const tabs = [['conditions', 'Điều kiện sử dụng'], ['tariffs', 'Biểu phí'], ...(management ? [['history', 'Lịch sử']] : [])]
+  const tabs = [['conditions', 'Điều kiện sử dụng'], ...(management ? [['tariffs', 'Biểu phí'], ['history', 'Lịch sử']] : [])]
   const rates = liveRates(service, today)
   const changeTabWithKeyboard = (event, value) => {
     const current = tabs.findIndex(([key]) => key === value)
@@ -222,7 +223,7 @@ export default function ServiceCatalogPage({ management = false }) {
   const [orderReviewing, setOrderReviewing] = useState(null)
   useEffect(() => { const timer = setTimeout(() => { setOrderTerm(orderSearch.trim()); setOrderPage(1) }, 280); return () => clearTimeout(timer) }, [orderSearch])
   const orderFilters = { search: orderTerm || undefined, status: orderStatus || undefined, paymentStatus: orderPaymentStatus || undefined, flow: orderFlow || undefined, page: orderPage, pageSize: 10 }
-  const ordersQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'list', orderFilters], queryFn: () => serviceOrdersApi.list(orderFilters), retry: false, enabled: canDraft })
+  const ordersQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'list', orderFilters], queryFn: () => serviceOrdersApi.list(orderFilters), retry: false, enabled: canDraft, refetchInterval: activeSection === 'orders' ? 10000 : false })
   const ordersTotal = ordersQuery.data?.total || 0
   const ordersPages = Math.max(1, Math.ceil(ordersTotal / 10))
   const orderItems = ordersQuery.data?.items || []
@@ -320,7 +321,7 @@ export default function ServiceCatalogPage({ management = false }) {
           <p>
             {management
               ? 'Thiết lập dịch vụ và thời gian hiệu lực. Giữ lịch sử cho mỗi lần cập nhật.'
-              : 'Giao container hàng nhập (lệnh eDO/DO, VASSCM) và Hạ container hàng xuất (Booking giấy/eBooking, khai báo cont).'}
+              : 'Giao container hàng nhập (lệnh eDO điện tử, VASSCM) và Hạ container hàng xuất (eBooking liên kết, khai báo cont).'}
           </p>
           <div className="epc-hero-stats" aria-label="Tổng quan dịch vụ">
             <div>
@@ -328,7 +329,7 @@ export default function ServiceCatalogPage({ management = false }) {
               <span>Tác nghiệp chính (Xuất & Nhập)</span>
             </div>
             <div>
-              <strong>PayOS</strong>
+              <strong>Cổng thanh toán VietQR 24/7</strong>
               <span>Cổng thanh toán điện tử</span>
             </div>
             <div>
@@ -396,7 +397,7 @@ export default function ServiceCatalogPage({ management = false }) {
               </header>
               <h3>Giao container hàng nhập</h3>
               <p className="epc-portal-desc">
-                Tác nghiệp bốc container hàng nhập ra khỏi cảng (lấy nguyên). Đăng ký lệnh giao hàng điện tử eDO hoặc DO giấy,
+                Tác nghiệp bốc container hàng nhập ra khỏi cảng (lấy nguyên). Đăng ký lệnh giao hàng điện tử eDO,
                 kiểm tra thông quan VASSCM cơ quan hải quan và điều động phương tiện xe/sà lan.
               </p>
 
@@ -405,12 +406,12 @@ export default function ServiceCatalogPage({ management = false }) {
                   <ShieldCheck size={14} />Quy trình 7 bước nghiệp vụ
                 </div>
                 <ul className="epc-portal-steps-list">
-                  <li><span className="epc-portal-step-num">1</span>Khai báo lệnh giao nhận DO/eDO & Xác thực email</li>
+                  <li><span className="epc-portal-step-num">1</span>Khai báo lệnh giao nhận điện tử eDO & Xác thực email</li>
                   <li><span className="epc-portal-step-num">2</span>Khai báo container lấy nguyên (chì niêm phong HQ)</li>
                   <li><span className="epc-portal-step-num">3</span>Khai báo dịch vụ đính kèm (Lưu bãi, Cắm điện lạnh, Clone)</li>
                   <li><span className="epc-portal-step-num">4</span>Kiểm tra thông quan qua hệ thống VASSCM</li>
                   <li><span className="epc-portal-step-num">5</span>Khai báo giao nhận (Xe / Sà lan, Hạn lệnh)</li>
-                  <li><span className="epc-portal-step-num">6</span>Kiểm tra thông tin & Tính tiền, Thanh toán PayOS</li>
+                  <li><span className="epc-portal-step-num">6</span>Gửi Dispatcher → Nhận thông báo → Thanh toán trực tuyến (VietQR)</li>
                   <li><span className="epc-portal-step-num">7</span>Hoàn tất: In phiếu giao nhận từng cont & Hóa đơn</li>
                 </ul>
               </div>
@@ -418,7 +419,7 @@ export default function ServiceCatalogPage({ management = false }) {
 
             <footer className="epc-portal-card-footer">
               <div className="epc-portal-price">
-                <span>Biểu phí tác nghiệp</span>
+                <span>Xử lý đăng ký</span>
                 {importService ? <Price service={importService} today={today} /> : <strong>Theo biểu phí cảng</strong>}
               </div>
               <button
@@ -444,7 +445,7 @@ export default function ServiceCatalogPage({ management = false }) {
               </header>
               <h3>Hạ container hàng xuất</h3>
               <p className="epc-portal-desc">
-                Tác nghiệp hạ container hàng xuất vào bãi cảng chờ xếp tàu. Khai báo Booking hãng tàu (Booking giấy hoặc eBooking),
+                Tác nghiệp hạ container hàng xuất vào bãi cảng chờ xếp tàu. Khai báo eBooking hãng tàu đã liên kết,
                 khai báo danh sách container, seal, VGM, chỉ dẫn hàng lạnh/nguy hiểm và xe/sà lan giao nhận.
               </p>
 
@@ -453,11 +454,11 @@ export default function ServiceCatalogPage({ management = false }) {
                   <ShieldCheck size={14} />Quy trình 6 bước nghiệp vụ
                 </div>
                 <ul className="epc-portal-steps-list">
-                  <li><span className="epc-portal-step-num">1</span>Khai báo Booking (eBooking / Booking giấy) & Xác thực email</li>
+                  <li><span className="epc-portal-step-num">1</span>Khai báo eBooking & Xác thực email</li>
                   <li><span className="epc-portal-step-num">2</span>Khai báo Container (Thêm dòng, xóa dòng, seal, VGM, IMO/UN)</li>
                   <li><span className="epc-portal-step-num">3</span>Khai báo dịch vụ đính kèm & Clone dịch vụ</li>
                   <li><span className="epc-portal-step-num">4</span>Khai báo giao nhận (Xe / Sà lan, Hạn lệnh)</li>
-                  <li><span className="epc-portal-step-num">5</span>Kiểm tra thông tin & Tính tiền, Thanh toán PayOS</li>
+                  <li><span className="epc-portal-step-num">5</span>Gửi Dispatcher → Nhận thông báo → Thanh toán trực tuyến (VietQR)</li>
                   <li><span className="epc-portal-step-num">6</span>Hoàn tất: In phiếu giao nhận từng cont & Hóa đơn</li>
                 </ul>
               </div>
@@ -465,7 +466,7 @@ export default function ServiceCatalogPage({ management = false }) {
 
             <footer className="epc-portal-card-footer">
               <div className="epc-portal-price">
-                <span>Biểu phí tác nghiệp</span>
+                <span>Xử lý đăng ký</span>
                 {exportService ? <Price service={exportService} today={today} /> : <strong>Theo biểu phí cảng</strong>}
               </div>
               <button
@@ -542,7 +543,7 @@ export default function ServiceCatalogPage({ management = false }) {
                 <span role="columnheader">Hồ sơ / dịch vụ</span>
                 <span role="columnheader">Nguồn / container</span>
                 <span role="columnheader">Trạng thái xử lý</span>
-                <span role="columnheader">Giá trị đăng ký</span>
+                <span role="columnheader">Kết quả và cập nhật</span>
                 <span role="columnheader" className="epc-sr-only">Chi tiết</span>
               </div>
               {orderItems.map((order, index) => (
@@ -563,7 +564,7 @@ export default function ServiceCatalogPage({ management = false }) {
                     {order.paymentStatus && <small className={`epo-payment-label ${order.paymentReviewRequired ? 'orange' : statusTone(order.paymentStatus)}`}>{paymentStateLabel(order)}</small>}
                   </span>
                   <span className="epo-order-amount" role="cell">
-                    <strong>{order.total == null ? 'Chưa xác định' : money(order.total)}</strong>
+                    <strong>{order.pricingStatus === 'AWAITING' ? 'Chờ Dispatcher trả phí' : order.paymentStatus === 'PAID' ? 'Đã thanh toán' : 'Đã nhận kết quả'}</strong>
                     <small>{draftDateTime(order.updatedAt)}</small>
                   </span>
                   <span className="epo-open-arrow" role="cell"><ArrowUpRight size={17} /></span>

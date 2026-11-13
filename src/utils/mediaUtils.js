@@ -17,4 +17,3 @@ export const resolveMediaUrl = (url) => {
 
   return `${CSHARP_BASE_URL}${trimmed.startsWith('/') ? '' : '/'}${trimmed}`
 }
-

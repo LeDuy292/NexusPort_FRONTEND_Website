@@ -54,7 +54,6 @@ import BerthIncidentReporting from './pages/BerthStaff/BerthIncidentReporting'
 // Import các trang Dispatcher Control Center
 import VehicleDispatch from './pages/Dispatch/VehicleDispatch'
 import VehicleManagement from './pages/Fleet/VehicleManagement'
-import TrafficManagement from './pages/Traffic/TrafficManagement'
 import ContainerFlow from './pages/Containers/ContainerFlow'
 import DispatcherDriverManagement from './pages/Drivers/DriverManagement'
 import DispatchHistory from './pages/Dispatch/DispatchHistory'
@@ -138,6 +137,7 @@ function App() {
 
         {/* Toàn bộ các trang quản trị dùng chung cấu trúc Sidebar thông qua MainLayout */}
         <Route element={<MainLayout />}>
+          <Route path="/service-orders" element={<Navigate to="/services" replace />} />
           <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, 'Carrier', ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
             <Route path="/services" element={<ServiceCatalogPage />} />
           </Route>
@@ -173,7 +173,6 @@ function App() {
             <Route path="/dispatcher/gate-bookings" element={<GateBookingRequests />} />
             <Route path="/dispatch" element={<VehicleDispatch />} />
             <Route path="/fleet" element={<VehicleManagement />} />
-            <Route path="/traffic" element={<TrafficManagement />} />
             <Route path="/container-flow" element={<ContainerFlow />} />
             <Route path="/dispatcher/drivers" element={<DispatcherDriverManagement />} />
             <Route path="/dispatch-history" element={<DispatchHistory />} />

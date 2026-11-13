@@ -9,7 +9,7 @@ const sidebarItems = [
     path: '/services',
     label: 'Dịch Vụ ePort',
     icon: 'assignment_turned_in',
-    roles: [ROLES.TRANSPORT_COMPANY, 'Carrier', ROLES.CARRIER_STAFF],
+    roles: [ROLES.TRANSPORT_COMPANY, 'Carrier', ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
   },
   {
     path: '/admin/service-catalog',
@@ -50,17 +50,11 @@ const sidebarItems = [
     icon: 'alt_route',
     roles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
-  // 4. Giám sát thực địa: Bãi & Giao thông & Camera
+  // 4. Giám sát thực địa: Bãi & Camera
   {
     path: '/yard',
     label: 'Bản Đồ Bãi',
     icon: 'grid_view',
-    roles: [ROLES.DISPATCHER],
-  },
-  {
-    path: '/traffic',
-    label: 'Quản Lý Giao Thông',
-    icon: 'traffic',
     roles: [ROLES.DISPATCHER],
   },
   {
@@ -395,13 +389,20 @@ export default function MainLayout({ previewUser = null }) {
 
       {/* ═══════════════════════════ SIDEBAR ═══════════════════════════ */}
       <aside className="w-[260px] min-w-[260px] h-screen bg-white border-r border-slate-200/90 flex flex-col z-20 flex-shrink-0 shadow-2xs">
-        <div className="px-6 py-5 border-b border-slate-100">
-          <h1 className="font-heading text-2xl text-slate-900 flex items-center gap-1 font-bold leading-none tracking-tight">
-            NexusPort<span className="text-[#ff6b00] text-3xl leading-none">.</span>
-          </h1>
-          <p className="text-[10px] text-slate-500 mt-1.5 uppercase tracking-wider font-semibold">
-            {user.role === 'Berth Staff' ? 'Cổng Nhân Viên Cầu Bến' : user.role === 'Shipping Line' ? 'Cổng Doanh Nghiệp Hãng Tàu' : `${user.role} Portal`}
-          </p>
+        <div className="px-6 py-5 border-b border-slate-100 flex items-center gap-3">
+          <img
+            src="/nexusport-logo.png"
+            alt="NexusPort Logo"
+            className="w-10 h-10 object-contain rounded-lg shadow-2xs border border-slate-100 flex-shrink-0"
+          />
+          <div>
+            <h1 className="font-heading text-xl text-slate-900 flex items-center gap-0.5 font-bold leading-none tracking-tight">
+              NexusPort<span className="text-[#ff6b00] text-2xl leading-none">.</span>
+            </h1>
+            <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-wider font-semibold">
+              {user.role === 'Berth Staff' ? 'Cổng Nhân Viên Cầu Bến' : user.role === 'Shipping Line' ? 'Cổng Doanh Nghiệp Hãng Tàu' : `${user.role} Portal`}
+            </p>
+          </div>
         </div>
 
         {/* MENU LINKS */}

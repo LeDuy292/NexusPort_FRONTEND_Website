@@ -1,11 +1,15 @@
 import React, { useState } from 'react'
+import { manifestPortSyncService } from '../../services/manifestPortSyncService'
 
-export default function BookingDocumentsModal({ isOpen, onClose, booking }) {
+export default function BookingDocumentsModal({ isOpen, onClose, booking, manifestInfo: propManifestInfo }) {
   const [activeTab, setActiveTab] = useState('eir')
   const [viewMode, setViewMode] = useState('scan') // 'scan' | 'data'
   const [zoomLevel, setZoomLevel] = useState(1)
 
   if (!isOpen || !booking) return null
+
+  // Tìm thông tin manifest từ Hãng tàu đã truyền sang Cảng
+  const manifestInfo = propManifestInfo || manifestPortSyncService.getManifestForContainer(booking.containerId)
 
   // Trích xuất hãng tàu từ tiền tố số Container (chuẩn ISO 6346)
   const contPrefix = (booking.containerId || '').slice(0, 4).toUpperCase()
@@ -165,9 +169,9 @@ export default function BookingDocumentsModal({ isOpen, onClose, booking }) {
       stampSub: 'GPLX HẠNG FC HỢP PHÁP',
       stampColor: '#9333ea',
       fields: [
-        { label: 'Họ Và Tên Tài Xế', value: booking.driverName || 'Nguyễn Văn Long' },
+        { label: 'Họ Và Tên Tài Xế', value: booking.driverName || booking.suggestedDriver || 'TRẦN VĂN TÙNG' },
         { label: 'Số Căn Cước Công Dân (CCCD)', value: '048092004812 (Bộ Công An cấp)' },
-        { label: 'Số Giấy Phép Lái Xe (GPLX)', value: `430${booking.id?.slice(-5) || '19823'}` },
+        { label: 'Số Giấy Phép Lái Xe (GPLX)', value: booking.licenseNumber || booking.suggestedLicense || `FC-782910` },
         { label: 'Hạng Bằng Lái Xe', value: 'HẠNG FC (Được phép điều khiển xe đầu kéo rơ-moóc)' },
         { label: 'Ngày Sinh / Quốc Tịch', value: '18/06/1988 · Việt Nam' },
         { label: 'Thời Hạn Giấy Phép Lái Xe', value: '20/10/2028 (Còn hiệu lực 2 năm)' },
@@ -175,6 +179,36 @@ export default function BookingDocumentsModal({ isOpen, onClose, booking }) {
         { label: 'Đơn Vị Quản Lý Lao Động', value: booking.company || 'Doanh Nghiệp Vận Tải Tiên Sa' },
       ],
       note: 'Tài xế đã hoàn thành huấn luyện an toàn lao động bến cảng Tiên Sa và có bằng FC đúng quy định cho xe container.'
+    },
+    {
+      id: 'manifest',
+      name: 'Bản Khai Hàng Hóa (e-Manifest)',
+      badge: manifestInfo ? 'Đã truyền cảng' : 'Chờ hãng tàu gửi',
+      code: manifestInfo?.manifestNumber || 'MNF-2026-001',
+      issuer: manifestInfo?.shippingLine || shippingLine,
+      status: manifestInfo ? 'Hợp lệ' : 'Chờ gửi',
+      date: manifestInfo?.sentToPortAt ? manifestInfo.sentToPortAt.split(' ')[0] : bookingDate,
+      expiry: '30/11/2026',
+      icon: 'directions_boat',
+      docTitle: 'ELECTRONIC CARGO MANIFEST (e-MANIFEST) · BẢN KHAI HÀNG HÓA HÃNG TÀU',
+      officialAuthority: manifestInfo?.shippingLine || shippingLine,
+      officialSub: 'DỮ LIỆU ĐIỆN TỬ TRUYỀN SANG HỆ THỐNG ĐIỀU HÀNH CẢNG QUỐC TẾ TIÊN SA',
+      stampText: 'CẢNG TIÊN SA - TRUNG TÂM ĐIỀU ĐỘ - TIẾP NHẬN MANIFEST',
+      stampSub: 'MANIFEST TRUYỀN ĐIỆN TỬ HỢP LỆ',
+      stampColor: '#059669',
+      fields: [
+        { label: 'Số Bản Khai Hàng Hóa (Manifest No)', value: manifestInfo?.manifestNumber || 'MNF-VNDAD-2026-001' },
+        { label: 'Tên Tàu & Chuyến Tàu', value: `${manifestInfo?.vesselName || 'EVER GLORY'} (Chuyến: ${manifestInfo?.voyageNumber || 'EG-2605W'})` },
+        { label: 'Đơn Vị Khai Báo (Hãng Tàu)', value: manifestInfo?.shippingLine || shippingLine },
+        { label: 'Số Hiệu Container Khai Báo', value: booking.containerId || 'EMCU9284712' },
+        { label: 'Số Chì Niêm Phong Hãng Tàu (Seal)', value: manifestInfo?.sealNumber || `SL-${booking.id?.slice(-5) || '88412'}` },
+        { label: 'Khối Lượng Toàn Bộ Khai Báo (VGM)', value: manifestInfo?.grossWeightKg ? `${manifestInfo.grossWeightKg.toLocaleString()} kg` : totalVGM },
+        { label: 'Vận Đơn Đường Biển (B/L)', value: manifestInfo?.blNumber || 'BL-VNDAD-8901' },
+        { label: 'Mô Tả Hàng Hóa', value: manifestInfo?.cargoDescription || 'Hàng hóa xuất khẩu đóng container (Đã qua thẩm định ISO)' },
+        { label: 'Thời Điểm Hãng Tàu Gửi Sang Cảng', value: manifestInfo?.sentToPortAt || `${bookingDate} 10:30:00` },
+        { label: 'Kết Luận Cảng Tiên Sa', value: manifestInfo ? '✅ Đã tiếp nhận và đối soát hợp lệ. Đủ điều kiện cấp phép vào cổng.' : '⚠️ Chờ Hãng tàu nhấn "Gửi dữ liệu cho cảng" để hoàn tất đối soát.' },
+      ],
+      note: 'Dữ liệu Bản khai hàng hóa (e-Manifest) do Hãng tàu truyền trực tiếp sang Cảng Tiên Sa, phục vụ đối chiếu số chì niêm phong và trọng lượng VGM tại cổng kiểm soát Gate Booking.'
     }
   ]
 

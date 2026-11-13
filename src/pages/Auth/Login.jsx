@@ -127,16 +127,6 @@ export default function Login() {
       redirect: '/carrier-portal'
     },
     {
-      id: 'driver',
-      title: 'Tài xế',
-      desc: 'Tài xế container / vận chuyển hàng hóa',
-      roleName: 'Driver',
-      icon: 'local_shipping',
-      iconBg: 'rgba(104,211,145,0.12)',
-      iconColor: '#68d391',
-      redirect: '/driver-portal'
-    },
-    {
       id: 'gate',
       title: 'Kiểm soát viên cổng',
       desc: 'Kiểm soát viên cổng vào ra',
@@ -167,16 +157,6 @@ export default function Login() {
       redirect: '/yard-staff/dashboard'
     },
     {
-      id: 'berth',
-      title: 'Nhân viên Cầu bến',
-      desc: 'Vận hành cầu tàu & kiểm soát lịch cập bến',
-      roleName: 'Berth Staff',
-      icon: 'anchor',
-      iconBg: 'rgba(118,169,250,0.12)',
-      iconColor: '#76a9fa',
-      redirect: '/berth-staff/dashboard'
-    },
-    {
       id: 'shipping',
       title: 'Hãng tàu',
       desc: 'Quản lý lịch tàu, Manifest, B/L & eDO',
@@ -205,7 +185,7 @@ export default function Login() {
 
   const handleSelectRole = (roleObj) => {
     setSelectedRole(roleObj)
-    const defaultUsers = { carrier: 'carrier01', driver: 'driver01', gate: 'gate01', operator: 'dispatcher01', yard: 'yard01', berth: 'berth01', shipping: 'shipping01', admin: 'admin' }
+    const defaultUsers = { carrier: 'carrier01', gate: 'gate01', operator: 'dispatcher01', yard: 'yard01', shipping: 'shipping01', admin: 'admin' }
     setUsername(defaultUsers[roleObj.id] || '')
     setPassword('NexusPort@2026')
     setErrors({ username: '', password: '', general: '' })
@@ -588,10 +568,12 @@ export default function Login() {
         {/* LEFT BRANDING */}
         <div className="hidden lg:flex flex-col justify-between w-[480px] flex-shrink-0 p-12">
           <div>
-            <div className="flex items-center gap-2">
-              <div className="w-9 h-9 bg-[#ff682c] rounded-lg flex items-center justify-center">
-                <span className="material-symbols-outlined text-white text-[20px]">anchor</span>
-              </div>
+            <div className="flex items-center gap-3">
+              <img
+                src="/nexusport-logo.png"
+                alt="NexusPort Logo"
+                className="w-11 h-11 object-contain rounded-xl shadow-lg border border-white/10 bg-white/5 p-1"
+              />
               <h1 className="text-[26px] font-bold tracking-tight text-white font-[#Space_Grotesk]">
                 NexusPort<span className="text-[#ff682c]">.</span>
               </h1>

@@ -25,6 +25,9 @@ export const shippingLineApi = {
   resolveException: (manifestId, recordId, updatedData) =>
     expressApiClient.post(`/shipping-line/manifests/${manifestId}/resolve-exception`, { recordId, ...updatedData }),
   reconcileManifest: (manifestId) => expressApiClient.post(`/shipping-line/manifests/${manifestId}/reconcile`),
+  sendManifestToPort: (manifestId) => expressApiClient.post(`/shipping-line/manifests/${manifestId}/send-to-port`),
+  getSyncedManifests: () => expressApiClient.get('/shipping-line/manifests/port/synced'),
+  lookupContainerManifest: (containerNo) => expressApiClient.get(`/shipping-line/manifests/port/lookup/${containerNo}`),
 
   // 4. Vận đơn (Bill of Lading - B/L) & Hướng dẫn gửi hàng (SI)
   getShippingInstructions: (params = {}) => {
