@@ -212,12 +212,6 @@ const sidebarItems = [
     showForAdmin: false,
   },
   {
-    path: '/shipping-line/bills-of-lading',
-    label: 'Vận Đơn Đường Biển (B/L)',
-    icon: 'receipt_long',
-    roles: [ROLES.SHIPPING_LINE],
-  },
-  {
     path: '/shipping-line/delivery-orders',
     label: 'Lệnh Giao Hàng (eDO)',
     icon: 'assignment_turned_in',

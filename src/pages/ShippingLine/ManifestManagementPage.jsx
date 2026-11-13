@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { shippingLineApi, formatApiErrorMessage } from './api/shippingLineApi';
+import ManifestComposer from './components/ManifestComposer';
+import { readManifestComposerSession } from './utils/manifestComposerSession';
 import ShippingBadge from './components/ShippingBadge';
 import ShippingPagination from './components/ShippingPagination';
 import { manifestPortSyncService } from '../../services/manifestPortSyncService';
@@ -149,42 +151,24 @@ export default function ManifestManagementPage() {
   });
 
   // ── MODAL TẠO BẢN KHAI MỚI (WIZARD 2 BƯỚC) ──
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createStep, setCreateStep] = useState(1); // 1: Cấu hình & Nguồn; 2: Xem trước & Thẩm định
-  const [inputMode, setInputMode] = useState('AUTO_BL'); // AUTO_BL (Trích xuất B/L), FILE_CSV (Tệp CSV/Dán)
-  const [candidateBlData, setCandidateBlData] = useState(null);
-  const [loadingCandidate, setLoadingCandidate] = useState(false);
-
-  const [createForm, setCreateForm] = useState({
-    voyageNumber: '',
-    direction: 'EXPORT',
-    isAmendment: false,
-    containersText: '',
-  });
-  const [uploadedFileInfo, setUploadedFileInfo] = useState(null);
-  const [isDraggingCsv, setIsDraggingCsv] = useState(false);
-
-  // Dữ liệu container xem trước & thẩm định
-  const [previewContainers, setPreviewContainers] = useState([]);
-  const [editingPreviewIndex, setEditingPreviewIndex] = useState(null);
-  const [inlineEditForm, setInlineEditForm] = useState({});
-  const [showConfirmSubmitModal, setShowConfirmSubmitModal] = useState(false);
+  const [resumeSession, setResumeSession] = useState(readManifestComposerSession);
+  const [showCreateModal, setShowCreateModal] = useState(() => Boolean(readManifestComposerSession()));
+  const [editingDraft, setEditingDraft] = useState(() => readManifestComposerSession()?.initialManifest || null);
 
   // Phân trang danh sách & dữ liệu chi tiết
   const [manifestPage, setManifestPage] = useState(1);
   const [manifestPageSize, setManifestPageSize] = useState(5);
   const [blGroupPage, setBlGroupPage] = useState(1);
   const [blGroupPageSize, setBlGroupPageSize] = useState(5);
-  const [previewPage, setPreviewPage] = useState(1);
-  const [previewPageSize, setPreviewPageSize] = useState(5);
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  const loadData = async () => {
+  const loadData = async (refreshSelected = true) => {
     try {
       setLoading(true);
+      setError('');
       const [mnfRes, voyRes] = await Promise.all([
         shippingLineApi.getManifests({ direction: directionFilter }),
         shippingLineApi.getVoyages(),
@@ -194,7 +178,7 @@ export default function ManifestManagementPage() {
       setManifests(mnfList);
       
       // Đồng bộ lại chi tiết manifest nếu đang xem
-      if (selectedManifest) {
+      if (selectedManifest && refreshSelected) {
         try {
           const detailRes = await shippingLineApi.getManifestDetail(selectedManifest.id);
           const detail = detailRes?.manifestNumber ? detailRes : (detailRes?.data || null);
@@ -251,8 +235,12 @@ export default function ManifestManagementPage() {
     }
   };
 
-  const handleRecallManifest = () => {
+  const handleRecallManifest = async () => {
     if (!selectedManifest) return;
+    if (selectedManifest.source === 'NODE_CORE') {
+      try { await shippingLineApi.recallManifest(selectedManifest.id); }
+      catch (err) { setError(formatApiErrorMessage(err, 'Không thể thu hồi bản khai.')); return; }
+    }
     manifestPortSyncService.recallManifestFromPort(selectedManifest.id || selectedManifest.manifestNumber);
     setSelectedManifest(prev => ({
       ...prev,
@@ -273,7 +261,8 @@ export default function ManifestManagementPage() {
       let res;
       try {
         res = await shippingLineApi.sendManifestToPort(selectedManifest.id);
-      } catch {
+      } catch (error) {
+        if (selectedManifest.source === 'NODE_CORE') throw error;
         res = await shippingLineApi.reconcileManifest(selectedManifest.id);
       }
 
@@ -317,276 +306,8 @@ export default function ManifestManagementPage() {
     }
   };
 
-  // ── XỬ LÝ KHI CHỌN CHUYẾN TÀU TRONG MODAL ──
-  const fetchCandidateBls = async (voyNo) => {
-    if (!voyNo) return;
-    try {
-      setLoadingCandidate(true);
-      const res = await shippingLineApi.getCandidateBls(voyNo);
-      const data = res?.candidateBls ? res : (res?.data || null);
-      setCandidateBlData(data);
-    } catch (err) {
-      console.warn('Không thể nạp B/L ứng viên:', err);
-      setCandidateBlData(null);
-    } finally {
-      setLoadingCandidate(false);
-    }
-  };
+  const handleOpenCreateModal = () => { setResumeSession(null); setEditingDraft(null); setShowCreateModal(true); };
 
-  const handleVoyageChange = (voyNo) => {
-    setCreateForm(prev => ({ ...prev, voyageNumber: voyNo }));
-    fetchCandidateBls(voyNo);
-  };
-
-  const handleOpenCreateModal = () => {
-    const defaultVoy = voyages[0]?.voyageNumber || '';
-    setCreateForm({
-      voyageNumber: defaultVoy,
-      direction: 'EXPORT',
-      isAmendment: false,
-      containersText: '',
-    });
-    setUploadedFileInfo(null);
-    setIsDraggingCsv(false);
-    setInputMode('AUTO_BL');
-    setCreateStep(1);
-    setPreviewContainers([]);
-    setEditingPreviewIndex(null);
-    setShowCreateModal(true);
-    if (defaultVoy) fetchCandidateBls(defaultVoy);
-  };
-
-  // Tải tệp CSV mẫu chuẩn
-  const handleDownloadSampleCsv = () => {
-    const csvContent =
-      'Số container,Loại ISO,Số seal,Khối lượng VGM (kg),Số B/L,Mô tả hàng hóa,Nhiệt độ cài đặt\n' +
-      'EMCU1092837,40HC,SL-10293,24500,BL-VNDAD-8905,"Hàng dệt may, may mặc cao cấp",\n' +
-      'EMCU1092842,40HC,SL-10294,24800,BL-VNDAD-8905,"Hàng dệt may, may mặc cao cấp",\n' +
-      'EMCU9284712,40RF,SL-88412,28450,BL-VNDAD-8906,"Tôm thẻ chân trắng, đông lạnh xuất khẩu",-18.0°C\n';
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'mau_danh_sach_container_manifest.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  // Xử lý tệp CSV tải lên từ máy tính
-  const processCsvFile = (file) => {
-    if (!file) return;
-    const lowerName = file.name.toLowerCase();
-    if (!lowerName.endsWith('.csv') && !lowerName.endsWith('.txt')) {
-      setError('Vui lòng chọn tệp định dạng .csv hoặc .txt');
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const text = event.target?.result;
-      if (typeof text === 'string') {
-        const parsed = parseCsvContainers(text);
-        if (parsed.length === 0) {
-          setError(`Tệp "${file.name}" không chứa dòng dữ liệu container hợp lệ.`);
-          return;
-        }
-        setCreateForm(prev => ({ ...prev, containersText: text }));
-        setUploadedFileInfo({
-          name: file.name,
-          size: file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} KB` : `${(file.size / (1024 * 1024)).toFixed(2)} MB`,
-          count: parsed.length,
-        });
-        setError('');
-        setSuccessMsg(`Đã tải thành công tệp: ${file.name} (${parsed.length} container)`);
-      }
-    };
-    reader.onerror = () => {
-      setError('Không thể đọc tệp đã chọn. Vui lòng thử lại.');
-    };
-    reader.readAsText(file);
-  };
-
-  // Tải tệp CSV từ máy tính
-  const handleFileUpload = (e) => {
-    const file = e.target.files?.[0];
-    if (file) processCsvFile(file);
-    e.target.value = '';
-  };
-
-  const handleRemoveUploadedFile = () => {
-    setCreateForm(prev => ({ ...prev, containersText: '' }));
-    setUploadedFileInfo(null);
-  };
-
-  // ── BƯỚC 1 CHUYỂN SANG BƯỚC 2: PHÂN TÍCH VÀ THẨM ĐỊNH TRƯỚC ──
-  const handleProceedToPreview = () => {
-    if (!createForm.voyageNumber) {
-      setError('Vui lòng chọn chuyến tàu thực hiện');
-      return;
-    }
-
-    let parsed = [];
-    if (inputMode === 'AUTO_BL') {
-      if (!candidateBlData || !candidateBlData.containers || candidateBlData.containers.length === 0) {
-        setError(`Chưa tìm thấy B/L đã phát hành nào cho chuyến ${createForm.voyageNumber}. Vui lòng chuyển sang chế độ "Tải tệp CSV từ máy tính".`);
-        return;
-      }
-      parsed = candidateBlData.containers.map(c => ({
-        containerNumber: c.containerNumber,
-        isoType: c.isoType,
-        sealNumber: c.sealNumber,
-        grossWeightKg: c.grossWeightKg,
-        tempRequired: c.tempRequired || '',
-        blNumber: c.blNumber,
-        commodity: c.commodity,
-        cargoType: c.cargoType,
-        shipper: c.shipper,
-        consignee: c.consignee,
-        packageCount: c.packageCount,
-        packageUnit: c.packageUnit,
-        isBlIssued: c.isBlIssued,
-      }));
-    } else {
-      if (!createForm.containersText?.trim()) {
-        setError('Vui lòng chọn tệp CSV từ máy tính để tải danh sách container.');
-        return;
-      }
-      parsed = parseCsvContainers(createForm.containersText);
-      if (!parsed.length) {
-        setError('Tệp CSV đã chọn không chứa dữ liệu container hợp lệ. Vui lòng kiểm tra lại tệp.');
-        return;
-      }
-    }
-
-    // Đếm trùng lặp container trong đợt nhập
-    const seen = new Set();
-    const duplicates = new Set();
-    parsed.forEach(c => {
-      const num = c.containerNumber;
-      if (num) {
-        if (seen.has(num)) duplicates.add(num);
-        seen.add(num);
-      }
-    });
-
-    // Thẩm định từng dòng
-    const validated = parsed.map(c => {
-      const isoRes = checkIso6346(c.containerNumber);
-      const isReefer = (c.isoType && c.isoType.includes('RF')) || c.cargoType === 'REEFER';
-      const hasTemp = !isReefer || Boolean(c.tempRequired && c.tempRequired.trim());
-      const hasSeal = Boolean(c.sealNumber && c.sealNumber.trim());
-      const hasWeight = c.grossWeightKg > 0 && c.grossWeightKg <= 36000;
-      const isDuplicate = duplicates.has(c.containerNumber);
-
-      const errors = [];
-      if (!isoRes.isValid) errors.push(isoRes.reason);
-      if (isDuplicate) errors.push(`Trùng lặp số container ${c.containerNumber}`);
-      if (!hasSeal) errors.push('Thiếu số chì niêm phong (seal)');
-      if (!hasWeight) errors.push(c.grossWeightKg <= 0 ? 'Khối lượng VGM phải lớn hơn 0' : 'Vượt tải trọng (> 36.000 kg)');
-      if (!hasTemp) errors.push('Container lạnh (40RF) bắt buộc có nhiệt độ cài đặt');
-
-      return {
-        ...c,
-        errors,
-        isValid: errors.length === 0,
-        expectedCheckDigit: isoRes.expectedCheckDigit,
-        actualCheckDigit: isoRes.actualCheckDigit,
-      };
-    });
-
-    setPreviewContainers(validated);
-    setCreateStep(2);
-    setError('');
-  };
-
-  // Sửa nhanh trực tiếp trên bảng preview
-  const handleStartInlineEdit = (idx) => {
-    setEditingPreviewIndex(idx);
-    setInlineEditForm({ ...previewContainers[idx] });
-  };
-
-  const handleSaveInlineEdit = () => {
-    if (editingPreviewIndex === null) return;
-    const updated = [...previewContainers];
-    const item = {
-      ...inlineEditForm,
-      containerNumber: (inlineEditForm.containerNumber || '').toUpperCase().trim(),
-      grossWeightKg: Number(inlineEditForm.grossWeightKg) || 0,
-    };
-
-    const isoRes = checkIso6346(item.containerNumber);
-    const isReefer = (item.isoType && item.isoType.includes('RF')) || item.cargoType === 'REEFER';
-    const hasTemp = !isReefer || Boolean(item.tempRequired && item.tempRequired.trim());
-    const hasSeal = Boolean(item.sealNumber && item.sealNumber.trim());
-    const hasWeight = item.grossWeightKg > 0 && item.grossWeightKg <= 36000;
-
-    const errors = [];
-    if (!isoRes.isValid) errors.push(isoRes.reason);
-    if (!hasSeal) errors.push('Thiếu số chì niêm phong (seal)');
-    if (!hasWeight) errors.push(item.grossWeightKg <= 0 ? 'Khối lượng VGM phải lớn hơn 0' : 'Vượt tải trọng (> 36.000 kg)');
-    if (!hasTemp) errors.push('Container lạnh (40RF) bắt buộc có nhiệt độ cài đặt');
-
-    item.errors = errors;
-    item.isValid = errors.length === 0;
-    item.expectedCheckDigit = isoRes.expectedCheckDigit;
-    item.actualCheckDigit = isoRes.actualCheckDigit;
-
-    updated[editingPreviewIndex] = item;
-    setPreviewContainers(updated);
-    setEditingPreviewIndex(null);
-  };
-
-  // ── LƯU NHÁP HOẶC NỘP CHÍNH THỨC ──
-  const handleSaveManifest = async (isDraftMode = false) => {
-    if (!previewContainers.length) {
-      setError('Danh sách container trống');
-      return;
-    }
-
-    setSaving(true);
-    setError('');
-
-    try {
-      const payload = {
-        voyageNumber: createForm.voyageNumber,
-        direction: createForm.direction,
-        status: isDraftMode ? 'DRAFT' : 'SUBMITTED',
-        isDraft: isDraftMode,
-        isAmendment: createForm.isAmendment,
-        records: previewContainers.map(c => ({
-          containerNumber: c.containerNumber,
-          isoType: c.isoType,
-          sealNumber: c.sealNumber,
-          grossWeightKg: c.grossWeightKg,
-          tempRequired: c.tempRequired,
-          blNumber: c.blNumber,
-          commodity: c.commodity,
-          cargoType: c.cargoType,
-          shipper: c.shipper,
-          consignee: c.consignee,
-          packageCount: c.packageCount,
-          packageUnit: c.packageUnit,
-        })),
-      };
-
-      await shippingLineApi.createManifest(payload);
-      setShowConfirmSubmitModal(false);
-      setShowCreateModal(false);
-      setSuccessMsg(
-        isDraftMode
-          ? 'Đã lưu bản nháp Manifest thành công'
-          : 'Đã nộp chính thức bản khai Manifest sang hệ thống Cảng Tiên Sa!'
-      );
-      loadData();
-    } catch (err) {
-      setError(formatApiErrorMessage(err, 'Lỗi lưu bản khai'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  // Xử lý ngoại lệ container đơn lẻ
   const handleOpenException = (record) => {
     setSelectedRecord(record);
     const inferredCargoType = record.cargoType || (
@@ -638,17 +359,8 @@ export default function ManifestManagementPage() {
     }
   };
 
-  // Voyage đang chọn trong modal
-  const selectedVoyage = voyages.find(v => v.voyageNumber === createForm.voyageNumber) || voyages[0];
-  const existingActiveManifest = manifests.find(
-    m => m.voyageNumber === createForm.voyageNumber && m.direction === createForm.direction
-  );
-
-  const previewValidCount = previewContainers.filter(c => c.isValid).length;
-  const previewErrorCount = previewContainers.filter(c => !c.isValid).length;
-
   return (
-    <div className="p-4 md:p-6 lg:p-8 w-full max-w-7xl mx-auto font-sans flex flex-col gap-6 bg-slate-50 min-h-screen">
+    <div aria-busy={loading} className="p-4 md:p-6 lg:p-8 w-full max-w-7xl mx-auto font-sans flex flex-col gap-6 bg-slate-50 min-h-screen">
       
       {/* ── 1. HEADER CHUẨN NEXUSPORT ── */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white border border-chalk rounded-2xl p-5 shadow-sm gap-4">
@@ -881,9 +593,12 @@ export default function ManifestManagementPage() {
 
               {/* Action Buttons */}
               <div className="flex flex-wrap items-center gap-2.5">
+                {selectedManifest.source === 'NODE_CORE' && selectedManifest.status === 'DRAFT' && (
+                  <button type="button" className="px-4 py-2 border border-chalk rounded-xl text-xs font-bold" onClick={() => { setEditingDraft(selectedManifest); setShowCreateModal(true); }}>Tiếp tục chỉnh sửa bản nháp</button>
+                )}
                 <button
                   onClick={handleReconcile}
-                  disabled={reconciling}
+                  disabled={reconciling || selectedManifest.status === 'DRAFT'}
                   className="px-4 py-2 text-xs font-bold text-white bg-signal-orange hover:opacity-90 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   title="Gửi dữ liệu bản khai hàng hóa (Manifest) cho hệ thống Cảng Tiên Sa để bộ phận Gate Booking đối soát và duyệt vào cổng"
                 >
@@ -892,6 +607,7 @@ export default function ManifestManagementPage() {
                   </span>
                   <span>{reconciling ? 'Đang gửi dữ liệu cho cảng...' : (selectedManifest.sentToPortAt ? 'Gửi lại dữ liệu cho cảng' : 'Gửi dữ liệu cho cảng')}</span>
                 </button>
+                {selectedManifest.sentToPortAt && <button type="button" className="px-4 py-2 border border-chalk rounded-xl text-xs font-bold" onClick={handleRecallManifest}>Thu hồi bản khai</button>}
               </div>
             </div>
 
@@ -1013,7 +729,7 @@ export default function ManifestManagementPage() {
               </div>
               <button
                 onClick={handleReconcile}
-                disabled={reconciling}
+                disabled={reconciling || selectedManifest.status === 'DRAFT'}
                 className="px-4 py-2 text-xs font-bold text-white bg-signal-orange hover:opacity-90 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 shrink-0"
               >
                 <span className={`material-symbols-outlined text-base ${reconciling ? 'animate-spin' : ''}`}>
@@ -1218,11 +934,9 @@ export default function ManifestManagementPage() {
                             <tr className="bg-fog/50 text-slate font-bold uppercase text-[10px] border-b border-chalk">
                               <th className="py-2.5 px-3 w-44">Số container</th>
                               <th className="py-2.5 px-3 w-20">Loại ISO</th>
-                              <th className="py-2.5 px-3 min-w-[240px]">Phân loại hàng &amp; Thông số đặc thù</th>
+                              <th className="py-2.5 px-3 min-w-[240px]">Mô tả hàng hóa</th>
                               <th className="py-2.5 px-3 w-28">Số niêm chì</th>
                               <th className="py-2.5 px-3 w-36">Khối lượng toàn bộ - VGM (kg)</th>
-                              <th className="py-2.5 px-3 min-w-[160px]">Mô tả hàng hóa</th>
-                              <th className="py-2.5 px-3 w-32">Trạng thái</th>
                               <th className="py-2.5 px-3 w-24 text-right">Thao tác</th>
                             </tr>
                           </thead>
@@ -1243,55 +957,8 @@ export default function ManifestManagementPage() {
                                 </td>
                                 <td className="py-3 px-3 font-bold text-carbon">{rec.isoType}</td>
                                 <td className="py-3 px-3 font-sans">
-                                  {rec.unNumber || rec.dgClass || rec.cargoType === 'DG' || rec.cargoType === 'DANGEROUS' ? (
-                                    <div className="space-y-1">
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300">
-                                        <span className="material-symbols-outlined text-xs text-amber-700">warning</span>
-                                        Hàng nguy hiểm: {rec.unNumber || 'UN 1993'} ({rec.dgClass || 'Class 3'})
-                                      </span>
-                                      <div className="text-[10px] flex items-center gap-2 text-slate flex-wrap font-sans">
-                                        <span className={rec.hasDgd || rec.dgdFile ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
-                                          Bản khai DGD: {rec.hasDgd || rec.dgdFile ? '✓ Đã nộp' : '✕ Thiếu'}
-                                        </span>
-                                        <span>•</span>
-                                        <span className={rec.hasMsds || rec.msdsFile ? 'text-emerald-700 font-bold' : 'text-red-600 font-bold'}>
-                                          Phiếu MSDS: {rec.hasMsds || rec.msdsFile ? '✓ Đã duyệt' : '✕ Thiếu'}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  ) : (rec.isoType && rec.isoType.includes('RF')) || rec.cargoType === 'REEFER' || rec.tempRequired ? (
-                                    <div className="space-y-1">
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-300">
-                                        <span className="material-symbols-outlined text-xs">ac_unit</span>
-                                        Hàng lạnh: {rec.tempRequired || '-18.0°C'}
-                                      </span>
-                                      <div className="text-[10px] text-slate font-sans">
-                                        Gió: {rec.ventilation || '25 CBM/h'} · Ẩm: {rec.humidity || '85% RH'}
-                                      </div>
-                                    </div>
-                                  ) : (rec.isoType && (rec.isoType.includes('FR') || rec.isoType.includes('OT'))) || rec.cargoType === 'OOG' || rec.overHeightCm ? (
-                                    <div className="space-y-1">
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-50 text-purple-800 border border-purple-300">
-                                        <span className="material-symbols-outlined text-xs">straighten</span>
-                                        Quá khổ (OOG): OH +{rec.overHeightCm || 45}cm · OW +{rec.overWidthCm || 30}cm
-                                      </span>
-                                      <div className="text-[10px] text-slate font-sans">
-                                        KT: {rec.dimensions || '12.2 x 2.6 x 3.1 m'}
-                                      </div>
-                                    </div>
-                                  ) : rec.cargoType === 'CONDITIONAL' || rec.quarantineType || rec.certificateNo ? (
-                                    <div className="space-y-1">
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
-                                        <span className="material-symbols-outlined text-xs">eco</span>
-                                        Kiểm dịch: {rec.quarantineType || 'Thực vật'}
-                                      </span>
-                                      <div className="text-[10px] text-slate font-sans">
-                                        GCN: {rec.certificateNo || 'KD-2026-8812'}
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <span className="text-slate text-[11px] font-sans">Hàng bách hóa thông thường</span>
-                                  )}
+                                  <p className="whitespace-pre-wrap">{rec.commodity || '—'}</p>
+                                  {(rec.isReefer || rec.cargoType === 'REEFER' || /RF|RH|R[01]/.test(rec.isoType || '')) && <span className="inline-block mt-1 px-2 py-1 rounded-full text-xs text-sky-800 bg-sky-50 border border-sky-200">❄ Container lạnh</span>}
                                 </td>
                                 <td className="py-3 px-3 font-bold text-carbon">
                                   {rec.sealNumber ? (
@@ -1301,20 +968,8 @@ export default function ManifestManagementPage() {
                                   )}
                                 </td>
                                 <td className="py-3 px-3 font-bold text-carbon">{formatKg(rec.grossWeightKg)}</td>
-                                <td className="py-3 px-3 font-sans text-slate text-[11px]">{rec.commodity}</td>
-                                <td className="py-3 px-3 font-sans whitespace-nowrap">
-                                  {rec.status === 'VALID' || rec.status === 'VALIDATED' ? (
-                                    <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300">
-                                      ● Hợp lệ
-                                    </span>
-                                  ) : (
-                                    <span className="inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-300">
-                                      ⚠ Ngoại lệ ({rec.exceptionReason || 'Sai chuẩn'})
-                                    </span>
-                                  )}
-                                </td>
                                 <td className="py-3 px-3 text-right font-sans">
-                                  {rec.status === 'EXCEPTION' ? (
+                                  {selectedManifest.source === 'NODE_CORE' ? <span className="text-slate text-xs">—</span> : rec.status === 'EXCEPTION' ? (
                                     <button
                                       onClick={() => handleOpenException(rec)}
                                       className="px-2.5 py-1 text-xs font-bold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition-colors cursor-pointer"
@@ -1701,731 +1356,15 @@ export default function ManifestManagementPage() {
       )}
 
       {/* ── 4. MODAL NÂNG CẤP: KHAI BÁO BẢN KHAI HÀNG HÓA (MANIFEST) ── */}
-      {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 md:p-6 overflow-y-auto">
-          <div className="bg-white rounded-3xl shadow-2xl border border-chalk max-w-5xl w-full my-auto overflow-hidden animate-fadeIn flex flex-col max-h-[90vh]">
-            
-            {/* Modal Header */}
-            <div className="px-6 py-4 border-b border-chalk bg-fog flex items-center justify-between shrink-0">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-orange-100 text-orange-800 uppercase">
-                    Quy trình tạo bản khai
-                  </span>
-                  <span className="text-xs text-slate">
-                    Bước {createStep}/2: {createStep === 1 ? 'Cấu hình chuyến tàu & Phương thức nhập' : 'Xem trước & Thẩm định dữ liệu'}
-                  </span>
-                </div>
-                <h3 className="font-heading text-lg md:text-xl font-extrabold text-carbon mt-0.5">
-                  Khai báo bản khai hàng hóa (manifest)
-                </h3>
-              </div>
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="w-8 h-8 rounded-lg text-slate hover:bg-chalk flex items-center justify-center cursor-pointer font-bold text-lg"
-              >
-                &times;
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div className="p-5 md:p-6 overflow-y-auto space-y-5 text-xs font-sans flex-1">
-              
-              {/* ── BƯỚC 1: CẤU HÌNH CHUYẾN TÀU & PHƯƠNG THỨC NHẬP DỮ LIỆU ── */}
-              {createStep === 1 && (
-                <div className="space-y-5">
-                  
-                  {/* Hàng chọn Chuyến tàu & Hướng khai */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="md:col-span-2">
-                      <label className="block text-[11px] font-bold text-carbon uppercase mb-1">
-                        Chọn chuyến tàu vận chuyển *
-                      </label>
-                      <select
-                        value={createForm.voyageNumber}
-                        onChange={(e) => handleVoyageChange(e.target.value)}
-                        className="w-full px-3.5 py-2.5 bg-fog border border-chalk rounded-xl text-carbon font-bold focus:outline-none focus:border-signal-orange focus:ring-0 text-xs"
-                      >
-                        {voyages.map((v) => (
-                          <option key={v.id} value={v.voyageNumber}>
-                            {v.voyageNumber} — Tàu {v.vesselName} ({v.pol ? v.pol.replace(/,.*$/, '') : 'Tiên Sa'} → {v.pod ? v.pod.replace(/,.*$/, '') : 'Cảng dỡ'})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-bold text-carbon uppercase mb-1">
-                        Hướng khai báo *
-                      </label>
-                      <div className="flex bg-fog p-1 rounded-xl border border-chalk text-xs font-bold">
-                        <button
-                          type="button"
-                          onClick={() => setCreateForm(prev => ({ ...prev, direction: 'EXPORT' }))}
-                          className={`flex-1 py-2 rounded-lg transition-colors cursor-pointer ${
-                            createForm.direction === 'EXPORT'
-                              ? 'bg-carbon text-white shadow-xs'
-                              : 'text-slate hover:text-carbon'
-                          }`}
-                        >
-                          Xuất khẩu
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setCreateForm(prev => ({ ...prev, direction: 'IMPORT' }))}
-                          className={`flex-1 py-2 rounded-lg transition-colors cursor-pointer ${
-                            createForm.direction === 'IMPORT'
-                              ? 'bg-carbon text-white shadow-xs'
-                              : 'text-slate hover:text-carbon'
-                          }`}
-                        >
-                          Nhập khẩu
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* THẺ THÔNG TIN CHUYẾN TÀU (Read-only Summary Card) */}
-                  {selectedVoyage && (
-                    <div className="bg-fog/60 border border-chalk rounded-2xl p-4 space-y-2.5">
-                      <div className="flex items-center justify-between border-b border-chalk pb-2">
-                        <span className="font-heading font-extrabold text-carbon text-xs flex items-center gap-1.5">
-                          <span className="material-symbols-outlined text-sm text-signal-orange">directions_boat</span>
-                          Thông tin hành trình chuyến tàu
-                        </span>
-                        <span className="text-[11px] font-bold text-slate font-mono">
-                          Mã chuyến: <strong className="text-carbon">{selectedVoyage.voyageNumber}</strong>
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                        <div className="min-w-0">
-                          <span className="text-[10px] uppercase font-bold text-slate block">Tàu biển</span>
-                          <span className="font-bold text-carbon truncate block">{selectedVoyage.vesselName}</span>
-                        </div>
-                        <div className="min-w-0">
-                          <span className="text-[10px] uppercase font-bold text-slate block">Cầu bến tiếp nhận</span>
-                          <span className="font-bold text-carbon truncate block">{selectedVoyage.terminal}</span>
-                        </div>
-                        <div className="min-w-0">
-                          <span className="text-[10px] uppercase font-bold text-slate block">Cảng bốc (POL)</span>
-                          <span className="font-bold text-carbon font-mono truncate block" title={selectedVoyage.pol}>{selectedVoyage.pol}</span>
-                        </div>
-                        <div className="min-w-0">
-                          <span className="text-[10px] uppercase font-bold text-slate block">Cảng dỡ (POD)</span>
-                          <span className="font-bold text-carbon font-mono truncate block" title={selectedVoyage.pod}>{selectedVoyage.pod}</span>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 text-xs pt-1 border-t border-chalk/60">
-                        <div>
-                          <span className="text-[10px] uppercase font-bold text-slate block">Kế hoạch đến (ETA)</span>
-                          <span className="font-mono text-carbon font-bold">{selectedVoyage.eta || '—'}</span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] uppercase font-bold text-slate block">Kế hoạch đi (ETD)</span>
-                          <span className="font-mono text-carbon font-bold">{selectedVoyage.etd || '—'}</span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] uppercase font-bold text-amber-800 block">Hạn hạ bãi (CY)</span>
-                          <span className="font-mono text-amber-900 font-bold">{selectedVoyage.cyCutOff || '—'}</span>
-                        </div>
-                        <div>
-                          <span className="text-[10px] uppercase font-bold text-slate block">Hạn nộp VGM</span>
-                          <span className="font-mono text-carbon font-bold">{selectedVoyage.vgmCutOff || '—'}</span>
-                        </div>
-                      </div>
-
-                      {/* Cảnh báo khai trùng nếu đã có manifest cho chuyến này */}
-                      {existingActiveManifest && (
-                        <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 text-xs flex items-center justify-between gap-3 mt-1">
-                          <div className="flex items-center gap-2">
-                            <span className="material-symbols-outlined text-amber-600 text-base shrink-0">info</span>
-                            <span>
-                              Chuyến tàu này đã có bản khai <strong>{existingActiveManifest.manifestNumber}</strong> ({existingActiveManifest.status}).
-                            </span>
-                          </div>
-                          <label className="flex items-center gap-1.5 cursor-pointer font-bold text-xs shrink-0 select-none">
-                            <input
-                              type="checkbox"
-                              checked={createForm.isAmendment}
-                              onChange={(e) => setCreateForm(prev => ({ ...prev, isAmendment: e.target.checked }))}
-                              className="w-4 h-4 rounded text-signal-orange focus:ring-0 cursor-pointer"
-                            />
-                            <span>Tạo bản khai sửa đổi (Amendment v{(existingActiveManifest.version || 1) + 1})</span>
-                          </label>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* CHỌN PHƯƠNG THỨC NHẬP DỮ LIỆU */}
-                  <div className="space-y-3">
-                    <label className="block text-[11px] font-bold text-carbon uppercase">
-                      Phương thức nhập danh sách container:
-                    </label>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div
-                        onClick={() => setInputMode('AUTO_BL')}
-                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
-                          inputMode === 'AUTO_BL'
-                            ? 'bg-orange-50/50 border-signal-orange ring-1 ring-signal-orange/20 shadow-xs'
-                            : 'bg-white border-chalk hover:bg-fog/60'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 font-bold text-carbon text-xs">
-                            <span className="material-symbols-outlined text-base text-signal-orange">auto_awesome</span>
-                            Tự động trích xuất từ B/L đã phát hành
-                          </div>
-                          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
-                            Ưu tiên xuất khẩu
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate mt-1.5">
-                          Tự động nạp toàn bộ container, số seal, VGM và thông tin chủ hàng từ các B/L đã phát hành thuộc chuyến tàu.
-                        </p>
-                      </div>
-
-                      <div
-                        onClick={() => setInputMode('FILE_CSV')}
-                        className={`p-3.5 rounded-2xl border cursor-pointer transition-all ${
-                          inputMode === 'FILE_CSV'
-                            ? 'bg-orange-50/50 border-signal-orange ring-1 ring-signal-orange/20 shadow-xs'
-                            : 'bg-white border-chalk hover:bg-fog/60'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 font-bold text-carbon text-xs">
-                            <span className="material-symbols-outlined text-base text-signal-orange">upload_file</span>
-                            Tải tệp CSV từ máy tính
-                          </div>
-                          <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-full">
-                            Tệp CSV từ máy
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate mt-1.5">
-                          Tải lên tệp CSV từ máy tính theo định dạng chuẩn để hệ thống tự động trích xuất và thẩm định danh sách container.
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* NỘI DUNG CHẾ ĐỘ 1: AUTO TỪ B/L */}
-                    {inputMode === 'AUTO_BL' && (
-                      <div className="border border-chalk rounded-2xl p-4 bg-white space-y-3">
-                        <div className="flex justify-between items-center">
-                          <span className="font-heading font-extrabold text-carbon text-xs">
-                            Danh mục vận đơn (B/L) đã phát hành của chuyến tàu
-                          </span>
-                          <span className="text-xs text-slate font-mono">
-                            {loadingCandidate ? 'Đang tra cứu B/L...' : `${candidateBlData?.candidateBls?.length || 0} vận đơn tìm thấy (${candidateBlData?.totalContainers || 0} container)`}
-                          </span>
-                        </div>
-
-                        {loadingCandidate ? (
-                          <div className="p-8 text-center text-slate">Đang truy vấn vận đơn...</div>
-                        ) : candidateBlData?.candidateBls?.length > 0 ? (
-                          <div className="space-y-2">
-                            {candidateBlData.candidateBls.map((bl) => (
-                              <div key={bl.id} className="p-3 bg-fog/70 border border-chalk rounded-xl flex items-center justify-between text-xs">
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <strong className="text-carbon font-mono">{bl.blNumber}</strong>
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                                      {bl.blType}
-                                    </span>
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
-                                      ● {bl.status}
-                                    </span>
-                                  </div>
-                                  <div className="text-slate text-[11px] mt-1">
-                                    Người gửi: <span className="text-carbon font-bold">{bl.shipper}</span> · Hàng: <span>{bl.cargoDescription}</span>
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <span className="font-mono font-bold text-carbon block">
-                                    {bl.containers?.length || 0} container
-                                  </span>
-                                  <span className="text-[11px] text-slate font-mono">
-                                    {formatKg(bl.grossWeightKg)}
-                                  </span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="p-6 text-center text-slate bg-fog rounded-xl">
-                            Không tìm thấy Vận đơn B/L nào được phát hành cho chuyến tàu này. Vui lòng chọn chuyến khác hoặc chuyển sang chế độ &ldquo;Tải tệp CSV từ máy tính&rdquo;.
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* NỘI DUNG CHẾ ĐỘ 2: TẢI TỆP CSV TỪ MÁY TÍNH (KHÔNG CHO PHÉP NHẬP TAY) */}
-                    {inputMode === 'FILE_CSV' && (
-                      <div className="border border-chalk rounded-2xl p-5 bg-white space-y-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-chalk pb-3">
-                          <div>
-                            <span className="font-heading font-extrabold text-carbon text-xs block">
-                              Chọn tệp CSV từ máy tính
-                            </span>
-                            <span className="text-xs text-slate mt-0.5 block">
-                              Hệ thống tự động phân tích dữ liệu container từ tệp CSV (.csv, .txt). Không cho phép nhập tay.
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={handleDownloadSampleCsv}
-                            className="px-3 py-1.5 bg-fog hover:bg-chalk border border-chalk rounded-xl text-xs font-bold text-carbon transition-colors flex items-center gap-1.5 cursor-pointer shrink-0"
-                          >
-                            <span className="material-symbols-outlined text-sm">download</span>
-                            Tải tệp mẫu CSV
-                          </button>
-                        </div>
-
-                        {/* Khi CHƯA có tệp nào được chọn: Vùng kéo thả / nút chọn tệp */}
-                        {!uploadedFileInfo ? (
-                          <div
-                            onDragOver={(e) => { e.preventDefault(); setIsDraggingCsv(true); }}
-                            onDragLeave={() => setIsDraggingCsv(false)}
-                            onDrop={(e) => {
-                              e.preventDefault();
-                              setIsDraggingCsv(false);
-                              const file = e.dataTransfer.files?.[0];
-                              if (file) processCsvFile(file);
-                            }}
-                            className={`border-2 border-dashed rounded-2xl p-8 text-center transition-all ${
-                              isDraggingCsv
-                                ? 'border-signal-orange bg-orange-50/50 scale-[0.99]'
-                                : 'border-chalk bg-fog/40 hover:bg-fog/70 hover:border-slate-300'
-                            }`}
-                          >
-                            <div className="w-14 h-14 mx-auto rounded-2xl bg-orange-100/80 text-signal-orange flex items-center justify-center mb-3 shadow-2xs">
-                              <span className="material-symbols-outlined text-3xl">upload_file</span>
-                            </div>
-                            <h4 className="font-heading font-extrabold text-sm text-carbon mb-1">
-                              Chọn tệp CSV từ máy tính để tải lên
-                            </h4>
-                            <p className="text-xs text-slate mb-4 max-w-md mx-auto leading-relaxed">
-                              Kéo và thả tệp CSV vào đây, hoặc bấm nút bên dưới để chọn tệp từ máy tính của bạn (.csv, .txt)
-                            </p>
-                            <label className="inline-flex items-center gap-2 px-5 py-2.5 bg-signal-orange hover:opacity-90 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer">
-                              <span className="material-symbols-outlined text-base">folder_open</span>
-                              <span>Chọn tệp CSV từ máy</span>
-                              <input
-                                type="file"
-                                accept=".csv,.txt"
-                                onChange={handleFileUpload}
-                                className="hidden"
-                              />
-                            </label>
-                            <div className="text-[11px] text-slate mt-3.5">
-                              Định dạng chuẩn: Số container, Loại ISO, Số seal, Khối lượng VGM, Số B/L, Mô tả hàng hóa, Nhiệt độ...
-                            </div>
-                          </div>
-                        ) : (
-                          /* Khi ĐÃ có tệp được chọn: Thẻ hiển thị tệp */
-                          <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-300 space-y-3">
-                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                              <div className="flex items-center gap-3">
-                                <div className="w-12 h-12 rounded-xl bg-emerald-100 text-emerald-800 flex items-center justify-center shrink-0">
-                                  <span className="material-symbols-outlined text-2xl">table_chart</span>
-                                </div>
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <strong className="text-sm font-bold text-emerald-950 font-mono">
-                                      {uploadedFileInfo.name}
-                                    </strong>
-                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                                      Đã nạp tệp thành công ✓
-                                    </span>
-                                  </div>
-                                  <p className="text-xs text-slate mt-0.5 font-sans">
-                                    Dung lượng: <b className="text-carbon font-mono">{uploadedFileInfo.size}</b> · Đã nhận diện: <b className="text-signal-orange font-mono">{uploadedFileInfo.count} container</b>
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="flex items-center gap-2 self-end sm:self-center">
-                                <label className="px-3.5 py-1.5 bg-white hover:bg-fog border border-chalk text-carbon font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 shadow-2xs">
-                                  <span className="material-symbols-outlined text-sm">swap_horiz</span>
-                                  <span>Chọn tệp khác</span>
-                                  <input
-                                    type="file"
-                                    accept=".csv,.txt"
-                                    onChange={handleFileUpload}
-                                    className="hidden"
-                                  />
-                                </label>
-                                <button
-                                  type="button"
-                                  onClick={handleRemoveUploadedFile}
-                                  className="px-3 py-1.5 bg-white hover:bg-red-50 text-red-600 border border-red-200 font-bold text-xs rounded-xl transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-                                  title="Hủy bỏ tệp đã chọn"
-                                >
-                                  <span className="material-symbols-outlined text-sm">delete</span>
-                                  <span>Xóa tệp</span>
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="p-3 bg-white/90 rounded-xl border border-emerald-200 text-xs text-slate flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-                              <span className="flex items-center gap-1.5 text-emerald-900 font-medium">
-                                <span className="material-symbols-outlined text-sm text-emerald-700 shrink-0">verified</span>
-                                Tệp CSV đã sẵn sàng. Nhấn <strong>&ldquo;Tiếp tục sang bước 2&rdquo;</strong> ở dưới để thẩm định chi tiết danh sách container.
-                              </span>
-                              <span className="font-mono text-[11px] font-bold text-carbon shrink-0">
-                                {uploadedFileInfo.count} container
-                              </span>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                </div>
-              )}
-
-              {/* ── BƯỚC 2: XEM TRƯỚC & THẨM ĐỊNH DỮ LIỆU CONTAINER ── */}
-              {createStep === 2 && (
-                <div className="space-y-4">
-                  
-                  {/* Thanh tóm tắt thẩm định */}
-                  <div className="p-3.5 bg-fog rounded-2xl border border-chalk flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
-                    <div className="flex flex-wrap items-center gap-2.5">
-                      <span className="text-xs text-slate uppercase font-bold">Thẩm định sơ bộ:</span>
-                      <span className="px-3 py-1 rounded-xl bg-white border border-chalk text-xs font-bold text-carbon font-mono shadow-2xs">
-                        Tổng cộng: {previewContainers.length} container
-                      </span>
-                      <span className="px-3 py-1 rounded-xl bg-emerald-50 border border-emerald-300 text-xs font-bold text-emerald-800 font-mono">
-                        ✓ Hợp lệ: {previewValidCount}
-                      </span>
-                      {previewErrorCount > 0 ? (
-                        <span className="px-3 py-1 rounded-xl bg-red-50 border border-red-300 text-xs font-bold text-red-700 font-mono">
-                          ⚠ Có lỗi: {previewErrorCount} container
-                        </span>
-                      ) : (
-                        <span className="px-3 py-1 rounded-xl bg-emerald-100 text-emerald-900 text-xs font-bold">
-                          ● Đạt 100% điều kiện thẩm định
-                        </span>
-                      )}
-                    </div>
-
-                    <span className="text-[11px] text-slate">
-                      Nhấn nút &ldquo;Sửa&rdquo; tại từng dòng để điều chỉnh trực tiếp số liệu trước khi nộp.
-                    </span>
-                  </div>
-
-                  {/* Bảng danh sách container xem trước */}
-                  <div className="overflow-x-auto border border-chalk rounded-2xl max-h-[46vh]">
-                    <table className="w-full min-w-[1020px] text-left border-collapse text-xs">
-                      <thead className="sticky top-0 bg-fog z-10">
-                        <tr className="text-slate font-bold uppercase text-[10px] border-b border-chalk">
-                          <th className="py-2.5 px-3 w-44">Số container (ISO 6346)</th>
-                          <th className="py-2.5 px-3 w-20">Loại ISO</th>
-                          <th className="py-2.5 px-3 w-28">Số seal</th>
-                          <th className="py-2.5 px-3 w-36">Khối lượng toàn bộ - VGM</th>
-                          <th className="py-2.5 px-3 w-28">Nhiệt độ (40RF)</th>
-                          <th className="py-2.5 px-3 w-32">Vận đơn (B/L)</th>
-                          <th className="py-2.5 px-3 min-w-[160px]">Mô tả hàng</th>
-                          <th className="py-2.5 px-3 w-40">Kết quả thẩm định</th>
-                          <th className="py-2.5 px-3 w-20 text-right">Thao tác</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-chalk font-mono font-medium">
-                        {previewContainers
-                          .slice((previewPage - 1) * previewPageSize, previewPage * previewPageSize)
-                          .map((c, idx) => {
-                          const realIdx = (previewPage - 1) * previewPageSize + idx;
-                          const isEditingThis = editingPreviewIndex === realIdx;
-
-                          if (isEditingThis) {
-                            return (
-                              <tr key={realIdx} className="bg-amber-50/70 p-2">
-                                <td className="p-2">
-                                  <input
-                                    type="text"
-                                    value={inlineEditForm.containerNumber}
-                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, containerNumber: e.target.value.toUpperCase() })}
-                                    className="w-full px-2 py-1 bg-white border border-signal-orange rounded text-xs font-mono font-bold uppercase"
-                                  />
-                                </td>
-                                <td className="p-2">
-                                  <input
-                                    type="text"
-                                    value={inlineEditForm.isoType}
-                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, isoType: e.target.value.toUpperCase() })}
-                                    className="w-full px-2 py-1 bg-white border border-chalk rounded text-xs font-mono"
-                                  />
-                                </td>
-                                <td className="p-2">
-                                  <input
-                                    type="text"
-                                    value={inlineEditForm.sealNumber}
-                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, sealNumber: e.target.value })}
-                                    className="w-full px-2 py-1 bg-white border border-chalk rounded text-xs font-mono font-bold"
-                                  />
-                                </td>
-                                <td className="p-2">
-                                  <input
-                                    type="number"
-                                    value={inlineEditForm.grossWeightKg}
-                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, grossWeightKg: e.target.value })}
-                                    className="w-full px-2 py-1 bg-white border border-chalk rounded text-xs font-mono font-bold"
-                                  />
-                                </td>
-                                <td className="p-2">
-                                  <input
-                                    type="text"
-                                    value={inlineEditForm.tempRequired}
-                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, tempRequired: e.target.value })}
-                                    placeholder="-18.0°C"
-                                    className="w-full px-2 py-1 bg-white border border-chalk rounded text-xs font-mono"
-                                  />
-                                </td>
-                                <td className="p-2">
-                                  <input
-                                    type="text"
-                                    value={inlineEditForm.blNumber}
-                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, blNumber: e.target.value })}
-                                    className="w-full px-2 py-1 bg-white border border-chalk rounded text-xs font-mono"
-                                  />
-                                </td>
-                                <td className="p-2">
-                                  <input
-                                    type="text"
-                                    value={inlineEditForm.commodity}
-                                    onChange={(e) => setInlineEditForm({ ...inlineEditForm, commodity: e.target.value })}
-                                    className="w-full px-2 py-1 bg-white border border-chalk rounded text-xs font-sans"
-                                  />
-                                </td>
-                                <td className="p-2 text-center" colSpan={2}>
-                                  <div className="flex items-center gap-1.5 justify-end">
-                                    <button
-                                      type="button"
-                                      onClick={handleSaveInlineEdit}
-                                      className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded text-[11px] cursor-pointer"
-                                    >
-                                      Lưu
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => setEditingPreviewIndex(null)}
-                                      className="px-2 py-1 bg-white border border-chalk rounded text-[11px] cursor-pointer"
-                                    >
-                                      Hủy
-                                    </button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          }
-
-                          return (
-                            <tr key={realIdx} className={`transition-colors ${c.isValid ? 'hover:bg-fog/60' : 'bg-red-50/40 hover:bg-red-50/70'}`}>
-                              <td className="py-2.5 px-3 font-bold text-carbon text-sm">
-                                {c.containerNumber}
-                                {c.expectedCheckDigit !== undefined && (
-                                  c.expectedCheckDigit === c.actualCheckDigit ? (
-                                    <span className="ml-2 text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1 py-0.5 rounded font-sans font-bold">
-                                      ISO chuẩn
-                                    </span>
-                                  ) : (
-                                    <span className="ml-2 text-[10px] text-red-600 bg-red-50 border border-red-200 px-1 py-0.5 rounded font-sans font-bold">
-                                      Sai ISO (cần {c.expectedCheckDigit})
-                                    </span>
-                                  )
-                                )}
-                              </td>
-                              <td className="py-2.5 px-3 font-bold text-carbon">{c.isoType}</td>
-                              <td className="py-2.5 px-3">
-                                {c.sealNumber ? (
-                                  <span className="font-bold text-carbon">{c.sealNumber}</span>
-                                ) : (
-                                  <span className="text-red-600 italic font-sans font-bold">Thiếu chì</span>
-                                )}
-                              </td>
-                              <td className="py-2.5 px-3 font-bold text-carbon">{formatKg(c.grossWeightKg)}</td>
-                              <td className="py-2.5 px-3 font-sans">
-                                {c.tempRequired ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-300">
-                                    <span className="material-symbols-outlined text-xs">ac_unit</span>
-                                    {c.tempRequired}
-                                  </span>
-                                ) : (
-                                  <span className="text-slate">—</span>
-                                )}
-                              </td>
-                              <td className="py-2.5 px-3 font-bold text-carbon">{c.blNumber}</td>
-                              <td className="py-2.5 px-3 font-sans text-slate text-[11px] max-w-xs truncate" title={c.commodity}>
-                                {c.commodity}
-                              </td>
-                              <td className="py-2.5 px-3 font-sans">
-                                {c.isValid ? (
-                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-300">
-                                    ● Hợp lệ
-                                  </span>
-                                ) : (
-                                  <div className="space-y-0.5">
-                                    {c.errors.map((err, eIdx) => (
-                                      <span key={eIdx} className="block text-[10px] text-red-700 font-bold">
-                                        ⚠ {err}
-                                      </span>
-                                    ))}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="py-2.5 px-3 text-right font-sans">
-                                <button
-                                  type="button"
-                                  onClick={() => handleStartInlineEdit(realIdx)}
-                                  className="px-2.5 py-1 text-[11px] font-bold text-carbon bg-white hover:bg-fog border border-chalk rounded-lg transition-colors cursor-pointer"
-                                >
-                                  Sửa
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Phân trang bảng xem trước container */}
-                  {previewContainers.length > previewPageSize && (
-                    <div className="border border-chalk rounded-xl overflow-hidden mt-2">
-                      <ShippingPagination
-                        currentPage={previewPage}
-                        totalItems={previewContainers.length}
-                        pageSize={previewPageSize}
-                        onPageChange={setPreviewPage}
-                        onPageSizeChange={setPreviewPageSize}
-                        pageSizeOptions={[5, 10, 20]}
-                        itemName="container"
-                      />
-                    </div>
-                  )}
-
-                </div>
-              )}
-
-            </div>
-
-            {/* Modal Footer */}
-            <div className="px-6 py-3.5 border-t border-chalk bg-fog flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-              <div>
-                {createStep === 2 && (
-                  <button
-                    type="button"
-                    onClick={() => setCreateStep(1)}
-                    className="px-4 py-2 bg-white border border-chalk text-carbon hover:bg-fog rounded-xl text-xs font-bold cursor-pointer flex items-center gap-1.5"
-                  >
-                    <span className="material-symbols-outlined text-sm">arrow_back</span>
-                    Quay lại chọn nguồn
-                  </button>
-                )}
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2.5">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateModal(false)}
-                  className="px-4 py-2 bg-white border border-chalk text-carbon hover:bg-fog rounded-xl text-xs font-bold cursor-pointer"
-                >
-                  Đóng
-                </button>
-
-                {createStep === 1 ? (
-                  <button
-                    type="button"
-                    onClick={handleProceedToPreview}
-                    className="px-5 py-2.5 bg-signal-orange text-white hover:opacity-90 rounded-xl text-xs font-bold shadow-sm cursor-pointer flex items-center gap-1.5"
-                  >
-                    <span>Tiếp tục: Xem trước &amp; Thẩm định dữ liệu</span>
-                    <span className="material-symbols-outlined text-sm">arrow_forward</span>
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => handleSaveManifest(true)}
-                      disabled={saving}
-                      className="px-4 py-2 bg-white border border-slate-300 text-slate-700 hover:bg-slate-100 rounded-xl text-xs font-bold cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
-                    >
-                      <span className="material-symbols-outlined text-sm">save_as</span>
-                      <span>Lưu bản nháp</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setShowConfirmSubmitModal(true)}
-                      disabled={saving || previewErrorCount > 0}
-                      className={`px-5 py-2.5 rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 ${
-                        previewErrorCount > 0
-                          ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                          : 'bg-signal-orange text-white hover:opacity-90 cursor-pointer'
-                      }`}
-                      title={previewErrorCount > 0 ? 'Vui lòng sửa các container báo đỏ trước khi nộp chính thức' : ''}
-                    >
-                      <span className="material-symbols-outlined text-base">send</span>
-                      <span>Nộp bản khai sang Cảng</span>
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL XÁC NHẬN NỘP BẢN KHAI CHÍNH THỨC SANG CẢNG TIÊN SA ── */}
-      {showConfirmSubmitModal && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-chalk max-w-md w-full p-6 space-y-4 animate-fadeIn">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-orange-100 text-signal-orange flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-2xl">send</span>
-              </div>
-              <div>
-                <h4 className="font-heading font-extrabold text-carbon text-base">
-                  Xác nhận nộp bản khai hàng hóa
-                </h4>
-                <p className="text-xs text-slate mt-1">
-                  Bản khai gồm <strong className="text-carbon">{previewContainers.length} container</strong> sẽ được nộp chính thức đến hệ thống điều hành Cảng Tiên Sa để đối soát với cổng kiểm soát và trạm cân VGM.
-                </p>
-              </div>
-            </div>
-
-            <div className="p-3 bg-fog rounded-xl border border-chalk text-xs space-y-1">
-              <div>Chuyến tàu: <strong>{createForm.voyageNumber}</strong> ({createForm.direction === 'EXPORT' ? 'Xuất khẩu' : 'Nhập khẩu'})</div>
-              <div>Người nộp: <strong>Đại diện Hãng tàu</strong></div>
-              <div>Trạng thái sau nộp: <strong className="text-emerald-700">Đã gửi cảng</strong></div>
-            </div>
-
-            <div className="pt-2 flex justify-end gap-3 border-t border-chalk">
-              <button
-                type="button"
-                onClick={() => setShowConfirmSubmitModal(false)}
-                className="px-4 py-2 bg-white border border-chalk text-carbon hover:bg-fog rounded-xl text-xs font-bold cursor-pointer"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSaveManifest(false)}
-                disabled={saving}
-                className="px-5 py-2.5 bg-signal-orange text-white hover:opacity-90 rounded-xl text-xs font-bold shadow-sm cursor-pointer disabled:opacity-50"
-              >
-                {saving ? 'Đang nộp...' : 'Đồng ý nộp bản khai'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {showCreateModal && <ManifestComposer voyages={voyages} initialManifest={editingDraft} resumeSession={resumeSession}
+        onClose={() => { setShowCreateModal(false); setResumeSession(null); }} onSaved={(document) => {
+          setShowCreateModal(false);
+          setResumeSession(null);
+          setSelectedManifest(document);
+          setActiveTab('DETAIL');
+          setSuccessMsg(document.status === 'DRAFT' ? 'Đã lưu bản khai nháp.' : 'Đã hoàn tất bản khai cùng các vận đơn và container.');
+          loadData(false);
+        }} />}
     </div>
   );
 }
