@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { gateStatusData, waitingVehiclesData } from '../../data/gateOfficerData'
 import gateService from '../../services/gateService'
-import GateEntryOrders from '../../features/booking-dispatch/GateEntryOrders'
 
 export default function GateDashboard() {
   const navigate = useNavigate()
@@ -191,7 +190,6 @@ export default function GateDashboard() {
       </div>
 
       {loadError&&<p role="alert" className="text-red-700">Không tải được dữ liệu cổng: {loadError}</p>}
-      <GateEntryOrders />
       {/* ── VEHICLES WAITING TABLE ── */}
       <div className="bg-white rounded-2xl border border-chalk shadow-sm overflow-hidden">
         <div className="p-4 border-b border-chalk flex justify-between items-center">

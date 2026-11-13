@@ -341,12 +341,9 @@ export default function GateVerification() {
                 <span className="material-symbols-outlined text-blue-600 text-2xl">badge</span>
                 Đối Chiếu Hồ Sơ Xe & Tài Xế
               </h1>
-              <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200 uppercase tracking-wider font-mono">
-                Chế độ xem đối chiếu
-              </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              Kiểm tra, đối soát thông tin phương tiện và tài xế tại cổng (Tự động lưu nhật ký khi quét)
+              Kiểm tra, đối soát thông tin phương tiện và tài xế tại cổng.
             </p>
           </div>
 
@@ -354,7 +351,7 @@ export default function GateVerification() {
             {/* Nhãn cố định cổng kiểm soát (1 làn vào / 1 làn ra) */}
             <div className="flex items-center bg-slate-100 rounded-xl px-3 py-2 border border-slate-200 text-xs font-bold text-slate-700 gap-2">
               <span className="material-symbols-outlined text-base text-blue-600">door_front</span>
-              <span>Cổng A · Làn Kiểm Soát</span>
+              <span>Cổng Vào · Làn Kiểm Soát</span>
             </div>
           </div>
         </div>
@@ -396,7 +393,7 @@ export default function GateVerification() {
               type="button"
               onClick={() => autoLookupPlate(searchInput)}
               disabled={verifying}
-              className="absolute inset-y-1 right-1 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold font-mono flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
+              className="absolute inset-y-1 right-1 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-xs"
             >
               <span className="material-symbols-outlined text-base">search</span>
               <span>{verifying ? 'ĐỐI CHIẾU...' : 'TRA CỨU'}</span>
@@ -493,7 +490,7 @@ export default function GateVerification() {
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-slate-500">Làn kiểm soát:</span>
-                <span className="font-semibold text-blue-700">Cổng A · Làn Kiểm Soát</span>
+                <span className="font-semibold text-blue-700">Cổng Vào · Làn Kiểm Soát</span>
               </div>
               <div className="flex justify-between items-center pt-2 border-t border-slate-200/60">
                 <span className="text-slate-500">Tác nghiệp phương tiện:</span>
@@ -579,10 +576,6 @@ export default function GateVerification() {
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-            <div className="hidden sm:flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold font-mono">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span>TỰ ĐỘNG LƯU NHẬT KÝ</span>
-            </div>
             <button
               type="button"
               onClick={() => autoLookupPlate(currentProfile.plate)}
