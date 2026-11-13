@@ -7,6 +7,7 @@ export default function YardSlotReservationModal({
   onClose,
   block,
   booking,
+  currentReservation,
   onConfirm,
 }) {
   // Determine default container size from booking (e.g. '40FT HC' -> 40, '20FT' -> 20)
@@ -116,11 +117,17 @@ export default function YardSlotReservationModal({
       setWarningMessage('')
       const allRes = yardReservationStore.getReservations()
       
-      const existingRes = allRes.find((r) => {
+      const storeRes = allRes.find((r) => {
         const rCont = (r.containerId || r.containerNo || r.booking?.containerId || '').trim().toUpperCase()
         const rBook = (r.bookingCode || r.booking?.id || '').trim().toUpperCase()
         return (currentContId && rCont === currentContId) || (currentBookId && rBook === currentBookId)
-      }) || booking?.reservedSlot || booking?.slotInfo
+      })
+      const existingRes =
+        storeRes ||
+        currentReservation ||
+        booking?.autoYardSlot ||
+        booking?.reservedSlot ||
+        booking?.slotInfo
 
       setExistingReservation(existingRes || null)
 
@@ -135,7 +142,7 @@ export default function YardSlotReservationModal({
       )
 
       if (isReservedInThisBlock) {
-        // Container ĐÃ giữ chỗ tại chính Block này -> Highlight đúng vị trí đã lưu
+        // Container ĐÃ nằm tại chính Block này -> Highlight đúng vị trí đang nằm
         const bayNum = Number(existingRes.bay)
         let modIdx = initialSize === 40 
           ? (bayNum % 2 === 0 ? (bayNum / 2) - 1 : Math.floor(bayNum / 2))
@@ -151,13 +158,32 @@ export default function YardSlotReservationModal({
           tier: resTier,
         })
       } else {
-        // Container CHƯA giữ chỗ tại Block này (hoặc đang ở Block khác):
-        // KHÔNG được tự động gán vị trí giả, giữ selection = null để người dùng tự click chọn
+        // Container đang nằm ở Block khác -> Giữ selection = null để người dùng click chọn ô mới tại Block này
         setSelection(null)
         setCurrentTier(1)
       }
     }
-  }, [isOpen, isDefault40, bayModules, booking, maxRows, currentBlockCode, currentContId, currentBookId])
+  }, [isOpen, isDefault40, bayModules, booking, currentReservation, maxRows, currentBlockCode, currentContId, currentBookId])
+
+  // Tọa độ gốc nơi container đang thực sự nằm trong Block này (nếu có)
+  const originCellInThisBlock = useMemo(() => {
+    if (!existingReservation) return null
+    const resBlock = existingReservation.blockCode || existingReservation.block
+    if (resBlock !== currentBlockCode) return null
+    const resSize = Number(existingReservation.size) || (isDefault40 ? 40 : 20)
+    const bayNum = Number(existingReservation.bay) || 2
+    let modIdx = resSize === 40
+      ? (bayNum % 2 === 0 ? (bayNum / 2) - 1 : Math.floor(bayNum / 2))
+      : Math.floor((bayNum - 1) / 2)
+    modIdx = Math.max(0, Math.min(modIdx, bayModules - (resSize === 40 ? 2 : 1)))
+    return {
+      module: modIdx,
+      row: Number(existingReservation.row) || 1,
+      tier: Number(existingReservation.tier) || 1,
+      size: resSize,
+      bay: bayNum,
+    }
+  }, [existingReservation, currentBlockCode, isDefault40, bayModules])
 
   // Handle switching container size (20ft vs 40ft)
   const handleChooseSize = (newSize) => {
@@ -273,24 +299,24 @@ export default function YardSlotReservationModal({
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-5 bg-carbon/80 backdrop-blur-sm animate-in zoom-in-95 duration-150 font-sans"
+      className="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-3 bg-carbon/80 backdrop-blur-sm animate-in zoom-in-95 duration-150 font-sans"
       role="dialog"
       aria-modal="true"
     >
-      <div className="bg-white w-full max-w-6xl max-h-[94vh] rounded-3xl p-5 sm:p-7 space-y-4 shadow-2xl flex flex-col overflow-hidden border border-chalk">
+      <div className="bg-white w-[97vw] max-w-[1460px] rounded-3xl p-4 sm:p-5 space-y-2.5 shadow-2xl flex flex-col border border-chalk">
         
         {/* Header */}
-        <div className="flex justify-between items-start border-b border-chalk pb-3.5">
+        <div className="flex justify-between items-center border-b border-chalk pb-2.5">
           <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-signal-orange/10 flex items-center justify-center text-signal-orange">
+            <div className="w-10 h-10 rounded-2xl bg-orange-50 border border-orange-200/80 flex items-center justify-center text-orange-600 shrink-0">
               <span className="material-symbols-outlined text-2xl">grid_view</span>
             </div>
             <div>
-              <span className="text-[10px] font-extrabold text-signal-orange uppercase font-mono tracking-wider block">
-                SƠ ĐỒ BÃI TIÊN SA · CHỌN VỊ TRÍ BAY & SLOT
+              <span className="text-[10px] font-extrabold text-orange-600 uppercase font-mono tracking-wider block">
+                SƠ ĐỒ BÃI TIÊN SA · CHỌN VỊ TRÍ BAY &amp; SLOT
               </span>
-              <h3 className="font-heading text-xl sm:text-2xl font-black text-carbon font-mono">
-                BLOCK {currentBlockCode} · {block.description || `Khu ${currentBlockCode[0]}`}
+              <h3 className="font-heading text-base sm:text-lg font-black text-slate-900 leading-tight">
+                BLOCK {currentBlockCode} · Dải container dựng theo sơ đồ thiết bị; mã chữ cái là quy ước quản lý đề xuất của NexusPort.
               </h3>
             </div>
           </div>
@@ -298,7 +324,7 @@ export default function YardSlotReservationModal({
           <button
             type="button"
             onClick={onClose}
-            className="w-9 h-9 rounded-full bg-fog border border-chalk flex items-center justify-center text-slate hover:text-carbon transition"
+            className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition cursor-pointer"
           >
             <span className="material-symbols-outlined text-base">close</span>
           </button>
@@ -306,8 +332,8 @@ export default function YardSlotReservationModal({
 
         {/* Thông báo va chạm hoặc vị trí Block khác */}
         {warningMessage && (
-          <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-red-50 border border-red-300 text-red-900 text-xs shadow-xs animate-in fade-in duration-200">
-            <span className="material-symbols-outlined text-red-600 text-xl flex-shrink-0">warning</span>
+          <div className="flex items-center gap-2.5 p-2.5 rounded-2xl bg-red-50 border border-red-300 text-red-900 text-xs shadow-xs animate-in fade-in duration-200">
+            <span className="material-symbols-outlined text-red-600 text-lg flex-shrink-0">warning</span>
             <span className="font-bold flex-1">{warningMessage}</span>
             <button
               type="button"
@@ -319,47 +345,78 @@ export default function YardSlotReservationModal({
           </div>
         )}
 
-        {isReservedInOtherBlock && !warningMessage && (
-          <div className="flex items-center gap-3 p-3 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 text-xs shadow-xs">
-            <span className="material-symbols-outlined text-amber-600 text-xl flex-shrink-0">info</span>
-            <div className="flex-1">
-              <span className="font-bold">Container {booking?.containerId} hiện đang được giữ chỗ tại </span>
-              <span className="font-extrabold text-amber-800 font-mono bg-amber-100/80 px-2 py-0.5 rounded border border-amber-300">
-                BLOCK {existingReservation.blockCode || existingReservation.block} · Bay {padPosition(existingReservation.bay)} · Hàng {padPosition(existingReservation.row)} · Tầng {existingReservation.tier}
-              </span>
-              <span className="block mt-0.5 text-amber-700 text-[11px]">
-                👉 Nhấp vào ô trống bất kỳ trên sơ đồ Block {currentBlockCode} bên dưới nếu muốn chuyển container sang Block này (vị trí cũ sẽ tự động được thu hồi).
-              </span>
+        {/* Banner hiển thị rõ Container đang nằm ở vị trí nào trên bãi (Chuẩn vibe ảnh người dùng) */}
+        {existingReservation && !warningMessage && (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 px-4 py-2.5 rounded-2xl border border-amber-300 bg-amber-50/80 text-xs shadow-2xs">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-orange-500 text-white flex items-center justify-center shrink-0 mt-0.5 sm:mt-0 shadow-2xs">
+                <span className="material-symbols-outlined text-lg">track_changes</span>
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-black uppercase tracking-wide text-[11px] text-orange-950">
+                    * VỊ TRÍ ĐANG NẰM HIỆN TẠI CỦA CONTAINER {booking?.containerId}:
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-orange-500 text-white font-mono font-black text-[10px] shadow-2xs">
+                    Đang chiếm 1 vị trí ({existingReservation.size || size}ft)
+                  </span>
+                  <span className="font-extrabold font-mono text-xs text-slate-900 bg-white px-2.5 py-0.5 rounded-lg border border-amber-300 shadow-2xs">
+                    BLOCK {existingReservation.blockCode || existingReservation.block} · Bay {padPosition(existingReservation.bay)} · Hàng (Row) {padPosition(existingReservation.row)} · Tầng T{Number(existingReservation.tier) || 1}
+                  </span>
+                </div>
+                <div className="mt-1 text-amber-900 font-medium text-[11px]">
+                  👉 Nhắp vào ô trống bất kỳ bên dưới để chuyển container sang <strong>Block {currentBlockCode}</strong> (vị trí cũ sẽ tự động trả lại).
+                </div>
+              </div>
             </div>
+
+            {originCellInThisBlock && (
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentTier(originCellInThisBlock.tier)
+                  setSize(originCellInThisBlock.size)
+                  setSelection({
+                    module: originCellInThisBlock.module,
+                    row: originCellInThisBlock.row,
+                    tier: originCellInThisBlock.tier,
+                  })
+                }}
+                className="px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold text-xs flex items-center gap-1 transition cursor-pointer shrink-0 self-end sm:self-auto"
+              >
+                <span className="material-symbols-outlined text-sm">center_focus_strong</span>
+                Trỏ về vị trí đang nằm (Bay {padPosition(originCellInThisBlock.bay)} · R{padPosition(originCellInThisBlock.row)} · T{originCellInThisBlock.tier})
+              </button>
+            )}
           </div>
         )}
 
-        {/* Toolbar: Kích cỡ 20ft vs 40ft & Chọn Tầng Tier */}
-        <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-fog border border-chalk">
+        {/* Toolbar: Kích cỡ 20ft vs 40ft & Chọn Tầng Tier (Chuẩn vibe ảnh người dùng) */}
+        <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-2 rounded-2xl bg-slate-50 border border-slate-200">
           {/* Booking Container info */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <div className="text-xs">
-              <span className="text-slate block text-[10px] uppercase font-bold">Booking Container:</span>
-              <span className="font-mono font-bold text-carbon text-sm">
-                {booking?.containerId || 'Chưa gán số cont'}
+              <span className="text-slate-500 block text-[10px] uppercase font-bold tracking-wider">Booking Container:</span>
+              <span className="font-mono font-black text-slate-900 text-sm">
+                {booking?.containerId || 'EMCU9284712'}
               </span>
             </div>
-            <span className="px-2.5 py-1 rounded-lg bg-white border border-chalk text-[11px] font-black text-signal-orange font-mono">
-              {booking?.containerType || `${size}FT HC`}
+            <span className="px-2 py-0.5 rounded-md bg-orange-50 border border-orange-200 text-[11px] font-black text-orange-700 font-mono">
+              {booking?.containerType || `${size}RF`}
             </span>
           </div>
 
           {/* 20ft vs 40ft Toggle Selector */}
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate">Kích cỡ quy hoạch:</span>
-            <div className="inline-flex rounded-xl bg-white p-1 border border-chalk text-xs font-bold shadow-xs">
+            <span className="text-xs font-bold text-slate-600">Kích cỡ quy hoạch:</span>
+            <div className="inline-flex rounded-full bg-slate-100 p-1 border border-slate-200 text-xs font-bold shadow-2xs">
               <button
                 type="button"
                 onClick={() => handleChooseSize(20)}
-                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3.5 py-1 rounded-full transition flex items-center gap-1.5 cursor-pointer ${
                   size === 20
-                    ? 'bg-signal-orange text-white shadow-xs'
-                    : 'text-slate hover:text-carbon'
+                    ? 'bg-orange-500 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 bg-white'
                 }`}
               >
                 <span>20 Feet (20ft)</span>
@@ -368,10 +425,10 @@ export default function YardSlotReservationModal({
               <button
                 type="button"
                 onClick={() => handleChooseSize(40)}
-                className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer ${
+                className={`px-4 py-1 rounded-full transition flex items-center gap-1.5 cursor-pointer ${
                   size === 40
-                    ? 'bg-signal-orange text-white shadow-xs'
-                    : 'text-slate hover:text-carbon'
+                    ? 'bg-orange-500 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 bg-white'
                 }`}
               >
                 <span>40 Feet (40ft)</span>
@@ -382,8 +439,8 @@ export default function YardSlotReservationModal({
 
           {/* Chọn Tầng (Tier) Selector */}
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate">Chọn Tầng (Tier):</span>
-            <div className="inline-flex rounded-xl bg-white p-1 border border-chalk text-xs font-bold shadow-xs">
+            <span className="text-xs font-bold text-slate-600">Chọn Tầng (Tier):</span>
+            <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200 text-xs font-bold shadow-2xs gap-1">
               {[...Array(maxTiers)].map((_, i) => i + 1).map((tierNum) => (
                 <button
                   key={`tier-${tierNum}`}
@@ -395,10 +452,10 @@ export default function YardSlotReservationModal({
                       setSelection((curr) => ({ ...curr, tier: tierNum }))
                     }
                   }}
-                  className={`px-2.5 py-1.5 rounded-lg transition text-xs font-mono font-bold cursor-pointer ${
+                  className={`px-3 py-1 rounded-lg transition text-xs font-mono font-black cursor-pointer ${
                     currentTier === tierNum
-                      ? 'bg-carbon text-white shadow-xs'
-                      : 'text-slate hover:text-carbon'
+                      ? 'bg-orange-500 text-white shadow-xs'
+                      : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200/80'
                   }`}
                   title={`Tầng ${tierNum} ${tierNum === 1 ? '(Nền bãi)' : ''}`}
                 >
@@ -410,61 +467,67 @@ export default function YardSlotReservationModal({
         </div>
 
         {/* Thông số Block & Chú thích trực quan */}
-        <div className="flex flex-wrap items-center justify-between text-xs text-slate border-b border-chalk pb-2 px-1">
-          <div className="flex items-center gap-4">
-            <span><strong className="text-carbon font-mono">{bayModules}</strong> mô-đun dọc Bay</span>
-            <span><strong className="text-carbon font-mono">{maxRows}</strong> row</span>
-            <span><strong className="text-carbon font-mono">{maxTiers}</strong> tier tối đa</span>
-            <span>
-              Đang có: <strong className="text-signal-orange font-mono font-bold">{existingYardContainers.length}</strong> cont trên bãi
+        <div className="flex flex-wrap items-center justify-between text-xs text-slate-600 border-b border-slate-100 pb-2 px-1">
+          <div className="flex flex-wrap items-center gap-3">
+            <span><strong className="text-slate-900 font-mono font-bold">{bayModules}</strong> mô-đun dọc Bay</span>
+            <span><strong className="text-slate-900 font-mono font-bold">{maxRows}</strong> row</span>
+            <span><strong className="text-slate-900 font-mono font-bold">{maxTiers}</strong> tier tối đa</span>
+            <span className="px-2.5 py-0.5 rounded-lg bg-orange-50 border border-orange-200 text-orange-700 font-bold text-[11px]">
+              Đang chiếm tại Block {currentBlockCode}:{' '}
+              <strong className="font-mono font-black">
+                {existingYardContainers.length + (originCellInThisBlock || selection ? 1 : 0)} vị trí
+              </strong>{' '}
+              ({existingYardContainers.length + (originCellInThisBlock || selection ? 1 : 0)} Cont)
             </span>
           </div>
 
-          {/* Legend 4 màu chuẩn */}
+          {/* Legend chuẩn y chang ảnh */}
           <div className="flex flex-wrap items-center gap-3 text-[11px]">
             <div className="flex items-center gap-1.5">
-              <span className="w-6 h-3 rounded bg-orange-100 border-2 border-signal-orange flex items-center justify-center text-[7.5px] font-black text-signal-orange">
-                CHỌN
-              </span>
-              <span className="font-bold text-signal-orange">Đang chọn cho Cont này</span>
+              <span className="w-4 h-3 rounded bg-emerald-500"></span>
+              <span className="font-medium text-slate-700">Vị trí Cont đang nằm</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-5 h-3 rounded bg-amber-100 border-2 border-amber-500"></span>
-              <span className="font-semibold text-amber-900">Đã giữ chỗ khác (Bận)</span>
+              <span className="w-4 h-3 rounded bg-orange-500"></span>
+              <span className="font-medium text-slate-700">Vị trí mới chọn</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-5 h-3 rounded bg-[#c5e1ed] border-2 border-[#4184a1]"></span>
-              <span className="font-semibold text-[#1e4e64]">Đang lưu bãi (Bận)</span>
+              <span className="w-4 h-3 rounded bg-amber-400"></span>
+              <span className="font-medium text-slate-700">Cont khác đã đặt (Bận)</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-3.5 h-3.5 rounded bg-[#f4f8f9] border border-dashed border-[#cfdee4]"></span>
-              <span>Ô trống (Có thể chọn)</span>
+              <span className="w-4 h-3 rounded bg-sky-400"></span>
+              <span className="font-medium text-slate-700">Đang lưu bãi (Bận)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-4 h-3 rounded bg-[#f8fafc] border border-slate-300"></span>
+              <span className="text-slate-500">Ô trống (Có thể chọn)</span>
             </div>
           </div>
         </div>
 
         {/* SƠ ĐỒ MẶT BẰNG BAY × ROW TRỰC QUAN */}
-        <div className="flex-1 min-h-0 flex flex-col space-y-2">
-          <div className="flex justify-between items-center text-xs font-bold text-carbon">
-            <span className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-signal-orange animate-pulse"></span>
-              Mặt bằng Bay × Row (Mặt cắt Tầng T{currentTier})
+        <div className="flex flex-col space-y-1.5">
+          <div className="flex justify-between items-center text-xs font-bold text-slate-900">
+            <span className="flex items-center gap-2 text-orange-600 font-extrabold">
+              <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
+              * Mặt bằng Bay × Row (Mặt cắt Tầng T{currentTier})
             </span>
-            <span className="text-[11px] text-slate font-medium">
+            <span className="text-[11px] text-slate-500 font-medium">
               Đầu dãy ➔ Cuối dãy · Ô nền 20ft (Click vào ô trống để xếp chỗ)
             </span>
           </div>
 
-          {/* Grid Viewport with Horizontal Scroll */}
-          <div className="flex-1 overflow-x-auto overflow-y-auto border border-chalk rounded-2xl bg-white p-4 shadow-inner">
+          {/* Grid Viewport */}
+          <div className="w-full border border-slate-200 rounded-2xl bg-white p-3 shadow-2xs">
             <div
-              className="grid gap-1 min-w-max select-none"
+              className="grid gap-1 w-full select-none"
               style={{
-                gridTemplateColumns: `65px repeat(${bayModules}, minmax(42px, 48px))`,
+                gridTemplateColumns: `58px repeat(${bayModules}, minmax(0, 1fr))`,
               }}
             >
               {/* Header row: Bay numbers */}
-              <div className="text-[10px] font-mono font-bold text-slate flex items-center justify-center border-b border-chalk pb-1">
+              <div className="text-[10px] font-mono font-bold text-slate-500 flex items-center justify-center border-b border-slate-100 pb-1">
                 ROW/BAY
               </div>
               {Array.from({ length: bayModules }, (_, i) => {
@@ -475,8 +538,8 @@ export default function YardSlotReservationModal({
                     key={`bay-head-${i}`}
                     className={`text-[10px] font-mono text-center pb-1 border-b transition ${
                       isBayCovered
-                        ? 'font-black text-signal-orange border-signal-orange scale-105'
-                        : 'font-bold text-slate/80 border-chalk'
+                        ? 'font-black text-orange-600 border-orange-500 scale-105'
+                        : 'font-semibold text-slate-400 border-slate-100'
                     }`}
                   >
                     {padPosition(bayNum)}
@@ -484,14 +547,14 @@ export default function YardSlotReservationModal({
                 )
               })}
 
-              {/* Data rows: Row maxRows down to Row 1 */}
+              {/* Data rows */}
               {Array.from({ length: maxRows }, (_, i) => maxRows - i).map((row) => {
                 let skipUntil = -1
 
                 return (
                   <div key={`row-group-${row}`} className="contents">
                     {/* Row label on the left */}
-                    <div className="text-[11px] font-mono font-bold text-slate flex items-center justify-start pr-2 h-10">
+                    <div className="text-[11px] font-mono font-bold text-slate-600 flex items-center justify-start pr-1 h-9">
                       Row {padPosition(row)}
                     </div>
 
@@ -501,8 +564,15 @@ export default function YardSlotReservationModal({
                         return null
                       }
 
-                      // 1. Kiểm tra nếu là VỊ TRÍ ĐANG ĐƯỢC CHỌN cho container hiện tại
+                      // 1. Kiểm tra nếu là VỊ TRÍ ĐANG ĐƯỢC CHỌN
                       const isSelected = Boolean(selection && row === selection.row && moduleIdx === selection.module)
+                      const isOriginCell = Boolean(
+                        originCellInThisBlock &&
+                        originCellInThisBlock.tier === currentTier &&
+                        row === originCellInThisBlock.row &&
+                        moduleIdx === originCellInThisBlock.module
+                      )
+
                       if (isSelected) {
                         const span = size === 40 ? 2 : 1
                         if (span > 1) {
@@ -515,17 +585,49 @@ export default function YardSlotReservationModal({
                             type="button"
                             style={span > 1 ? { gridColumn: `span ${span}` } : {}}
                             onClick={() => handleCellClick(moduleIdx, row)}
-                            className="h-10 border-2 border-signal-orange bg-orange-100 text-signal-orange rounded-xl z-20 shadow-md ring-2 ring-signal-orange/20 px-1 flex items-center justify-center cursor-pointer transition"
-                            title={`Vị trí đang chọn cho cont ${booking?.containerId || '40FT'}: Bay ${padPosition(primaryBay)} Row ${padPosition(row)} Tầng T${currentTier}`}
+                            className={`h-9 border-2 rounded-xl z-20 shadow-xs px-1 flex flex-col items-center justify-center cursor-pointer transition ${
+                              isOriginCell
+                                ? 'border-emerald-600 bg-emerald-600 text-white ring-2 ring-emerald-500/30'
+                                : 'border-orange-500 bg-orange-50 text-orange-700 ring-2 ring-orange-500/25'
+                            }`}
+                            title={`Container ${booking?.containerId || '40FT'}: Bay ${padPosition(primaryBay)} · Row ${padPosition(row)} · Tầng T${currentTier}`}
                           >
-                            <span className="text-[11.5px] font-black tracking-wider truncate w-full text-center font-mono">
-                              {booking?.containerId || 'CONT-CHỌN'}
+                            <span className="text-[10px] font-black tracking-tight truncate w-full text-center font-mono leading-none">
+                              📦 {booking?.containerId || 'CONT-CHỌN'}
+                            </span>
+                            <span className={`text-[7.5px] font-black uppercase tracking-tighter leading-none mt-0.5 ${
+                              isOriginCell ? 'text-emerald-100' : 'text-orange-600'
+                            }`}>
+                              {isOriginCell ? '📍 ĐANG NẰM' : '➔ VỊ TRÍ MỚI'}
                             </span>
                           </button>
                         )
                       }
 
-                      // 2. Kiểm tra nếu ĐÃ CÓ CONTAINER KHÁC ĐANG NẰM TẠI ĐÂY (LƯU BÃI HOẶC ĐÃ GIỮ CHỖ)
+                      // 1.5 Vị trí cũ
+                      if (isOriginCell) {
+                        const span = originCellInThisBlock.size === 40 ? 2 : 1
+                        if (span > 1) {
+                          skipUntil = moduleIdx + span - 1
+                        }
+
+                        return (
+                          <button
+                            key={`cell-origin-${moduleIdx}-${row}`}
+                            type="button"
+                            style={span > 1 ? { gridColumn: `span ${span}` } : {}}
+                            onClick={() => handleCellClick(moduleIdx, row)}
+                            className="h-9 border-2 border-dashed border-emerald-500 bg-emerald-50 text-emerald-900 rounded-xl z-15 px-1 flex flex-col items-center justify-center cursor-pointer hover:bg-emerald-100 transition"
+                            title={`Vị trí hiện tại của ${booking?.containerId}`}
+                          >
+                            <span className="text-[10px] font-black tracking-tight truncate w-full text-center font-mono leading-none">
+                              📍 {booking?.containerId}
+                            </span>
+                          </button>
+                        )
+                      }
+
+                      // 2. Container khác
                       const existingCont = findExistingContainerAt(moduleIdx, row, currentTier)
                       if (existingCont) {
                         const is40Cont = existingCont.moduleSpan === 2 || Number(existingCont.containerLengthFt) === 40
@@ -544,35 +646,27 @@ export default function YardSlotReservationModal({
                             onClick={() => {
                               setWarningMessage(`⚠️ Vị trí đã có container ${existingCont.containerNumber} (${isRes ? 'Đã giữ chỗ trước' : 'Đang lưu bãi'}). Không thể xếp đè!`)
                             }}
-                            className={`h-10 border-2 rounded-xl z-10 px-1 flex items-center justify-center cursor-not-allowed opacity-90 hover:opacity-100 transition shadow-xs ${
+                            className={`h-9 border-2 rounded-xl z-10 px-1 flex items-center justify-center cursor-not-allowed opacity-90 transition ${
                               isRes
-                                ? 'bg-amber-100 border-amber-500 text-amber-900'
-                                : 'bg-[#c5e1ed] border-[#4184a1] text-[#1e4e64]'
+                                ? 'bg-amber-100 border-amber-400 text-amber-900'
+                                : 'bg-sky-100 border-sky-400 text-sky-900'
                             }`}
-                            title={`ĐÃ BẬN: Cont ${existingCont.containerNumber} · ${existingCont.containerLengthFt || (span * 20)}ft · ${isRes ? 'Đã giữ chỗ trước' : 'Đang lưu bãi'}`}
+                            title={`ĐÃ BẬN: Cont ${existingCont.containerNumber} (${isRes ? 'Đã giữ chỗ' : 'Đang lưu bãi'})`}
                           >
-                            <div className="flex flex-col items-center justify-center w-full overflow-hidden leading-none">
-                              <span className="text-[11px] font-black tracking-wider truncate w-full text-center font-mono">
-                                {existingCont.containerNumber}
-                              </span>
-                              <span className="text-[8px] font-bold uppercase tracking-tighter opacity-80 mt-0.5">
-                                {isRes ? 'ĐÃ GIỮ CHỖ' : 'LƯU BÃI'}
-                              </span>
-                            </div>
+                            <span className="font-mono font-black text-xs">CONT</span>
                           </button>
                         )
                       }
 
-                      // 3. Ô TRỐNG (CÓ THỂ CHỌN)
+                      // 3. Ô TRỐNG (Cực kỳ sạch sẽ theo đúng ảnh user)
                       return (
                         <button
                           key={`cell-${moduleIdx}-${row}`}
                           type="button"
                           onClick={() => handleCellClick(moduleIdx, row)}
-                          className="h-10 border border-[#d7e3e7] bg-[#f4f8f9] text-slate/70 hover:bg-orange-50 hover:border-signal-orange rounded-sm flex items-center justify-center cursor-pointer transition"
+                          className="h-9 border border-slate-200/90 bg-[#f8fafc] hover:bg-orange-50 hover:border-orange-400 rounded-xs flex items-center justify-center cursor-pointer transition shadow-2xs"
                           title={`Chọn vị trí trống: Bay ${padPosition(moduleIdx * 2 + 1)} Row ${padPosition(row)} Tầng T${currentTier}`}
                         >
-                          <span className="w-full h-full block border border-dashed border-[#cfdee4] rounded-[1px] m-0.5 opacity-60"></span>
                         </button>
                       )
                     })}
@@ -661,7 +755,7 @@ export default function YardSlotReservationModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2.5 rounded-xl border border-chalk bg-fog hover:bg-chalk text-carbon text-xs font-bold transition"
+              className="px-5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-bold transition cursor-pointer"
             >
               Hủy bỏ
             </button>
@@ -669,10 +763,10 @@ export default function YardSlotReservationModal({
               type="button"
               disabled={!selection || Boolean(conflictContainer)}
               onClick={handleConfirmReservation}
-              className={`px-6 py-2.5 rounded-xl text-white text-xs font-extrabold transition shadow-md flex items-center gap-2 ${
+              className={`px-6 py-2.5 rounded-xl text-xs font-black transition flex items-center gap-2 ${
                 !selection || conflictContainer
-                  ? 'bg-slate-300 cursor-not-allowed text-slate-500'
-                  : 'bg-signal-orange hover:bg-signal-orange/90 cursor-pointer'
+                  ? 'bg-slate-200/90 text-slate-400 cursor-not-allowed shadow-none'
+                  : 'bg-orange-500 hover:bg-orange-600 text-white shadow-md cursor-pointer'
               }`}
             >
               <span className="material-symbols-outlined text-sm">how_to_reg</span>

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { shippingLineApi, formatApiErrorMessage } from './api/shippingLineApi';
 import ShippingBadge from './components/ShippingBadge';
 import ShippingPagination from './components/ShippingPagination';
+import { manifestPortSyncService } from '../../services/manifestPortSyncService';
 
 const TIEN_SA_PORT = 'Cảng Tiên Sa, Đà Nẵng (VNDAD)';
 
@@ -160,6 +161,12 @@ export default function VesselVoyagePage() {
       setUpdatingVoyageId(voyageId);
       await shippingLineApi.updateVoyage(voyageId, { status: newStatus });
       setVoyages(prev => prev.map(v => v.id === voyageId ? { ...v, status: newStatus } : v));
+
+      // Đồng bộ trạng thái chuyến tàu sang Cảng Tiên Sa
+      const targetVoy = voyages.find(v => v.id === voyageId);
+      if (targetVoy?.voyageNumber) {
+        manifestPortSyncService.updateManifestVesselStatusByVoyage(targetVoy.voyageNumber, newStatus);
+      }
     } catch (err) {
       setError(formatApiErrorMessage(err, 'Lỗi cập nhật trạng thái chuyến tàu'));
     } finally {

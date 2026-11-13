@@ -26,7 +26,44 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
   <p className="yard-detail-basis">{rows} row và {tiers} tier là giả định thiết kế. {live?'Xanh: đang lưu bãi · Vàng: đã giữ vị trí · Xám: bảo trì. Ô trống lấy theo cấu hình tồn kho hiện tại.':'Các ô dưới đây là ô quy hoạch, chưa có snapshot tồn kho.'}</p>
   <div className="yard-detail-workspace">
    <div className="yard-detail-plan">
-    <div className="yard-detail-plan-heading"><h3>Mặt bằng Bay × Row</h3><span>Đầu dãy → cuối dãy · ô nền 20ft</span></div>
+    <div className="yard-detail-plan-heading">
+      <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' }}>
+        <h3>Mặt bằng Bay × Row</h3>
+        {/* Bộ lựa chọn kích cỡ container 20ft (1 ô) vs 40ft (2 ô) */}
+        <div style={{ display: 'inline-flex', alignItems: 'center', background: '#f1f5f9', padding: '3px', borderRadius: '8px', border: '1px solid #cbd5e1' }} role="group" aria-label="Kích thước container">
+          {[20, 40].map((val) => (
+            <button
+              type="button"
+              key={val}
+              disabled={val === 40 && bayModules < 2}
+              aria-pressed={size === val}
+              onClick={() => chooseSize(val)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '4px 10px',
+                fontSize: '11px',
+                fontWeight: 700,
+                borderRadius: '6px',
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                background: size === val ? '#334155' : 'transparent',
+                color: size === val ? '#ffffff' : '#475569',
+                boxShadow: size === val ? '0 1px 2px rgba(0,0,0,0.1)' : 'none',
+              }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: '15px' }}>
+                {val === 40 ? 'view_column_2' : 'view_column'}
+              </span>
+              <span>{val}ft ({val === 40 ? '2 ô' : '1 ô'})</span>
+            </button>
+          ))}
+        </div>
+      </div>
+      <span>Đầu dãy → cuối dãy · ô nền 20ft</span>
+     </div>
     <div ref={gridViewport} className="yard-detail-grid-scroll"><div className="yard-detail-grid" style={{gridTemplateColumns:`65px repeat(${bayModules},${cellWidth}px)`}}>
      <span className="yard-grid-axis">ROW / BAY</span>{Array.from({length:bayModules},(_,i)=><span className="yard-grid-bay" key={`b-${i}`}>{padPosition(i*2+1)}</span>)}
      {Array.from({length:rows},(_,i)=>rows-i).map(row=>{
@@ -48,45 +85,109 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
             const contNumber = stored?.containerNumber || stored?.reservedContainerNumber;
             const isReserved = stored?.status === 'reserved';
             const isOccupied = stored?.status === 'occupied';
-            const hasContainer = stored && (isReserved || isOccupied || (Boolean(contNumber) && stored.status !== 'empty'));
+            const hasContainer = Boolean(stored && (isReserved || isOccupied || (Boolean(contNumber) && stored.status !== 'empty')));
 
+            // Kiểm tra xem ô này có phải là ô trống được chọn không (không phụ thuộc vào activeSlot từ backend)
+            const isSelectedEmpty = !hasContainer && row === selection.row && index === selection.module;
+
+            // Xác định container 40ft (2 ô) hay 20ft (1 ô)
             const is40 = hasContainer
               ? (Number(stored.containerLengthFt) === 40 || Number(stored.size) === 40 || stored.moduleSpan === 2 || (stored.containerType && String(stored.containerType).includes('40')))
-              : (!live && size === 40 && row === selection.row && (index === selection.module || index === selection.module + 1));
+              : (size === 40 && isSelectedEmpty);
             
             const span = is40 ? 2 : 1;
 
-            if (span > 1 && (hasContainer || (!live && size === 40 && row === selection.row && index === selection.module))) {
+            if (span > 1 && (hasContainer || isSelectedEmpty)) {
               skipUntil = index + span - 1;
             }
 
-            const selected = row === selection.row && (live ? (!!activeSlot && stored?.id === activeSlot.id) : (index === selection.module || (size === 40 && index === selection.module + 1)));
+            // Trạng thái được chọn
+            const selected = hasContainer
+              ? Boolean(activeSlot && (stored?.id === activeSlot.id || (stored?.moduleStart && activeSlot?.moduleStart && stored.moduleStart === activeSlot.moduleStart) || (Number(stored?.bay) === Number(activeSlot?.bay) && Number(stored?.row) === Number(activeSlot?.row))))
+              : (row === selection.row && index === selection.module);
+
             const displayBay = span > 1 ? (stored?.bay || (index * 2 + 2)) : (stored?.bay || (index * 2 + 1));
 
             let gridStyle = {};
-            if (span > 1 && (hasContainer || (!live && size === 40 && row === selection.row && index === selection.module))) {
+            if (span > 1) {
+              gridStyle.gridColumn = `span ${span}`;
+            }
+
+            if (hasContainer) {
+              // 1. NƠI CÓ CONTAINER HOẶC CONTAINER ĐẶT CHỖ (MÀU RIÊNG BIỆT)
+              if (stored.status === 'reserved') {
+                // Đã đặt chỗ: Màu vàng hổ phách
+                gridStyle = {
+                  ...gridStyle,
+                  background: '#fef3c7',
+                  borderColor: selected ? '#d97706' : '#f59e0b',
+                  borderWidth: selected ? '2.5px' : '1.5px',
+                  borderStyle: 'solid',
+                  borderRadius: span > 1 ? '8px' : '4px',
+                  boxShadow: selected ? '0 0 0 2px rgba(245, 158, 11, 0.45)' : undefined,
+                  zIndex: selected ? 10 : 2,
+                };
+              } else if (stored.status === 'maintenance') {
+                // Bảo trì: Màu xám
+                gridStyle = {
+                  ...gridStyle,
+                  background: '#d9dde2',
+                  borderColor: selected ? '#475569' : '#84919c',
+                  borderWidth: selected ? '2.5px' : '1.5px',
+                  borderStyle: 'solid',
+                  borderRadius: span > 1 ? '8px' : '4px',
+                  boxShadow: selected ? '0 0 0 2px rgba(71, 85, 105, 0.4)' : undefined,
+                  zIndex: selected ? 10 : 2,
+                };
+              } else {
+                // Đang lưu bãi: Màu xanh dương cảng biển
+                gridStyle = {
+                  ...gridStyle,
+                  background: '#c5e1ed',
+                  borderColor: selected ? '#0284c7' : '#4184a1',
+                  borderWidth: selected ? '2.5px' : '1.5px',
+                  borderStyle: 'solid',
+                  borderRadius: span > 1 ? '8px' : '4px',
+                  boxShadow: selected ? '0 0 0 2px rgba(2, 132, 199, 0.45)' : undefined,
+                  zIndex: selected ? 10 : 2,
+                };
+              }
+            } else if (selected) {
+              // 2. KHI KÍCH CHUỘT VÀO Ô KHÁC (Ô TRỐNG): MÀU XÁM NHƯ BÌNH THƯỜNG
               gridStyle = {
-                gridColumn: `span ${span}`,
-                background: '#ffedd5',
-                borderColor: '#ea580c',
+                ...gridStyle,
+                background: '#e2e8f0', // Nền màu xám nhẹ chuẩn mực
+                borderColor: '#64748b', // Viền xám slate thanh lịch
                 borderWidth: '2px',
                 borderStyle: 'solid',
-                borderRadius: '10px',
-                boxShadow: '0 1px 3px rgba(234, 88, 12, 0.15)',
+                borderRadius: span > 1 ? '8px' : '4px',
+                boxShadow: '0 1px 3px rgba(100, 116, 139, 0.25)',
                 zIndex: 10,
               };
             }
+
+            // Nhãn chữ trong ô: ghi 'CONT'
+            // Nơi có cont ghi 'CONT', còn kích trỏ chuột vào ô trống thì ghi 20 hoặc 40
+            const containerLabel = hasContainer ? 'CONT' : (selected ? (size === 40 ? '40' : '20') : '');
 
             return <button
               type="button"
               key={index}
               style={gridStyle}
-              title={hasContainer ? `${contNumber || 'Container 40ft'} · ${stored.containerLengthFt || (span * 20)}ft · ${stored.status || 'Đã giữ'}` : `Bay ${padPosition(index * 2 + 1)} Row ${padPosition(row)} Tier ${selection.tier}`}
+              title={hasContainer ? `${contNumber || 'Container'} · ${stored.containerLengthFt || (span * 20)}ft · ${stored.status === 'reserved' ? 'Đã giữ vị trí' : 'Đang lưu bãi'} · Bay ${padPosition(displayBay)} Row ${padPosition(row)} Tier ${selection.tier}` : `Bay ${padPosition(displayBay)} Row ${padPosition(row)} Tier ${selection.tier} (${size}ft - Ô trống)`}
               aria-label={`Bay ${padPosition(displayBay)} Row ${padPosition(row)}`}
               aria-pressed={selected}
-              className={[selected ? 'chosen-slot' : '', hasContainer ? `inventory-${stored.status}` : ''].join(' ')}
+              className={[selected ? 'chosen-slot' : '', hasContainer ? `inventory-${stored.status || 'occupied'}` : ''].join(' ')}
               onClick={() => {
-                setSelection(current => ({ ...current, module: stored ? (stored.moduleStart ? stored.moduleStart - 1 : index) : index, row }));
+                let targetModule = index;
+                if (!hasContainer && size === 40 && index >= bayModules - 1) {
+                  targetModule = bayModules - 2;
+                }
+                setSelection(current => ({
+                  ...current,
+                  module: targetModule,
+                  row
+                }));
                 if (hasContainer) {
                   onOpenContainerDetail?.({
                     ...stored,
@@ -100,43 +201,31 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
                 }
               }}
             >
-              {span > 1 && (hasContainer || (!live && size === 40 && row === selection.row && index === selection.module)) ? (
+              {containerLabel ? (
                 <span style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   height: '100%',
                   width: '100%',
-                  padding: '2px 4px',
+                  padding: '1px 3px',
                   fontWeight: 900,
-                  fontSize: '11px',
+                  fontSize: span > 1 ? '11px' : '9.5px',
                   fontFamily: 'monospace',
-                  color: '#c2410c',
-                  letterSpacing: '0.5px',
+                  color: hasContainer 
+                    ? (isReserved ? '#92400e' : '#0369a1')
+                    : '#334155',
+                  letterSpacing: '0.3px',
                   whiteSpace: 'nowrap',
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   pointerEvents: 'none'
                 }}>
-                  {contNumber || (stored?.containerId || '40FT')}
+                  {containerLabel}
                 </span>
-              ) : hasContainer ? (
-                <span style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  height: '100%',
-                  width: '100%',
-                  fontWeight: 800,
-                  fontSize: '9px',
-                  color: '#1e40af',
-                  pointerEvents: 'none'
-                }}>
-                  {contNumber ? contNumber.slice(0, 7) : '20FT'}
-                </span>
-              ) : (
+              ) : (!hasContainer && (!selected || span === 1)) ? (
                 <span style={{ display: 'block', border: '1px dashed #cfdee4', width: '100%', height: '100%', borderRadius: '2px', opacity: 0.7 }} />
-              )}
+              ) : null}
             </button>;
           })}
         </div>;
@@ -241,7 +330,7 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
         </button>
       )}
     </div>
-    </div><div className="yard-position-controls">    {!live&&<div className="yard-size-switch" role="group" aria-label="Kích thước container">{[20,40].map(value=><button type="button" key={value} disabled={value===40&&bayModules<2} aria-pressed={size===value} onClick={()=>chooseSize(value)}>{value}ft</button>)}</div>}
+    </div><div className="yard-position-controls">    {<div className="yard-size-switch" role="group" aria-label="Kích thước container">{[20,40].map(value=><button type="button" key={value} disabled={value===40&&bayModules<2} aria-pressed={size===value} onClick={()=>chooseSize(value)}>{value}ft</button>)}</div>}
     <label className="yard-tier-select">Chọn tier<select aria-label="Chọn tier" value={selection.tier} onChange={event=>setSelection(current=>({...current,tier:Number(event.target.value)}))}>{Array.from({length:tiers},(_,i)=><option key={i+1} value={i+1}>Tier {i+1}</option>)}</select></label>
 </div><div>    <div className="yard-tier-profile" aria-label="Mặt cắt tầng">{Array.from({length:tiers},(_,i)=>tiers-i).map(tier=><button type="button" key={tier} aria-pressed={selection.tier===tier} onClick={()=>setSelection(current=>({...current,tier}))}>Tier {tier}</button>)}<span>NỀN BÃI</span></div>
 </div>

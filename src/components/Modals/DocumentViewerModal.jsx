@@ -174,154 +174,216 @@ export default function DocumentViewerModal({
             />
           ) : (
             /* Render high-fidelity SVG/Vector Document View if no external image URL */
-            <div className="w-[840px] max-w-[94vw] bg-white text-slate-900 rounded-2xl p-6 md:p-8 shadow-2xl border border-slate-200 font-sans text-xs space-y-4">
-              {/* Header of Simulated Document */}
-              <div className="flex justify-between items-start border-b-2 border-slate-900 pb-3">
+            <div className="w-[880px] max-w-[94vw] bg-white text-slate-900 rounded-2xl p-5 md:p-7 shadow-2xl border-2 border-slate-800 font-sans text-xs space-y-3.5 print:border-black">
+              {/* Header của B/L Chuẩn Hàng Hải */}
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b-2 border-slate-900 pb-3 gap-2">
                 <div>
-                  <div className="font-heading font-black text-sm tracking-widest text-slate-900 uppercase">
-                    {isBL && 'HAPAG-LLOYD / ONE OCEAN CONTAINER LINE'}
-                    {isEDO && 'CẢNG TIÊN SA - ĐÀ NẴNG (PORT OF TIEN SA)'}
-                    {isCustoms && 'TỔNG CỤC HẢI QUAN VIỆT NAM — CỤC HQ ĐÀ NẴNG'}
+                  <div className="font-heading font-black text-base tracking-widest text-slate-900 uppercase flex items-center gap-2">
+                    <span className="material-symbols-outlined text-signal-orange text-lg">directions_boat</span>
+                    <span>{isBL ? (booking.shippingLine || 'EVERGREEN MARINE CORP. / OCEAN NETWORK EXPRESS') : isEDO ? 'CẢNG TIÊN SA - ĐÀ NẴNG (PORT OF TIEN SA)' : 'TỔNG CỤC HẢI QUAN VIỆT NAM — CỤC HQ ĐÀ NẴNG'}</span>
                   </div>
-                  <div className="text-[10px] text-slate-500 font-medium">
-                    {isBL && 'NON-NEGOTIABLE SEAWAY BILL / OCEAN BILL OF LADING'}
+                  <div className="text-[10px] text-slate-500 font-mono tracking-wider uppercase mt-0.5">
+                    {isBL && 'STANDARD OCEAN BILL OF LADING — NON-NEGOTIABLE COPY'}
                     {isEDO && 'ELECTRONIC DELIVERY ORDER (LỆNH GIAO HÀNG ĐIỆN TỬ eDO)'}
                     {isCustoms && 'CHI CỤC HẢI QUAN CỬA KHẨU CẢNG ĐÀ NẴNG — HỆ THỐNG VNACCS/VCIS'}
                   </div>
                 </div>
-                <div className="text-right">
-                  <div className="font-mono font-black text-xs text-blue-800">
-                    {currentDoc.documentNumber || currentDoc.code || (isBL ? 'HLCU-DAN-2026-8891' : isEDO ? 'EDO-2026-990184' : '105829104820')}
+
+                <div className="text-left sm:text-right font-mono">
+                  <div className="text-[10px] text-slate-400 uppercase font-bold">Số Hiệu Chứng Từ:</div>
+                  <div className="font-mono font-black text-sm text-blue-900">
+                    {currentDoc.documentNumber || currentDoc.code || (isBL ? (booking.blNumber || 'EMCU-DAD-2026-8891') : isEDO ? 'EDO-2026-990184' : '105829104820')}
                   </div>
-                  <div className="text-[9px] text-slate-400 font-mono">
-                    Ngày phát hành: {booking.createdAt ? new Date(booking.createdAt).toLocaleDateString('vi-VN') : '29/10/2026'}
+                  <div className="text-[9px] text-slate-500">
+                    Ngày cấp: {booking.createdAt ? new Date(booking.createdAt).toLocaleDateString('vi-VN') : '2026-11-10'}
                   </div>
                 </div>
               </div>
 
-              {/* Document Banner */}
-              <div className={`p-3 rounded-xl border flex items-center justify-between ${
-                isBL ? 'bg-blue-50 border-blue-200 text-blue-900' :
-                isEDO ? 'bg-emerald-50 border-emerald-200 text-emerald-900' :
-                'bg-amber-50 border-amber-200 text-amber-900'
-              }`}>
-                <div>
-                  <h4 className="font-heading font-extrabold text-sm uppercase">
-                    {isBL && 'VẬN ĐƠN ĐƯỜNG BIỂN CHÍNH THỨC (BILL OF LADING - B/L)'}
-                    {isEDO && 'LỆNH GIAO HÀNG ĐIỆN TỬ (ELECTRONIC DELIVERY ORDER - eDO)'}
-                    {isCustoms && 'TỜ KHAI HẢI QUAN ĐIỆN TỬ THÔNG QUAN NHẬP KHẨU'}
-                  </h4>
-                  <p className="text-[10px] opacity-80">
-                    Phục vụ kiểm soát cổng điện tử & hạ bãi tại Cảng Tiên Sa Đà Nẵng
-                  </p>
-                </div>
-                <div className="text-center font-mono font-black text-xs px-2.5 py-1 bg-white rounded-lg border shadow-2xs">
-                  {isBL && 'B/L: GỐC HỢP LỆ'}
-                  {isEDO && 'eDO: ĐÃ DUYỆT'}
-                  {isCustoms && 'LUỒNG XANH: ĐÃ THÔNG QUAN'}
-                </div>
-              </div>
+              {/* Form B/L Hàng Hải Chuẩn Quốc Tế */}
+              {isBL ? (
+                <div className="space-y-3">
+                  {/* Grid 2 Cột Chuẩn B/L */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 border border-slate-300 rounded-xl overflow-hidden font-mono text-[11px]">
+                    {/* Cột Trái: Shipper, Consignee, Notify Party */}
+                    <div className="divide-y divide-slate-300 border-r border-slate-300">
+                      <div className="p-2.5 bg-slate-50/60">
+                        <span className="text-[9px] font-bold text-slate-400 block uppercase">1. SHIPPER / EXPORTER (Người gửi hàng)</span>
+                        <strong className="text-slate-900 font-bold block">{booking.shipper || 'GLOBAL TRADING & AGRI-SEAFOOD CORP.'}</strong>
+                        <span className="text-[10px] text-slate-500">Industrial Zone, Port of Loading • Ref: EXP-8892</span>
+                      </div>
+                      <div className="p-2.5 bg-white">
+                        <span className="text-[9px] font-bold text-slate-400 block uppercase">2. CONSIGNEE (Người nhận hàng)</span>
+                        <strong className="text-slate-900 font-bold block">{booking.consignee || companyName}</strong>
+                        <span className="text-[10px] text-slate-500">Tien Sa Port Logistics, Da Nang • Tax: 0401889212</span>
+                      </div>
+                      <div className="p-2.5 bg-slate-50/60">
+                        <span className="text-[9px] font-bold text-slate-400 block uppercase">3. NOTIFY PARTY (Bên thông báo)</span>
+                        <span className="font-semibold text-slate-800 block">TIEN SA LOGISTICS & DISPATCH CENTER</span>
+                        <span className="text-[10px] text-slate-500">Tel: 0905 123 456 • dispatch@nexusport.vn</span>
+                      </div>
+                    </div>
 
-              {/* Grid Information */}
-              <div className="grid grid-cols-2 gap-3 text-[11px] font-mono bg-slate-50 p-4 rounded-xl border border-slate-200">
-                <div>
-                  <span className="text-slate-400 block text-[9px] uppercase font-bold">Mã Số Booking Cảng:</span>
-                  <strong className="text-slate-900 font-extrabold">{bookingCode}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[9px] uppercase font-bold">Số Hiệu Container:</span>
-                  <strong className="text-signal-orange font-black text-xs">{containerNo}</strong>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[9px] uppercase font-bold">Chủ hàng / Đơn vị vận tải:</span>
-                  <span className="text-slate-800 font-semibold">{companyName}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[9px] uppercase font-bold">Phương tiện & Tài xế:</span>
-                  <span className="text-slate-800 font-semibold">{licensePlate} • {driverName}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[9px] uppercase font-bold">Cảng Dỡ Hàng (Port of Discharge):</span>
-                  <span className="text-slate-800 font-bold">TIEN SA PORT, DA NANG (VNDAD)</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[9px] uppercase font-bold">Loại Container & Tác nghiệp:</span>
-                  <span className="text-slate-800 font-bold">40HC • Nhập khẩu (Gate Out / Pickup)</span>
-                </div>
-              </div>
+                    {/* Cột Phải: Vessel, Port, Freight */}
+                    <div className="divide-y divide-slate-300">
+                      <div className="p-2.5 bg-white grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-[9px] font-bold text-slate-400 block uppercase">VESSEL / VOYAGE</span>
+                          <strong className="text-slate-900 block truncate">{booking.vesselName || 'EVER GLORY'} / {booking.voyageNumber || 'EG-2605W'}</strong>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-bold text-slate-400 block uppercase">BOOKING NO.</span>
+                          <strong className="text-slate-900 font-mono block">{bookingCode}</strong>
+                        </div>
+                      </div>
 
-              {/* Specific Content per Document Type */}
-              {isBL && (
-                <div className="p-3 bg-white rounded-xl border border-slate-200 text-[10px] space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-bold">Tàu vận chuyển (Vessel/Voyage):</span>
-                    <span className="font-mono font-bold text-slate-800">EVER GIVEN / VOY 0244W</span>
+                      <div className="p-2.5 bg-slate-50/60 grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-[9px] font-bold text-slate-400 block uppercase">PORT OF LOADING (Cảng bốc)</span>
+                          <span className="font-bold text-slate-800 block truncate">{booking.pol || 'SHANGHAI PORT (CNSHA)'}</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-bold text-slate-400 block uppercase">PORT OF DISCHARGE (Cảng dỡ)</span>
+                          <span className="font-bold text-slate-800 block truncate">TIEN SA PORT, DA NANG (VNDAD)</span>
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 bg-white grid grid-cols-2 gap-2">
+                        <div>
+                          <span className="text-[9px] font-bold text-slate-400 block uppercase">PLACE OF DELIVERY</span>
+                          <span className="font-bold text-slate-800 block">TIEN SA CONTAINER TERMINAL</span>
+                        </div>
+                        <div>
+                          <span className="text-[9px] font-bold text-slate-400 block uppercase">FREIGHT PAYMENT</span>
+                          <span className="font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 inline-block text-[10px]">FREIGHT PREPAID</span>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-bold">Cảng bốc hàng (Port of Loading):</span>
-                    <span className="font-mono text-slate-800">SHANGHAI, CHINA</span>
+
+                  {/* Bảng Chi Tiết Container Của Vận Đơn */}
+                  <div className="border border-slate-300 rounded-xl overflow-hidden font-mono text-[11px]">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="bg-slate-100 text-slate-700 font-extrabold uppercase text-[10px] border-b border-slate-300">
+                          <th className="py-2 px-3">Container No. &amp; Seal No.</th>
+                          <th className="py-2 px-3">Loại Cont</th>
+                          <th className="py-2 px-3">Mô Tả Hàng Hóa</th>
+                          <th className="py-2 px-3 text-right">Trọng Lượng (KGS)</th>
+                          <th className="py-2 px-3 text-right">Thể Tích (CBM)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-200 bg-white">
+                        <tr>
+                          <td className="py-2 px-3 font-extrabold text-blue-900">
+                            <div>{containerNo}</div>
+                            <div className="text-[10px] text-slate-500 font-normal">Seal: <span className="font-bold text-blue-700">{booking.sealNumber || 'SL-88412'}</span></div>
+                          </td>
+                          <td className="py-2 px-3">
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 font-bold text-[10px]">
+                              {booking.containerType || '40HC'}
+                            </span>
+                          </td>
+                          <td className="py-2 px-3 text-slate-800">
+                            <div>{booking.cargoDescription || 'Hàng đông lạnh / Thiết bị điện tử tiêu chuẩn'}</div>
+                            {booking.tempRequired && (
+                              <div className="text-[10px] text-cyan-700 font-bold">Nhiệt độ cài đặt: {booking.tempRequired}</div>
+                            )}
+                          </td>
+                          <td className="py-2 px-3 text-right font-bold text-slate-900">
+                            {Number(booking.grossWeightKg || 24000).toLocaleString()}
+                          </td>
+                          <td className="py-2 px-3 text-right text-slate-600">
+                            {Number(booking.cbm || 55).toFixed(1)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-bold">Số chì niêm phong (Seal No):</span>
-                    <span className="font-mono font-bold text-blue-700">SEAL-VN-998811</span>
+
+                  {/* Footer của Form B/L */}
+                  <div className="p-3 bg-slate-50 rounded-xl border border-slate-300 grid grid-cols-1 sm:grid-cols-3 gap-2 items-center text-[10px] font-mono">
+                    <div>
+                      <span className="text-slate-400 block uppercase font-bold text-[9px]">PLACE &amp; DATE OF ISSUE</span>
+                      <strong className="text-slate-900">TIEN SA PORT, DA NANG • 2026-11-10</strong>
+                    </div>
+                    <div className="text-center">
+                      <span className="px-2.5 py-1 rounded border-2 border-emerald-600 text-emerald-800 bg-emerald-50 font-black uppercase text-[10px] inline-flex items-center gap-1">
+                        <span className="material-symbols-outlined text-xs">verified</span>
+                        <span>VẬN ĐƠN GỐC HỢP LỆ</span>
+                      </span>
+                    </div>
+                    <div className="text-left sm:text-right">
+                      <span className="text-slate-400 block uppercase font-bold text-[9px]">SIGNED AS CARRIER / AGENT</span>
+                      <strong className="text-slate-900">{booking.shippingLine || 'EVERGREEN LINE (AGENT)'}</strong>
+                    </div>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-bold">Khối lượng toàn bộ (Gross Weight):</span>
-                    <span className="font-mono font-bold text-slate-800">28,100 KG</span>
+                </div>
+              ) : (
+                /* Giao diện cho eDO hoặc Hải Quan */
+                <div className="space-y-3 font-mono">
+                  {/* Banner */}
+                  <div className={`p-3 rounded-xl border flex items-center justify-between ${
+                    isEDO ? 'bg-emerald-50 border-emerald-200 text-emerald-900' : 'bg-amber-50 border-amber-200 text-amber-900'
+                  }`}>
+                    <div>
+                      <h4 className="font-heading font-extrabold text-sm uppercase">
+                        {isEDO ? 'LỆNH GIAO HÀNG ĐIỆN TỬ (ELECTRONIC DELIVERY ORDER - eDO)' : 'TỜ KHAI HẢI QUAN ĐIỆN TỬ THÔNG QUAN NHẬP KHẨU'}
+                      </h4>
+                      <p className="text-[10px] opacity-80">Phục vụ kiểm soát cổng điện tử &amp; hạ bãi tại Cảng Tiên Sa Đà Nẵng</p>
+                    </div>
+                    <div className="text-center font-mono font-black text-xs px-2.5 py-1 bg-white rounded-lg border shadow-2xs">
+                      {isEDO ? 'eDO: ĐÃ DUYỆT' : 'LUỒNG XANH: ĐÃ THÔNG QUAN'}
+                    </div>
                   </div>
+
+                  {/* Grid thông tin eDO/HQ */}
+                  <div className="grid grid-cols-2 gap-3 text-[11px] bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <div>
+                      <span className="text-slate-400 block text-[9px] uppercase font-bold">Mã Số Booking Cảng:</span>
+                      <strong className="text-slate-900 font-extrabold">{bookingCode}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[9px] uppercase font-bold">Số Hiệu Container:</span>
+                      <strong className="text-signal-orange font-black text-xs">{containerNo}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[9px] uppercase font-bold">Chủ hàng / Đơn vị vận tải:</span>
+                      <span className="text-slate-800 font-semibold">{companyName}</span>
+                    </div>
+                    <div>
+                      <span className="text-slate-400 block text-[9px] uppercase font-bold">Phương tiện &amp; Tài xế:</span>
+                      <span className="text-slate-800 font-semibold">{licensePlate} • {driverName}</span>
+                    </div>
+                  </div>
+
+                  {isEDO && (
+                    <div className="p-3 bg-white rounded-xl border border-slate-200 text-[10px] space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-bold">Hạn lệnh giao hàng (eDO Expiry):</span>
+                        <span className="font-mono font-bold text-emerald-700">31/12/2026 23:59 (Còn hiệu lực)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-bold">Nơi hạ vỏ rỗng sau khi dỡ:</span>
+                        <span className="font-mono text-slate-800">Depot Tiên Sa / ICD Hòa Cầm</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {isCustoms && (
+                    <div className="p-3 bg-white rounded-xl border border-slate-200 text-[10px] space-y-1">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-bold">Chi cục Hải quan đăng ký:</span>
+                        <span className="font-mono text-slate-800">HQ CỬA KHẨU CẢNG ĐÀ NẴNG (MÃ: 04C1)</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-slate-500 font-bold">Trạng thái tờ khai VNACCS:</span>
+                        <span className="font-mono font-bold text-emerald-600">ĐÃ THÔNG QUAN — ĐỦ ĐIỀU KIỆN QUA KHU VỰC GIÁM SÁT</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
-
-              {isEDO && (
-                <div className="p-3 bg-white rounded-xl border border-slate-200 text-[10px] space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-bold">Hạn lệnh giao hàng (eDO Expiry):</span>
-                    <span className="font-mono font-bold text-emerald-700">31/12/2026 23:59 (Còn hiệu lực)</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-bold">Nơi hạ vỏ rỗng sau khi dỡ:</span>
-                    <span className="font-mono text-slate-800">Depot Tiên Sa / ICD Hòa Cầm</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-bold">Cược vỏ container / Phí lưu bãi:</span>
-                    <span className="font-mono font-bold text-slate-800">Đã thanh toán (Paid)</span>
-                  </div>
-                </div>
-              )}
-
-              {isCustoms && (
-                <div className="p-3 bg-white rounded-xl border border-slate-200 text-[10px] space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-bold">Chi cục Hải quan đăng ký:</span>
-                    <span className="font-mono font-bold text-slate-800">HQ CỬA KHẨU CẢNG ĐÀ NẴNG (MÃ: 04C1)</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-bold">Trạng thái tờ khai VNACCS:</span>
-                    <span className="font-mono font-bold text-emerald-600">ĐÃ THÔNG QUAN — ĐỦ ĐIỀU KIỆN QUA KHU VỰC GIÁM SÁT</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500 font-bold">Nghĩa vụ thuế nhập khẩu:</span>
-                    <span className="font-mono font-bold text-slate-800">Đã nộp thuế đầy đủ qua Cổng DVC Hải quan</span>
-                  </div>
-                </div>
-              )}
-
-              {/* Digital Stamps & Signatures Footer */}
-              <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-[10px]">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
-                    <span className="material-symbols-outlined text-base">verified</span>
-                  </div>
-                  <div>
-                    <span className="font-bold block text-slate-800">CHỨNG TỰ ĐIỆN TỬ HỢP LỆ</span>
-                    <span className="text-[9px] text-slate-400 font-mono">Xác thực bởi NexusPort Smart Gate</span>
-                  </div>
-                </div>
-
-                <div className="px-3 py-1 rounded-lg border-2 border-red-600 text-red-600 font-black font-mono text-[10px] uppercase rotate-[-2deg] tracking-widest shadow-2xs">
-                  {isCustoms ? '★ ĐÃ THÔNG QUAN ★' : isEDO ? '★ CHO PHÉP NHẬN HÀNG ★' : '★ VẬN ĐƠN GỐC HỢP LỆ ★'}
-                </div>
-              </div>
             </div>
           )}
         </div>

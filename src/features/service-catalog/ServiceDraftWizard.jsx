@@ -34,6 +34,7 @@ const blankSource = () => ({
   bookingId: null,
   documentType: 'EDO',
   referenceNumber: '',
+  bookingNumber: '',
   blNumber: '',
   validUntil: '',
   bookingMode: 'LINKED',
@@ -441,6 +442,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
   const chooseSource = value => {
     if (value !== form.source.bookingId) {
+      const picked = (sampleMode ? sampleData.bookings : sources.data?.items)?.find(item => item.id === value)
       changeContext(
         previous => ({
           ...previous,
@@ -448,6 +450,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
             ...blankSource(),
             bookingMode: previous.source.bookingMode,
             referenceNumber: previous.source.bookingMode === 'PAPER' ? previous.source.referenceNumber : '',
+            bookingNumber: picked?.bookingNumber || '',
+            blNumber: previous.source.blNumber || '',
             bookingId: value || null,
           },
           lines: [],
@@ -892,6 +896,16 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                           />
                         </Field>
 
+                        <Field label="Số Booking">
+                          <input
+                            aria-label="Số Booking"
+                            maxLength={100}
+                            value={form.source.bookingNumber || ''}
+                            onChange={event => sourceUpdate('bookingNumber', event.target.value)}
+                            placeholder="Nhập số Booking (nếu có)"
+                          />
+                        </Field>
+
                         <Field label={<>Tên tàu <b className="epd-required">*</b></>}>
                           <input
                             aria-label="Tên tàu nhập"
@@ -965,6 +979,16 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                             />
                           </div>
                         )}
+
+                        <Field label="Số vận đơn (Bill / B/L)" wide>
+                          <input
+                            aria-label="Số vận đơn xuất"
+                            maxLength={100}
+                            value={form.source.blNumber || ''}
+                            onChange={event => sourceUpdate('blNumber', event.target.value)}
+                            placeholder="Nhập số vận đơn đường biển (VD: BL-VNCMT-7721)"
+                          />
+                        </Field>
                       </div>
                     </div>
                   )}
