@@ -321,7 +321,7 @@ export default function ServiceCatalogPage({ management = false }) {
           <p>
             {management
               ? 'Thiết lập dịch vụ và thời gian hiệu lực. Giữ lịch sử cho mỗi lần cập nhật.'
-              : 'Giao container hàng nhập (lệnh eDO/DO, VASSCM) và Hạ container hàng xuất (Booking giấy/eBooking, khai báo cont).'}
+              : 'Giao container hàng nhập (lệnh eDO điện tử, VASSCM) và Hạ container hàng xuất (eBooking liên kết, khai báo cont).'}
           </p>
           <div className="epc-hero-stats" aria-label="Tổng quan dịch vụ">
             <div>
@@ -397,7 +397,7 @@ export default function ServiceCatalogPage({ management = false }) {
               </header>
               <h3>Giao container hàng nhập</h3>
               <p className="epc-portal-desc">
-                Tác nghiệp bốc container hàng nhập ra khỏi cảng (lấy nguyên). Đăng ký lệnh giao hàng điện tử eDO hoặc DO giấy,
+                Tác nghiệp bốc container hàng nhập ra khỏi cảng (lấy nguyên). Đăng ký lệnh giao hàng điện tử eDO,
                 kiểm tra thông quan VASSCM cơ quan hải quan và điều động phương tiện xe/sà lan.
               </p>
 
@@ -406,7 +406,7 @@ export default function ServiceCatalogPage({ management = false }) {
                   <ShieldCheck size={14} />Quy trình 7 bước nghiệp vụ
                 </div>
                 <ul className="epc-portal-steps-list">
-                  <li><span className="epc-portal-step-num">1</span>Khai báo lệnh giao nhận DO/eDO & Xác thực email</li>
+                  <li><span className="epc-portal-step-num">1</span>Khai báo lệnh giao nhận điện tử eDO & Xác thực email</li>
                   <li><span className="epc-portal-step-num">2</span>Khai báo container lấy nguyên (chì niêm phong HQ)</li>
                   <li><span className="epc-portal-step-num">3</span>Khai báo dịch vụ đính kèm (Lưu bãi, Cắm điện lạnh, Clone)</li>
                   <li><span className="epc-portal-step-num">4</span>Kiểm tra thông quan qua hệ thống VASSCM</li>
@@ -445,7 +445,7 @@ export default function ServiceCatalogPage({ management = false }) {
               </header>
               <h3>Hạ container hàng xuất</h3>
               <p className="epc-portal-desc">
-                Tác nghiệp hạ container hàng xuất vào bãi cảng chờ xếp tàu. Khai báo Booking hãng tàu (Booking giấy hoặc eBooking),
+                Tác nghiệp hạ container hàng xuất vào bãi cảng chờ xếp tàu. Khai báo eBooking hãng tàu đã liên kết,
                 khai báo danh sách container, seal, VGM, chỉ dẫn hàng lạnh/nguy hiểm và xe/sà lan giao nhận.
               </p>
 
@@ -454,7 +454,7 @@ export default function ServiceCatalogPage({ management = false }) {
                   <ShieldCheck size={14} />Quy trình 6 bước nghiệp vụ
                 </div>
                 <ul className="epc-portal-steps-list">
-                  <li><span className="epc-portal-step-num">1</span>Khai báo Booking (eBooking / Booking giấy) & Xác thực email</li>
+                  <li><span className="epc-portal-step-num">1</span>Khai báo eBooking & Xác thực email</li>
                   <li><span className="epc-portal-step-num">2</span>Khai báo Container (Thêm dòng, xóa dòng, seal, VGM, IMO/UN)</li>
                   <li><span className="epc-portal-step-num">3</span>Khai báo dịch vụ đính kèm & Clone dịch vụ</li>
                   <li><span className="epc-portal-step-num">4</span>Khai báo giao nhận (Xe / Sà lan, Hạn lệnh)</li>

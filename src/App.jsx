@@ -76,7 +76,6 @@ import ManifestManagementPage from './pages/ShippingLine/ManifestManagementPage'
 import BillOfLadingPage from './pages/ShippingLine/BillOfLadingPage'
 import DeliveryOrderPage from './pages/ShippingLine/DeliveryOrderPage'
 import ServiceCatalogPage from './features/service-catalog/ServiceCatalogPage'
-import ServiceOrdersPage from './features/service-catalog/ServiceOrdersPage'
 
 // Component chuyển hướng trang chủ dựa trên vai trò (Role-based Home Redirect)
 function HomeRedirect() {
@@ -139,9 +138,7 @@ function App() {
 
         {/* Toàn bộ các trang quản trị dùng chung cấu trúc Sidebar thông qua MainLayout */}
         <Route element={<MainLayout />}>
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
-            <Route path="/service-orders" element={<ServiceOrdersPage />} />
-          </Route>
+          <Route path="/service-orders" element={<Navigate to="/services" replace />} />
           <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, 'Carrier', ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
             <Route path="/services" element={<ServiceCatalogPage />} />
           </Route>

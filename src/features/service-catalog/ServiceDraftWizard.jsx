@@ -131,7 +131,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   // Cấu hình các bước theo đúng chuẩn Hải Phòng ePort
   const stages = form.flow === 'IMPORT'
     ? [
-        ['Lệnh DO/eDO & Email', FileText],
+        ['Lệnh eDO & Email', FileText],
         ['Khai báo container', Container],
         ['Dịch vụ đính kèm', Layers3],
         ['Xác nhận thông quan', ShieldCheck],
@@ -139,7 +139,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         ['Kiểm tra & Gửi đăng ký', FileCheck2],
       ]
     : [
-        ['Booking & Email', FileText],
+        ['eBooking & Email', FileText],
         ['Khai báo container', Container],
         ['Dịch vụ đính kèm', Layers3],
         ['Xác nhận thông quan', ShieldCheck],
@@ -199,7 +199,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     }))
   }, [draftId, profile.data])
 
-  const sourceTerm = useDebounced(form.flow === 'EXPORT' && form.source.bookingMode === 'PAPER' ? form.source.referenceNumber : sourceSearch)
+  const sourceTerm = useDebounced(sourceSearch)
   const containerTerm = useDebounced(search)
   const main = services.find(service => service.id === form.mainServiceId)
 
@@ -270,19 +270,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     [sampleMode, sampleData, sourceTerm]
   )
   const sources = sampleSources || liveSources
-
-  useEffect(() => {
-    if (form.flow !== 'EXPORT' || form.source.bookingMode !== 'PAPER' || sources.isFetching ||
-      sourceTerm !== form.source.referenceNumber || !sources.data?.items) return
-    const number = form.source.referenceNumber.trim().toUpperCase()
-    const matches = sources.data.items.filter(row => row.bookingNumber?.trim().toUpperCase() === number)
-    const nextId = matches.length === 1 ? matches[0].id : null
-    if (nextId !== form.source.bookingId || (matches.length === 1 && form.source.referenceNumber !== matches[0].bookingNumber)) {
-      setForm(previous => ({ ...previous, source: { ...previous.source, bookingId: nextId, referenceNumber: matches.length === 1 ? matches[0].bookingNumber : previous.source.referenceNumber }, lines: [], delivery: { ...previous.delivery, trips: [], customsConfirmationScope: '', customsCheckSkipped: false } }))
-      setSnapshots({})
-      setManualContainer('')
-    }
-  }, [form.flow, form.source.bookingMode, form.source.referenceNumber, form.source.bookingId, sourceTerm, sources.data, sources.isFetching])
 
   useEffect(() => {
     if (sources.data?.items) {
@@ -448,8 +435,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           ...previous,
           source: {
             ...blankSource(),
-            bookingMode: previous.source.bookingMode,
-            referenceNumber: previous.source.bookingMode === 'PAPER' ? previous.source.referenceNumber : '',
+            bookingMode: 'LINKED',
+            referenceNumber: '',
             bookingNumber: picked?.bookingNumber || '',
             blNumber: previous.source.blNumber || '',
             bookingId: value || null,
@@ -601,27 +588,19 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
     if (step === 0 && form.flow === 'IMPORT') {
       const missing = []
-      if (!form.source.referenceNumber?.trim()) missing.push('Số DO/eDO')
+      if (!form.source.referenceNumber?.trim()) missing.push('Số eDO')
       if (!form.source.blNumber?.trim()) missing.push('Số vận đơn (Bill)')
       if (!form.source.vesselName?.trim()) missing.push('Tên tàu')
       if (!form.source.voyageNumber?.trim()) missing.push('Chuyến tàu')
-      if (!form.source.validUntil?.trim()) missing.push('Hạn DO/eDO')
+      if (!form.source.validUntil?.trim()) missing.push('Hạn eDO')
       if (missing.length > 0) {
         return setFeedback(`Đối với các thông tin có ký hiệu (*) màu đỏ bắt buộc phải nhập. Vui lòng nhập: ${missing.join(', ')}!`)
       }
     }
 
     if (step === 0 && form.flow === 'EXPORT') {
-      if (form.source.bookingMode === 'PAPER') {
-        if (!form.source.referenceNumber?.trim()) {
-          return setFeedback('Đối với các thông tin có ký hiệu (*) màu đỏ bắt buộc phải nhập: Vui lòng nhập Số Booking giấy!')
-        }
-        if (sources.isFetching || sourceTerm !== form.source.referenceNumber || !form.source.bookingId ||
-          selectedBooking?.bookingNumber?.trim().toUpperCase() !== form.source.referenceNumber.trim().toUpperCase()) {
-          return setFeedback('Chưa có Booking giấy hợp lệ của công ty trùng số đã nhập. Chờ đối chiếu hoặc kiểm tra lại hồ sơ Booking; không thể chọn container ngoài nguồn này.')
-        }
-      } else if (!form.source.bookingId) {
-        return setFeedback('Vui lòng chọn một Booking hãng tàu đã liên kết trước khi tiếp tục.')
+      if (!form.source.bookingId) {
+        return setFeedback('Đối với các thông tin có ký hiệu (*) màu đỏ bắt buộc phải nhập: Vui lòng chọn eBooking của công ty!')
       }
     }
 
@@ -737,12 +716,10 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
   const sourceLabel =
     form.flow === 'EXPORT'
-      ? form.source.bookingMode === 'PAPER'
-        ? `Booking giấy: ${form.source.referenceNumber || 'Chưa nhập'}`
-        : selectedBooking?.bookingNumber || detail.data?.sourceSnapshot?.bookingNumber || 'Chưa chọn Booking'
+      ? selectedBooking?.bookingNumber || detail.data?.sourceSnapshot?.bookingNumber || 'Chưa chọn eBooking'
       : form.source.referenceNumber
-      ? `${form.source.documentType}: ${form.source.referenceNumber}`
-      : 'Chưa khai báo DO/eDO'
+      ? `eDO: ${form.source.referenceNumber}`
+      : 'Chưa khai báo eDO'
 
   const ready = !draftId || loaded.current
 
@@ -852,7 +829,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                   <div className="epd-stage-heading">
                     <span>01</span>
                     <div>
-                      <h3>{form.flow === 'IMPORT' ? 'Khai báo lệnh giao nhận (DO / eDO)' : 'Khai báo thông tin Booking'}</h3>
+                      <h3>{form.flow === 'IMPORT' ? 'Khai báo lệnh giao nhận điện tử (eDO)' : 'Khai báo thông tin eBooking'}</h3>
                       <p>Nhập đầy đủ các thông tin bắt buộc có ký hiệu (*) màu đỏ trước khi xác thực email.</p>
                     </div>
                   </div>
@@ -861,28 +838,27 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                     <div className="epd-source-box">
                       <div className="epd-section-label">
                         <FileText size={17} />
-                        <h4>Lệnh giao nhận hàng nhập</h4>
-                        <span className="epd-status amber">Cảng đối chiếu chứng từ</span>
+                        <h4>Lệnh giao nhận hàng nhập (eDO)</h4>
+                        <span className="epd-status emerald">Lệnh điện tử eDO</span>
                       </div>
                       <div className="epd-form-grid">
                         <Field label={<>Lệnh giao nhận <b className="epd-required">*</b></>}>
-                          <select
+                          <input
                             aria-label="Loại chứng từ"
-                            value={form.source.documentType}
-                            onChange={event => sourceUpdate('documentType', event.target.value)}
-                          >
-                            <option value="EDO">Lệnh giao nhận điện tử eDO</option>
-                            <option value="DO">Lệnh giao nhận giấy (DO)</option>
-                          </select>
+                            readOnly
+                            disabled
+                            value="Lệnh giao nhận điện tử eDO"
+                            className="epd-readonly-input"
+                          />
                         </Field>
 
-                        <Field label={<>Số DO/eDO <b className="epd-required">*</b></>}>
+                        <Field label={<>Số eDO <b className="epd-required">*</b></>}>
                           <input
-                            aria-label="Số DO/eDO"
+                            aria-label="Số eDO"
                             maxLength={100}
                             value={form.source.referenceNumber}
                             onChange={event => sourceUpdate('referenceNumber', event.target.value)}
-                            placeholder="Nhập vào số lệnh DO hoặc eDO"
+                            placeholder="Nhập vào số lệnh điện tử eDO"
                           />
                         </Field>
 
@@ -926,9 +902,9 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                           />
                         </Field>
 
-                        <Field label={<>Hạn DO/eDO <b className="epd-required">*</b></>}>
+                        <Field label={<>Hạn eDO <b className="epd-required">*</b></>}>
                           <input
-                            aria-label="Hạn DO/eDO"
+                            aria-label="Hạn eDO"
                             type="date"
                             value={form.source.validUntil}
                             onChange={event => sourceUpdate('validUntil', event.target.value)}
@@ -940,45 +916,23 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                     <div className="epd-source-box">
                       <div className="epd-section-label">
                         <FileText size={17} />
-                        <h4>Khai báo Booking xuất khẩu</h4>
+                        <h4>Khai báo eBooking xuất khẩu</h4>
+                        <span className="epd-status emerald">eBooking đã liên kết</span>
                       </div>
                       <div className="epd-form-grid">
-                        <Field label={<>Sử dụng eBooking <b className="epd-required">*</b></>} wide>
-                          <select
-                            aria-label="Sử dụng eBooking"
-                            value={form.source.bookingMode}
-                            onChange={event => sourceUpdate('bookingMode', event.target.value)}
-                          >
-                            <option value="PAPER">Không sử dụng eBooking — Booking giấy</option>
-                            <option value="LINKED">Sử dụng eBooking đã liên kết</option>
-                          </select>
-                        </Field>
-
-                        {form.source.bookingMode === 'PAPER' ? (
-                          <Field label={<>Số Booking giấy <b className="epd-required">*</b></>} wide hint={sources.isFetching || sourceTerm !== form.source.referenceNumber ? 'Đang đối chiếu Booking của công ty…' : form.source.bookingId ? 'Đã khớp Booking của công ty. Chỉ container thuộc Booking này được hiển thị.' : 'Nhập đúng số Booking đã được cảng tiếp nhận và công bố container.'}>
-                            <input
-                              aria-label="Số Booking giấy"
-                              maxLength={100}
-                              value={form.source.referenceNumber}
-                              onChange={event => sourceUpdate('referenceNumber', event.target.value)}
-                              placeholder="Nhập số booking giấy từ hãng tàu"
-                            />
-                          </Field>
-                        ) : (
-                          <div className="epd-wide">
-                            <BookingSourceSelect
-                              items={sources.data?.items || []}
-                              value={form.source.bookingId}
-                              selected={selectedBooking}
-                              search={sourceSearch}
-                              onSearch={setSourceSearch}
-                              onChange={chooseSource}
-                              loading={sources.isFetching || sourceSearch !== sourceTerm}
-                              error={sources.isError ? draftError(sources.error) : null}
-                              onRetry={() => liveSources.refetch()}
-                            />
-                          </div>
-                        )}
+                        <div className="epd-wide">
+                          <BookingSourceSelect
+                            items={sources.data?.items || []}
+                            value={form.source.bookingId}
+                            selected={selectedBooking}
+                            search={sourceSearch}
+                            onSearch={setSourceSearch}
+                            onChange={chooseSource}
+                            loading={sources.isFetching || sourceSearch !== sourceTerm}
+                            error={sources.isError ? draftError(sources.error) : null}
+                            onRetry={() => liveSources.refetch()}
+                          />
+                        </div>
 
                         <Field label="Số vận đơn (Bill / B/L)" wide>
                           <input
