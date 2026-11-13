@@ -1,4 +1,3 @@
-import AccountRequests from './components/AccountRequests'
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import DriverAssignmentFields from './components/DriverAssignmentFields'
 import {
@@ -541,7 +540,6 @@ export default function UserRoleManagement() {
   return (
     <div className="p-6 md:p-8 w-full font-sans flex flex-col gap-6 min-h-screen bg-fog/30">
 
-      <AccountRequests admin />
       {/* Toast */}
       {toast && (
         <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import driverService from '../../services/driverService'
 import nodeApi from '../../services/nodeApiClient'
-import AccountRequests from '../Users/components/AccountRequests'
+import DriverEmailVerification from './DriverEmailVerification'
 import vehicleService from '../../services/vehicleService'
 import { bookingService } from '../../services/bookingService'
 
@@ -109,9 +109,9 @@ function DocumentCard({ url, title, alt, onClick }) {
 
 export default function DriverManagement() {
   const [drivers, setDrivers] = useState([])
-  const [requestRevision, setRequestRevision] = useState(0)
-  const [submittingRequest, setSubmittingRequest] = useState(false)
-  const requestProfile = (data, driverId) => Object.fromEntries(['username','email','fullName','phone','idCardNumber','licenseNumber','photoUrl','idCardFrontUrl','idCardBackUrl','licenseImageUrl','licenseBackImageUrl','idCardExpiryDate','licenseExpiryDate'].filter(k => data[k] !== undefined).map(k => [k,data[k]]).concat([['driverId',driverId]]))
+  const [resendingDriverId, setResendingDriverId] = useState(null)
+  const [creatingAccount, setCreatingAccount] = useState(false)
+  const accountProfile = (data, driverId) => Object.fromEntries(['username','email','fullName','phone','idCardNumber','licenseNumber','photoUrl','idCardFrontUrl','idCardBackUrl','licenseImageUrl','licenseBackImageUrl','idCardExpiryDate','licenseExpiryDate'].filter(k => data[k] !== undefined).map(k => [k,data[k]]).concat([['driverId',driverId]]))
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('drivers')
   const [selectedDriver, setSelectedDriver] = useState(null)
@@ -526,7 +526,7 @@ export default function DriverManagement() {
   const loadDrivers = async () => {
     setLoading(true)
     try {
-      const [profiles, links] = await Promise.all([driverService.getAllDrivers({}), nodeApi.get('/account-requests/driver-links')])
+      const [profiles, links] = await Promise.all([driverService.getAllDrivers({}), nodeApi.get('/driver-accounts/driver-links')])
       const byId = new Map(links.map(row => [row.id,row]))
       const data = (Array.isArray(profiles) ? profiles : []).map(row => ({...row,...byId.get(row.id)}))
       setDrivers(Array.isArray(data) ? data : [])
@@ -690,7 +690,7 @@ export default function DriverManagement() {
 
   const handleAddDriver = async (e) => {
     e.preventDefault()
-    if (submittingRequest) return
+    if (creatingAccount) return
     if (!form.fullName.trim() || !form.phone.trim() || !form.licenseNumber.trim() || !form.idCardNumber.trim()) {
       showToast('⚠️ Vui lòng nhập đầy đủ các thông tin bắt buộc!')
       return
@@ -708,15 +708,26 @@ export default function DriverManagement() {
       return
     }
 
-    setSubmittingRequest(true)
+    setCreatingAccount(true)
     try {
-      await nodeApi.post('/account-requests', form);
+      await nodeApi.post('/driver-accounts', form);
       setShowAddModal(false);
       setForm({ ...emptyForm });
       setPreviews({ idCardFront: null, idCardBack: null, licenseFront: null, licenseBack: null });
-      showToast('Đã gửi yêu cầu thêm tài xế cho admin. Sau khi được duyệt, tài xế nhận email để liên kết và tạo mật khẩu trong 24 giờ.');
-      setRequestRevision(v => v + 1);
-    } catch (err) { showToast('Không gửi được yêu cầu: ' + err.message); } finally { setSubmittingRequest(false) }
+      showToast('Đã tạo tài khoản và gửi email xác nhận. Tài xế cần mở link và tạo mật khẩu trong 24 giờ để đăng nhập.');
+      await loadDrivers();
+    } catch (err) { showToast('Không tạo được tài khoản: ' + err.message); } finally { setCreatingAccount(false) }
+  }
+
+  const handleResendVerification = async driver => {
+    if (resendingDriverId) return
+    setResendingDriverId(driver.id)
+    try {
+      await nodeApi.post(`/driver-accounts/${driver.id}/resend`, {})
+      showToast(`Đã gửi lại link xác nhận đến ${driver.email}. Link mới có hiệu lực 24 giờ.`)
+      await loadDrivers()
+    } catch (err) { showToast('Không gửi được email: ' + err.message) }
+    finally { setResendingDriverId(null) }
   }
 
   const handleSaveEdit = async (e) => {
@@ -740,11 +751,10 @@ export default function DriverManagement() {
       }
 
       if (!editForm.userId && editForm.email && editForm.username) {
-        await nodeApi.post('/account-requests', requestProfile(editForm, editForm.id));
-        setRequestRevision(v => v + 1);
+        await nodeApi.post('/driver-accounts', accountProfile(editForm, editForm.id));
       }
       setEditMode(false)
-      showToast('Đã lưu hồ sơ. Yêu cầu tài khoản (nếu có) đang chờ admin duyệt.')
+      showToast('Đã lưu hồ sơ. Nếu tạo tài khoản mới, tài xế sẽ nhận email xác nhận để tự đặt mật khẩu.')
       loadDrivers()
     } catch (err) {
       showToast('❌ Lỗi cập nhật: ' + (err.response?.data?.message || err.message))
@@ -759,7 +769,6 @@ export default function DriverManagement() {
 
   return (
     <div className="p-8 w-full font-sans flex flex-col gap-8 relative items-stretch">
-      <AccountRequests key={requestRevision} />
 
       {/* Toast Notification */}
       {toastMessage && (
@@ -791,10 +800,14 @@ export default function DriverManagement() {
           </div>
 
           <div className="flex flex-col items-end gap-3">
+            {activeTab === 'drivers' && <button type="button" onClick={loadDrivers} disabled={loading}
+              className="text-xs text-slate hover:text-carbon flex items-center gap-1 disabled:opacity-50">
+              <span aria-hidden="true" className="material-symbols-outlined text-[15px]">refresh</span>Làm mới trạng thái
+            </button>}
             {activeTab === 'drivers' && (
               <button onClick={() => { setForm({ ...emptyForm }); setShowAddModal(true) }}
                 className="h-9 px-4 bg-carbon text-white rounded-lg font-bold text-xs hover:bg-black transition-colors flex items-center gap-2 shadow-sm">
-                <span className="material-symbols-outlined text-sm">person_add</span> Yêu cầu thêm tài xế
+                <span className="material-symbols-outlined text-sm">person_add</span> Thêm Tài Xế Mới
               </button>
             )}
             {activeTab === 'vehicles' && (
@@ -1009,6 +1022,7 @@ export default function DriverManagement() {
                       <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-bold ${statusCfg.color}`}>
                         {statusCfg.label}
                       </span>
+                      <DriverEmailVerification driver={d} onResend={handleResendVerification} busy={resendingDriverId === d.id} disabled={!!resendingDriverId} />
                       {assignedVehicle && (
                         <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold border text-carbon ${activeBooking ? 'bg-amber-50 border-amber-200' : 'bg-fog border-chalk'}`}>
                           <span className="material-symbols-outlined text-[12px] mr-1">local_shipping</span>
@@ -1579,7 +1593,7 @@ export default function DriverManagement() {
                       
                       
                       {!editForm.userId && <div className="col-span-2 rounded-xl border border-chalk p-4 space-y-3">
-                        <p>Yêu cầu cấp tài khoản cho hồ sơ này (admin duyệt, tài xế tự đặt mật khẩu).</p>
+                        <p>Tạo tài khoản cho hồ sơ này. Tài xế nhận email xác nhận và tự đặt mật khẩu trong 24 giờ.</p>
                         <input className="border rounded-lg p-3 w-full" placeholder="Tên đăng nhập" value={editForm.username || ''} onChange={e => setEditForm({...editForm, username:e.target.value})} />
                         <input className="border rounded-lg p-3 w-full" type="email" placeholder="Email nhận liên kết" value={editForm.email || ''} onChange={e => setEditForm({...editForm, email:e.target.value})} />
                       </div>}
@@ -1603,6 +1617,7 @@ export default function DriverManagement() {
                         <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold ${driverStatus(selectedDriver).color}`}>
                           {driverStatus(selectedDriver).label}
                         </span>
+                        <div className="mt-2"><DriverEmailVerification driver={selectedDriver} onResend={handleResendVerification} busy={resendingDriverId === selectedDriver.id} disabled={!!resendingDriverId} /></div>
                       </div>
                       <button
                         onClick={() => handleContact(selectedDriver.fullName)}
@@ -1837,8 +1852,8 @@ export default function DriverManagement() {
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto animate-scale-up" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between p-6 border-b border-chalk sticky top-0 bg-white z-10">
                 <div>
-                  <h3 className="text-xl font-bold text-carbon">Yêu cầu thêm tài xế</h3>
-                  <p className="text-sm text-slate mt-1">Gửi hồ sơ cho admin duyệt. Tài khoản bị chặn cho đến khi tài xế mở email và tự tạo mật khẩu trong 24 giờ.</p>
+                  <h3 className="text-xl font-bold text-carbon">Thêm Tài Xế Mới</h3>
+                  <p className="text-sm text-slate mt-1">Hệ thống AI phân tích CCCD và GPLX. Tài xế nhận email xác nhận và tự tạo mật khẩu trong 24 giờ.</p>
                 </div>
                 <button onClick={() => setShowAddModal(false)} className="text-slate hover:text-carbon p-1 rounded-full hover:bg-fog">
                   <span className="material-symbols-outlined">close</span>
@@ -1939,10 +1954,14 @@ export default function DriverManagement() {
                   {/* Right Column: Form Fields (7 columns wide) */}
                   <div className="md:col-span-7 flex flex-col justify-between">
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="col-span-2 p-4 bg-blue-50 rounded-xl space-y-3">
-                        <p className="text-sm">Admin duyệt yêu cầu; tài xế nhận link qua email và tự tạo mật khẩu trong 24 giờ.</p>
-                        <input className="border rounded-lg p-3 w-full" required pattern="[a-zA-Z0-9_.-]{3,100}" placeholder="Tên đăng nhập" value={form.username} onChange={e => setForm({...form, username:e.target.value})} />
-                        <input className="border rounded-lg p-3 w-full" required type="email" placeholder="Email nhận liên kết" value={form.email} onChange={e => setForm({...form, email:e.target.value})} />
+                      <div className="col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-chalk bg-fog/50 p-4">
+                        <p className="col-span-full text-xs text-slate">Tài xế nhận link xác nhận qua email và tự tạo mật khẩu trong 24 giờ. Tài khoản mới bị chặn cho đến khi xác nhận.</p>
+                        <label className="block text-[10px] font-bold text-slate uppercase tracking-wider">Tên đăng nhập *
+                          <input className="mt-1.5 w-full h-11 px-3 border border-chalk rounded-xl text-sm text-carbon bg-white font-normal normal-case tracking-normal" required pattern="[a-zA-Z0-9_.-]{3,100}" autoComplete="off" placeholder="VD: nguyenvana" value={form.username} onChange={e => setForm({...form, username:e.target.value})} />
+                        </label>
+                        <label className="block text-[10px] font-bold text-slate uppercase tracking-wider">Email nhận xác nhận *
+                          <input className="mt-1.5 w-full h-11 px-3 border border-chalk rounded-xl text-sm text-carbon bg-white font-normal normal-case tracking-normal" required type="email" autoComplete="off" placeholder="taixe@gmail.com" value={form.email} onChange={e => setForm({...form, email:e.target.value})} />
+                        </label>
                       </div>
                       <div className="col-span-2">
                         <label className="block text-[10px] font-bold text-slate uppercase mb-1.5 tracking-wider">Họ và Tên *</label>
@@ -1989,8 +2008,8 @@ export default function DriverManagement() {
                     <div className="flex gap-3 pt-6 mt-6 border-t border-chalk">
                       <button type="button" onClick={() => setShowAddModal(false)}
                         className="flex-1 h-12 border border-chalk rounded-xl text-sm font-bold text-graphite hover:bg-fog transition-colors">Hủy</button>
-                      <button type="submit" disabled={submittingRequest}
-                        className="flex-1 h-12 bg-carbon text-white rounded-xl text-sm font-bold hover:bg-black shadow-lg shadow-carbon/20 transition-all active:scale-[0.98]">{submittingRequest ? 'Đang gửi yêu cầu…' : 'Gửi yêu cầu thêm tài xế'}</button>
+                      <button type="submit" disabled={creatingAccount}
+                        className="flex-1 h-12 bg-carbon text-white rounded-xl text-sm font-bold hover:bg-black shadow-lg shadow-carbon/20 transition-all active:scale-[0.98]">{creatingAccount ? 'Đang tạo tài khoản…' : 'Tạo tài khoản'}</button>
                     </div>
                   </div>
                 </div>
