@@ -32,17 +32,87 @@ function OrderInformation({ order }) {
   const fees = order.fees?.length ? order.fees : []
   const containers = order.containers || []
   const flow = order.flow || order.content?.flow || 'EXPORT'
-  const firstCont = containers[0] || {}
-  const size = (firstCont.typeCode || '').includes('4') ? 40 : 20
-  const isReefer = (firstCont.typeCode || '').includes('R') || (firstCont.cargoType || '').toLowerCase().includes('reefer')
-  const calculatedTariff = calculatePortServiceTariff({
-    direction: flow,
-    size,
-    containerTypeCode: firstCont.typeCode || (size === 40 ? '40HC' : '20GP'),
-    isReefer,
-  })
+  const isDraft = order?.status === 'DRAFT' || !order?.registrationId
+  const isAwaitingPrice = order?.pricingStatus === 'AWAITING' || (order?.total == null && !fees.length)
+  const isPriced = order?.total != null && !isDraft && order?.pricingStatus !== 'AWAITING'
 
-  return <div className="epo-info-sections"><Facts order={order} /><EmailDeliveryStatus order={order} />{!order.staff && <div className="epo-guidance"><Info size={18}/><p>{['REJECTED', 'CANCELLED'].includes(order.status) ? 'Hồ sơ đã đóng. Xem lý do trong lịch sử xử lý.' : order.pricingStatus === 'AWAITING' ? `Đã gửi hồ sơ. Số tiền dự kiến cần trả: ${money(order.total != null ? order.total : calculatedTariff.total)} (Chờ Dispatcher phê duyệt để tiến hành thanh toán).` : order.paymentStatus === 'PAID' ? 'Đã thanh toán. Theo dõi trạng thái gửi biên lai và biểu mẫu trong mục Thông báo qua email.' : `Đã nhận kết quả từ Dispatcher. Số tiền cần trả: ${money(order.total != null ? order.total : calculatedTariff.total)}. Kiểm tra email thông báo và mở mục Thanh toán để tiếp tục.`}</p></div>}<OrderDeliveryInfo order={order} /><section className="epo-panel"><div className="epo-panel-title"><Container size={17} /><h3>Container & dịch vụ</h3><span>{containers.length} container</span></div>{fees.length ? <div className="epo-fee-lines">{fees.map((fee, index) => <div className="epo-fee-line" key={`${fee.sourceContainerId}-${fee.serviceId}-${index}`}><div><span className="epo-container-id"><Container size={13} />{fee.containerNumber}</span><strong>{fee.serviceName || fee.serviceCode}</strong><small>{amountFormat(fee.quantity)} {labels.unit[fee.unit] || fee.unit} × {fee.unitPrice == null ? 'Chưa có giá' : money(fee.unitPrice)}</small>{fee.startsAt && <small>{draftDateTime(fee.startsAt)} → {draftDateTime(fee.endsAt)}</small>}</div><strong>{fee.amount == null ? 'Chưa xác định' : money(fee.amount)}</strong></div>)}</div> : containers.length ? <div className="epo-container-list">{containers.map(container => <div key={container.sourceContainerId || container.containerId}><Container size={17} /><span><strong>{container.containerNumber}</strong><small>{container.typeCode || 'Container hàng'} · Cước dự kiến: {money(calculatedTariff.total)}</small></span></div>)}</div> : <p className="epo-panel-muted">Bản nháp chưa có container. Chọn chỉnh sửa để bổ sung.</p>}{<p className="epo-fee-note"><LockKeyhole size={14} />{fees.length ? 'Đơn giá và các dòng phí được lưu tại thời điểm xác nhận; số tiền chưa bao gồm thuế.' : `Biểu phí cảng áp dụng theo quy chuẩn ${flow === 'IMPORT' ? 'Nhập khẩu (Bãi ➔ Ôtô)' : 'Xuất khẩu (Ôtô ➔ Bãi)'}: ${money(calculatedTariff.total)} (đã gồm VAT 8%).`}</p>}</section></div>
+  let guidanceText = ''
+  if (['REJECTED', 'CANCELLED'].includes(order.status)) {
+    guidanceText = 'Hồ sơ đã đóng. Xem lý do trong lịch sử xử lý.'
+  } else if (isDraft) {
+    guidanceText = 'Hồ sơ đang ở dạng Bản nháp (chưa gửi). Vui lòng bấm "Kiểm tra & xác nhận" để hoàn tất và gửi hồ sơ cho Dispatcher tiếp nhận và tính cước.'
+  } else if (order.paymentStatus === 'PAID') {
+    guidanceText = 'Đã thanh toán. Theo dõi trạng thái gửi biên lai và biểu mẫu trong mục Thông báo qua email.'
+  } else if (isAwaitingPrice) {
+    guidanceText = 'Hồ sơ đã gửi đến Dispatcher. Cảng đang kiểm tra điều kiện và xác nhận biểu phí. Vui lòng chờ Dispatcher phê duyệt để tiến hành thanh toán.'
+  } else if (isPriced) {
+    guidanceText = `Đã nhận kết quả từ Dispatcher. Số tiền cần trả: ${money(order.total)}. Kiểm tra email thông báo và mở mục Thanh toán để tiếp tục.`
+  } else {
+    guidanceText = 'Hồ sơ đang chờ xử lý từ phía Dispatcher.'
+  }
+
+  return (
+    <div className="epo-info-sections">
+      <Facts order={order} />
+      <EmailDeliveryStatus order={order} />
+      {!order.staff && (
+        <div className="epo-guidance">
+          <Info size={18} />
+          <p>{guidanceText}</p>
+        </div>
+      )}
+      <OrderDeliveryInfo order={order} />
+      <section className="epo-panel">
+        <div className="epo-panel-title">
+          <Container size={17} />
+          <h3>Container & dịch vụ</h3>
+          <span>{containers.length} container</span>
+        </div>
+        {fees.length ? (
+          <div className="epo-fee-lines">
+            {fees.map((fee, index) => (
+              <div className="epo-fee-line" key={`${fee.sourceContainerId}-${fee.serviceId}-${index}`}>
+                <div>
+                  <span className="epo-container-id"><Container size={13} />{fee.containerNumber}</span>
+                  <strong>{fee.serviceName || fee.serviceCode}</strong>
+                  <small>{amountFormat(fee.quantity)} {labels.unit[fee.unit] || fee.unit} × {fee.unitPrice == null ? 'Chưa có giá' : money(fee.unitPrice)}</small>
+                  {fee.startsAt && <small>{draftDateTime(fee.startsAt)} → {draftDateTime(fee.endsAt)}</small>}
+                </div>
+                <strong>{fee.amount == null ? 'Chờ Dispatcher báo giá' : money(fee.amount)}</strong>
+              </div>
+            ))}
+          </div>
+        ) : containers.length ? (
+          <div className="epo-container-list">
+            {containers.map(container => (
+              <div key={container.sourceContainerId || container.containerId}>
+                <Container size={17} />
+                <span>
+                  <strong>{container.containerNumber}</strong>
+                  <small>
+                    {container.typeCode || 'Container hàng'}
+                    {isPriced ? ` · Cước: ${money(order.total)}` : isDraft ? ' · Phí: Chưa phát hành' : ' · Cước: Chờ Dispatcher báo giá'}
+                  </small>
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="epo-panel-muted">Bản nháp chưa có container. Chọn chỉnh sửa để bổ sung.</p>
+        )}
+        <p className="epo-fee-note">
+          <LockKeyhole size={14} />
+          {fees.length
+            ? 'Đơn giá và các dòng phí được ghi nhận tại thời điểm Dispatcher duyệt hồ sơ.'
+            : isDraft
+            ? 'Hồ sơ chưa gửi Dispatcher. Cảng sẽ thẩm định và phát hành biểu phí chính thức sau khi bạn gửi đăng ký.'
+            : isPriced
+            ? `Biểu phí cảng chính thức từ Dispatcher: ${money(order.total)}.`
+            : `Biểu phí dịch vụ cảng sẽ được Dispatcher thẩm định và thông báo sau khi duyệt hồ sơ đăng ký.`}
+        </p>
+      </section>
+    </div>
+  )
 }
 
 function OrderTimeline({ query }) {
@@ -332,16 +402,15 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
   const needsAck = form?.kind === 'CREATE_PAYMENT'
   const needsSourceReview = form?.kind === 'APPROVE' && order?.flow === 'IMPORT' && order.content?.workflowVersion === 2
 
-  const firstCont = order?.containers?.[0] || {}
-  const size = (firstCont.typeCode || '').includes('4') ? 40 : 20
-  const isReefer = (firstCont.typeCode || '').includes('R') || (firstCont.cargoType || '').toLowerCase().includes('reefer')
-  const defaultTariff = calculatePortServiceTariff({
-    direction: order?.flow || order?.content?.flow || 'EXPORT',
-    size,
-    containerTypeCode: firstCont.typeCode || (size === 40 ? '40HC' : '20GP'),
-    isReefer,
-  })
-  const displayAmount = order?.total != null ? money(order.total) : money(defaultTariff.total)
+  const isDraft = order?.status === 'DRAFT' || !order?.registrationId
+  const isAwaitingPrice = order?.pricingStatus === 'AWAITING' || (order?.total == null && !order?.fees?.length)
+  const isPriced = order?.total != null && !isDraft && order?.pricingStatus !== 'AWAITING'
+
+  const displayAmount = isPriced
+    ? money(order.total)
+    : isDraft
+    ? 'Chưa phát hành phí'
+    : 'Chờ Dispatcher báo giá'
 
   return <CatalogDialog className="epd-dialog epo-detail-dialog" labelledBy={`${id}-title`} describedBy={`${id}-description`} onClose={requestClose}>
     <header className="epd-header"><div><span className="epc-eyebrow">NEXUSPORT / HỒ SƠ DỊCH VỤ</span><h2 id={`${id}-title`} tabIndex={-1} data-dialog-initial-focus>Chi tiết đơn dịch vụ</h2><p id={`${id}-description`}>Thông tin đăng ký, thanh toán và lịch sử xử lý của hồ sơ.</p></div><button type="button" className="epc-icon-button" aria-label="Đóng chi tiết đơn dịch vụ" disabled={pending} onClick={requestClose}><X size={21} /></button></header>
@@ -361,7 +430,7 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
           {mutation.error && <div className="epo-form-error" role="alert"><AlertCircle size={16} /><div><p>{draftError(mutation.error)}</p>{conflict && <p>Hồ sơ đã thay đổi. Tải lại và kiểm tra trạng thái mới trước khi thao tác tiếp.</p>}</div></div>}
           <div className="epo-form-actions"><button type="button" className="epc-button secondary" disabled={pending} onClick={() => { setForm(null); mutation.reset() }}>Quay lại</button>{conflict ? <button type="button" className="epc-button primary" disabled={pending} onClick={refresh}><RefreshCw size={15} />Tải lại hồ sơ</button> : <button type="submit" className={`epc-button ${destructive ? 'destructive' : 'primary'}`} disabled={pending || (needsAck && !form.acknowledged)}>{pending ? <Loader2 size={15} className="epc-spin" /> : <Check size={15} />}{pending ? 'Đang ghi nhận…' : actionNames[form.kind]}</button>}</div>
         </form>}
-        <div className="epo-detail-layout" data-tab={tab}><section className="epo-detail-content" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-tab-${tab}`} tabIndex={0}>{tab === 'information' ? <OrderInformation order={order} /> : tab === 'history' ? <OrderTimeline query={historyQuery} /> : tab === 'invoice' ? <OrderInvoiceInfo order={order} /> : <PaymentPanel query={paymentQuery} order={order} pending={pending || !!form} onAction={openAction} />}</section><aside className="epo-order-sidebar"><div className="epo-sidebar-heading"><span><ClipboardCheck size={22} /></span><div><small>HỒ SƠ ĐĂNG KÝ</small><h3>{order.registrationId ? 'Theo dõi đăng ký' : 'Bản nháp dịch vụ'}</h3></div></div><div className="epo-sidebar-total"><small>{order.staff ? 'Số tiền từ bên xử lý' : 'Số tiền cần thanh toán'}</small><strong>{displayAmount}</strong></div><dl><div><dt>Container</dt><dd>{order.containerCount ?? order.containers?.length ?? 0}</dd></div><div><dt>Xử lý</dt><dd>{orderStatusLabels[order.status] || order.status}</dd></div><div><dt>Phê duyệt</dt><dd>{({ PENDING: 'Chờ duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Từ chối', NOT_REQUIRED: 'Không yêu cầu' })[order.approvalStatus] || 'Chưa xác nhận'}</dd></div><div><dt>Thanh toán</dt><dd>{paymentStateLabel(order)}</dd></div></dl><div className="epo-sidebar-actions">{order.allowedActions?.includes('EDIT') && <button type="button" className="epc-button secondary" disabled={pending} onClick={() => onEdit(orderId)}><Pencil size={15} />Chỉnh sửa bản nháp</button>}{order.allowedActions?.includes('REVIEW') && <button type="button" className="epc-button primary" disabled={pending} onClick={() => onReview(orderId)}><ShieldCheck size={15} />Kiểm tra & xác nhận</button>}{['RECEIVE', 'APPROVE', 'REJECT', 'CANCEL'].filter(action => order.allowedActions?.includes(action)).map(action => { const Icon = actionIcons[action]; return <button key={action} type="button" className={`epc-button ${['CANCEL', 'REJECT'].includes(action) ? 'secondary epo-danger-button' : 'primary'}`} disabled={pending || !!form} onClick={() => openAction(action)}><Icon size={15} />{actionNames[action]}</button> })}{order.allowedActions?.includes('CREATE_PAYMENT') && tab !== 'payments' && <button type="button" className="epc-button primary" disabled={pending} onClick={() => changeTab('payments')}><CreditCard size={15} />Thanh toán dịch vụ</button>}</div><div className="epo-sidebar-note"><LockKeyhole size={15} /><p>{order.status === 'DRAFT' ? 'Bản nháp chưa xác nhận đơn giá và chưa tạo yêu cầu thanh toán.' : 'Hồ sơ đã gửi Dispatcher. Bạn nhận kết quả, thanh toán và chứng từ qua email.'}</p></div></aside></div>
+        <div className="epo-detail-layout" data-tab={tab}><section className="epo-detail-content" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-tab-${tab}`} tabIndex={0}>{tab === 'information' ? <OrderInformation order={order} /> : tab === 'history' ? <OrderTimeline query={historyQuery} /> : tab === 'invoice' ? <OrderInvoiceInfo order={order} /> : <PaymentPanel query={paymentQuery} order={order} pending={pending || !!form} onAction={openAction} />}</section><aside className="epo-order-sidebar"><div className="epo-sidebar-heading"><span><ClipboardCheck size={22} /></span><div><small>HỒ SƠ ĐĂNG KÝ</small><h3>{order.registrationId ? 'Theo dõi đăng ký' : 'Bản nháp dịch vụ'}</h3></div></div><div className="epo-sidebar-total"><small>{order.staff ? 'Số tiền từ bên xử lý' : isPriced ? 'Số tiền cần thanh toán' : 'Trạng thái biểu phí'}</small><strong style={!isPriced ? { fontSize: '18px', color: '#64748b' } : undefined}>{displayAmount}</strong></div><dl><div><dt>Container</dt><dd>{order.containerCount ?? order.containers?.length ?? 0}</dd></div><div><dt>Xử lý</dt><dd>{orderStatusLabels[order.status] || order.status}</dd></div><div><dt>Phê duyệt</dt><dd>{({ PENDING: 'Chờ duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Từ chối', NOT_REQUIRED: 'Không yêu cầu' })[order.approvalStatus] || 'Chưa xác nhận'}</dd></div><div><dt>Thanh toán</dt><dd>{isDraft ? 'Chưa gửi hồ sơ' : isAwaitingPrice ? 'Chờ Dispatcher trả phí' : paymentStateLabel(order)}</dd></div></dl><div className="epo-sidebar-actions">{order.allowedActions?.includes('EDIT') && <button type="button" className="epc-button secondary" disabled={pending} onClick={() => onEdit(orderId)}><Pencil size={15} />Chỉnh sửa bản nháp</button>}{order.allowedActions?.includes('REVIEW') && <button type="button" className="epc-button primary" disabled={pending} onClick={() => onReview(orderId)}><ShieldCheck size={15} />Kiểm tra & xác nhận</button>}{['RECEIVE', 'APPROVE', 'REJECT', 'CANCEL'].filter(action => order.allowedActions?.includes(action)).map(action => { const Icon = actionIcons[action]; return <button key={action} type="button" className={`epc-button ${['CANCEL', 'REJECT'].includes(action) ? 'secondary epo-danger-button' : 'primary'}`} disabled={pending || !!form} onClick={() => openAction(action)}><Icon size={15} />{actionNames[action]}</button> })}{order.allowedActions?.includes('CREATE_PAYMENT') && tab !== 'payments' && <button type="button" className="epc-button primary" disabled={pending} onClick={() => changeTab('payments')}><CreditCard size={15} />Thanh toán dịch vụ</button>}</div><div className="epo-sidebar-note"><LockKeyhole size={15} /><p>{order.status === 'DRAFT' ? 'Bản nháp chưa xác nhận đơn giá và chưa tạo yêu cầu thanh toán.' : 'Hồ sơ đã gửi Dispatcher. Bạn nhận kết quả, thanh toán và chứng từ qua email.'}</p></div></aside></div>
       </div>
     </>}
     <footer className="epd-footer epo-detail-footer"><span><Clock3 size={14} />Trạng thái xử lý và thanh toán được theo dõi riêng.</span><div className="esr-entry-actions">{canReceipt && <ServiceReceiptButton orderId={orderId} disabled={pending || orderQuery.isFetching} />}<button type="button" className="epc-button secondary" disabled={pending} onClick={requestClose}>Đóng hồ sơ</button></div></footer>

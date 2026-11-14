@@ -90,3 +90,636 @@
   .epd-top-alert { animation: none; }
   .epc-portal-card { transition: none; }
 }
+
+/* ==========================================================================
+   DOCUMENT UPLOADS STYLES (MATCHING BOOKING FORM EXACT SPEC)
+   ========================================================================== */
+.epd-docs-wrapper {
+  background: #ffffff;
+  border: 1px solid #dbe4ec;
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 4px 20px rgba(25, 50, 71, 0.05);
+  margin-bottom: 24px;
+}
+
+.epd-docs-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #edf2f7;
+  margin-bottom: 20px;
+}
+
+.epd-docs-folder-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: #fff7ed;
+  border: 1.5px solid #fed7aa;
+  color: #ea580c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.epd-docs-header h4 {
+  font-size: 14px;
+  font-weight: 800;
+  color: #1e293b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 4px;
+}
+
+.epd-docs-header p {
+  font-size: 12px;
+  color: #64748b;
+  margin: 0;
+}
+
+.epd-docs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.epd-doc-card {
+  border-radius: 16px;
+  padding: 16px;
+  background: #ffffff;
+  border: 1.5px solid #fed7aa;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+  min-height: 155px;
+}
+
+.epd-doc-card:hover {
+  border-color: #f97316;
+  box-shadow: 0 4px 14px rgba(234, 88, 12, 0.08);
+}
+
+.epd-doc-card.epd-doc-uploaded {
+  background: #f0fdf4;
+  border-color: #86efac;
+}
+
+.epd-doc-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.epd-doc-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.epd-doc-badge {
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.epd-badge-required {
+  background: #ffe4e6;
+  color: #be123c;
+}
+
+.epd-badge-done {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.epd-doc-subtitle {
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+
+.epd-doc-card-bottom {
+  border-top: 1px solid #f1f5f9;
+  padding-top: 12px;
+}
+
+.epd-btn-upload {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-radius: 12px;
+  border: 1px solid #fed7aa;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.epd-btn-upload:hover {
+  background: #fef3c7;
+  border-color: #f59e0b;
+}
+
+.epd-doc-uploading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #d97706;
+  font-weight: 600;
+  padding: 8px;
+}
+
+.epd-doc-preview-box {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: #ffffff;
+  border: 1px solid #bbf7d0;
+}
+
+.epd-doc-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.epd-doc-names {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.epd-doc-filename {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 140px;
+}
+
+.epd-doc-filesize {
+  font-size: 10px;
+  color: #15803d;
+}
+
+.epd-doc-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.epd-btn-preview {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: #ecfdf5;
+  color: #059669;
+  font-size: 11px;
+  font-weight: 700;
+  text-decoration: none;
+  border: 1px solid #a7f3d0;
+}
+
+.epd-btn-preview:hover {
+  background: #d1fae5;
+}
+
+.epd-btn-remove {
+  padding: 4px 6px;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  cursor: pointer;
+}
+
+.epd-btn-remove:hover {
+  background: #fee2e2;
+}
+
+/* Khối hồ sơ xe & tài xế */
+.epd-fleet-docs-panel {
+  border-top: 1.5px dashed #cbd5e1;
+  padding-top: 18px;
+  margin-top: 10px;
+}
+
+.epd-fleet-docs-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.epd-fleet-docs-header h5 {
+  font-size: 12px;
+  font-weight: 800;
+  color: #334155;
+  margin: 0 0 2px;
+  letter-spacing: 0.5px;
+}
+
+.epd-fleet-docs-header p {
+  font-size: 11px;
+  color: #64748b;
+  margin: 0;
+}
+
+.epd-fleet-docs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.epd-fleet-doc-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.epd-fleet-doc-item div {
+  flex: 1;
+  min-width: 0;
+}
+
+.epd-fleet-doc-item strong {
+  display: block;
+  font-size: 12px;
+  color: #1e293b;
+  margin-bottom: 2px;
+}
+
+.epd-fleet-doc-item small {
+  display: block;
+  font-size: 10px;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.epd-fleet-badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: #166534;
+  background: #dcfce7;
+  padding: 3px 8px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+
+.epd-badge-recommended {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.epd-review-docs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+.epd-review-doc-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 12px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.epd-review-doc-badge span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.epd-review-doc-link {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0284c7;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* =========================================================
+   FLEET & DRIVER DOCUMENTS REVIEW (BƯỚC 6 & CHI TIẾT ĐƠN)
+   ========================================================= */
+.epd-fleet-review-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 4px;
+}
+
+.epd-fleet-review-trip {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.epd-fleet-review-trip-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #f1f5f9;
+  margin-bottom: 12px;
+}
+
+.epd-fleet-review-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.epd-fleet-review-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #475569;
+}
+
+.epd-verified-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: #dcfce7;
+  color: #166534;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.epd-fleet-review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.epd-fleet-doc-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #f8fafc;
+  transition: all 0.2s ease;
+  min-width: 0;
+}
+
+.epd-fleet-doc-card.is-missing {
+  background: #fdfefe;
+  border-style: dashed;
+  border-color: #cbd5e1;
+}
+
+.epd-fleet-doc-empty-box {
+  width: 100%;
+  height: 90px;
+  background: #f8fafc;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-bottom: 1px dashed #e2e8f0;
+}
+
+.epd-fleet-doc-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.05);
+}
+
+.epd-fleet-doc-thumb-box {
+  position: relative;
+  width: 100%;
+  height: 90px;
+  background: #f1f5f9;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.epd-fleet-doc-thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.epd-fleet-doc-zoom-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.6);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.epd-fleet-doc-thumb-box:hover .epd-fleet-doc-zoom-overlay {
+  opacity: 1;
+}
+
+.epd-fleet-doc-body {
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.epd-fleet-doc-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.epd-fleet-doc-cat-badge {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.epd-fleet-doc-open-link {
+  color: #64748b;
+  display: inline-flex;
+  padding: 2px;
+  border-radius: 4px;
+}
+
+.epd-fleet-doc-open-link:hover {
+  color: #0284c7;
+  background: #e2e8f0;
+}
+
+.epd-fleet-doc-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.epd-fleet-doc-sub {
+  font-size: 10px;
+  color: #64748b;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Lightbox Modal */
+.epd-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.epd-modal-content {
+  background: #ffffff;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 640px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.epd-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.epd-modal-header h5 {
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.epd-modal-header small {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.epd-modal-close {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #64748b;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.epd-modal-close:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+
+.epd-modal-body {
+  padding: 16px;
+  background: #0f172a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  max-height: 65vh;
+}
+
+.epd-modal-img {
+  max-width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.epd-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}

@@ -12,7 +12,15 @@ const local = value => {
 }
 const overlap = (a, b) => new Date(a.appointmentStart) < new Date(b.appointmentEnd) && new Date(b.appointmentStart) < new Date(a.appointmentEnd)
 
-export default function ServiceTripFleet({ request, containers, onTrips, disabled = false }) {
+export default function ServiceTripFleet({
+  request,
+  containers,
+  onTrips,
+  disabled = false,
+  minDate,
+  maxDate,
+  scheduleNotice,
+}) {
   const [options, setOptions] = useState({})
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
@@ -77,6 +85,12 @@ export default function ServiceTripFleet({ request, containers, onTrips, disable
     <div className="esf-heading"><div><h4><CalendarClock size={18} /> Lịch xe và tài xế theo container</h4><p>Ưu tiên tài xế phụ trách xe, đối chiếu lịch rảnh theo Booking. Mỗi chuyến tối đa 24 giờ.</p></div>
       <button className="epc-button secondary" type="button" disabled={busy || disabled} onClick={() => setReload(v => v + 1)}><RefreshCw size={15} />Gợi ý lại</button></div>
     <p className="esf-notice">Đây là đề xuất gửi Dispatcher cùng hồ sơ. Xe và tài xế được kiểm tra lại khi gửi; việc giữ lịch vận chuyển do bộ phận điều phối thực hiện.</p>
+    {scheduleNotice && (
+      <div className="esf-auto-hint" style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: '8px', padding: '8px 12px', margin: '10px 0', fontSize: '12px', color: '#0369a1', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span>💡</span>
+        <span>{scheduleNotice}</span>
+      </div>
+    )}
     {busy && <p className="esf-loading" role="status"><Loader2 size={17} className="epc-spin" />Đang tìm xe và tài xế rảnh…</p>}
     {error && <p className="epd-warning" role="alert"><AlertCircle size={17} />{error}</p>}
     {trips.map((trip, index) => {
@@ -85,8 +99,8 @@ export default function ServiceTripFleet({ request, containers, onTrips, disable
       return <article className="esf-trip" key={trip.sourceContainerId}>
         <header><span className="esf-index">{String(index + 1).padStart(2, '0')}</span><div><h4>{containers[trip.sourceContainerId]?.containerNumber || `Container ${index + 1}`}</h4><small>Chuyến giao nhận · {containers[trip.sourceContainerId]?.typeCode || 'Container hàng'}</small></div><Truck size={21} /></header>
         <div className="epd-form-grid">
-          <label className="epd-field"><span>Bắt đầu chuyến <b className="epd-required">*</b></span><input aria-label={`Bắt đầu chuyến ${index + 1}`} type="datetime-local" value={local(trip.appointmentStart)} min={local(start)} disabled={disabled} onChange={e => changeTime(trip.sourceContainerId, 'appointmentStart', e.target.value)} /></label>
-          <label className="epd-field"><span>Kết thúc chuyến <b className="epd-required">*</b></span><input aria-label={`Kết thúc chuyến ${index + 1}`} type="datetime-local" value={local(trip.appointmentEnd)} min={local(trip.appointmentStart)} disabled={disabled} onChange={e => changeTime(trip.sourceContainerId, 'appointmentEnd', e.target.value)} /></label>
+          <label className="epd-field"><span>Bắt đầu chuyến <b className="epd-required">*</b></span><input aria-label={`Bắt đầu chuyến ${index + 1}`} type="datetime-local" value={local(trip.appointmentStart)} min={minDate || local(start)} max={maxDate || undefined} disabled={disabled} onChange={e => changeTime(trip.sourceContainerId, 'appointmentStart', e.target.value)} /></label>
+          <label className="epd-field"><span>Kết thúc chuyến <b className="epd-required">*</b></span><input aria-label={`Kết thúc chuyến ${index + 1}`} type="datetime-local" value={local(trip.appointmentEnd)} min={local(trip.appointmentStart)} max={maxDate || undefined} disabled={disabled} onChange={e => changeTime(trip.sourceContainerId, 'appointmentEnd', e.target.value)} /></label>
           <label className="epd-field"><span>Xe rảnh <b className="epd-required">*</b></span><select aria-label={`Xe chuyến ${index + 1}`} value={trip.truckId || ''} disabled={busy || disabled || !fleet} onChange={e => select(trip.sourceContainerId, 'truckId', e.target.value)}><option value="">Chọn xe trong khung giờ</option>{fleet?.trucks.filter(t => !others.some(x => x.truckId === t.id)).map(t => <option key={t.id} value={t.id}>{t.plateNumber} · {t.vehicleType}</option>)}</select></label>
           <label className="epd-field"><span>Tài xế rảnh <b className="epd-required">*</b></span><select aria-label={`Tài xế chuyến ${index + 1}`} value={trip.driverId || ''} disabled={busy || disabled || !fleet} onChange={e => select(trip.sourceContainerId, 'driverId', e.target.value)}><option value="">Chọn tài xế trong khung giờ</option>{fleet?.drivers.filter(d => !others.some(x => x.driverId === d.id)).map(d => <option key={d.id} value={d.id}>{d.fullName} · {d.phone || 'Chưa có SĐT'}</option>)}</select></label>
         </div>
