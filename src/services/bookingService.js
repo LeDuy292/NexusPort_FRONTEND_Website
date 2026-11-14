@@ -4,6 +4,8 @@ import apiClient from './apiClient'
 const get = async (path, params) => (await apiClient.get(`/v1/Booking${path}`, { params })).data
 const post = async (path, body) => (await apiClient.post(`/v1/Booking${path}`, body)).data
 export const bookingService = {
+  getFleetSchedule: (from, to) => get('/fleet-schedule', { from, to }),
+  getAssignmentOptions: id => get(`/${id}/fleet-options`),
   planBatch: data => post('/batches/plan', data),
   getBatchContainerOptions: (bookingType, anchor) => get('/batches/container-options', { bookingType,
     containerId: anchor?.containerId, declarationId: anchor?.declarationId, yardCode: anchor?.yardCode }),

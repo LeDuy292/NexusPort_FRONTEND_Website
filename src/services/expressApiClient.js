@@ -1,3 +1,5 @@
+import { verifySession } from './sessionValidation'
+
 const getToken = () => {
   try {
     const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
@@ -26,20 +28,8 @@ const request = async (method, path, body = null) => {
   const data = await res.json().catch(() => ({}))
 
   if (res.status === 401) {
-    try {
-      localStorage.removeItem('user')
-      localStorage.removeItem('token')
-      sessionStorage.removeItem('user')
-      sessionStorage.removeItem('token')
-    } catch (_) {}
-    if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-      if (data?.code === 'SESSION_KICKED') {
-        window.location.href = '/login?kicked=duplicate'
-      } else {
-        window.location.href = '/login'
-      }
-    }
-    const error = new Error(data?.message || 'Phiên làm việc đã hết hạn hoặc bị kết thúc.')
+    const state = await verifySession(token)
+    const error = new Error(state === 'ended' ? (data?.message || 'Phiên làm việc đã kết thúc.') : 'Dịch vụ hiện chưa xác thực được yêu cầu. Vui lòng thử lại.')
     error.status = 401
     error.data = data
     throw error

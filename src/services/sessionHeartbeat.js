@@ -1,3 +1,5 @@
+import { isSessionEndCode } from './sessionValidation.js'
+
 // Socket events remain immediate; HTTP is a fallback for missed events.
 export const SESSION_HEARTBEAT_MS = 15000
 
@@ -15,7 +17,7 @@ export function createSessionHeartbeat({getToken,isVisible,request,onUnauthorize
         if(response.status===401){
           const body=await response.json().catch(()=>({}))
           // An older account/request cannot log out a newer login.
-          if(active&&getToken()===token&&(body.code==='SESSION_KICKED'||!body.success))onUnauthorized()
+          if(active&&getToken()===token&&isSessionEndCode(body.code))onUnauthorized(body)
         }
       }catch{ /* A network outage is not an authentication failure. */ }
       finally{inFlight=false}

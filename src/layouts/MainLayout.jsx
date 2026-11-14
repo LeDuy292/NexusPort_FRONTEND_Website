@@ -261,8 +261,8 @@ const sidebarItems = [
   },
   {
     path: '/drivers',
-    label: 'Quản Lý Tài Xế',
-    icon: 'badge',
+    label: 'Tài Xế & Phương Tiện',
+    icon: 'local_shipping',
     roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
   },
   {
@@ -481,7 +481,7 @@ export default function MainLayout({ previewUser = null }) {
         </header>
 
         {/* CONTAINER CONTENT */}
-        <main className="flex-1 overflow-y-auto bg-slate-50">
+        <main className="flex-1 overflow-y-auto bg-slate-50 [scrollbar-gutter:stable]">
           <Outlet />
         </main>
       </div>
