@@ -1,13 +1,25 @@
 import apiClient from './apiClient'
 
 const driverService = {
-  getAllDrivers: async (filters = {}) => {
-    const res = await apiClient.get('/v1/Driver', { params: filters })
+  getPhotos: async (ids, config = {}) => {
+    const photos = {}
+    for (let offset = 0; offset < ids.length; offset += 100) {
+      const batch = ids.slice(offset, offset + 100)
+      const response = await apiClient.get('/v1/Driver/photos?' + batch.map(id => 'ids=' + encodeURIComponent(id)).join('&'), config)
+      Object.assign(photos, response.data)
+    }
+    return photos
+  },
+  createAccount: async (data) => (await apiClient.post('/v1/driver-accounts', data, { timeout: 30000 })).data,
+  resendInvitation: async (id) => (await apiClient.post(`/v1/driver-accounts/${id}/resend`, {}, { timeout: 30000 })).data,
+  activateAccount: async (data) => (await apiClient.post('/v1/driver-accounts/activate', data)).data,
+  getAllDrivers: async (filters = {}, config = {}) => {
+    const res = await apiClient.get('/v1/Driver', { ...config, params: filters })
     return res.data
   },
 
-  getDriverById: async (id) => {
-    const res = await apiClient.get(`/v1/Driver/${id}`)
+  getDriverById: async (id, config = {}) => {
+    const res = await apiClient.get(`/v1/Driver/${id}`, config)
     return res.data
   },
 

@@ -1,207 +1,55 @@
-// Lấy API base URL từ biến môi trường, tự động chuẩn hóa tiền tố /api
+import { verifySession } from './sessionValidation'
+
 const getApiBaseUrl = () => {
   const raw = (import.meta.env.VITE_API_URL || '/api').trim().replace(/\/+$/, '')
-  if (raw.startsWith('http') && !raw.endsWith('/api')) {
-    return `${raw}/api`
-  }
-  return raw
+  return raw.startsWith('http') && !raw.endsWith('/api') ? raw + '/api' : raw
 }
 const API_URL = getApiBaseUrl()
+const getToken = () => {
+  try { return JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null')?.token || null }
+  catch { return null }
+}
 
-const handleUnauthorized = async (res) => {
-  const errorData = await res.json().catch(() => ({}))
+const request = async (method, path, data, config = {}) => {
+  const url = new URL(API_URL + path, window.location.origin)
+  Object.entries(config.params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) url.searchParams.set(key, value)
+  })
+  const token = getToken()
+  const form = data instanceof FormData
+  const headers = { ...(!form ? { 'Content-Type': 'application/json' } : {}), ...config.headers,
+    ...(token ? { Authorization: 'Bearer ' + token } : {}) }
+  // The browser supplies the multipart boundary.
+  if (form) delete headers['Content-Type']
+  const timeout = AbortSignal.timeout(config.timeout ?? (method === 'GET' ? 20000 : 120000))
+  const signal = config.signal ? AbortSignal.any([config.signal, timeout]) : timeout
+  let res
   try {
-    localStorage.removeItem('user')
-    localStorage.removeItem('token')
-    sessionStorage.removeItem('user')
-    sessionStorage.removeItem('token')
-  } catch (_) { }
-
-  const isKicked = errorData?.code === 'SESSION_KICKED'
-  if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-    if (isKicked) {
-      window.location.href = '/login?kicked=duplicate'
-    } else {
-      window.location.href = '/login'
-    }
+    res = await fetch(url, { method, headers, signal, cache: 'no-store',
+      ...(data !== undefined ? { body: form ? data : JSON.stringify(data) } : {}) })
+  } catch (error) {
+    if (error.name === 'TimeoutError') throw new Error('Máy chủ phản hồi quá chậm. Vui lòng thử lại.')
+    throw error
   }
-  const err = new Error(errorData.message || 'Unauthorized')
-  err.response = { status: 401, data: errorData }
-  throw err
+  if (res.status === 204) return { data: null }
+  const payload = await res.json().catch(() => ({}))
+  if (!res.ok) {
+    // A delayed response from a previous login must not clear the current session.
+    if (res.status === 401 && token && token === getToken()) {
+      const state = await verifySession(token)
+      if (state === 'valid' || state === 'unknown') payload.message = 'Dịch vụ hiện chưa xác thực được yêu cầu. Vui lòng thử lại.'
+    }
+    const error = new Error(payload.message || payload.Message || 'Yêu cầu không thành công (HTTP ' + res.status + ').')
+    error.response = { status: res.status, data: payload }
+    throw error
+  }
+  return { data: payload }
 }
 
-const apiClient = {
-  get: async (url, config = {}) => {
-    let fullUrl = `${API_URL}${url}`
-    if (config.params) {
-      const queryParams = new URLSearchParams()
-      Object.keys(config.params).forEach((key) => {
-        if (config.params[key] !== undefined && config.params[key] !== null) {
-          queryParams.append(key, config.params[key])
-        }
-      })
-      const queryString = queryParams.toString()
-      if (queryString) {
-        fullUrl += `?${queryString}`
-      }
-    }
-
-    const headers = {
-      'Content-Type': 'application/json',
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Pragma': 'no-cache',
-      'Expires': '0'
-    }
-    try {
-      const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
-      const user = stored ? JSON.parse(stored) : null
-      if (user && user.token) {
-        headers['Authorization'] = `Bearer ${user.token}`
-      }
-    } catch (e) { }
-
-    const res = await fetch(fullUrl, { method: 'GET', headers })
-    if (res.status === 401) {
-      return handleUnauthorized(res)
-    }
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}))
-      const err = new Error(errorData.message || `HTTP error ${res.status}`)
-      err.response = { status: res.status, data: errorData }
-      throw err
-    }
-    if (res.status === 204) return { data: null }
-    return { data: await res.json().catch(() => null) }
-  },
-
-  post: async (url, data = {}) => {
-    const fullUrl = `${API_URL}${url}`
-    const isFormData = data instanceof FormData
-    const headers = {}
-    if (!isFormData) {
-      headers['Content-Type'] = 'application/json'
-    }
-    try {
-      const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
-      const user = stored ? JSON.parse(stored) : null
-      if (user && user.token) {
-        headers['Authorization'] = `Bearer ${user.token}`
-      }
-    } catch (e) { }
-
-    const res = await fetch(fullUrl, {
-      method: 'POST',
-      headers,
-      body: isFormData ? data : JSON.stringify(data)
-    })
-    if (res.status === 401) {
-      return handleUnauthorized(res)
-    }
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}))
-      const err = new Error(errorData.message || `HTTP error ${res.status}`)
-      err.response = { status: res.status, data: errorData }
-      throw err
-    }
-    if (res.status === 204) return { data: null }
-    return { data: await res.json().catch(() => null) }
-  },
-
-  put: async (url, data = {}) => {
-    const fullUrl = `${API_URL}${url}`
-    const isFormData = data instanceof FormData
-    const headers = {}
-    if (!isFormData) {
-      headers['Content-Type'] = 'application/json'
-    }
-    try {
-      const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
-      const user = stored ? JSON.parse(stored) : null
-      if (user && user.token) {
-        headers['Authorization'] = `Bearer ${user.token}`
-      }
-    } catch (e) { }
-
-    const res = await fetch(fullUrl, { method: 'PUT', headers, body: isFormData ? data : JSON.stringify(data) })
-    if (res.status === 401) {
-      return handleUnauthorized(res)
-    }
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}))
-      const err = new Error(errorData.message || `HTTP error ${res.status}`)
-      err.response = { status: res.status, data: errorData }
-      throw err
-    }
-    if (res.status === 204) return { data: null }
-    return { data: await res.json().catch(() => null) }
-  },
-
-  patch: async (url, data = {}) => {
-    const fullUrl = `${API_URL}${url}`
-    const isFormData = data instanceof FormData
-    const headers = {}
-    if (!isFormData) {
-      headers['Content-Type'] = 'application/json'
-    }
-    try {
-      const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
-      const user = stored ? JSON.parse(stored) : null
-      if (user && user.token) {
-        headers['Authorization'] = `Bearer ${user.token}`
-      }
-    } catch (e) { }
-
-    const res = await fetch(fullUrl, { method: 'PATCH', headers, body: isFormData ? data : JSON.stringify(data) })
-    if (res.status === 401) {
-      return handleUnauthorized(res)
-    }
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}))
-      const err = new Error(errorData.message || `HTTP error ${res.status}`)
-      err.response = { status: res.status, data: errorData }
-      throw err
-    }
-    if (res.status === 204) return { data: null }
-    return { data: await res.json().catch(() => ({})) }
-  },
-
-  delete: async (url, config = {}) => {
-    let fullUrl = `${API_URL}${url}`
-    if (config.params) {
-      const queryParams = new URLSearchParams()
-      Object.keys(config.params).forEach((key) => {
-        if (config.params[key] !== undefined && config.params[key] !== null) {
-          queryParams.append(key, config.params[key])
-        }
-      })
-      const queryString = queryParams.toString()
-      if (queryString) {
-        fullUrl += `?${queryString}`
-      }
-    }
-
-    const headers = { 'Content-Type': 'application/json' }
-    try {
-      const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
-      const user = stored ? JSON.parse(stored) : null
-      if (user && user.token) {
-        headers['Authorization'] = `Bearer ${user.token}`
-      }
-    } catch (e) { }
-
-    const res = await fetch(fullUrl, { method: 'DELETE', headers })
-    if (res.status === 401) {
-      return handleUnauthorized(res)
-    }
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}))
-      const err = new Error(errorData.message || `HTTP error ${res.status}`)
-      err.response = { status: res.status, data: errorData }
-      throw err
-    }
-    if (res.status === 204) return { data: null }
-    return { data: await res.json().catch(() => null) }
-  }
+export default {
+  get: (path, config) => request('GET', path, undefined, config),
+  post: (path, data = {}, config) => request('POST', path, data, config),
+  put: (path, data = {}, config) => request('PUT', path, data, config),
+  patch: (path, data = {}, config) => request('PATCH', path, data, config),
+  delete: (path, config) => request('DELETE', path, undefined, config),
 }
-
-export default apiClient

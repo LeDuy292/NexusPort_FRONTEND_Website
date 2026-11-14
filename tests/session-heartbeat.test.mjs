@@ -39,3 +39,7 @@ test('late 401 cannot clear a newer account or a stopped listener',async()=>{
     assert.equal(h.counts().kicks,0)
   }
 })
+
+test('an unclassified 401 from a proxy does not end the session', async()=>{
+ const h=setup(async()=>({status:401,json:async()=>({success:false})}));await h.heartbeat.check();assert.equal(h.counts().kicks,0)
+})

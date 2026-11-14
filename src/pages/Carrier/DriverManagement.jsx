@@ -1,11 +1,16 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import driverService from "../../services/driverService";
-import nodeApi from "../../services/nodeApiClient";
+import FleetSchedule from "./FleetSchedule";
+import PrimaryButton from "../../components/PrimaryButton";
 import DriverEmailVerification from "./DriverEmailVerification";
 import vehicleService from "../../services/vehicleService";
 import { bookingService } from "../../services/bookingService";
 
 import { resolveMediaUrl } from "../../utils/mediaUtils";
+
+const DRIVER_DOCUMENTS = ["idCardFrontUrl", "idCardBackUrl", "licenseImageUrl", "licenseBackImageUrl"];
+const DRIVER_ACCOUNT = ["userId", "username", "email", "accountActive", "invitationPending", "emailVerified", "emailVerifiedAt", "invitationExpiresAt", "activeBookingCode", "carrierName"];
+const pick = (data, fields) => Object.fromEntries(fields.map(key => [key, data[key]]));
 
 const STATUS_CONFIG = {
   active: { label: "Sẵn sàng hoạt động", color: "bg-green-600 text-white" },
@@ -37,12 +42,14 @@ const STATUS_CONFIG = {
   },
 };
 const driverStatus = (driver) =>
-  driver.invitationPending
+  driver.invitationPending || (driver.userId && !driver.emailVerified)
     ? {
         label: "Chặn — chờ liên kết email",
         color: "bg-amber-100 text-amber-800 border border-amber-200",
       }
-    : STATUS_CONFIG[driver.status] || STATUS_CONFIG.inactive;
+    : driver.userId && driver.accountActive === false
+      ? { label: "Tài khoản đã bị khóa", color: "bg-red-100 text-red-800 border border-red-200" }
+      : STATUS_CONFIG[driver.status] || STATUS_CONFIG.inactive;
 
 const getExpiryWarning = (dateStr) => {
   if (!dateStr) return null;
@@ -362,7 +369,7 @@ export default function DriverManagement() {
       vehicleTypeFilter === "ALL" || v.vehicleType === vehicleTypeFilter;
     const matchStatus =
       vehicleStatusFilter === "ALL" ||
-      v.status.toLowerCase() === vehicleStatusFilter.toLowerCase();
+      (v.status || "").toLowerCase() === vehicleStatusFilter.toLowerCase();
     return matchSearch && matchType && matchStatus;
   });
 
@@ -678,57 +685,43 @@ export default function DriverManagement() {
     }
   };
 
-  // Active Bookings to show star marker
-  const [activeBookings, setActiveBookings] = useState([]);
-
+  const [driverError, setDriverError] = useState("");
+  const [vehicleError, setVehicleError] = useState("");
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const driverRequest = useRef(null);
+  const vehicleRequest = useRef(null);
+  const detailRequest = useRef(null);
   const loadDrivers = async () => {
-    setLoading(true);
+    driverRequest.current?.abort();
+    const controller = new AbortController();
+    driverRequest.current = controller;
+    setLoading(true); setDriverError("");
     try {
-      const [profiles, links] = await Promise.all([
-        driverService.getAllDrivers({}),
-        nodeApi.get("/driver-accounts/driver-links"),
-      ]);
-      const byId = new Map(links.map((row) => [row.id, row]));
-      const data = (Array.isArray(profiles) ? profiles : []).map((row) => ({
-        ...row,
-        ...byId.get(row.id),
-      }));
+      const data = await driverService.getAllDrivers({ includeDocuments: false, includePhotos: false }, { signal: controller.signal });
+      if (driverRequest.current !== controller) return;
       setDrivers(Array.isArray(data) ? data : []);
-      if (selectedDriver) {
-        const updated = (Array.isArray(data) ? data : []).find(
-          (d) => d.id === selectedDriver.id,
-        );
-        if (updated) setSelectedDriver(updated);
-      }
-      setLoading(false);
-      // Load bookings in background without blocking driver list display
-      bookingService
-        .getBookings({ pageNumber: 1, pageSize: 50 })
-        .then((bks) => {
-          if (bks?.items) {
-            setActiveBookings(
-              bks.items.filter(
-                (b) =>
-                  b.status === "Pending" ||
-                  b.status === "Ready" ||
-                  b.status === "Approved" ||
-                  b.status === "CheckedIn",
-              ) || [],
-            );
-          }
-        })
-        .catch((err) => {
-          console.warn("Booking fetch warning:", err);
-        });
-    } catch (err) {
-      showToast("❌ Lỗi tải danh sách tài xế: " + err.message);
-      setLoading(false);
-    }
+      const photoIds = data.filter(d => d.hasPhoto).map(d => d.id);
+      if (photoIds.length) driverService.getPhotos(photoIds, { signal: controller.signal }).then(photos => {
+        if (driverRequest.current === controller && !controller.signal.aborted)
+          setDrivers(current => current.map(d => ({ ...d, photoUrl: photos[d.id] || d.photoUrl })));
+        if (driverRequest.current === controller && !controller.signal.aborted)
+          setSelectedDriver(current => current && photos[current.id] ? { ...current, photoUrl: photos[current.id] } : current);
+      }).catch(() => { /* Optional photos never block the company list. */ });
+      setSelectedDriver(current => {
+        if (!current) return null;
+        const row = data.find(d => d.id === current.id);
+        return row ? { ...current, ...row, photoUrl: row.photoUrl || current.photoUrl, ...pick(current, DRIVER_DOCUMENTS) } : null;
+      });
+    } catch (err) { if (driverRequest.current === controller && err.name !== "AbortError") setDriverError(err.message); }
+    finally { if (driverRequest.current === controller) setLoading(false); }
   };
 
   useEffect(() => {
     loadDrivers();
     // eslint-disable-next-line
+    loadVehicles();
+    const requests = [driverRequest, vehicleRequest, detailRequest];
+    return () => requests.forEach(ref => ref.current?.abort());
   }, []);
 
   const handleViewHistory = async (e, driver) => {
@@ -742,6 +735,7 @@ export default function DriverManagement() {
       const res = await bookingService.getBookings({
         pageNumber: 1,
         pageSize: 50,
+        driverId: driver.id,
       });
       const bks = res.items || [];
       // Lọc các booking mà tài xế này được gán (nếu backend chưa hỗ trợ filter theo driverId thì filter ở fontend tạm)
@@ -756,22 +750,26 @@ export default function DriverManagement() {
   };
 
   const loadVehicles = async () => {
+    vehicleRequest.current?.abort();
+    const controller = new AbortController();
+    vehicleRequest.current = controller;
+    setVehicleError("");
     try {
       setLoadingVehicles(true);
-      const data = await vehicleService.getAllVehicles();
-      setVehicles(data);
+      const data = await vehicleService.getAllVehicles({ includeDocuments: false, includePhotos: false }, { signal: controller.signal });
+      if (vehicleRequest.current !== controller) return;
+      setVehicles(Array.isArray(data) ? data : []);
+      const photoIds = data.filter(v => v.hasPhoto).map(v => v.id);
+      if (photoIds.length) vehicleService.getPhotos(photoIds, { signal: controller.signal }).then(photos => {
+        if (vehicleRequest.current === controller && !controller.signal.aborted)
+          setVehicles(current => current.map(v => ({ ...v, photoUrl: photos[v.id] || v.photoUrl })));
+      }).catch(() => { /* Optional photos never block the company list. */ });
     } catch (err) {
-      console.error("Failed to load vehicles", err);
+      if (vehicleRequest.current === controller && err.name !== "AbortError") setVehicleError(err.message);
     } finally {
-      setLoadingVehicles(false);
+      if (vehicleRequest.current === controller) setLoadingVehicles(false);
     }
   };
-
-  useEffect(() => {
-    if (activeTab === "vehicles" && vehicles.length === 0) {
-      loadVehicles();
-    }
-  }, [activeTab]);
 
   const handleCreateVehicle = async (e) => {
     e.preventDefault();
@@ -805,15 +803,20 @@ export default function DriverManagement() {
     }
   };
 
-  const openVehicleDetails = (v) => {
-    setSelectedVehicle(v);
-    setEditVehicleMode(false);
-    setVehicleEditData({
-      ...v,
-      status: v.status.toLowerCase(),
-      vehicleType: v.vehicleType,
-    });
-    setDriverAssignForm(v.driverId || "");
+  const openVehicleDetails = async (v) => {
+    detailRequest.current?.abort();
+    const controller = new AbortController(); detailRequest.current = controller;
+    setLoadingDetail(true);
+    try {
+      const details = await vehicleService.getVehicleById(v.id, { signal: controller.signal });
+      if (detailRequest.current !== controller) return;
+      const profile = { ...v, ...details, driverName: v.driverName, carrierName: v.carrierName };
+      setSelectedVehicle(profile);
+      setEditVehicleMode(false);
+      setVehicleEditData({ ...profile, status: profile.status.toLowerCase() });
+      setDriverAssignForm(profile.driverId || "");
+    } catch (err) { if (err.name !== "AbortError") showToast("Không tải được hồ sơ xe: " + err.message); }
+    finally { if (detailRequest.current === controller) setLoadingDetail(false); }
   };
 
   const handleSaveVehicleEdit = async (e) => {
@@ -873,18 +876,6 @@ export default function DriverManagement() {
         driverAssignForm || null,
       );
 
-      // Update new driver to receiving_vehicle
-      if (driverAssignForm) {
-        await driverService.toggleStatus(driverAssignForm, "receiving_vehicle");
-      }
-      // Revert previous driver to active if changed
-      if (
-        selectedVehicle.driverId &&
-        selectedVehicle.driverId !== driverAssignForm
-      ) {
-        await driverService.toggleStatus(selectedVehicle.driverId, "active");
-      }
-
       showToast("✅ Đã phân công tài xế thành công!");
       loadVehicles();
       loadDrivers();
@@ -929,7 +920,7 @@ export default function DriverManagement() {
 
     setCreatingAccount(true);
     try {
-      await nodeApi.post("/driver-accounts", form);
+      await driverService.createAccount(form);
       setShowAddModal(false);
       setForm({ ...emptyForm });
       setPreviews({
@@ -953,7 +944,7 @@ export default function DriverManagement() {
     if (resendingDriverId) return;
     setResendingDriverId(driver.id);
     try {
-      await nodeApi.post(`/driver-accounts/${driver.id}/resend`, {});
+      await driverService.resendInvitation(driver.id);
       showToast(
         `Đã gửi lại link xác nhận đến ${driver.email}. Link mới có hiệu lực 24 giờ.`,
       );
@@ -986,10 +977,7 @@ export default function DriverManagement() {
       }
 
       if (!editForm.userId && editForm.email && editForm.username) {
-        await nodeApi.post(
-          "/driver-accounts",
-          accountProfile(editForm, editForm.id),
-        );
+        await driverService.createAccount(accountProfile(editForm, editForm.id));
       }
       setEditMode(false);
       showToast(
@@ -1003,18 +991,23 @@ export default function DriverManagement() {
     }
   };
 
-  const openDriverDetails = (drv) => {
-    setSelectedDriver(drv);
-    setEditMode(false);
-    setEditForm({
-      ...drv,
-      email: drv.email || "",
-      username: drv.username || "",
-    });
+  const openDriverDetails = async (drv) => {
+    detailRequest.current?.abort();
+    const controller = new AbortController(); detailRequest.current = controller;
+    setLoadingDetail(true);
+    try {
+      const details = await driverService.getDriverById(drv.id, { signal: controller.signal });
+      if (detailRequest.current !== controller) return;
+      const profile = { ...drv, ...details, ...pick(drv, DRIVER_ACCOUNT) };
+      setSelectedDriver(profile);
+      setEditMode(false);
+      setEditForm({ ...profile, email: profile.email || "", username: profile.username || "" });
+    } catch (err) { if (err.name !== "AbortError") showToast("Không tải được hồ sơ tài xế: " + err.message); }
+    finally { if (detailRequest.current === controller) setLoadingDetail(false); }
   };
 
   return (
-    <div className="p-8 w-full font-sans flex flex-col gap-8 relative items-stretch">
+    <div className="p-4 md:p-8 w-full min-w-0 max-w-full font-sans flex flex-col gap-8 relative items-stretch">
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-24 right-8 bg-[#202020] text-white px-6 py-3 rounded-xl shadow-2xl text-xs font-bold flex items-center gap-3 z-[999] animate-bounce border border-signal-orange">
@@ -1024,7 +1017,7 @@ export default function DriverManagement() {
       )}
 
       {/* LEFT MAIN AREA */}
-      <div className="flex-1 space-y-6 w-full">
+      <div className="flex-1 space-y-6 w-full min-w-0 max-w-full">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-chalk pb-6">
           <div>
@@ -1034,7 +1027,7 @@ export default function DriverManagement() {
             <h2 className="font-heading text-4xl text-carbon font-bold mt-1">
               {activeTab === "drivers" && "Quản lý Đội ngũ Tài xế"}
               {activeTab === "vehicles" && "Quản lý Phương tiện"}
-              {activeTab === "schedules" && "Lịch trình Phương tiện"}
+              {activeTab === "schedules" && "Lịch trình đội xe"}
             </h2>
             <p className="text-sm text-slate mt-1">
               {activeTab === "drivers" &&
@@ -1042,54 +1035,32 @@ export default function DriverManagement() {
               {activeTab === "vehicles" &&
                 "Quản lý danh sách phương tiện và trạng thái điều động của công ty."}
               {activeTab === "schedules" &&
-                "Theo dõi lộ trình và phân ca kíp cho các phương tiện đang hoạt động."}
+                "Xem chuyến đã phân công, tìm tài xế và xe rảnh theo khung giờ."}
             </p>
           </div>
 
           <div className="flex flex-col items-end gap-3">
             {activeTab === "drivers" && (
-              <button
-                type="button"
-                onClick={loadDrivers}
-                disabled={loading}
-                className="text-xs text-slate hover:text-carbon flex items-center gap-1 disabled:opacity-50"
-              >
-                <span
-                  aria-hidden="true"
-                  className="material-symbols-outlined text-[15px]"
-                >
-                  refresh
-                </span>
-                Làm mới trạng thái
-              </button>
-            )}
-            {activeTab === "drivers" && (
-              <button
+              <PrimaryButton icon="person_add" size="sm"
                 onClick={() => {
                   setForm({ ...emptyForm });
                   setShowAddModal(true);
                 }}
-                className="h-9 px-4 bg-carbon text-white rounded-lg font-bold text-xs hover:bg-black transition-colors flex items-center gap-2 shadow-sm"
               >
-                <span className="material-symbols-outlined text-sm">
-                  person_add
-                </span>{" "}
+
                 Thêm Tài Xế Mới
-              </button>
+              </PrimaryButton>
             )}
             {activeTab === "vehicles" && (
-              <button
+              <PrimaryButton icon="local_shipping" size="sm"
                 onClick={() => {
                   setVehicleForm({ plate: "", vehicleType: "ROAD_TRUCK" });
                   setShowAddVehicleModal(true);
                 }}
-                className="h-9 px-4 bg-signal-orange text-white rounded-lg font-bold text-xs hover:opacity-95 transition-colors flex items-center gap-2 shadow-sm"
               >
-                <span className="material-symbols-outlined text-sm">
-                  local_shipping
-                </span>{" "}
+
                 Thêm Phương Tiện
-              </button>
+              </PrimaryButton>
             )}
             {/* View Tabs */}
             <div className="flex bg-white rounded-lg p-1 border border-chalk shadow-sm text-xs font-bold">
@@ -1114,6 +1085,13 @@ export default function DriverManagement() {
           </div>
         </div>
 
+        {(activeTab === "drivers" ? driverError : activeTab === "vehicles" ? vehicleError : "") && (
+          <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800 flex items-center justify-between gap-3">
+            <span>{activeTab === "drivers" ? driverError : vehicleError}</span>
+            <button onClick={activeTab === "drivers" ? loadDrivers : loadVehicles} className="font-bold underline">Thử lại</button>
+          </div>
+        )}
+        {loadingDetail && <p role="status" className="text-sm text-slate">Đang tải hồ sơ chi tiết…</p>}
         {/* SEARCH BAR & FILTERS (Drivers) */}
         {activeTab === "drivers" && (
           <div className="space-y-4">
@@ -1303,7 +1281,7 @@ export default function DriverManagement() {
                 </span>
                 <input
                   type="text"
-                  placeholder="Tìm mã xe, biển số, tài xế, container..."
+                  placeholder="Tìm biển số hoặc tên tài xế..."
                   value={vehicleSearch}
                   onChange={(e) => setVehicleSearch(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 bg-fog border border-transparent rounded-lg text-xs focus:bg-white focus:border-carbon focus:ring-1 focus:ring-carbon outline-none transition-all"
@@ -1365,17 +1343,7 @@ export default function DriverManagement() {
                     String(v.driverId).toLowerCase() ===
                     String(d.id).toLowerCase(),
                 );
-                const activeBooking = activeBookings.find(
-                  (b) =>
-                    b.driverId === d.id ||
-                    b.truckId === assignedVehicle?.id ||
-                    b.vehiclePlate === assignedVehicle?.plateNumber,
-                );
-                const containerNo = activeBooking
-                  ? activeBooking.containerNumbers?.[0] ||
-                    activeBooking.containerNo ||
-                    activeBooking.bookingCode
-                  : null;
+                const containerNo = d.activeBookingCode || null;
                 const expiryWarn = getExpiryWarning(d.licenseExpiryDate);
 
                 return (
@@ -1424,7 +1392,7 @@ export default function DriverManagement() {
                         </span>
                         {assignedVehicle && (
                           <span
-                            className={`inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold border text-carbon ${activeBooking ? "bg-amber-50 border-amber-200" : "bg-fog border-chalk"}`}
+                            className={`inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold border text-carbon ${containerNo ? "bg-amber-50 border-amber-200" : "bg-fog border-chalk"}`}
                           >
                             <span className="material-symbols-outlined text-[12px] mr-1">
                               local_shipping
@@ -1432,7 +1400,7 @@ export default function DriverManagement() {
                             {assignedVehicle.plateNumber}
                           </span>
                         )}
-                        {activeBooking && containerNo && (
+                        {containerNo && (
                           <span className="inline-flex items-center px-2.5 py-1 rounded-md text-[10px] font-bold bg-emerald-50 border border-emerald-200 text-emerald-800 shadow-xs">
                             <span className="text-[12px] mr-1">📦</span>
                             Cont: {containerNo}
@@ -1584,21 +1552,7 @@ export default function DriverManagement() {
           </div>
         )}
 
-        {/* OTHER TABS PLACEHOLDER */}
-        {activeTab === "schedules" && (
-          <div className="bg-white border border-chalk rounded-xl p-12 text-center text-slate space-y-2 animate-in fade-in duration-200">
-            <span className="material-symbols-outlined text-4xl text-slate">
-              local_shipping
-            </span>
-            <h4 className="font-bold text-carbon text-lg">
-              Danh mục Phương tiện & Lịch trình đang hoạt động
-            </h4>
-            <p className="text-xs">
-              Dữ liệu xe đầu kéo và sơ đồ phân ca kíp được đồng bộ trực tiếp từ
-              trạm điều hành cảng.
-            </p>
-          </div>
-        )}
+        {activeTab === "schedules" && <FleetSchedule onAssigned={() => { loadDrivers(); loadVehicles(); }} />}
       </div>
 
       {/* ═══ ADD VEHICLE MODAL ═══ */}
@@ -1734,12 +1688,12 @@ export default function DriverManagement() {
               </div>
 
               <div className="pt-2">
-                <button
+                <PrimaryButton icon="add_circle" size="md"
                   type="submit"
-                  className="w-full h-11 bg-signal-orange text-white rounded-lg font-bold text-sm shadow-md hover:bg-orange-600 transition-colors"
+                  className="w-full"
                 >
                   Tạo Hồ Sơ Phương Tiện
-                </button>
+                </PrimaryButton>
               </div>
             </form>
           </div>
@@ -1949,12 +1903,12 @@ export default function DriverManagement() {
                     >
                       Hủy
                     </button>
-                    <button
+                    <PrimaryButton icon="save" size="md"
                       type="submit"
-                      className="flex-1 h-11 bg-signal-orange text-white rounded-xl text-xs font-bold shadow hover:opacity-90"
+                      className="flex-1"
                     >
                       Lưu Thay Đổi
-                    </button>
+                    </PrimaryButton>
                   </div>
                 </form>
               ) : (
@@ -2107,13 +2061,12 @@ export default function DriverManagement() {
                             </option>
                           ))}
                       </select>
-                      <button
+                      <PrimaryButton icon="assignment_ind" size="sm"
                         type="submit"
                         disabled={driverAssignForm === selectedVehicle.driverId}
-                        className="h-10 px-4 bg-carbon text-white rounded-md font-bold hover:bg-black disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Cập Nhật
-                      </button>
+                      </PrimaryButton>
                     </form>
                   </div>
                 </div>
@@ -2589,12 +2542,12 @@ export default function DriverManagement() {
                         >
                           Hủy
                         </button>
-                        <button
+                        <PrimaryButton icon="save" size="lg"
                           type="submit"
-                          className="flex-1 h-12 bg-carbon text-white rounded-xl text-sm font-bold hover:bg-black shadow-lg shadow-carbon/20 transition-all active:scale-[0.98]"
+                          className="flex-1"
                         >
                           Lưu Thay Đổi
-                        </button>
+                        </PrimaryButton>
                       </div>
                     </div>
                   </div>
@@ -2628,15 +2581,12 @@ export default function DriverManagement() {
                           />
                         </div>
                       </div>
-                      <button
+                      <PrimaryButton icon="call" size="md"
                         onClick={() => handleContact(selectedDriver.fullName)}
-                        className="w-full mt-4 py-3 px-4 rounded-xl bg-signal-orange text-white font-bold text-sm hover:bg-orange-600 transition-colors shadow flex items-center justify-center gap-2"
+                        className="w-full mt-4"
                       >
-                        <span className="material-symbols-outlined text-[20px]">
-                          call
-                        </span>
                         Liên hệ khẩn cấp
-                      </button>
+                      </PrimaryButton>
                     </div>
 
                     {/* Right Column: Details */}
@@ -3545,15 +3495,15 @@ export default function DriverManagement() {
                       >
                         Hủy
                       </button>
-                      <button
+                      <PrimaryButton icon="person_add" size="lg"
                         type="submit"
-                        disabled={creatingAccount}
-                        className="flex-1 h-12 bg-carbon text-white rounded-xl text-sm font-bold hover:bg-black shadow-lg shadow-carbon/20 transition-all active:scale-[0.98]"
+                        loading={creatingAccount}
+                        className="flex-1"
                       >
                         {creatingAccount
                           ? "Đang tạo tài khoản…"
                           : "Tạo tài khoản"}
-                      </button>
+                      </PrimaryButton>
                     </div>
                   </div>
                 </div>

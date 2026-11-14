@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import api from '../../services/nodeApiClient'
+import driverService from '../../services/driverService'
 
 export default function ActivateAccount() {
   // Keep the bearer capability out of server request URLs and referrer headers.
@@ -18,7 +18,7 @@ export default function ActivateAccount() {
     e.preventDefault(); setError('')
     if (password !== confirmation) return setError('Mật khẩu xác nhận chưa khớp.')
     setBusy(true)
-    try { await api.post('/auth/activate-account', {token, password}); setDone(true) }
+    try { await driverService.activateAccount({token, password}); setDone(true) }
     catch (e) { setError(e.message) }
     finally { setBusy(false) }
   }
