@@ -110,7 +110,18 @@ export function CustomsStep({ draftId, payload, confirmed, onConfirmed, sampleMo
   )
 }
 
-export function DeliveryFields({ delivery, buyer, onDelivery, onBuyer, flow, sourceExpiry, request, containers, sampleMode }) {
+export function DeliveryFields({
+  delivery,
+  buyer,
+  onDelivery,
+  onBuyer,
+  flow,
+  sourceExpiry,
+  request,
+  containers,
+  sampleMode,
+  autoSchedule,
+}) {
   const mode = delivery.transportMode
   const hasExpiry = Boolean(delivery.orderValidUntil)
 
@@ -125,7 +136,7 @@ export function DeliveryFields({ delivery, buyer, onDelivery, onBuyer, flow, sou
   return (
     <section className="epd-stage" aria-label="Khai báo giao nhận">
       <div className="epd-stage-heading">
-        <span>05</span>
+        <span>04</span>
         <div>
           <h3>Khai báo giao nhận</h3>
           <p>Lựa chọn phương tiện giao nhận (Xe hoặc Sà lan) và thông tin xuất hóa đơn.</p>
@@ -159,8 +170,15 @@ export function DeliveryFields({ delivery, buyer, onDelivery, onBuyer, flow, sou
         </div>
         <div className="epd-form-grid">
           {mode === 'TRUCK' ? (
-            <ServiceTripFleet request={request} containers={containers} disabled={sampleMode}
-              onTrips={trips => onDelivery('trips', trips)} />
+            <ServiceTripFleet
+              request={request}
+              containers={containers}
+              disabled={sampleMode}
+              minDate={autoSchedule?.minDate}
+              maxDate={autoSchedule?.maxDate}
+              scheduleNotice={autoSchedule?.notice}
+              onTrips={trips => onDelivery('trips', trips)}
+            />
           ) : (
             <>
               <Field label="Tên sà lan" required>

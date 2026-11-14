@@ -18,13 +18,17 @@ import {
   Save,
   Search,
   ShieldCheck,
+  Truck,
   X,
 } from 'lucide-react'
 import CatalogDialog from './CatalogDialog'
 import BookingSourceSelect from './BookingSourceSelect'
 import ServiceSourceEmailPanel from './ServiceSourceEmailPanel'
 import { CustomsStep, DeliveryFields, ExportDeclarationFields } from './ServiceDeliveryFields'
+import { ServiceDocumentsStep } from './ServiceDocumentsStep'
 import { ServiceTripSummary } from './ServiceTripFleet'
+import { FleetDocumentsReview } from './FleetDocumentsReview'
+import { computeAutoSchedule } from './serviceSchedulePolicy'
 import { blankDelivery, blankBuyer, validContainer } from './serviceDeliveryRules'
 import './serviceDelivery.css'
 import { createServiceDraftSamples } from './serviceDraftSamples'
@@ -169,20 +173,21 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         ['Lệnh eDO & Email', FileText],
         ['Khai báo container', Container],
         ['Dịch vụ đính kèm', Layers3],
-        ['Xác nhận thông quan', ShieldCheck],
         ['Khai báo giao nhận', CalendarDays],
+        ['Hồ sơ & Chứng từ', FileText],
         ['Kiểm tra & Gửi đăng ký', FileCheck2],
       ]
     : [
         ['eBooking & Email', FileText],
         ['Khai báo container', Container],
         ['Dịch vụ đính kèm', Layers3],
-        ['Xác nhận thông quan', ShieldCheck],
         ['Khai báo giao nhận', CalendarDays],
+        ['Hồ sơ & Chứng từ', FileText],
         ['Kiểm tra & Gửi đăng ký', FileCheck2],
       ]
 
-  const deliveryStep = 4
+  const deliveryStep = 3
+  const documentsStep = 4
   const reviewStep = stages.length - 1
 
   const [sampleData] = useState(() => (import.meta.env.DEV ? createServiceDraftSamples() : null))
@@ -249,26 +254,67 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   useEffect(() => {
     if (!detail.data || loaded.current) return
     const saved = detail.data
+    let loadedPlanned = localTime(saved.plannedAt)
+
+    // Kiểm tra tính hợp lệ của ngày dự kiến đối với hàng xuất
+    const cutoff = saved.sourceSnapshot?.cyCutoff || saved.source?.cyCutoff
+    if (saved.flow === 'EXPORT' && cutoff) {
+      const cutoffTime = new Date(cutoff).getTime()
+      if (!loadedPlanned || new Date(loadedPlanned).getTime() >= cutoffTime) {
+        const auto = computeAutoSchedule({ flow: 'EXPORT', booking: saved.sourceSnapshot, source: saved.source })
+        if (auto?.plannedAt) loadedPlanned = auto.plannedAt
+      }
+    }
+
+    const plannedDateStr = loadedPlanned ? loadedPlanned.slice(0, 10) : ''
+    let loadedOrderValid = saved.delivery?.orderValidUntil || ''
+    if (plannedDateStr && (!loadedOrderValid || loadedOrderValid < plannedDateStr)) {
+      loadedOrderValid = plannedDateStr
+    }
+
     setForm({
       workflowVersion: 2,
-      delivery: { ...blankDelivery(), ...saved.delivery, orderValidUntil: saved.delivery?.orderValidUntil || '' },
+      delivery: {
+        ...blankDelivery(),
+        ...saved.delivery,
+        orderValidUntil: loadedOrderValid,
+        trips: (saved.delivery?.trips || []).map(trip => {
+          let aStart = trip.appointmentStart
+          let aEnd = trip.appointmentEnd
+          if (loadedPlanned && (!aStart || new Date(aStart) < new Date(loadedPlanned))) {
+            aStart = utcTime(loadedPlanned)
+          }
+          if (aStart && (!aEnd || new Date(aEnd) <= new Date(aStart))) {
+            aEnd = new Date(new Date(aStart).getTime() + 2 * 3600000).toISOString()
+          }
+          return { ...trip, appointmentStart: aStart, appointmentEnd: aEnd }
+        }),
+      },
       invoiceBuyer: { ...blankBuyer(), ...saved.invoiceBuyer },
       dataMode: 'LIVE',
       expectedVersion: saved.version,
       flow: saved.flow,
       mainServiceId: saved.mainServiceId || null,
       source: { ...blankSource(), ...saved.source, validUntil: saved.source?.validUntil?.slice(0, 10) || '' },
-      plannedAt: localTime(saved.plannedAt),
+      plannedAt: loadedPlanned,
       contactName: saved.contactName || '',
       contactPhone: saved.contactPhone || '',
       note: saved.note || '',
       lines: (saved.lines || []).map(line => ({
         ...line,
-        services: line.services.map(item => ({
-          ...item,
-          startsAt: localTime(item.startsAt),
-          endsAt: localTime(item.endsAt),
-        })),
+        services: line.services.map(item => {
+          let sAt = localTime(item.startsAt)
+          if (!sAt || (loadedPlanned && sAt < loadedPlanned)) sAt = loadedPlanned
+          let eAt = localTime(item.endsAt)
+          if (sAt && (!eAt || eAt <= sAt)) {
+            eAt = localTime(new Date(new Date(sAt).getTime() + 24 * 3600000).toISOString())
+          }
+          return {
+            ...item,
+            startsAt: sAt,
+            endsAt: eAt,
+          }
+        }),
       })),
     })
     setSnapshots(Object.fromEntries((saved.containers || []).map(row => [containerId(row), row])))
@@ -466,13 +512,14 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     if (value !== form.source.bookingId) {
       const picked = (sampleMode ? sampleData.bookings : sources.data?.items)?.find(item => item.id === value)
       const cutoffDate = picked?.cyCutoff?.slice(0, 10) || ''
+      const auto = computeAutoSchedule({ flow: 'EXPORT', booking: picked })
       changeContext(
         previous => ({
           ...previous,
-          plannedAt: previous.plannedAt || defaultPlannedAt(),
+          plannedAt: auto.plannedAt,
           delivery: {
             ...previous.delivery,
-            orderValidUntil: cutoffDate || previous.delivery.orderValidUntil || '',
+            orderValidUntil: cutoffDate || auto.plannedAt?.slice(0, 10) || previous.delivery.orderValidUntil || '',
           },
           source: {
             ...blankSource(),
@@ -484,6 +531,9 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
             validUntil: cutoffDate,
             blNumber: picked?.blNumber || (picked?.bookingNumber ? `BL-${picked.bookingNumber}` : previous.source.blNumber || ''),
             bookingId: value || null,
+            etd: picked?.etd || '',
+            cyCutoff: picked?.cyCutoff || '',
+            receiveFrom: picked?.receiveFrom || '',
           },
           lines: [],
         }),
@@ -494,13 +544,14 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
   const chooseImportEdo = edoItem => {
     if (!edoItem) return
+    const auto = computeAutoSchedule({ flow: 'IMPORT', edoItem })
     changeContext(
       previous => ({
         ...previous,
-        plannedAt: previous.plannedAt || defaultPlannedAt(),
+        plannedAt: auto.plannedAt,
         delivery: {
           ...previous.delivery,
-          orderValidUntil: edoItem.validUntil || previous.delivery.orderValidUntil || '',
+          orderValidUntil: edoItem.validUntil || auto.plannedAt?.slice(0, 10) || previous.delivery.orderValidUntil || '',
         },
         source: {
           ...previous.source,
@@ -511,6 +562,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           vesselName: edoItem.vesselName || 'DEMO EPORT BLUEWAVE',
           voyageNumber: edoItem.voyageNumber || '001E',
           validUntil: edoItem.validUntil || '',
+          eta: edoItem.eta || '',
         },
         lines: [],
       }),
@@ -651,19 +703,62 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   const payload = () => {
     const result = { ...form }
     delete result.dataMode
+
+    const plannedDateStr = form.plannedAt ? form.plannedAt.slice(0, 10) : ''
+    let resolvedOrderValid = form.delivery.orderValidUntil || form.source.validUntil || (form.source.cyCutoff ? form.source.cyCutoff.slice(0, 10) : '')
+    if (plannedDateStr && (!resolvedOrderValid || resolvedOrderValid < plannedDateStr)) {
+      resolvedOrderValid = plannedDateStr
+    }
+
+    const syncTrips = (form.delivery.trips || []).map(trip => {
+      let appStart = trip.appointmentStart
+      let appEnd = trip.appointmentEnd
+      if (!appStart || (form.plannedAt && new Date(appStart) < new Date(form.plannedAt))) {
+        appStart = utcTime(form.plannedAt)
+      }
+      if (appStart) {
+        const startDate = new Date(appStart)
+        if (!appEnd || new Date(appEnd) <= startDate) {
+          appEnd = new Date(startDate.getTime() + 2 * 3600000).toISOString()
+        }
+      }
+      return {
+        ...trip,
+        appointmentStart: appStart,
+        appointmentEnd: appEnd,
+      }
+    })
+
     return {
       ...result,
-      delivery: { ...form.delivery, orderValidUntil: form.delivery.orderValidUntil || null },
+      delivery: {
+        ...form.delivery,
+        orderValidUntil: resolvedOrderValid || null,
+        trips: syncTrips,
+      },
       source: { ...form.source, validUntil: form.source.validUntil || null },
       plannedAt: utcTime(form.plannedAt),
       lines: form.lines.map(line => ({
         ...line,
-        services: line.services.map(item => ({
-          ...item,
-          startsAt: utcTime(item.startsAt),
-          endsAt: utcTime(item.endsAt || form.delivery.orderValidUntil || form.source.validUntil || null),
-          quantity: item.quantity === '' || item.quantity == null ? null : Number(item.quantity),
-        })),
+        services: line.services.map(item => {
+          let itemStartsAt = item.startsAt
+          if (!itemStartsAt || (form.plannedAt && new Date(itemStartsAt) < new Date(form.plannedAt))) {
+            itemStartsAt = form.plannedAt
+          }
+          let itemEndsAt = item.endsAt
+          if (itemStartsAt) {
+            const startDate = new Date(itemStartsAt)
+            if (!itemEndsAt || new Date(itemEndsAt) <= startDate) {
+              itemEndsAt = localTime(new Date(startDate.getTime() + 24 * 3600000).toISOString())
+            }
+          }
+          return {
+            ...item,
+            startsAt: utcTime(itemStartsAt),
+            endsAt: utcTime(itemEndsAt),
+            quantity: item.quantity === '' || item.quantity == null ? null : Number(item.quantity),
+          }
+        }),
       })),
     }
   }
@@ -813,12 +908,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       }
     }
 
-    // BƯỚC 4 VALIDATION: THÔNG QUAN VASSCM (chỉ luồng Nhập)
-    if (step === 3 && !form.delivery.customsConfirmationScope) {
-      return setFeedback('Bấm “Xác nhận thông quan” để tiếp tục.')
-    }
-
-    // BƯỚC GIAO NHẬN VALIDATION
+    // BƯỚC 4 VALIDATION: KHAI BÁO GIAO NHẬN (XE HOẶC SÀ LAN)
     if (step === deliveryStep) {
       const data = form.delivery
       if (data.transportMode === 'TRUCK') {
@@ -840,6 +930,37 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       }
     }
 
+    // BƯỚC 5 VALIDATION: BỘ HỒ SƠ & CHỨNG TỪ
+    if (step === documentsStep) {
+      const docs = form.delivery.documents || []
+      const hasReeferContainer = form.lines.some(line => isReefer(snapshots[line.sourceContainerId]))
+
+      if (form.flow === 'EXPORT') {
+        if (!docs.some(d => d.documentType === 'CarrierBookingReference')) {
+          return setFeedback('Vui lòng tải lên chứng từ Booking Xuất Khẩu / Mã Hạ Cont (bắt buộc).')
+        }
+        if (!docs.some(d => d.documentType === 'VgmCertificate')) {
+          return setFeedback('Vui lòng tải lên Phiếu Xác Nhận Khối Lượng VGM (bắt buộc).')
+        }
+        if (hasReeferContainer && !docs.some(d => d.documentType === 'ReeferInstructions')) {
+          return setFeedback('Đơn có container lạnh: Vui lòng tải lên Chỉ Dẫn Bảo Quản Cont Lạnh / Phiếu PTI (bắt buộc).')
+        }
+      } else {
+        if (!docs.some(d => d.documentType === 'DeliveryOrder')) {
+          return setFeedback('Vui lòng tải lên Lệnh Giao Hàng Hãng Tàu (D/O hoặc eDO) (bắt buộc).')
+        }
+        if (!docs.some(d => d.documentType === 'BillOfLading')) {
+          return setFeedback('Vui lòng tải lên Thông Tin Vận Đơn Đường Biển (B/L) (bắt buộc).')
+        }
+        if (!docs.some(d => d.documentType === 'CustomsDeclaration')) {
+          return setFeedback('Vui lòng tải lên Tờ Khai Hải Quan Nhập Khẩu (bắt buộc).')
+        }
+        if (hasReeferContainer && !docs.some(d => d.documentType === 'ReeferInstructions')) {
+          return setFeedback('Đơn có container lạnh: Vui lòng tải lên Chỉ Dẫn Bảo Quản Cont Lạnh / Phiếu PTI (bắt buộc).')
+        }
+      }
+    }
+
     setStep(previous => Math.min(reviewStep, previous + 1))
   }
 
@@ -850,6 +971,32 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   const selectedBooking =
     (sampleMode ? sampleData.bookings : sources.data?.items)?.find(item => item.id === form.source.bookingId) ||
     bookingSnapshots[form.source.bookingId]
+
+  const selectedEdo = useMemo(() => {
+    return (sources.data?.items || []).find(item => item.referenceNumber === form.source.referenceNumber)
+  }, [sources.data?.items, form.source.referenceNumber])
+
+  const autoSchedule = useMemo(() => {
+    return computeAutoSchedule({
+      flow: form.flow,
+      booking: selectedBooking,
+      edoItem: selectedEdo,
+      source: form.source,
+    })
+  }, [form.flow, selectedBooking, selectedEdo, form.source])
+
+  useEffect(() => {
+    if (autoSchedule?.plannedAt) {
+      if (!form.plannedAt) {
+        setForm(prev => ({ ...prev, plannedAt: autoSchedule.plannedAt }))
+      } else if (form.flow === 'EXPORT') {
+        const cutoffVal = selectedBooking?.cyCutoff || form.source.cyCutoff || detail.data?.sourceSnapshot?.cyCutoff
+        if (cutoffVal && new Date(form.plannedAt).getTime() >= new Date(cutoffVal).getTime()) {
+          setForm(prev => ({ ...prev, plannedAt: autoSchedule.plannedAt }))
+        }
+      }
+    }
+  }, [form.plannedAt, autoSchedule?.plannedAt, form.flow, selectedBooking, form.source.cyCutoff, detail.data?.sourceSnapshot])
 
   const sourceLabel =
     form.flow === 'EXPORT'
@@ -1393,13 +1540,38 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                   </div>
 
                   <div className="epd-form-grid">
-                    <Field label={<>Thời gian dự kiến thực hiện <b className="epd-required">*</b></>} wide>
+                    <Field
+                      label={
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                          <span>Thời gian dự kiến thực hiện <b className="epd-required">*</b></span>
+                          {autoSchedule?.plannedAt && form.plannedAt !== autoSchedule.plannedAt && (
+                            <button
+                              type="button"
+                              className="epc-button secondary"
+                              style={{ padding: '2px 8px', fontSize: '11px', height: '22px', borderRadius: '4px', cursor: 'pointer' }}
+                              onClick={() => update('plannedAt', autoSchedule.plannedAt)}
+                            >
+                              ↺ Đặt lại ngày tự động ({autoSchedule.plannedAt})
+                            </button>
+                          )}
+                        </div>
+                      }
+                      wide
+                    >
                       <input
                         aria-label="Thời gian dự kiến thực hiện"
                         type="datetime-local"
                         value={form.plannedAt}
+                        min={autoSchedule.minDate || undefined}
+                        max={autoSchedule.maxDate || undefined}
                         onChange={event => update('plannedAt', event.target.value)}
                       />
+                      {autoSchedule.notice && (
+                        <small className="epd-field-hint" style={{ color: '#0369a1', marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>💡</span>
+                          <span>{autoSchedule.notice}</span>
+                        </small>
+                      )}
                     </Field>
                     <Field label={<>Người liên hệ <b className="epd-required">*</b></>}>
                       <input
@@ -1610,20 +1782,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                 </section>
               )}
 
-              {/* BƯỚC 4: ĐỐI CHIẾU THÔNG QUAN */}
-              {step === 3 && (
-                <CustomsStep
-                  key={customsScope}
-                  flow={form.flow}
-                  draftId={id}
-                  payload={payload()}
-                  confirmed={!!form.delivery.customsConfirmationScope}
-                  onConfirmed={scope => mutate(previous => JSON.stringify([JSON.stringify([previous.flow, previous.mainServiceId, previous.source]), previous.lines.map(line => line.sourceContainerId).sort()]) !== customsScope ? previous : ({ ...previous, delivery: { ...previous.delivery, customsConfirmationScope: scope, customsCheckSkipped: false } }))}
-                  sampleMode={sampleMode}
-                />
-              )}
-
-              {/* BƯỚC GIAO NHẬN: XE HOẶC SÀ LAN, HẠN LỆNH */}
+              {/* BƯỚC 4: KHAI BÁO GIAO NHẬN (XE HOẶC SÀ LAN, HẠN LỆNH) */}
               {step === deliveryStep && (
                 <DeliveryFields
                   delivery={form.delivery}
@@ -1633,8 +1792,35 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                   request={payload()}
                   containers={snapshots}
                   sampleMode={sampleMode}
+                  autoSchedule={autoSchedule}
                   onDelivery={(field, value) => update('delivery', { ...form.delivery, [field]: value })}
                   onBuyer={(field, value) => update('invoiceBuyer', { ...form.invoiceBuyer, [field]: value })}
+                />
+              )}
+
+              {/* BƯỚC 5: BỘ HỒ SƠ & CHỨNG TỪ */}
+              {step === documentsStep && (
+                <ServiceDocumentsStep
+                  draftId={id}
+                  payload={payload()}
+                  flow={form.flow}
+                  containers={form.lines.map(l => snapshots[l.sourceContainerId] || l.declaration).filter(Boolean)}
+                  documents={form.delivery.documents || []}
+                  fleetTrips={form.delivery.trips || []}
+                  onChangeDocuments={docs => {
+                    mutate(prev => ({
+                      ...prev,
+                      documents: docs,
+                      delivery: { ...prev.delivery, documents: docs },
+                    }))
+                    setDirty(true)
+                  }}
+                  onConfirmedScope={scope => {
+                    mutate(prev => ({
+                      ...prev,
+                      delivery: { ...prev.delivery, customsConfirmationScope: scope, customsCheckSkipped: false },
+                    }))
+                  }}
                 />
               )}
 
@@ -1706,9 +1892,39 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                       </SummaryItem>
                       <SummaryItem label="Hạn lệnh">{form.delivery.orderValidUntil || form.source.validUntil || 'Không giới hạn'}</SummaryItem>
                       {form.delivery.transportMode === 'TRUCK' && <ServiceTripSummary trips={form.delivery.trips} containers={Object.values(snapshots)} />}
+
+                      {/* BỘ CHỨNG TỪ ĐÍNH KÈM CỦA ĐƠN DỊCH VỤ */}
+                      {form.delivery.documents?.length > 0 && (
+                        <SummaryItem label="Hồ sơ & Chứng từ">
+                          <div className="epd-review-docs-list">
+                            {form.delivery.documents.map((doc, idx) => (
+                              <div key={idx} className="epd-review-doc-badge">
+                                <FileText size={13} />
+                                <span>{doc.title}: <strong>{doc.fileName}</strong></span>
+                                {doc.fileUrl && (
+                                  <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" className="epd-review-doc-link">
+                                    Xem
+                                  </a>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </SummaryItem>
+                      )}
                       <SummaryItem label="Người mua">{form.invoiceBuyer.name || 'Theo tài khoản'}</SummaryItem>
                       <SummaryItem label="Cổng thanh toán">Cổng thanh toán điện tử (Mã QR VietQR chuyển khoản ngân hàng 24/7)</SummaryItem>
                     </dl>
+
+                    {/* HỒ SƠ PHÁP LÝ & HÌNH ẢNH PHƯƠNG TIỆN - TÀI XẾ RENDER ĐẦY ĐỦ KHÔNG BỊ CO BÓP */}
+                    {form.delivery.transportMode === 'TRUCK' && form.delivery.trips?.length > 0 && (
+                      <div className="epd-review-fleet-box" style={{ marginTop: '16px', borderTop: '1px dashed #e2e8f0', paddingTop: '14px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+                          <Truck size={16} style={{ color: '#0284c7' }} />
+                          <strong style={{ fontSize: '13px', color: '#1e293b' }}>Giấy tờ & Hình ảnh Phương tiện - Tài xế</strong>
+                        </div>
+                        <FleetDocumentsReview trips={form.delivery.trips} containers={form.lines.map(l => snapshots[l.sourceContainerId] || l.declaration).filter(Boolean)} />
+                      </div>
+                    )}
                   </div>
 
                   <div className="epd-info">
@@ -1727,7 +1943,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
               )}
             </fieldset>
 
-            {/* CỘT TÓM TẮT BÊN PHẢI */}
+            {/* CỘT TÓM TẮT HỒ SƠ BÊN PHẢI */}
             <aside className="epd-summary" aria-label="Tóm tắt đăng ký">
               <div className="epd-summary-title">
                 <span><ClipboardList size={22} /></span>
