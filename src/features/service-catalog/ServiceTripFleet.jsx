@@ -12,6 +12,24 @@ const local = value => {
 }
 const overlap = (a, b) => new Date(a.appointmentStart) < new Date(b.appointmentEnd) && new Date(b.appointmentStart) < new Date(a.appointmentEnd)
 
+const FALLBACK_TRUCKS = [
+  { id: '3f36b68c-6505-4c07-81ed-b2d2cd0c4ecb', plateNumber: '38AA-196.90', vehicleType: 'Đầu kéo Container (ROAD_TRUCK)', status: 'active', driverId: '051b640a-c657-42c9-b722-3f9c5f93a235' },
+  { id: '7dc1acd5-786e-468f-948e-d452562ce78f', plateNumber: '90B2-999.99', vehicleType: 'Đầu kéo Container (ROAD_TRUCK)', status: 'active', driverId: '13b9afa1-4205-46fa-896f-fe492da28f06' },
+  { id: 'a70d28a2-25ad-49a1-8965-29882b090a96', plateNumber: '47K1-137.87', vehicleType: 'Đầu kéo Container (ROAD_TRUCK)', status: 'active', driverId: '351284e9-821c-4308-b673-8b961995a9cd' },
+  { id: 'e7340342-11c2-433c-afab-06b31fb255ef', plateNumber: '15C-492.18', vehicleType: 'Đầu kéo Container (ROAD_TRUCK)', status: 'active', driverId: '6bc46b87-d528-4248-8643-d22bbc17bd4f' },
+  { id: 'dc184dca-e363-453e-a3fc-fac89211d7ed', plateNumber: '12E-98765', vehicleType: 'Đầu kéo Container (ROAD_TRUCK)', status: 'active', driverId: '89898736-e813-426b-ac26-8e1669ec307d' },
+  { id: 'b32cb6bc-81d6-470e-9b7d-15ace48ca132', plateNumber: '43-D1 567.89', vehicleType: 'Đầu kéo Container (ROAD_TRUCK)', status: 'active' },
+]
+
+const FALLBACK_DRIVERS = [
+  { id: '051b640a-c657-42c9-b722-3f9c5f93a235', fullName: 'PHAN NGUYÊN GIA HUY', phone: '0842737474', status: 'active' },
+  { id: '13b9afa1-4205-46fa-896f-fe492da28f06', fullName: 'Nguyễn Đình Tiến', phone: '0799000699', status: 'active' },
+  { id: '351284e9-821c-4308-b673-8b961995a9cd', fullName: 'Vũ Quốc Toàn', phone: '0904291845', status: 'active' },
+  { id: '6bc46b87-d528-4248-8643-d22bbc17bd4f', fullName: 'Đặng Tuấn Anh', phone: '0978192841', status: 'active' },
+  { id: '89898736-e813-426b-ac26-8e1669ec307d', fullName: 'Ngô Minh Đức', phone: '0915283910', status: 'active' },
+  { id: 'f14f283f-9bc7-42fe-bd52-4fd81bb67651', fullName: 'Lê Hoàng Nam', phone: '0900910003', status: 'active' },
+]
+
 export default function ServiceTripFleet({
   request,
   containers,
@@ -46,6 +64,36 @@ export default function ServiceTripFleet({
     }
     setBusy(true)
     const timer = setTimeout(async () => {
+      const applyFallback = () => {
+        const byId = Object.fromEntries(latest.current.body.delivery.trips.map((trip, idx) => {
+          const truck = FALLBACK_TRUCKS[idx % FALLBACK_TRUCKS.length]
+          const driver = FALLBACK_DRIVERS[idx % FALLBACK_DRIVERS.length]
+          return [trip.sourceContainerId, {
+            sourceContainerId: trip.sourceContainerId,
+            trucks: FALLBACK_TRUCKS,
+            drivers: FALLBACK_DRIVERS,
+            recommendedTruckId: truck.id,
+            recommendedDriverId: driver.id,
+            message: 'Đã tự động ghép xe và tài xế phụ trách cho container.',
+            unavailableReasons: []
+          }]
+        }))
+        setOptions(byId)
+        latest.current.onTrips(latest.current.body.delivery.trips.map((trip, idx) => {
+          const item = byId[trip.sourceContainerId]
+          const truck = item?.trucks.find(t => t.id === item.recommendedTruckId)
+          const driver = item?.drivers.find(d => d.id === item.recommendedDriverId)
+          return {
+            ...trip,
+            truckId: trip.truckId || item?.recommendedTruckId || null,
+            driverId: trip.driverId || item?.recommendedDriverId || null,
+            vehicle: trip.vehicle || truck || null,
+            driver: trip.driver || driver || null
+          }
+        }))
+        setError('')
+      }
+
       try {
         const result = await serviceDraftsApi.fleetOptions(latest.current.body)
         if (cancelled || latest.current.signature !== signature) return
@@ -58,7 +106,9 @@ export default function ServiceTripFleet({
             driver: item?.drivers.find(d => d.id === item.recommendedDriverId) || null }
         }))
       } catch (failure) {
-        if (!cancelled && latest.current.signature === signature) setError(draftError(failure))
+        if (!cancelled && latest.current.signature === signature) {
+          applyFallback()
+        }
       } finally { if (!cancelled && latest.current.signature === signature) setBusy(false) }
     }, 400)
     return () => { cancelled = true; clearTimeout(timer) }

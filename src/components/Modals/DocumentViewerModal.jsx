@@ -61,7 +61,7 @@ export default function DocumentViewerModal({
   const driverName = booking.driverName || 'Nguyễn Văn A'
 
   return (
-    <div className="fixed inset-0 bg-carbon/90 backdrop-blur-md z-[100] flex flex-col justify-between p-2 md:p-6 select-none animate-in fade-in duration-200">
+    <div className="fixed inset-0 bg-carbon/90 backdrop-blur-md z-[105] flex flex-col justify-between p-2 md:p-6 select-none animate-in fade-in duration-200">
       {/* Top Bar Header */}
       <div className="bg-slate-900/95 border border-slate-800 rounded-2xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-2xl text-white">
         <div className="flex items-center gap-3">

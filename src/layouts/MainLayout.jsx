@@ -433,11 +433,11 @@ export default function MainLayout({ previewUser = null }) {
         <div className="p-3.5 border-t border-slate-100 bg-slate-50/60">
           <div className="flex items-center gap-3 mb-2.5">
             <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-800 to-slate-900 text-white flex justify-center items-center font-bold text-xs ring-2 ring-white shadow-2xs">
-              {user.username.substring(0, 2).toUpperCase()}
+              {(user?.username || user?.name || user?.fullName || 'NP').substring(0, 2).toUpperCase()}
             </div>
             <div className="overflow-hidden flex-1">
-              <div className="text-xs font-bold text-slate-900 truncate">{user.username}</div>
-              <div className="text-[10px] text-slate-500 truncate">{user.role}</div>
+              <div className="text-xs font-bold text-slate-900 truncate">{user?.username || user?.name || user?.fullName || 'Người dùng'}</div>
+              <div className="text-[10px] text-slate-500 truncate">{user?.role || 'Chưa định danh'}</div>
             </div>
           </div>
           <button

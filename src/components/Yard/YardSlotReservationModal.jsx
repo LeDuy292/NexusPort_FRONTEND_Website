@@ -299,7 +299,7 @@ export default function YardSlotReservationModal({
 
   return (
     <div
-      className="fixed inset-0 z-[70] flex items-center justify-center p-2 sm:p-3 bg-carbon/80 backdrop-blur-sm animate-in zoom-in-95 duration-150 font-sans"
+      className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-3 bg-carbon/80 backdrop-blur-sm animate-in zoom-in-95 duration-150 font-sans"
       role="dialog"
       aria-modal="true"
     >
