@@ -56,6 +56,16 @@ export const gateService = {
     }
   },
   async commandBarrier(payload) {
+    // 1. Luôn đồng bộ lệnh mở/đóng barie xuống phần cứng ESP32 qua AI Service
+    try {
+      if (payload?.action === 'open') {
+        void aiClient.post('/api/v1/gate/barrier/open').catch(() => {})
+      } else {
+        void aiClient.post('/api/v1/gate/barrier/fail').catch(() => {})
+      }
+    } catch (_) {}
+
+    // 2. Gửi lệnh tới C# Backend / fallback
     try {
       return (await apiClient.post('/v1/Gate/barrier-commands',payload)).data;
     } catch (err) {

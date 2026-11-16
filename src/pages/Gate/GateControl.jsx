@@ -194,6 +194,13 @@ export default function GateControl() {
     }
     barrierInFlightRef.current=true;setBarrierBusy(true)
     try{
+      // Đồng thời kích hoạt mở/đóng Servo phần cứng ESP32 qua AI Service
+      if (action === 'open') {
+        void gateService.manualBarrierOpen().catch(() => {})
+      } else {
+        void gateService.manualBarrierFail().catch(() => {})
+      }
+
       const result=await gateService.commandBarrier({requestId:barrierRequestRef.current.requestId,gateCode:mappedGateCode,
         action,source,verificationRecordId:verificationRecordId||null,reason:source==='manual'?reason:undefined})
       if(result.status!=='simulated'&&result.status!=='acknowledged')throw new Error('Lệnh chưa được bộ điều khiển xác nhận.')
