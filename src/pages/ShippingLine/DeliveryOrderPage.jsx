@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import expressApiClient from '../../services/expressApiClient';
 import { shippingLineApi, formatApiErrorMessage } from './api/shippingLineApi';
 import ShippingBadge from './components/ShippingBadge';
 import ShippingPagination from './components/ShippingPagination';
@@ -123,10 +124,9 @@ export default function DeliveryOrderPage() {
     setVerifyResult(null);
 
     try {
-      const res = await fetch(`/api/shipping-line/gate-out/verify/${encodeURIComponent(verifyContNo.trim().toUpperCase())}`);
-      const json = await res.json();
-      if (json?.data) {
-        setVerifyResult(json.data);
+      const data = await expressApiClient.get(`/shipping-line/gate-out/verify/${encodeURIComponent(verifyContNo.trim().toUpperCase())}`);
+      if (data) {
+        setVerifyResult(data);
       }
     } catch (err) {
       setError(formatApiErrorMessage(err, 'Lỗi khi kiểm tra đối chiếu cổng'));

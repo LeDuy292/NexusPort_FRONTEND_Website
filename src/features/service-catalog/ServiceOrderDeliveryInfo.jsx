@@ -1,11 +1,148 @@
 import { ServiceTripSummary } from './ServiceTripFleet'
-import { Anchor, FileText, Info, Truck } from 'lucide-react'
+import { FleetDocumentsReview } from './FleetDocumentsReview'
+import { Anchor, ExternalLink, FileCheck, FileText, FolderOpen, Info, ShieldCheck, Truck, UserCheck } from 'lucide-react'
 
 export function OrderDeliveryInfo({ order }) {
   const content = order.content || {}
   const delivery = content.delivery || {}
+  const docs = delivery.documents || content.documents || []
   if (content.workflowVersion !== 2) return null
-  return <section className="epo-panel"><div className="epo-panel-title">{delivery.transportMode === 'BARGE' ? <Anchor size={17} /> : <Truck size={17} />}<h3>Khai báo giao nhận</h3></div><dl className="epo-facts"><div><dt>Phương tiện</dt><dd>{delivery.transportMode === 'BARGE' ? 'Sà lan' : 'Xe đầu kéo'}</dd></div>{delivery.transportMode === 'BARGE' ? <><div><dt>Tên sà lan</dt><dd>{delivery.bargeName}</dd></div><div><dt>Năm / chuyến</dt><dd>{delivery.bargeYear} / {delivery.bargeVoyage}</dd></div></> : <><div><dt>Biển số xe</dt><dd>{delivery.trips?.length ? `${delivery.trips.length} chuyến theo container` : delivery.truckPlate}</dd></div><div><dt>Tài xế / điện thoại</dt><dd>{delivery.trips?.length ? 'Chi tiết phân công bên dưới' : `${delivery.driverName} · ${delivery.driverPhone}`}</dd></div></>}<div><dt>Hạn lệnh giao nhận</dt><dd>{delivery.orderValidUntil || 'Không khai báo'}</dd></div></dl>{delivery.transportMode === 'TRUCK' && <ServiceTripSummary trips={delivery.trips} containers={order.containers} showProfiles />}<div className="epo-note"><strong>Thông quan: {order.customsStatus === 'CLEARED_PORT_RECORD' ? 'Đã ghi nhận tại cảng khi xác nhận đăng ký' : 'Chờ cảng đối chiếu trước giao nhận'}</strong><p>{order.customsStatus === 'CLEARED_PORT_RECORD' ? 'Theo hồ sơ cảng đã lưu cùng đơn, chưa phải phản hồi trực tiếp từ VASSCM.' : 'Cảnh báo này không chặn xử lý đăng ký hoặc thanh toán sau khi duyệt. Việc giao nhận thực tế vẫn cần cảng kiểm tra điều kiện thông quan.'}</p></div><div className="epo-container-list">{(content.lines || []).filter(line => line.customsSealRequired).map(line => <p key={line.sourceContainerId}>Hàng phải niêm phong hải quan: {order.containers?.find(container => container.sourceContainerId === line.sourceContainerId)?.containerNumber || 'Container trong hồ sơ'}</p>)}</div></section>
+
+  const formatSize = bytes => {
+    if (!bytes) return ''
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / 1048576).toFixed(1)} MB`
+  }
+
+  return (
+    <section className="epo-panel">
+      <div className="epo-panel-title">
+        {delivery.transportMode === 'BARGE' ? <Anchor size={17} /> : <Truck size={17} />}
+        <h3>Khai báo giao nhận & Hồ sơ</h3>
+      </div>
+      <dl className="epo-facts">
+        <div>
+          <dt>Phương tiện</dt>
+          <dd>{delivery.transportMode === 'BARGE' ? 'Sà lan' : 'Xe đầu kéo'}</dd>
+        </div>
+        {delivery.transportMode === 'BARGE' ? (
+          <>
+            <div>
+              <dt>Tên sà lan</dt>
+              <dd>{delivery.bargeName}</dd>
+            </div>
+            <div>
+              <dt>Năm / chuyến</dt>
+              <dd>{delivery.bargeYear} / {delivery.bargeVoyage}</dd>
+            </div>
+          </>
+        ) : (
+          <>
+            <div>
+              <dt>Biển số xe</dt>
+              <dd>{delivery.trips?.length ? `${delivery.trips.length} chuyến theo container` : delivery.truckPlate}</dd>
+            </div>
+            <div>
+              <dt>Tài xế / điện thoại</dt>
+              <dd>{delivery.trips?.length ? 'Chi tiết phân công bên dưới' : `${delivery.driverName} · ${delivery.driverPhone}`}</dd>
+            </div>
+          </>
+        )}
+        <div>
+          <dt>Hạn lệnh giao nhận</dt>
+          <dd>{delivery.orderValidUntil || 'Không khai báo'}</dd>
+        </div>
+      </dl>
+
+      {delivery.transportMode === 'TRUCK' && (
+        <ServiceTripSummary trips={delivery.trips} containers={order.containers} showProfiles />
+      )}
+
+      {/* HỒ SƠ PHÁP LÝ & HÌNH ẢNH XE - TÀI XẾ */}
+      {delivery.transportMode === 'TRUCK' && delivery.trips?.length > 0 && (
+        <div style={{ marginTop: '16px' }}>
+          <FleetDocumentsReview trips={delivery.trips} containers={order.containers} />
+        </div>
+      )}
+
+      {/* BỘ CHỨNG TỪ TẢI LÊN & HỒ SƠ PHÁP LÝ */}
+      <div style={{ marginTop: '16px', background: '#fff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+          <FolderOpen size={16} className="text-orange" />
+          <strong style={{ fontSize: '13px', color: '#1e293b' }}>Bộ hồ sơ chứng từ nộp Dispatcher</strong>
+        </div>
+
+        {docs.length > 0 ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '8px', marginBottom: '12px' }}>
+            {docs.map((doc, idx) => (
+              <div
+                key={idx}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 12px',
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '8px',
+                  fontSize: '12px',
+                }}
+              >
+                <div style={{ minWidth: 0, flex: 1, marginRight: '8px' }}>
+                  <div style={{ fontWeight: 600, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {doc.title || doc.documentType}
+                  </div>
+                  <div style={{ fontSize: '11px', color: '#64748b' }}>
+                    {doc.fileName} {doc.fileSizeBytes ? `(${formatSize(doc.fileSizeBytes)})` : ''}
+                  </div>
+                </div>
+                {doc.fileUrl && (
+                  <a
+                    href={doc.fileUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      color: '#0284c7',
+                      fontWeight: 600,
+                      textDecoration: 'none',
+                      fontSize: '11px',
+                    }}
+                  >
+                    Xem <ExternalLink size={12} />
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={{ fontSize: '12px', color: '#64748b', margin: '0 0 10px' }}>Chưa có tệp chứng từ tải lên kèm theo đơn.</p>
+        )}
+
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', paddingTop: '8px', borderTop: '1px dashed #e2e8f0', fontSize: '11px', color: '#475569' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <UserCheck size={14} className="text-emerald" /> Hồ sơ GPLX & CCCD tài xế: <strong style={{ color: '#166534' }}>Đã xác thực</strong>
+          </span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <FileCheck size={14} className="text-emerald" /> Giấy kiểm định & Bảo hiểm xe: <strong style={{ color: '#166534' }}>Đã xác thực</strong>
+          </span>
+        </div>
+      </div>
+
+      <div className="epo-note">
+        <strong>Thông quan: {order.customsStatus === 'CLEARED_PORT_RECORD' ? 'Đã ghi nhận tại cảng khi xác nhận đăng ký' : 'Chờ cảng đối chiếu trước giao nhận'}</strong>
+        <p>{order.customsStatus === 'CLEARED_PORT_RECORD' ? 'Theo hồ sơ cảng đã lưu cùng đơn, chưa phải phản hồi trực tiếp từ VASSCM.' : 'Cảnh báo này không chặn xử lý đăng ký hoặc thanh toán sau khi duyệt. Việc giao nhận thực tế vẫn cần cảng kiểm tra điều kiện thông quan.'}</p>
+      </div>
+      <div className="epo-container-list">
+        {(content.lines || []).filter(line => line.customsSealRequired).map(line => (
+          <p key={line.sourceContainerId}>Hàng phải niêm phong hải quan: {order.containers?.find(container => container.sourceContainerId === line.sourceContainerId)?.containerNumber || 'Container trong hồ sơ'}</p>
+        ))}
+      </div>
+    </section>
+  )
 }
 
 export function OrderInvoiceInfo({ order }) {

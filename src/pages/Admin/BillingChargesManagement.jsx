@@ -342,7 +342,7 @@ export default function BillingChargesManagement() {
       <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 flex gap-3 text-xs text-orange-800">
         <span className="material-symbols-outlined text-signal-orange text-lg">monetization_on</span>
         <div>
-          <strong className="font-bold">Lưu ý phân nhiệm tài chính (Billing Rule):</strong> Các hãng tàu (Carrier) và đơn vị vận tải (Transport Company) là khách hàng thanh toán phí ngoài cảng. Phân hệ Billing do bộ phận tài chính/quản trị viên Admin xử lý. Mọi nhân viên vận hành thực địa (Dispatcher, Yard Staff, Gate Officer, Berth Staff) tuyệt đối không có quyền thay đổi bảng giá cước, chỉnh sửa hóa đơn hoặc ghi nhận công nợ.
+          <strong className="font-bold">Lưu ý phân nhiệm tài chính (Billing Rule):</strong> Các hãng tàu (Carrier) và đơn vị vận tải (Transport Company) là khách hàng thanh toán phí ngoài cảng. Phân hệ Billing do bộ phận tài chính/quản trị viên Admin xử lý. Mọi nhân viên vận hành thực địa (Dispatcher, Yard Staff, Gate Officer) tuyệt đối không có quyền thay đổi bảng giá cước, chỉnh sửa hóa đơn hoặc ghi nhận công nợ.
         </div>
       </div>
 

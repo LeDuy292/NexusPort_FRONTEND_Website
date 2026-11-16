@@ -192,7 +192,7 @@ export default function CarrierPortal() {
               className="bg-white border border-chalk rounded-xl h-24 flex flex-col items-center justify-center gap-2 hover:bg-fog hover:shadow-md transition-all shadow-sm group"
             >
               <span className="material-symbols-outlined text-signal-orange group-hover:scale-110 transition-transform">badge</span>
-              <span className="font-bold text-carbon text-xs">Quản lý tài xế</span>
+              <span className="font-bold text-carbon text-xs">Tài xế & phương tiện</span>
             </button>
 
             <button

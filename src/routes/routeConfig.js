@@ -8,7 +8,6 @@ export const ROLES = {
   GATE_OFFICER: 'Gate Officer',
   DISPATCHER: 'Dispatcher',
   YARD_OPERATOR: 'Yard Operator',
-  BERTH_STAFF: 'Berth Staff',
   ADMINISTRATOR: 'Administrator',
   CARRIER_STAFF: 'Carrier Staff',
   SHIPPING_LINE: 'Shipping Line'
@@ -114,10 +113,6 @@ export const routeConfig = [
     allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {
-    path: '/berth',
-    allowedRoles: [ROLES.BERTH_STAFF, ROLES.ADMINISTRATOR],
-  },
-  {
     path: '/dispatcher/gate-bookings',
     allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
@@ -176,18 +171,6 @@ export const routeConfig = [
   {
     path: '/yard-staff/container-detail',
     allowedRoles: [ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
-  },
-  {
-    path: '/berth-staff/dashboard',
-    allowedRoles: [ROLES.BERTH_STAFF, ROLES.ADMINISTRATOR],
-  },
-  {
-    path: '/berth-staff/vessel-operation-control',
-    allowedRoles: [ROLES.BERTH_STAFF, ROLES.ADMINISTRATOR],
-  },
-  {
-    path: '/berth-staff/incident-reporting',
-    allowedRoles: [ROLES.BERTH_STAFF, ROLES.ADMINISTRATOR],
   },
   {
     path: '/carrier-profile',

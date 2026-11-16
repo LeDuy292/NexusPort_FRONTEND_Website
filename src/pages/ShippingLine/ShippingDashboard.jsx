@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import expressApiClient from '../../services/expressApiClient';
 import { shippingLineApi, formatApiErrorMessage } from './api/shippingLineApi';
 import ShippingBadge from './components/ShippingBadge';
 import EdoIssueModal from './components/EdoIssueModal';
@@ -44,10 +45,9 @@ export default function ShippingDashboard() {
     setCheckingGate(true);
     setQuickCheckResult(null);
     try {
-      const res = await fetch(`/api/shipping-line/gate-out/verify/${encodeURIComponent(quickContNo.trim().toUpperCase())}`);
-      const json = await res.json();
-      if (json?.data) {
-        setQuickCheckResult(json.data);
+      const data = await expressApiClient.get(`/shipping-line/gate-out/verify/${encodeURIComponent(quickContNo.trim().toUpperCase())}`);
+      if (data) {
+        setQuickCheckResult(data);
       }
     } catch {
       setQuickCheckResult({ canGateOut: false, reason: 'Lỗi kết nối kiểm tra cổng' });

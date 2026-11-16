@@ -47,7 +47,9 @@ export const yardSlotHistoryService = {
     })()
 
     const queryStr = searchParams.toString() ? `?${searchParams.toString()}` : ''
-    const response = await fetch(`/api/yard/slots/history/export${queryStr}`, {
+    const rawApi = (import.meta.env.VITE_API_URL || '/api').trim().replace(/\/+$/, '')
+    const apiBase = rawApi.startsWith('http') && !rawApi.endsWith('/api') ? `${rawApi}/api` : rawApi
+    const response = await fetch(`${apiBase}/yard/slots/history/export${queryStr}`, {
       headers: {
         ...(token ? { Authorization: `Bearer ${token}` } : {})
       }

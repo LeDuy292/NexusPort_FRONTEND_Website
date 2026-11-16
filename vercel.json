@@ -7,7 +7,7 @@
     },
     {
       "source": "/api/:path*",
-      "destination": "https://nexusport-backend-website-production.up.railway.app/api/:path*"
+      "destination": "https://api.nexusport.io.vn/api/:path*"
     },
     {
       "source": "/node-api/:path*",

@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { useLocation } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import { createSessionHeartbeat, SESSION_HEARTBEAT_MS } from '../services/sessionHeartbeat'
+import { endConfirmedSession, verifySession } from '../services/sessionValidation'
 
 const getRealtimeUrl = () => {
   if (import.meta.env.VITE_REALTIME_URL) {
@@ -20,22 +21,8 @@ const getToken = () => {
       const parsed = JSON.parse(stored)
       if (parsed?.token) return parsed.token
     }
-  } catch (_) { }
+  } catch { }
   return localStorage.getItem('token') || sessionStorage.getItem('token') || null
-}
-
-const performKickout = (reason = 'SESSION_KICKED', isKicked = true) => {
-  console.warn('[SessionListener] Thực hiện đăng xuất:', reason)
-  try {
-    localStorage.removeItem('user')
-    localStorage.removeItem('token')
-    sessionStorage.removeItem('user')
-    sessionStorage.removeItem('token')
-  } catch (_) { }
-
-  if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
-    window.location.href = isKicked ? '/login?kicked=true' : '/login'
-  }
 }
 
 /**
@@ -43,7 +30,7 @@ const performKickout = (reason = 'SESSION_KICKED', isKicked = true) => {
  * Tích hợp 4 lớp bảo vệ:
  * 1. Lắng nghe trực tiếp sự kiện 'auth:session_kicked' từ Socket.IO
  * 2. Phân biệt chính xác giữa ngắt kết nối mạng và bị đá do đăng nhập trùng lặp
- * 3. Polling kiểm tra trạng thái phiên mỗi 2.5 giây (/api/auth/me)
+ * 3. Polling kiểm tra trạng thái phiên mỗi 15 giây (/api/auth/me)
  * 4. Kiểm tra ngay lập tức khi người dùng click chuột hoặc quay lại cửa sổ (window focus/visibilitychange)
  */
 export default function SessionListener() {
@@ -66,31 +53,14 @@ export default function SessionListener() {
       reconnectionDelay: 1000,
     })
 
-    socket.on('auth:session_kicked', (data) => {
-      console.warn('[SessionListener] auth:session_kicked received:', data)
-      if (data?.reason === 'CONCURRENT_LOGIN') {
-        performKickout('DUPLICATE_LOGIN')
-      } else {
-        performKickout('LOGGED_OUT')
-      }
-    })
-
-    socket.on('disconnect', (reason) => {
-      console.warn('[SessionListener] Socket disconnected:', reason)
-      // Không cưỡng chế đăng xuất khi ngắt kết nối mạng hoặc server restart
-    })
-
-    socket.on('connect_error', (err) => {
-      const msg = err?.message || ''
-      if (msg.includes('SESSION_KICKED')) {
-        performKickout('DUPLICATE_LOGIN')
-      } else if (msg.includes('SESSION_LOGGED_OUT') || msg.includes('SESSION_EXPIRED')) {
-        performKickout('AUTH_EXPIRED')
-      }
+    let active = true
+    const confirmSession = () => { if (active && getToken() === token) void verifySession(token) }
+    socket.on('auth:session_kicked', confirmSession)
+    socket.on('connect_error', err => {
+      if (/SESSION_KICKED|SESSION_LOGGED_OUT|SESSION_EXPIRED/.test(err?.message || '')) confirmSession()
     })
 
     // 3: Deduplicate polling/focus checks and ignore stale responses after cleanup.
-    let unauthorizedBody = {}
     const heartbeat = createSessionHeartbeat({
       getToken,
       isVisible: () => !document.hidden,
@@ -103,18 +73,9 @@ export default function SessionListener() {
             'Cache-Control': 'no-cache',
           },
         })
-        if (res.status === 401) {
-          unauthorizedBody = await res.clone().json().catch(() => ({}))
-        }
         return res
       },
-      onUnauthorized: () => {
-        if (unauthorizedBody.code === 'SESSION_KICKED') {
-          performKickout('HEARTBEAT_KICKED', true)
-        } else if (unauthorizedBody.message?.includes('hết hạn') || unauthorizedBody.message?.includes('không hợp lệ')) {
-          performKickout('TOKEN_EXPIRED', false)
-        }
-      },
+      onUnauthorized: body => { if (active) endConfirmedSession(token, body.code) },
     })
 
     const heartbeatInterval = setInterval(() => void heartbeat.check(), SESSION_HEARTBEAT_MS)
@@ -128,6 +89,7 @@ export default function SessionListener() {
     document.addEventListener('visibilitychange', handleWindowFocus)
 
     return () => {
+      active = false
       clearInterval(heartbeatInterval)
       heartbeat.stop()
       window.removeEventListener('focus', handleWindowFocus)
