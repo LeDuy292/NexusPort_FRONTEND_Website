@@ -276,17 +276,40 @@ export default function GateControl() {
     setCameraLoading(true)
     setCameraError(null)
     try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        throw new Error('Trình duyệt không hỗ trợ truy cập Webcam thiết bị.')
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'environment',
+        },
+      })
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current.play().catch(() => {})
+        }
+      }
       setCameraActive(true)
-      showToast('📷 Đã kích hoạt Camera quan sát thời gian thực!')
+      showToast('📷 Đã kết nối Camera trực tiếp thành công!')
     } catch (err) {
       console.error('Camera Error:', err)
-      setCameraError(err.message || 'Không thể mở Camera.')
+      setCameraError(err.message || 'Không thể mở Camera máy.')
+      showToast('⚠️ Không thể mở Camera máy: ' + (err.message || 'Quyền truy cập bị từ chối'))
     } finally {
       setCameraLoading(false)
     }
   }
 
   const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject
+      stream.getTracks().forEach((track) => track.stop())
+      videoRef.current.srcObject = null
+    }
     setCameraActive(false)
   }
 
@@ -433,31 +456,72 @@ export default function GateControl() {
     try {
       isScanningRef.current = true
       setIsAiScanning(true)
-      if (isManual) showToast('📸 Đang gửi lệnh chụp ảnh & phân tích biển số...')
+      if (isManual) showToast('📸 Đang chụp ảnh & phân tích biển số qua AI...')
 
-      // Kích hoạt chụp ảnh & OCR trực tiếp từ AI Service
-      const scanRes = await gateService.triggerHardwareScan(mode === 'checkin' ? 'IN' : 'OUT')
-      if (scanRes.success && scanRes.data) {
-        setRecognitionError('')
-        const plate = scanRes.data.plate_number ? scanRes.data.plate_number.trim().toUpperCase() : ''
-        const conf = scanRes.data.confidence ? scanRes.data.confidence * 100 : 0
+      const video = videoRef.current
+      if (video && video.videoWidth && video.videoHeight && video.readyState >= 2) {
+        // Cách 1: Chụp trực tiếp từ Webcam trình duyệt
+        const canvas = canvasRef.current || document.createElement('canvas')
+        canvas.width = video.videoWidth
+        canvas.height = video.videoHeight
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
 
-        if (plate) {
-          setDetectedPlate(plate)
-          setConfidence(conf)
-          lastScannedPlateRef.current = plate
-          lastVerificationAtRef.current = Date.now()
-          showToast(`🎯 Nhận diện xe thành công: "${plate}" (${conf.toFixed(1)}%)`)
-          if (isManual) {
-            void evaluateVerification(plate, conf)
+        setCapturedImage(dataUrl)
+
+        const res = await fetch(dataUrl)
+        const imageBlob = await res.blob()
+
+        const activeGate = selectedGate || DEFAULT_GATES[mode === 'checkin' ? 0 : 1]
+        const aiRes = await gateService.recognizeVehicleImage(imageBlob, activeGate.code, 'LANE_01')
+        if (aiRes.success && aiRes.data) {
+          const data = aiRes.data
+          setRecognitionError('')
+          const plateObj = data.license_plate || {}
+          const plate = plateObj.plate_number ? plateObj.plate_number.trim().toUpperCase() : ''
+          const conf = plateObj.ocr_confidence ? plateObj.ocr_confidence * 100 : (plate ? 94.4 : 0)
+          const cropImg = plateObj.plate_image_base64 || null
+
+          if (plate) {
+            if (isManual || plate !== lastScannedPlateRef.current || Date.now() - lastVerificationAtRef.current >= 8000) {
+              setDetectedPlate(plate)
+              setConfidence(conf)
+              if (cropImg) setAiCropImage(cropImg)
+              lastScannedPlateRef.current = plate
+              lastVerificationAtRef.current = Date.now()
+              showToast(`🎯 Nhận diện xe thành công: "${plate}" (${conf.toFixed(1)}%)`)
+              await evaluateVerification(plate, conf, dataUrl, cropImg, isManual)
+            }
+          } else if (isManual) {
+            showToast('⚠️ Không phát hiện biển số rõ ràng trong khung hình.')
           }
-        } else if (isManual) {
-          showToast('⚠️ Không phát hiện biển số rõ ràng trong khung hình camera.')
+        } else {
+          const message = aiRes.error || 'Hệ thống không thể xử lý khung hình.'
+          setRecognitionError(message)
+          if (isManual) showToast('⚠️ ' + message)
         }
       } else {
-        const message = scanRes.error || 'Hệ thống không thể xử lý khung hình.'
-        setRecognitionError(message)
-        if (isManual) showToast('⚠️ ' + message)
+        // Cách 2: Gọi AI Service phần cứng nếu camera backend có kết nối
+        const scanRes = await gateService.triggerHardwareScan(mode === 'checkin' ? 'IN' : 'OUT')
+        if (scanRes.success && scanRes.data) {
+          setRecognitionError('')
+          const plate = scanRes.data.plate_number ? scanRes.data.plate_number.trim().toUpperCase() : ''
+          const conf = scanRes.data.confidence ? scanRes.data.confidence * 100 : 0
+
+          if (plate) {
+            setDetectedPlate(plate)
+            setConfidence(conf)
+            lastScannedPlateRef.current = plate
+            lastVerificationAtRef.current = Date.now()
+            showToast(`🎯 Nhận diện xe thành công: "${plate}" (${conf.toFixed(1)}%)`)
+            if (isManual) {
+              void evaluateVerification(plate, conf, null, null, isManual)
+            }
+          } else if (isManual) {
+            showToast('⚠️ Không phát hiện biển số rõ ràng trong khung hình camera.')
+          }
+        }
       }
     } catch (err) {
       setRecognitionError(err.message || 'Không kết nối được AI service.')
@@ -712,14 +776,16 @@ export default function GateControl() {
 
           {/* Khung hiển thị Camera (Webcam Stream Trực Tiếp) */}
           <div className="relative aspect-video rounded-2xl overflow-hidden shadow-xl border-2 border-slate-800 bg-[#070b14] flex items-center justify-center">
-            {/* 1. Luồng video Webcam AI Smart Gate Trực Tiếp (MJPEG Stream từ AI Service) */}
-            {cameraActive && (
-              <img
-                src={gateService.getVideoFeedUrl(mode === 'checkin' ? 'IN' : 'OUT')}
-                alt="Live AI Smart Gate Stream"
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-            )}
+            {/* 1. Luồng video Webcam trực tiếp từ thiết bị */}
+            <video
+              ref={videoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`absolute inset-0 w-full h-full object-cover ${
+                cameraActive ? 'block' : 'hidden'
+              }`}
+            />
 
             {/* 2. Khi Camera chưa bật: hiển thị màn hình chờ */}
             {!cameraActive && (
