@@ -1,5 +1,12 @@
+import { verifySession } from './sessionValidation'
+
 const getApiBaseUrl = () => {
-  const raw = (import.meta.env.VITE_API_URL || '/api').trim().replace(/\/+$/, '')
+  let raw = '/api'
+  try {
+    raw = (import.meta.env.VITE_API_URL || '/api').trim().replace(/\/+$/, '')
+  } catch {
+    raw = '/api'
+  }
   if (raw.startsWith('http') && !raw.endsWith('/api')) {
     return `${raw}/api`
   }
@@ -35,20 +42,8 @@ const request = async (method, path, body = null) => {
   const data = await res.json().catch(() => ({}))
 
   if (res.status === 401) {
-    try {
-      localStorage.removeItem('user')
-      localStorage.removeItem('token')
-      sessionStorage.removeItem('user')
-      sessionStorage.removeItem('token')
-    } catch (_) {}
-    if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-      if (data?.code === 'SESSION_KICKED') {
-        window.location.href = '/login?kicked=duplicate'
-      } else {
-        window.location.href = '/login'
-      }
-    }
-    const error = new Error(data?.message || 'Phiên làm việc đã hết hạn hoặc bị kết thúc.')
+    const state = await verifySession(token)
+    const error = new Error(state === 'ended' ? (data?.message || 'Phiên làm việc đã kết thúc.') : 'Dịch vụ hiện chưa xác thực được yêu cầu. Vui lòng thử lại.')
     error.status = 401
     error.data = data
     throw error

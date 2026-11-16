@@ -1,3 +1,5 @@
+import { verifySession } from './sessionValidation'
+
 const NODE_API_URL = import.meta.env.VITE_NODE_API_URL || '/node-api'
 
 const getToken = () => {
@@ -30,16 +32,8 @@ const request = async (method, path, { params, body } = {}) => {
   }
 
   if (response.status === 401) {
-    try {
-      localStorage.removeItem('user')
-      localStorage.removeItem('token')
-      sessionStorage.removeItem('user')
-      sessionStorage.removeItem('token')
-    } catch (_) {}
-    if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
-      window.location.href = '/login'
-    }
-    const error = new Error('Phiên làm việc đã kết thúc. Vui lòng đăng nhập lại.')
+    const state = await verifySession(token)
+    const error = new Error(state === 'ended' ? 'Phiên làm việc đã kết thúc. Vui lòng đăng nhập lại.' : 'Dịch vụ hiện chưa xác thực được yêu cầu. Vui lòng thử lại.')
     error.status = 401
     throw error
   }

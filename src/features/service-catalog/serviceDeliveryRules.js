@@ -1,4 +1,4 @@
-export const blankDelivery = () => ({ transportMode: 'TRUCK', trips: [], truckPlate: '', driverName: '', driverPhone: '', bargeName: '', bargeYear: null, bargeVoyage: '', orderValidUntil: '', customsCheckSkipped: false, customsConfirmationScope: '' })
+export const blankDelivery = () => ({ transportMode: 'TRUCK', trips: [], truckPlate: '', driverName: '', driverPhone: '', bargeName: '', bargeYear: null, bargeVoyage: '', orderValidUntil: '', customsCheckSkipped: false, customsConfirmationScope: '', documents: [] })
 export const blankBuyer = () => ({ name: '', taxCode: '', address: '', email: '' })
 export function validContainer(value) {
   if (!value || typeof value !== 'string') return false

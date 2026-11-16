@@ -1,3 +1,4 @@
+import ActivateAccount from './pages/Auth/ActivateAccount'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './routes/ProtectedRoute'
 import RoleRoute from './routes/RoleRoute'
@@ -46,11 +47,6 @@ import ContainerDetail from './pages/Yard/ContainerDetail'
 import YardReceiving from './pages/Yard/YardReceiving'
 import ReeferManagement from './pages/Yard/ReeferManagement'
 import DriverPortalContainer from './pages/Driver/DriverPortalContainer'
-import BerthOperationsDashboard from './pages/BerthStaff/BerthOperationsDashboard'
-import VesselOperationControl from './pages/BerthStaff/VesselOperationControl'
-import DischargingProgress from './pages/BerthStaff/DischargingProgress'
-import OperationControl from './pages/BerthStaff/OperationControl'
-import BerthIncidentReporting from './pages/BerthStaff/BerthIncidentReporting'
 
 // Import các trang Dispatcher Control Center
 import VehicleDispatch from './pages/Dispatch/VehicleDispatch'
@@ -104,9 +100,6 @@ function HomeRedirect() {
   if (role === 'yard operator' || role === 'yard staff' || role === 'yard') {
     return <Navigate to="/yard-staff/dashboard" replace />
   }
-  if (role === 'berth staff' || role === 'berth') {
-    return <Navigate to="/berth-staff/dashboard" replace />
-  }
   if (role === 'shipping line' || role === 'shipping') {
     return <Navigate to="/shipping-line/dashboard" replace />
   }
@@ -124,6 +117,7 @@ function App() {
       <Routes>
         {/* Route Công khai */}
         <Route path="/login" element={<Login />} />
+        <Route path="/activate-account" element={<ActivateAccount />} />
         {import.meta.env.DEV && <Route element={<MainLayout previewUser={{username:'Bản xem trước',role:ROLES.DISPATCHER}} />}><Route path="/preview/yard" element={<YardDesignPreview previewOnly />} /></Route>}
 
         {/* Tuyến đường được Bảo vệ (Yêu cầu Đăng nhập) */}
@@ -179,15 +173,6 @@ function App() {
             <Route path="/dispatcher/cameras" element={<CameraMonitoring />} />
           </Route>
 
-          {/* Nhóm Nhân viên Cầu bến (Berth Staff) */}
-          <Route element={<RoleRoute allowedRoles={[ROLES.BERTH_STAFF, ROLES.ADMINISTRATOR]} />}>
-            <Route path="/berth" element={<BerthOps />} />
-            <Route path="/berth-staff/dashboard" element={<BerthOperationsDashboard />} />
-            <Route path="/berth-staff/vessel-operation-control" element={<VesselOperationControl />} />
-            <Route path="/berth-staff/discharging-progress" element={<DischargingProgress />} />
-            <Route path="/berth-staff/operation-control" element={<OperationControl />} />
-            <Route path="/berth-staff/incident-reporting" element={<BerthIncidentReporting />} />
-          </Route>
 
           {/* Phân hệ Hãng tàu (Shipping Line) */}
           <Route element={<RoleRoute allowedRoles={[ROLES.SHIPPING_LINE]} />}>

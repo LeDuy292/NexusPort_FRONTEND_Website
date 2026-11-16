@@ -1,18 +1,29 @@
 import apiClient from './apiClient'
 
 const vehicleService = {
-  getAllVehicles: async (filters = {}) => {
+  getPhotos: async (ids, config = {}) => {
+    const photos = {}
+    for (let offset = 0; offset < ids.length; offset += 100) {
+      const batch = ids.slice(offset, offset + 100)
+      const response = await apiClient.get('/v1/Vehicle/photos?' + batch.map(id => 'ids=' + encodeURIComponent(id)).join('&'), config)
+      Object.assign(photos, response.data)
+    }
+    return photos
+  },
+  getAllVehicles: async (filters = {}, config = {}) => {
     const params = new URLSearchParams()
     if (filters.status) params.append('status', filters.status)
     if (filters.searchTerm) params.append('searchTerm', filters.searchTerm)
     if (filters.carrierId) params.append('carrierId', filters.carrierId)
+    if (filters.includeDocuments !== undefined) params.append('includeDocuments', filters.includeDocuments)
+    if (filters.includePhotos !== undefined) params.append('includePhotos', filters.includePhotos)
 
-    const response = await apiClient.get(`/v1/Vehicle?${params.toString()}`)
+    const response = await apiClient.get(`/v1/Vehicle?${params.toString()}`, config)
     return response.data
   },
 
-  getVehicleById: async (id) => {
-    const response = await apiClient.get(`/v1/Vehicle/${id}`)
+  getVehicleById: async (id, config = {}) => {
+    const response = await apiClient.get(`/v1/Vehicle/${id}`, config)
     return response.data
   },
 

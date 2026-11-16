@@ -1,10 +1,11 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { AlertCircle, Check, CheckCircle2, ClipboardCheck, FileText, Info, Loader2, LockKeyhole, Pencil, RefreshCw, ShieldCheck, X } from 'lucide-react'
+import { AlertCircle, Check, CheckCircle2, ClipboardCheck, FileText, FolderOpen, Info, Loader2, LockKeyhole, Pencil, RefreshCw, ShieldCheck, X } from 'lucide-react'
 import CatalogDialog from './CatalogDialog'
 import ServiceReceiptButton from './ServiceRegistrationReceipt'
 import { ServiceTripSummary } from './ServiceTripFleet'
+import { FleetDocumentsReview } from './FleetDocumentsReview'
 import { labels } from './catalogApi'
 import { draftDateTime, draftError, draftSession, serviceDraftKey, serviceDraftsApi } from './serviceDraftsApi'
 import { orderStatusLabels, paymentStatusLabels } from './serviceOrdersApi'
@@ -89,7 +90,39 @@ export default function ServiceRegistrationReview({ draftId, onClose, onEdit, on
           <div className="epr-main">
             <section className="epr-facts-card" aria-label="Thông tin hồ sơ đăng ký"><div className="epr-section-heading"><FileText size={18} /><h3>Thông tin đăng ký</h3></div><dl className="epr-facts"><div><dt>Luồng hàng</dt><dd>{labels.direction[content.flow] || 'Chưa chọn'}</dd></div><div><dt>{content.flow === 'IMPORT' ? 'DO/eDO' : 'Booking'}</dt><dd>{sourceLabel || 'Chưa chọn hồ sơ nguồn'}</dd></div><div><dt>Dự kiến thực hiện</dt><dd>{draftDateTime(content.plannedAt)}</dd></div><div><dt>Người liên hệ</dt><dd>{[content.contactName, content.contactPhone].filter(Boolean).join(' · ') || 'Chưa khai báo'}</dd></div></dl></section>
             <Issues issues={issues} fees={fees} containers={containers} confirmed={confirmed} />
-            {!!content.delivery?.trips?.length && <section className="epr-facts-card"><h3>Phân công theo container</h3><ServiceTripSummary trips={content.delivery.trips} containers={check?.containers || []} showProfiles /></section>}
+            {!!content.delivery?.trips?.length && (
+              <section className="epr-facts-card">
+                <div className="epr-section-heading">
+                  <FileText size={18} />
+                  <h3>Phân công phương tiện & Giấy tờ xe - tài xế</h3>
+                </div>
+                <ServiceTripSummary trips={content.delivery.trips} containers={check?.containers || []} showProfiles />
+                <div style={{ marginTop: '16px' }}>
+                  <FleetDocumentsReview trips={content.delivery.trips} containers={check?.containers || []} />
+                </div>
+              </section>
+            )}
+            {!!content.delivery?.documents?.length && (
+              <section className="epr-facts-card">
+                <div className="epr-section-heading">
+                  <FolderOpen size={18} />
+                  <h3>Hồ sơ & Chứng từ đính kèm ({content.delivery.documents.length} tệp)</h3>
+                </div>
+                <div className="epd-review-docs-list" style={{ marginTop: '10px' }}>
+                  {content.delivery.documents.map((doc, idx) => (
+                    <div key={idx} className="epd-review-doc-badge">
+                      <FileText size={13} />
+                      <span>{doc.title}: <strong>{doc.fileName}</strong></span>
+                      {doc.fileUrl && (
+                        <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer" className="epd-review-doc-link">
+                          Xem
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
             {content.note && <section className="epr-note-card"><h3>Ghi chú đăng ký</h3><p>{content.note}</p></section>}
           </div>
         </div>
