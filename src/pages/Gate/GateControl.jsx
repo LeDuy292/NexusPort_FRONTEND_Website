@@ -222,7 +222,7 @@ export default function GateControl() {
     if (action === 'open') {
       void gateService.manualBarrierOpen().catch(() => {})
     } else {
-      void gateService.manualBarrierFail().catch(() => {})
+      void gateService.manualBarrierClose().catch(() => {})
     }
 
     // Xóa bỏ bất kỳ chu trình mô phỏng treo nào trong bộ nhớ
@@ -318,6 +318,7 @@ export default function GateControl() {
     if (!plate || !plate.trim()) return
     const activeGate = selectedGate || DEFAULT_GATES[mode === 'checkin' ? 0 : 1]
     if (!activeGate || gateError) { showToast('Vui lòng chọn cổng thực tế đang hoạt động trước khi xác minh.'); return }
+    if (barrierState === 'opened' || barrierState === 'opening') return // Cổng đang mở: giữ nguyên, không quét lại làm giật servo
     if (verificationInFlightRef.current || simulationLockRef.current || verificationBusy || gateOutBusy || barrierInFlightRef.current) return
     if(manual&&!manualReason.trim()){showToast('Nhập lý do xác minh thủ công (ví dụ: mưa, camera không đọc được biển số).');return}
     verificationInFlightRef.current = true

@@ -56,14 +56,15 @@ export const gateService = {
     }
   },
   async commandBarrier(payload) {
-    // 1. Chỉ gửi OPEN xuống hardware ESP32 — KHÔNG gửi FAIL/close (servo tự đóng sau 4s)
+    // 1. Đồng bộ lệnh mở / đóng / lỗi xuống phần cứng ESP32 qua AI Service
     try {
       if (payload?.action === 'open') {
         void aiClient.post('/api/v1/gate/barrier/open').catch(() => {})
+      } else if (payload?.action === 'close') {
+        void aiClient.post('/api/v1/gate/barrier/close').catch(() => {})
       } else if (payload?.action === 'fail') {
         void aiClient.post('/api/v1/gate/barrier/fail').catch(() => {})
       }
-      // action='close' từ simulation → KHÔNG gửi xuống ESP32 (servo tự reset)
     } catch (_) {}
 
     // 2. Gửi lệnh tới C# Backend / fallback
@@ -169,6 +170,15 @@ export const gateService = {
   async manualBarrierOpen() {
     try {
       const res = await aiClient.post('/api/v1/gate/barrier/open')
+      return { success: true, data: res.data }
+    } catch (err) {
+      return { success: false, error: err.message }
+    }
+  },
+
+  async manualBarrierClose() {
+    try {
+      const res = await aiClient.post('/api/v1/gate/barrier/close')
       return { success: true, data: res.data }
     } catch (err) {
       return { success: false, error: err.message }
