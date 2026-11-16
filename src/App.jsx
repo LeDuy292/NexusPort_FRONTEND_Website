@@ -5,6 +5,7 @@ import RoleRoute from './routes/RoleRoute'
 import { CONTAINER_TRANSPORT_ROLES, ROLES } from './routes/routeConfig'
 import MainLayout from './layouts/MainLayout'
 import SessionListener from './components/SessionListener'
+import ErrorBoundary from './components/ErrorBoundary'
 
 // Import các trang đã di chuyển
 import BerthOps from './pages/Ships/BerthOps'
@@ -112,7 +113,7 @@ function HomeRedirect() {
 
 function App() {
   return (
-    <>
+    <ErrorBoundary>
       <SessionListener />
       <Routes>
         {/* Route Công khai */}
@@ -257,7 +258,7 @@ function App() {
       {/* Route không tồn tại ➔ Chuyển về trang chủ */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
-    </>
+    </ErrorBoundary>
   )
 }
 

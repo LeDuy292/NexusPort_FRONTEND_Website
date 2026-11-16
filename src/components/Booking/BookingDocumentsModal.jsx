@@ -216,7 +216,7 @@ export default function BookingDocumentsModal({ isOpen, onClose, booking, manife
 
   return (
     <div
-      className="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-5 bg-carbon/85 backdrop-blur-md animate-in zoom-in-95 duration-150 font-sans"
+      className="fixed inset-0 z-[95] flex items-center justify-center p-3 sm:p-5 bg-carbon/85 backdrop-blur-md animate-in zoom-in-95 duration-150 font-sans"
       role="dialog"
       aria-modal="true"
     >

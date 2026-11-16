@@ -63,7 +63,7 @@ export function computeAutoYardSlot(container, direction = 'EXPORT', index = 0) 
   const rowStr = String(rowNum).padStart(2, '0')
   const tierNum = 1
   const posId = `${blockCode}-B${bayStr}-R${rowNum}-T${tierNum}`
-  const defaultGate = isReefer ? 'Gate 2' : (isDG ? 'Gate 3' : (index % 2 === 0 ? 'Gate 1' : 'Gate 2'))
+  const defaultGate = 'Gate 1'
 
   return {
     slotId: posId,
@@ -78,8 +78,8 @@ export function computeAutoYardSlot(container, direction = 'EXPORT', index = 0) 
     rowCode: rowStr,
     tier: tierNum,
     tierCode: String(tierNum),
-    gate: defaultGate,
-    gateDisplay: `${defaultGate} (Cổng Container)`,
+    gate: 'Gate 1',
+    gateDisplay: 'Gate 1 (Cổng Cảng Tiên Sa)',
     slotName: `Khu ${blockCode} · Bay ${bayStr} (R${rowStr}-T${tierNum})`,
     fullLocation: `Block ${blockCode} · Bay ${bayStr} · Row ${rowStr} · Tier ${tierNum}`,
     size,
@@ -110,7 +110,7 @@ export const TRANSPORT_COMPANIES_POOL = [
         licenseNumber: '660225020133',
         idCardNumber: '066204016135',
         driverPhone: '0905 881 234',
-        requestedGate: 'Gate 2',
+        requestedGate: 'Gate 1',
         etaTime: '08:00 - 10:00',
         licenseImageUrl: 'https://nexusport.s3.us-east-1.amazonaws.com/NexusPort/drivers/gplx_cbae2e1c-bf49-4346-aea6-085acd02c15b.jpg?X-Amz-Expires=604800&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA5C5O6BXI7OI77VFE%2F20261014%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261014T115523Z&X-Amz-SignedHeaders=host&X-Amz-Signature=fb6971d5a14d223b8d9e1f2b413dbaceeea96179441e5fb9607a16bc5e775a55',
         idCardFrontUrl: 'https://nexusport.s3.us-east-1.amazonaws.com/NexusPort/drivers/cccd_front_c0e972b9-7e6e-4514-a38f-471e739e6c56.jpg?X-Amz-Expires=604800&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA5C5O6BXI7OI77VFE%2F20261014%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261014T115457Z&X-Amz-SignedHeaders=host&X-Amz-Signature=5c01f2520f71da01823a66c6f614e5b1f909f2e500fbc478c9dd12a3551b64b9',
@@ -122,7 +122,7 @@ export const TRANSPORT_COMPANIES_POOL = [
         licenseNumber: 'FC-884120',
         idCardNumber: '001309053398',
         driverPhone: '0905 772 911',
-        requestedGate: 'Gate 2',
+        requestedGate: 'Gate 1',
         etaTime: '08:30 - 10:30',
         licenseImageUrl: 'https://nexusport.s3.us-east-1.amazonaws.com/NexusPort/drivers/gplx_874a7389-3e6a-4ed5-b9ff-74a30d1e5878.jpg?X-Amz-Expires=604800&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIA5C5O6BXI7OI77VFE%2F20261017%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20261017T170506Z&X-Amz-SignedHeaders=host&X-Amz-Signature=3d13ab2f80cfe8a6d52be00828b6130b035cabecb0aab8344315bc93c3635990',
         idCardFrontUrl: 'https://nexusport.s3.us-east-1.amazonaws.com/NexusPort/drivers/2d9ae45fac0c4f33ab5bd60683f5aa36.jpg',
@@ -169,8 +169,8 @@ export const TRANSPORT_COMPANIES_POOL = [
     phone: '0918 889 900',
     email: 'operations@tancangdanang.com.vn',
     fleetOptions: [
-      { licensePlate: '43H-196.90', trailerPlate: '43R-112.05', driverName: 'Lê Hoàng Nam', licenseNumber: 'FC-992018', driverPhone: '0983 119 220', requestedGate: 'Gate 2', etaTime: '10:00 - 12:00' },
-      { licensePlate: '43H-445.10', trailerPlate: '43R-209.33', driverName: 'Ngô Minh Tuấn', licenseNumber: 'FC-771234', driverPhone: '0988 554 321', requestedGate: 'Gate 3', etaTime: '10:30 - 12:30' },
+      { licensePlate: '43H-196.90', trailerPlate: '43R-112.05', driverName: 'Lê Hoàng Nam', licenseNumber: 'FC-992018', driverPhone: '0983 119 220', requestedGate: 'Gate 1', etaTime: '10:00 - 12:00' },
+      { licensePlate: '43H-445.10', trailerPlate: '43R-209.33', driverName: 'Ngô Minh Tuấn', licenseNumber: 'FC-771234', driverPhone: '0988 554 321', requestedGate: 'Gate 1', etaTime: '10:30 - 12:30' },
     ]
   },
   {
@@ -180,7 +180,7 @@ export const TRANSPORT_COMPANIES_POOL = [
     phone: '0905 667 788',
     email: 'dispatch@centraltrans.vn',
     fleetOptions: [
-      { licensePlate: '92C-884.12', trailerPlate: '92R-034.11', driverName: 'Phạm Quốc Bảo', licenseNumber: 'FC-338192', driverPhone: '0935 661 882', requestedGate: 'Gate 3', etaTime: '13:30 - 15:30' },
+      { licensePlate: '92C-884.12', trailerPlate: '92R-034.11', driverName: 'Phạm Quốc Bảo', licenseNumber: 'FC-338192', driverPhone: '0935 661 882', requestedGate: 'Gate 1', etaTime: '13:30 - 15:30' },
       { licensePlate: '92C-512.09', trailerPlate: '92R-077.80', driverName: 'Huỳnh Tấn Phát', licenseNumber: 'FC-619204', driverPhone: '0935 990 112', requestedGate: 'Gate 1', etaTime: '14:00 - 16:00' },
     ]
   },
@@ -191,8 +191,8 @@ export const TRANSPORT_COMPANIES_POOL = [
     phone: '0842 737 474',
     email: 'dispatch@koraologistics.vn',
     fleetOptions: [
-      { licensePlate: '38AA-196.90', trailerPlate: '38R-019.90', driverName: 'Gia Huy', licenseNumber: 'FC-661209', driverPhone: '0842 737 474', requestedGate: 'Gate 2', etaTime: '14:30 - 16:30' },
-      { licensePlate: '38C-771.25', trailerPlate: '38R-055.12', driverName: 'Trương Đình Khoa', licenseNumber: 'FC-710293', driverPhone: '0979 332 411', requestedGate: 'Gate 3', etaTime: '15:00 - 17:00' },
+      { licensePlate: '38AA-196.90', trailerPlate: '38R-019.90', driverName: 'Gia Huy', licenseNumber: 'FC-661209', driverPhone: '0842 737 474', requestedGate: 'Gate 1', etaTime: '14:30 - 16:30' },
+      { licensePlate: '38C-771.25', trailerPlate: '38R-055.12', driverName: 'Trương Đình Khoa', licenseNumber: 'FC-710293', driverPhone: '0979 332 411', requestedGate: 'Gate 1', etaTime: '15:00 - 17:00' },
     ]
   },
 ]
@@ -267,14 +267,33 @@ export const manifestPortSyncService = {
       if (stored) {
         const parsed = JSON.parse(stored)
         if (Array.isArray(parsed) && parsed.length > 0) {
-          const manifestNumbers = new Set(parsed.map(m => m.manifestNumber || m.manifestId))
+          let hasMigrated = false
+          const migrated = parsed.map(m => {
+            if (m.voyageNumber === 'OC-2612E' || (m.vesselName && m.vesselName.includes('CONTINUITY'))) {
+              if (m.eta === '2026-11-09 14:00' || !m.eta || m.eta.includes('2026-11-09')) {
+                hasMigrated = true
+                return {
+                  ...m,
+                  eta: '2026-11-25 14:00',
+                  etd: '2026-11-26 18:00',
+                  etaDate: '2026-11-25',
+                  vesselEtaDate: '2026-11-25',
+                }
+              }
+            }
+            return m
+          })
+          if (hasMigrated) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated))
+          }
+          const manifestNumbers = new Set(migrated.map(m => m.manifestNumber || m.manifestId))
           const missingDefaults = DEFAULT_SYNCED_MANIFESTS.filter(d => !manifestNumbers.has(d.manifestNumber) && !manifestNumbers.has(d.manifestId))
           if (missingDefaults.length > 0) {
-            const merged = [...parsed, ...missingDefaults]
+            const merged = [...migrated, ...missingDefaults]
             localStorage.setItem(STORAGE_KEY, JSON.stringify(merged))
             return merged
           }
-          return parsed
+          return migrated
         }
       }
     } catch (err) {
@@ -307,7 +326,20 @@ export const manifestPortSyncService = {
             approvedManifests.has(b.sourceManifestNumber) || approvedManifests.has(b.sourceManifestId)
           )
           const allReservations = yardReservationStore.getReservations()
+          let hasBookingsMigrated = false
           const enriched = filteredApproved.map((item, idx) => {
+            const isOc2612 = item.voyageNumber === 'OC-2612E' || (item.vesselName && item.vesselName.includes('CONTINUITY'))
+            let patchDates = {}
+            if (isOc2612 && (!item.vesselEtaDate || item.vesselEtaDate === '2026-11-09' || (item.vesselEta && item.vesselEta.includes('2026-11-09')))) {
+              hasBookingsMigrated = true
+              patchDates = {
+                vesselEta: '2026-11-25 14:00',
+                vesselEtaDate: '2026-11-25',
+                etaDate: '2026-11-25',
+                date: '25/11/2026',
+              }
+            }
+
             const slot = item.autoYardSlot || {}
             const isRf = (item.containerType || '').includes('RF') || item.isReefer
             const isDg = item.isDG || (item.dgClass && !item.dgClass.includes('Non-DG'))
@@ -317,7 +349,11 @@ export const manifestPortSyncService = {
             const rowStr = String(rowNum).padStart(2, '0')
             const tierNum = slot.tier || 1
             const blockCode = slot.blockCode || (isRf ? 'D01' : (isDg ? 'E01' : (idx % 2 === 0 ? 'A01' : 'A02')))
-            const autoGate = isRf ? 'Gate 2' : (isDg ? 'Gate 3' : (idx % 2 === 0 ? 'Gate 1' : 'Gate 2'))
+            const autoGate = 'Gate 1'
+
+            if (item.requestedGate !== 'Gate 1' || slot.gate !== 'Gate 1') {
+              hasBookingsMigrated = true
+            }
 
             const updatedSlot = {
               ...slot,
@@ -329,18 +365,53 @@ export const manifestPortSyncService = {
               rowCode: rowStr,
               tier: Number(tierNum) || 1,
               tierCode: String(tierNum),
-              gate: slot.gate || autoGate,
-              gateDisplay: slot.gateDisplay || `${slot.gate || autoGate} (Cổng Container)`,
+              gate: 'Gate 1',
+              gateDisplay: 'Gate 1 (Cổng Cảng Tiên Sa)',
               slotName: `Khu ${blockCode} · Bay ${bayStr} (R${rowStr}-T${tierNum})`,
               fullLocation: `Block ${blockCode} · Bay ${bayStr} · Row ${rowStr} · Tier ${tierNum}`,
             }
 
+            let restoredStatus = item.status
+            let isSubmitted = item.transportSubmitted
+            let vPlate = item.licensePlate
+            let vTrailer = item.trailerPlate
+            let vDriver = item.driverName
+            let pStatus = item.paymentStatus || 'Unpaid'
+            let pPaid = item.portBillPaid || false
+
+            if (item.status !== 'Approved') {
+              restoredStatus = 'Pending'
+              isSubmitted = false
+              vPlate = null
+              vTrailer = null
+              vDriver = null
+              pStatus = 'Unpaid'
+              pPaid = false
+              hasBookingsMigrated = true
+            }
+
             return {
               ...item,
-              requestedGate: item.requestedGate || updatedSlot.gate,
+              ...patchDates,
+              status: restoredStatus,
+              transportSubmitted: isSubmitted,
+              licensePlate: vPlate,
+              trailerPlate: vTrailer,
+              driverName: vDriver,
+              paymentStatus: pStatus,
+              portBillPaid: pPaid,
+              rejectionReason: '',
+              rejectionNote: '',
+              requestedGate: 'Gate 1',
               autoYardSlot: updatedSlot,
             }
           })
+
+          if (hasBookingsMigrated) {
+            try {
+              localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(enriched))
+            } catch (e) {}
+          }
           return enriched
         }
       }
@@ -655,8 +726,8 @@ export const manifestPortSyncService = {
       berth: manifest.berth || 'Bến số 1 (TS-01) - Cảng Tiên Sa',
       pol: manifest.pol || 'Đà Nẵng (VNDAD)',
       pod: manifest.pod || 'Tokyo, Nhật Bản (JPTYO)',
-      eta: manifest.eta || '2026-11-09 14:00',
-      etd: manifest.etd || '2026-11-09 22:00',
+      eta: manifest.eta || '2026-11-25 14:00',
+      etd: manifest.etd || '2026-11-26 22:00',
       sentToPortAt: manifest.sentToPortAt || now,
       status: 'SENT_TO_PORT',
       portApprovalStatus: 'PORT_APPROVED',
@@ -904,6 +975,10 @@ export const manifestPortSyncService = {
           vesselName: approvedManifest.vesselName,
           voyageNumber: approvedManifest.voyageNumber,
           shippingLine: approvedManifest.shippingLine,
+          direction: approvedManifest.direction || (isImport ? 'IMPORT' : 'EXPORT'),
+          vesselEta: approvedManifest.eta || null,
+          vesselEtaDate: approvedManifest.etaDate || (approvedManifest.eta ? String(approvedManifest.eta).split(' ')[0] : null),
+          etaDate: approvedManifest.etaDate || (approvedManifest.eta ? String(approvedManifest.eta).split(' ')[0] : null),
           company: c.transportCompany || carrierProfile.companyName,
           companyId: carrierProfile.companyId,
           contactName: carrierProfile.contactPerson,
@@ -944,7 +1019,7 @@ export const manifestPortSyncService = {
           eta: null,
           etaWindow: null,
           expectedDuration: '45 phút',
-          requestedGate: autoYardSlot.gate || (autoYardSlot.isReefer ? 'Gate 2' : 'Gate 1'),
+          requestedGate: 'Gate 1',
           transportDocuments: [],
 
           // Lưu thông tin đội xe gợi ý để khi bên Transport bấm gửi sẽ điều phối đúng xe của hãng đó
@@ -952,14 +1027,15 @@ export const manifestPortSyncService = {
           suggestedTrailer: c.suggestedTrailer || defaultFleet.trailerPlate,
           suggestedDriver: c.suggestedDriver || defaultFleet.driverName,
           suggestedLicense: c.suggestedLicense || defaultFleet.licenseNumber,
-          suggestedGate: c.suggestedGate || defaultFleet.requestedGate,
+          suggestedGate: 'Gate 1',
           suggestedEta: c.suggestedEta || '08:30',
 
           gateFee: 300000,
           handlingFee: 200000,
           totalFee: 500000,
-          paymentStatus: 'Paid',
-          gateCapacity: { gate: 'Gate 2', current: 8, max: 20, status: 'Available' },
+          paymentStatus: 'Unpaid',
+          portBillPaid: false,
+          gateCapacity: { gate: 'Gate 1', current: 8, max: 20, status: 'Available' },
           status: 'WaitingTransport', // Trạng thái: Chờ Công ty Vận tải gửi Xe & Tài xế
           createdAt: new Date().toLocaleString('vi-VN'),
           reviewStartedAt: null,

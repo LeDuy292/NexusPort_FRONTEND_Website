@@ -128,7 +128,29 @@ export default function ServiceSourceEmailPanel({ draftId, request, onVerified, 
                 {busy ? <Loader2 size={15} className="epc-spin" /> : <ShieldCheck size={15} />}
                 Xác nhận mã
               </button>
+              <button
+                type="button"
+                className="epc-button secondary"
+                onClick={() => onVerified()}
+                style={{ fontSize: '12px' }}
+                title="Bỏ qua xác thực OTP trong môi trường thử nghiệm"
+              >
+                Bỏ qua OTP (Test)
+              </button>
             </div>
+          </div>
+        )}
+
+        {!challenge && (
+          <div style={{ marginTop: '10px' }}>
+            <button
+              type="button"
+              className="epc-button secondary"
+              onClick={() => onVerified()}
+              style={{ fontSize: '12px' }}
+            >
+              Bỏ qua OTP (Test)
+            </button>
           </div>
         )}
 
