@@ -36,16 +36,16 @@ const aiClient = {
 export const gateService = {
   async getBookings(params={}) {
     try {
-      return (await apiClient.get('/v1/Gate/bookings',{params})).data;
+      const res = (await apiClient.get('/v1/Gate/bookings',{params})).data;
+      // Đảm bảo luôn trả về array
+      if (Array.isArray(res)) return res;
+      if (Array.isArray(res?.items)) return res.items;
+      if (Array.isArray(res?.data)) return res.data;
+      return [];
     } catch (err) {
-      console.warn('C# getBookings offline, fallback to Express /api/bookings if needed:', err.message)
-      try {
-        const res = await fetch('/api/bookings')
-        const json = await res.json()
-        return json?.data || json || []
-      } catch (_) {
-        return []
-      }
+      console.warn('C# getBookings offline, trả về [] rỗng:', err.message)
+      // Không gọi fallback Express vì /api/bookings không tồn tại → luôn trả []
+      return []
     }
   },
   async getEntryOrders() {
@@ -56,13 +56,14 @@ export const gateService = {
     }
   },
   async commandBarrier(payload) {
-    // 1. Luôn đồng bộ lệnh mở/đóng barie xuống phần cứng ESP32 qua AI Service
+    // 1. Chỉ gửi OPEN xuống hardware ESP32 — KHÔNG gửi FAIL/close (servo tự đóng sau 4s)
     try {
       if (payload?.action === 'open') {
         void aiClient.post('/api/v1/gate/barrier/open').catch(() => {})
-      } else {
+      } else if (payload?.action === 'fail') {
         void aiClient.post('/api/v1/gate/barrier/fail').catch(() => {})
       }
+      // action='close' từ simulation → KHÔNG gửi xuống ESP32 (servo tự reset)
     } catch (_) {}
 
     // 2. Gửi lệnh tới C# Backend / fallback

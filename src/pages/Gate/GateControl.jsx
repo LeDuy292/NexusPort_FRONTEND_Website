@@ -157,9 +157,11 @@ export default function GateControl() {
         apiClient.get('/v1/vehicle').catch(() => ({ data: [] }))
       ])
 
-      const bookings = bookingRes.data?.items || bookingRes.data || []
+      // getBookings() đã trả về array trực tiếp sau khi wrap .then(data=>({data}))
+      const rawBookings = bookingRes.data?.items ?? bookingRes.data ?? []
+      const bookings = Array.isArray(rawBookings) ? rawBookings : []
       const vehicles = vehicleRes.data || []
-      setCachedBookings(bookings)
+      setCachedBookings(Array.isArray(bookings) ? bookings : [])
       setCachedVehicles(vehicles)
 
       // XÓA MOCK DATA: Tuyệt đối KHÔNG gán activeBooking mặc định
