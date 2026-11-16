@@ -8,6 +8,38 @@ const getApiBaseUrl = () => {
 }
 const API_URL = getApiBaseUrl()
 
+// Helper xác định URL thực tế của endpoint:
+// 1. Nếu path là URL tuyệt đối -> giữ nguyên
+// 2. Nếu path bắt đầu bằng /v1/ và có VITE_CSHARP_API_URL -> điều hướng trực tiếp tới C# Core
+// 3. Nếu path bắt đầu bằng /node-api/ và có VITE_NODE_API_URL tuyệt đối -> điều hướng tới Node Core
+// 4. Mặc định -> ghép với API_URL (qua Gateway https://api.nexusport.io.vn/api hoặc proxy Vercel)
+const resolveRequestUrl = (path) => {
+  if (path.startsWith('http://') || path.startsWith('https://')) {
+    return path
+  }
+
+  const cleanPath = path.startsWith('/') ? path : `/${path}`
+
+  if (cleanPath.startsWith('/v1/')) {
+    const csharpUrl = (import.meta.env.VITE_CSHARP_API_URL || '').trim().replace(/\/+$/, '')
+    if (csharpUrl) {
+      const base = csharpUrl.endsWith('/api') ? csharpUrl : `${csharpUrl}/api`
+      return `${base}${cleanPath}`
+    }
+  }
+
+  if (cleanPath.startsWith('/node-api/')) {
+    const nodeUrl = (import.meta.env.VITE_NODE_API_URL || '').trim().replace(/\/+$/, '')
+    if (nodeUrl && nodeUrl.startsWith('http')) {
+      const stripped = cleanPath.replace(/^\/node-api/, '')
+      const base = nodeUrl.endsWith('/api/v1') ? nodeUrl : `${nodeUrl}/api/v1`
+      return `${base}${stripped}`
+    }
+  }
+
+  return `${API_URL}${cleanPath}`
+}
+
 const handleUnauthorized = async (res) => {
   const errorData = await res.json().catch(() => ({}))
   try {
@@ -32,7 +64,7 @@ const handleUnauthorized = async (res) => {
 
 const apiClient = {
   get: async (url, config = {}) => {
-    let fullUrl = `${API_URL}${url}`
+    let fullUrl = resolveRequestUrl(url)
     if (config.params) {
       const queryParams = new URLSearchParams()
       Object.keys(config.params).forEach((key) => {
@@ -75,7 +107,7 @@ const apiClient = {
   },
 
   post: async (url, data = {}) => {
-    const fullUrl = `${API_URL}${url}`
+    const fullUrl = resolveRequestUrl(url)
     const isFormData = data instanceof FormData
     const headers = {}
     if (!isFormData) {
@@ -108,7 +140,7 @@ const apiClient = {
   },
 
   put: async (url, data = {}) => {
-    const fullUrl = `${API_URL}${url}`
+    const fullUrl = resolveRequestUrl(url)
     const isFormData = data instanceof FormData
     const headers = {}
     if (!isFormData) {
@@ -137,7 +169,7 @@ const apiClient = {
   },
 
   patch: async (url, data = {}) => {
-    const fullUrl = `${API_URL}${url}`
+    const fullUrl = resolveRequestUrl(url)
     const isFormData = data instanceof FormData
     const headers = {}
     if (!isFormData) {
@@ -166,7 +198,7 @@ const apiClient = {
   },
 
   delete: async (url, config = {}) => {
-    let fullUrl = `${API_URL}${url}`
+    let fullUrl = resolveRequestUrl(url)
     if (config.params) {
       const queryParams = new URLSearchParams()
       Object.keys(config.params).forEach((key) => {

@@ -1,3 +1,12 @@
+const getApiBaseUrl = () => {
+  const raw = (import.meta.env.VITE_API_URL || '/api').trim().replace(/\/+$/, '')
+  if (raw.startsWith('http') && !raw.endsWith('/api')) {
+    return `${raw}/api`
+  }
+  return raw
+}
+const API_URL = getApiBaseUrl()
+
 const getToken = () => {
   try {
     const stored = localStorage.getItem('user') || sessionStorage.getItem('user')
@@ -15,7 +24,7 @@ const request = async (method, path, body = null) => {
   }
 
   const cleanPath = path.startsWith('/') ? path : `/${path}`
-  const url = `/api${cleanPath}`
+  const url = `${API_URL}${cleanPath}`
   const options = {
     method,
     headers,
