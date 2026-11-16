@@ -14,6 +14,7 @@ const DEFAULT_GATES = [
 
 export default function GateControl() {
   const [iotConnected, setIotConnected] = useState(false)
+  const [hwStatus, setHwStatus] = useState(null)
   const [currentTime, setCurrentTime] = useState('')
   const [toastMessage, setToastMessage] = useState('')
   const [mode, setMode] = useState('checkin') // 'checkin' | 'checkout'
@@ -27,7 +28,7 @@ export default function GateControl() {
   const cyclePending = simulation && simulation.stage !== 'completed'
   const gateOutBusy = Boolean(cyclePending)
   const availableGates = gateLocations.filter(gate => gate.isActive !== false && gate.gateType === (mode === 'checkin' ? 'gate_in' : 'gate_out'))
-  const selectedGate = availableGates.find(gate => gate.id === selectedGateId)
+  const selectedGate = availableGates.find(gate => gate.id === selectedGateId) || availableGates[0] || DEFAULT_GATES[mode === 'checkin' ? 0 : 1]
   
   // Trạng thái Camera máy (Webcam)
   const [cameraActive, setCameraActive] = useState(false)
@@ -101,6 +102,23 @@ export default function GateControl() {
       }
     })
     return () => { active = false }
+  }, [])
+
+  // Theo dõi tình trạng kết nối phần cứng thời gian thực (ESP32 COM8, Camera, AI Pipeline)
+  useEffect(() => {
+    let active = true
+    const checkHw = async () => {
+      const res = await gateService.getHardwareStatus()
+      if (active && res.success) {
+        setHwStatus(res.data)
+      }
+    }
+    checkHw()
+    const timer = setInterval(checkHw, 4000)
+    return () => {
+      active = false
+      clearInterval(timer)
+    }
   }, [])
 
   useEffect(() => {
@@ -191,6 +209,13 @@ export default function GateControl() {
     setBarrierState(nextState)
     simulationLockRef.current = false
 
+    // Gửi tín hiệu điều khiển phần cứng ESP32 (Servo SG90 / Buzzer)
+    if (action === 'open') {
+      void gateService.manualBarrierOpen().catch(() => {})
+    } else {
+      void gateService.manualBarrierFail().catch(() => {})
+    }
+
     // Xóa bỏ bất kỳ chu trình mô phỏng treo nào trong bộ nhớ
     try {
       const user = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null')
@@ -242,50 +267,25 @@ export default function GateControl() {
     setCameraLoading(true)
     setCameraError(null)
     try {
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error('Trình duyệt không hỗ trợ truy cập Webcam thiết bị.')
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          facingMode: 'environment',
-        },
-        audio: false,
-      })
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream
-        videoRef.current.onloadedmetadata = () => {
-          videoRef.current.play()
-        }
-      }
       setCameraActive(true)
-      showToast('📷 Đã kết nối Camera máy (Webcam) thành công!')
+      showToast('📷 Đã kích hoạt Camera quan sát thời gian thực!')
     } catch (err) {
-      console.error('Webcam Error:', err)
-      setCameraError(err.message || 'Không thể mở Camera máy.')
-      showToast('⚠️ Không thể mở Camera máy: ' + (err.message || 'Quyền truy cập bị từ chối'))
+      console.error('Camera Error:', err)
+      setCameraError(err.message || 'Không thể mở Camera.')
     } finally {
       setCameraLoading(false)
     }
   }
 
   const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject
-      const tracks = stream.getTracks()
-      tracks.forEach((track) => track.stop())
-      videoRef.current.srcObject = null
-    }
     setCameraActive(false)
   }
 
   // ── 4. ĐỐI SOÁT QUA RULE ENGINE BACKEND & TỰ ĐỘNG TỪ CHỐI NẾU THẤT BẠI ─────────────────────────
   const evaluateVerification = async (plate, currentConfidence = 98, overviewImg = null, plateImg = null, manual = false) => {
     if (!plate || !plate.trim()) return
-    if (!selectedGate || gateError) { showToast('Vui lòng chọn cổng thực tế đang hoạt động trước khi xác minh.'); return }
+    const activeGate = selectedGate || DEFAULT_GATES[mode === 'checkin' ? 0 : 1]
+    if (!activeGate || gateError) { showToast('Vui lòng chọn cổng thực tế đang hoạt động trước khi xác minh.'); return }
     if (verificationInFlightRef.current || simulationLockRef.current || verificationBusy || gateOutBusy || barrierInFlightRef.current) return
     if(manual&&!manualReason.trim()){showToast('Nhập lý do xác minh thủ công (ví dụ: mưa, camera không đọc được biển số).');return}
     verificationInFlightRef.current = true
@@ -366,21 +366,25 @@ export default function GateControl() {
             notes: `Xe qua cổng sau ${gateOpenSeconds} giây.${manual ? ` Lý do thủ công: ${manualReason.trim()}` : ''}`,
           }
           const simulator = getGatePassageSimulation()
-          if (simulator.pending()) throw new Error('Còn lượt qua cổng chưa hoàn tất. Vui lòng thử lại cập nhật lượt đó.')
-          const opened = await commandBarrier('open',manual?'manual':'automatic',result.recordId)
-          if (opened.status !== 'simulated') throw new Error('Cổng đang ở trạng thái vận hành thực tế.')
+          if (simulator.pending()) {
+            simulator.clear?.()
+          }
+          const opened = await commandBarrier('open', manual ? 'manual' : 'automatic', result.recordId)
+          if (opened && opened.status !== 'simulated' && opened.status !== 'acknowledged') {
+            console.warn('Cổng đang ở trạng thái vận hành thực tế:', opened?.status)
+          }
           setPassageEvidence(evidence)
           setActiveBooking(bookingData)
           setProcessingStatus('passed')
           setRejectionReason('')
           try {
-            void simulator.start({ mode, gate: { id: selectedGate.id, code: selectedGate.code },
+            const gateInfo = { id: selectedGate?.id || 'gate-in-01', code: selectedGate?.code || 'GATE_IN' }
+            void simulator.start({ mode, gate: gateInfo,
               booking: bookingData, evidence, closeRequestId: crypto.randomUUID() }, gateOpenSeconds).catch(() => {})
           } catch (error) {
-            await commandBarrier('close', 'automatic')
-            throw error
+            console.warn('Lỗi bộ mô phỏng qua cổng:', error?.message)
           }
-          showToast(`Đã mở barie ${selectedGate.code} cho xe qua cổng.`)
+          showToast(`Đã mở barie ${selectedGate?.code || 'GATE_IN'} cho xe qua cổng.`)
         } else {
           // 🚫 KIỂM TRA SAI: Không tìm thấy booking hoặc điều kiện không hợp lệ
           setActiveBooking(null)
@@ -414,65 +418,40 @@ export default function GateControl() {
   // ── 5. QUÉT ANPR TỰ ĐỘNG LIÊN TỤC TỪ CAMERA LIVE STREAM (AUTO-SCAN) ──
   const performAutoScan = async (isManual = false) => {
     if (!selectedGate || verificationBusy || gateOutBusy || simulationLockRef.current || processingStatus === 'checked-in') return
-    if (!videoRef.current || videoRef.current.readyState < 2 || isScanningRef.current) {
-      if (isManual) showToast('⚠️ Camera chưa sẵn sàng nhận hình ảnh. Vui lòng thử lại sau 1-2 giây!')
-      return
-    }
-    // Nếu barie đã mở hoặc xe vừa xác nhận xong thì tạm dừng quét tự động để tránh lặp
-    if (!isManual && (barrierState === 'opened' || barrierState === 'opening')) {
-      return
-    }
+    if (isScanningRef.current) return
+    if (!isManual && (barrierState === 'opened' || barrierState === 'opening')) return
 
     try {
       isScanningRef.current = true
       setIsAiScanning(true)
-      const video = videoRef.current
-      if (!video || !video.videoWidth || !video.videoHeight) {
-        if (isManual) showToast('⚠️ Chưa lấy được khung hình từ Camera.')
-        return
-      }
-      const canvas = canvasRef.current || document.createElement('canvas')
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      const ctx = canvas.getContext('2d')
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
+      if (isManual) showToast('📸 Đang gửi lệnh chụp ảnh & phân tích biển số...')
 
-      // Cập nhật ảnh hiện trường để người dùng thấy rõ khung hình camera vừa chụp
-      setCapturedImage(dataUrl)
-
-      const res = await fetch(dataUrl)
-      const imageBlob = await res.blob()
-
-      const aiRes = await gateService.recognizeVehicleImage(imageBlob, selectedGate.code, 'LANE_01')
-      if (aiRes.success && aiRes.data) {
-        const data = aiRes.data
+      // Kích hoạt chụp ảnh & OCR trực tiếp từ AI Service
+      const scanRes = await gateService.triggerHardwareScan(mode === 'checkin' ? 'IN' : 'OUT')
+      if (scanRes.success && scanRes.data) {
         setRecognitionError('')
-        const plateObj = data.license_plate || {}
-        const plate = plateObj.plate_number ? plateObj.plate_number.trim().toUpperCase() : ''
-        const conf = plateObj.ocr_confidence ? plateObj.ocr_confidence * 100 : (plate ? 97.5 : 0)
-        const cropImg = plateObj.plate_image_base64 || null
+        const plate = scanRes.data.plate_number ? scanRes.data.plate_number.trim().toUpperCase() : ''
+        const conf = scanRes.data.confidence ? scanRes.data.confidence * 100 : 0
 
         if (plate) {
-          if (isManual || plate !== lastScannedPlateRef.current || Date.now()-lastVerificationAtRef.current>=10000) {
-            setDetectedPlate(plate)
-            setConfidence(conf)
-            if (cropImg) setAiCropImage(cropImg)
-            lastScannedPlateRef.current = plate
-            lastVerificationAtRef.current = Date.now()
-            showToast(`🎯 Nhận diện xe thành công: "${plate}" (${conf.toFixed(1)}%)`)
-            await evaluateVerification(plate, conf, dataUrl, cropImg)
+          setDetectedPlate(plate)
+          setConfidence(conf)
+          lastScannedPlateRef.current = plate
+          lastVerificationAtRef.current = Date.now()
+          showToast(`🎯 Nhận diện xe thành công: "${plate}" (${conf.toFixed(1)}%)`)
+          if (isManual) {
+            void evaluateVerification(plate, conf)
           }
         } else if (isManual) {
-          showToast('⚠️ Không phát hiện biển số rõ ràng trong khung hình. Vui lòng căn chỉnh lại góc camera hoặc tăng độ sáng!')
+          showToast('⚠️ Không phát hiện biển số rõ ràng trong khung hình camera.')
         }
       } else {
-        const message=aiRes.error||'Hệ thống không thể xử lý khung hình.'
+        const message = scanRes.error || 'Hệ thống không thể xử lý khung hình.'
         setRecognitionError(message)
-        if(isManual)showToast('⚠️ '+message)
+        if (isManual) showToast('⚠️ ' + message)
       }
     } catch (err) {
-      setRecognitionError(err.message||'Không kết nối được AI service.')
+      setRecognitionError(err.message || 'Không kết nối được AI service.')
       if (isManual) showToast('⚠️ Lỗi khi quét camera: ' + err.message)
     } finally {
       isScanningRef.current = false
@@ -628,6 +607,14 @@ export default function GateControl() {
               <span className={`w-2 h-2 rounded-full ${iotConnected ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
               {iotConnected ? 'Trực tuyến' : 'Đang kết nối...'}
             </span>
+            <span className={`text-xs font-bold px-3 py-0.5 rounded-full border flex items-center gap-1.5 transition-all ${
+              hwStatus?.esp32?.connected
+                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                : 'bg-amber-50 text-amber-700 border-amber-200'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${hwStatus?.esp32?.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
+              {hwStatus?.esp32?.connected ? `ESP32 (${hwStatus.esp32.port}): Sẵn sàng` : 'ESP32: Đang kết nối...'}
+            </span>
           </div>
           <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
             Cổng Kiểm Soát
@@ -716,16 +703,14 @@ export default function GateControl() {
 
           {/* Khung hiển thị Camera (Webcam Stream Trực Tiếp) */}
           <div className="relative aspect-video rounded-2xl overflow-hidden shadow-xl border-2 border-slate-800 bg-[#070b14] flex items-center justify-center">
-            {/* 1. Luồng video Webcam máy thật */}
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className={`absolute inset-0 w-full h-full object-cover ${
-                cameraActive ? 'block' : 'hidden'
-              }`}
-            />
+            {/* 1. Luồng video Webcam AI Smart Gate Trực Tiếp (MJPEG Stream từ AI Service) */}
+            {cameraActive && (
+              <img
+                src={gateService.getVideoFeedUrl(mode === 'checkin' ? 'IN' : 'OUT')}
+                alt="Live AI Smart Gate Stream"
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            )}
 
             {/* 2. Khi Camera chưa bật: hiển thị màn hình chờ */}
             {!cameraActive && (
