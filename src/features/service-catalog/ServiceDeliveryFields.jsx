@@ -146,28 +146,22 @@ export function DeliveryFields({
         <span>04</span>
         <div>
           <h3>Khai báo giao nhận</h3>
-          <p>Lựa chọn phương tiện giao nhận (Xe hoặc Sà lan) và thông tin xuất hóa đơn.</p>
+          <p>Lựa chọn phương tiện giao nhận (Xe đầu kéo / Xe tải) và thông tin xuất hóa đơn.</p>
         </div>
       </div>
 
       <div className="epd-flow" role="group" aria-label="Phương tiện giao nhận">
-        {[
-          ['TRUCK', 'Xe đầu kéo / Xe tải', Truck],
-          ['BARGE', 'Sà lan', Anchor],
-        ].map(([value, title, Icon]) => (
-          <button
-            type="button"
-            key={value}
-            aria-pressed={mode === value}
-            onClick={() => onDelivery('transportMode', value)}
-          >
-            <Icon size={22} />
-            <span>
-              {title}
-              <small>{value === 'TRUCK' ? 'Giao nhận đường bộ (xe)' : 'Giao nhận đường thủy (sà lan)'}</small>
-            </span>
-          </button>
-        ))}
+        <button
+          type="button"
+          aria-pressed={true}
+          onClick={() => onDelivery('transportMode', 'TRUCK')}
+        >
+          <Truck size={22} />
+          <span>
+            Xe đầu kéo / Xe tải
+            <small>Giao nhận đường bộ (xe)</small>
+          </span>
+        </button>
       </div>
 
       <div className="epd-source-box">
@@ -176,75 +170,45 @@ export function DeliveryFields({
           <h4>Thông tin phương tiện</h4>
         </div>
         <div className="epd-form-grid">
-          {mode === 'TRUCK' ? (
-            <ServiceTripFleet
-              request={request}
-              containers={containers}
-              disabled={sampleMode}
-              minDate={autoSchedule?.minDate}
-              maxDate={autoSchedule?.maxDate}
-              scheduleNotice={autoSchedule?.notice}
-              onTrips={trips => onDelivery('trips', trips)}
-            />
-          ) : (
-            <>
-              <Field label="Tên sà lan" required>
-                <input
-                  aria-label="Tên sà lan"
-                  maxLength={150}
-                  value={delivery.bargeName}
-                  onChange={event => onDelivery('bargeName', event.target.value)}
-                  placeholder="Tên phương tiện sà lan"
-                />
-              </Field>
-              <Field label="Năm sà lan" required>
-                <input
-                  aria-label="Năm sà lan"
-                  type="number"
-                  min={1900}
-                  max={2200}
-                  value={delivery.bargeYear ?? ''}
-                  onChange={event => onDelivery('bargeYear', event.target.value ? Number(event.target.value) : null)}
-                  placeholder="Năm đóng / đăng kiểm"
-                />
-              </Field>
-              <Field label="Số chuyến sà lan" required>
-                <input
-                  aria-label="Số chuyến sà lan"
-                  maxLength={80}
-                  value={delivery.bargeVoyage}
-                  onChange={event => onDelivery('bargeVoyage', event.target.value)}
-                  placeholder="Số chuyến"
-                />
-              </Field>
-            </>
-          )}
+          <ServiceTripFleet
+            request={request}
+            containers={containers}
+            disabled={sampleMode}
+            minDate={autoSchedule?.minDate}
+            maxDate={autoSchedule?.maxDate}
+            scheduleNotice={autoSchedule?.notice}
+            onTrips={trips => onDelivery('trips', trips)}
+          />
 
-          <div className="epd-wide epd-expiry-wrapper">
-            <label className="epd-checkbox-inline">
-              <input
-                type="checkbox"
-                checked={hasExpiry}
-                onChange={event => toggleExpiry(event.target.checked)}
-              />
-              <span>Lệnh có hạn lệnh (tích chọn để thiết lập ngày hết hạn lệnh)</span>
-            </label>
-            {hasExpiry && (
-              <Field label={`Ngày hạn lệnh ${sourceExpiry ? `(Tối đa ${sourceExpiry})` : ''}`} required>
+          {flow !== 'EXPORT' && request?.flow !== 'EXPORT' && (
+            <div className="epd-wide epd-expiry-wrapper">
+              <label className="epd-checkbox-inline">
                 <input
-                  aria-label="Hạn lệnh giao nhận"
-                  type="date"
-                  max={sourceExpiry || undefined}
-                  value={delivery.orderValidUntil || ''}
-                  onChange={event => onDelivery('orderValidUntil', event.target.value)}
+                  type="checkbox"
+                  checked={hasExpiry}
+                  onChange={event => toggleExpiry(event.target.checked)}
                 />
-              </Field>
-            )}
-          </div>
+                <span>Lệnh có hạn lệnh (tích chọn để thiết lập ngày hết hạn lệnh)</span>
+              </label>
+              {hasExpiry && (
+                <Field label={`Ngày hạn lệnh ${sourceExpiry ? `(Tối đa ${sourceExpiry})` : ''}`} required>
+                  <input
+                    aria-label="Hạn lệnh giao nhận"
+                    type="date"
+                    max={sourceExpiry || undefined}
+                    value={delivery.orderValidUntil || ''}
+                    onChange={event => onDelivery('orderValidUntil', event.target.value)}
+                  />
+                </Field>
+              )}
+            </div>
+          )}
         </div>
-        <p className="epd-muted">
-          Nếu không chọn hạn điện lạnh và lưu bãi ở bước trước, thời gian sẽ tự lấy theo ngày “hạn lệnh” tại đây (hoặc hạn DO/eDO).
-        </p>
+        {flow !== 'EXPORT' && request?.flow !== 'EXPORT' && (
+          <p className="epd-muted">
+            Nếu không chọn hạn lưu bãi ở bước trước, thời gian sẽ tự lấy theo ngày “hạn lệnh” tại đây (hoặc hạn DO/eDO).
+          </p>
+        )}
       </div>
 
       <div className="epd-source-box">

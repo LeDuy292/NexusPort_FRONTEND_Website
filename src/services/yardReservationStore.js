@@ -109,5 +109,15 @@ export const yardReservationStore = {
     } catch (err) {
       console.error('Failed to clear container reservation', err)
     }
+  },
+
+  // Xóa toàn bộ vị trí bãi để test lại từ đầu
+  clearAll: () => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([]))
+      window.dispatchEvent(new CustomEvent('yard-reservation-updated', { detail: { allCleared: true } }))
+    } catch (err) {
+      console.error('Failed to clear all reservations', err)
+    }
   }
 }
