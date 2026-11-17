@@ -661,6 +661,7 @@ export default function CargoDocumentTracking() {
 
       setSimMessage({ type: 'success', text: `Bắn sự kiện thành công! ${res.message || ''}` });
       loadAllData();
+      window.dispatchEvent(new CustomEvent('cargo_notification_updated', { detail: res }));
     } catch (e) {
       setSimMessage({ type: 'error', text: 'Lỗi phát sự kiện: ' + (e.response?.data?.message || e.message) });
     }

@@ -251,7 +251,13 @@ const sidebarItems = [
     path: '/carrier-portal',
     label: 'Cổng Doanh Nghiệp',
     icon: 'corporate_fare',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/cargo/tracking',
+    label: 'Theo Dõi Chứng Từ',
+    icon: 'notifications_active',
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
   },
   {
     path: '/booking',
