@@ -9,6 +9,7 @@ import { FleetDocumentsReview } from './FleetDocumentsReview'
 import { labels } from './catalogApi'
 import { draftDateTime, draftError, draftSession, serviceDraftKey, serviceDraftsApi } from './serviceDraftsApi'
 import { orderStatusLabels, paymentStatusLabels } from './serviceOrdersApi'
+import { manifestPortSyncService } from '../../services/manifestPortSyncService'
 
 const statusLabel = status => orderStatusLabels[status] || (status === 'READY' ? 'Sẵn sàng gửi Dispatcher' : 'Cần bổ sung thông tin')
 const paymentLabel = status => paymentStatusLabels[status] || 'Chưa thanh toán'
@@ -70,6 +71,42 @@ export default function ServiceRegistrationReview({ draftId, onClose, onEdit, on
     onSuccess: async result => {
       setSavedRegistration(result)
       setAccepted(false)
+      try {
+        await manifestPortSyncService.fetchRemoteSyncedManifests().catch(() => {})
+        manifestPortSyncService.saveAllOrderFleets(result)
+        const cIds = [
+          ...(result.containers || []).map(c => c.containerNumber),
+          ...(result.content?.lines || []).map(l => l.declaration?.containerNumber),
+        ].filter(Boolean)
+        const uniqueConts = Array.from(new Set(cIds.map(x => String(x).trim().toUpperCase())))
+        const bkCodes = [result.sourceSnapshot?.bookingNumber, result.sourceSnapshot?.referenceNumber].filter(Boolean)
+        for (const c of uniqueConts) {
+          const cFleet = manifestPortSyncService.extractFleetFromOrder(result, c)
+          if (cFleet) {
+            const fleetKeys = uniqueConts.length === 1
+              ? [c, ...bkCodes, result.id, result.number]
+              : [c]
+            manifestPortSyncService.saveOrderFleet(fleetKeys, cFleet)
+            await manifestPortSyncService.updateGeneratedGateBookingStatus(c, {
+              transportSubmitted: true,
+              suggestedPlate: cFleet.plate,
+              suggestedDriver: cFleet.driver,
+              licensePlate: cFleet.plate,
+              driverName: cFleet.driver,
+              phone: cFleet.phone,
+              licenseNumber: cFleet.license,
+              trailerPlate: cFleet.trailer,
+              driverSnapshot: cFleet.driverSnapshot,
+              vehicleSnapshot: cFleet.vehicle,
+              eportOrderId: result.id,
+              eportOrderNumber: result.number,
+              ...(cFleet.documents ? { eportDocuments: cFleet.documents, documents: cFleet.documents } : {}),
+            })
+          }
+        }
+      } catch (e) {
+        console.warn('Lỗi lưu fleet khi xác nhận đơn:', e)
+      }
       await client.invalidateQueries({ queryKey: serviceDraftKey, refetchType: 'none' })
       onRegistered?.(result)
     },

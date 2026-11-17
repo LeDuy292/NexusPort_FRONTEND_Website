@@ -10,6 +10,7 @@
  */
 
 import { yardReservationStore } from './yardReservationStore'
+import { shippingLineApi } from '../pages/ShippingLine/api/shippingLineApi'
 
 const STORAGE_KEY = 'nexusport_synced_manifests_v12'
 const GENERATED_BOOKINGS_KEY = 'nexusport_manifest_gate_bookings_v12'
@@ -200,18 +201,652 @@ export const TRANSPORT_COMPANIES_POOL = [
 // Danh sách manifest mặc định đã được Hãng tàu truyền cho Cảng Tiên Sa (mặc định Chờ phê duyệt)
 const DEFAULT_SYNCED_MANIFESTS = []
 
-// One-time reset explicitly requested for the unified Manifest rollout.
-const RESET_MARKER = 'nexusport_manifest_reset_20261113'
+const ORDER_FLEET_KEY = 'NEXUSPORT_ORDER_FLEET_MAP'
+
+function clearLocalSyncStorage() {
+  for (const key of Object.keys(localStorage)) {
+    if (/^nexusport_(synced_manifests|manifest_gate_bookings|manifest_generated_gate_bookings)/.test(key)) {
+      localStorage.removeItem(key)
+    }
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify([]))
+  localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify([]))
+  localStorage.removeItem(ORDER_FLEET_KEY)
+  localStorage.removeItem('NEXUSPORT_PORT_BILLS')
+  localStorage.removeItem('NEXUSPORT_STORAGE_FEES')
+  localStorage.removeItem('NEXUSPORT_TRANSPORT_SUBMISSIONS_ALERT')
+  try {
+    yardReservationStore.clearAll()
+  } catch { /* ignore */ }
+}
+
+// Reset marker để xóa sạch toàn bộ dữ liệu tàu cũ và khởi động trống để test lại từ đầu
+const RESET_MARKER = 'nexusport_manifest_reset_clean_slate_20261117_v5'
 try {
   if (!localStorage.getItem(RESET_MARKER)) {
-    for (const key of Object.keys(localStorage)) {
-      if (/^nexusport_(synced_manifests|manifest_gate_bookings|manifest_generated_gate_bookings)/.test(key)) localStorage.removeItem(key)
-    }
+    clearLocalSyncStorage()
     localStorage.setItem(RESET_MARKER, '1')
   }
 } catch { /* Storage may be unavailable in private browsing. */ }
 
 export const manifestPortSyncService = {
+  /**
+   * Lưu thông tin xe & tài xế thực tế theo đơn dịch vụ / container
+   */
+  saveOrderFleet(keys, fleetData) {
+    if (!keys || !fleetData) return
+    try {
+      const map = JSON.parse(localStorage.getItem(ORDER_FLEET_KEY) || '{}')
+      const keyArr = Array.isArray(keys) ? keys : [keys]
+      keyArr.forEach(k => {
+        if (k) {
+          const cleanK = String(k).trim().toUpperCase()
+          map[cleanK] = { ...(map[cleanK] || {}), ...fleetData }
+        }
+      })
+      localStorage.setItem(ORDER_FLEET_KEY, JSON.stringify(map))
+    } catch (e) {
+      console.warn('Lỗi lưu order fleet map:', e)
+    }
+  },
+
+  /**
+   * Xóa thông tin xe & tài xế (và hóa đơn/phí tạm nếu có) theo danh sách key khỏi localStorage
+   */
+  clearOrderFleet(keys) {
+    if (!keys) return
+    const keyArr = (Array.isArray(keys) ? keys : [keys])
+      .filter(Boolean)
+      .map(k => String(k).trim())
+      .filter(Boolean)
+    if (keyArr.length === 0) return
+
+    const upperKeys = new Set()
+    keyArr.forEach(k => {
+      const u = k.toUpperCase()
+      upperKeys.add(u)
+      const digits = u.match(/\d{4}$/)?.[0]
+      if (digits) upperKeys.add(digits)
+    })
+
+    try {
+      const map = JSON.parse(localStorage.getItem(ORDER_FLEET_KEY) || '{}')
+      let mapChanged = false
+      upperKeys.forEach(k => {
+        if (Object.prototype.hasOwnProperty.call(map, k)) {
+          delete map[k]
+          mapChanged = true
+        }
+      })
+      if (mapChanged) {
+        localStorage.setItem(ORDER_FLEET_KEY, JSON.stringify(map))
+      }
+    } catch (e) {
+      console.warn('Lỗi xóa order fleet map:', e)
+    }
+
+    for (const storeKey of ['NEXUSPORT_PORT_BILLS', 'NEXUSPORT_STORAGE_FEES']) {
+      try {
+        const obj = JSON.parse(localStorage.getItem(storeKey) || '{}')
+        let changed = false
+        keyArr.forEach(k => {
+          if (Object.prototype.hasOwnProperty.call(obj, k)) {
+            delete obj[k]
+            changed = true
+          }
+          const totalKey = `BILL-${k}-TOTAL`
+          if (Object.prototype.hasOwnProperty.call(obj, totalKey)) {
+            delete obj[totalKey]
+            changed = true
+          }
+        })
+        if (changed) {
+          localStorage.setItem(storeKey, JSON.stringify(obj))
+        }
+      } catch { /* ignore */ }
+    }
+  },
+
+  /**
+   * Gỡ bỏ xe & tài xế khỏi Gate Booking (localStorage + PostgreSQL) khi đơn ePort bị từ chối/hủy
+   * và không còn đơn ePort hợp lệ nào khác gán cho container đó.
+   */
+  async unassignRejectedOrderFromGateBookings(rejectedOrder, activeOrders = [], { silent = false } = {}) {
+    if (!rejectedOrder) return false
+
+    const extractOrderContainers = (ord) => {
+      const set = new Set()
+      if (!ord) return set
+      ;(ord.containers || []).forEach(c => {
+        const num = String(c?.containerNumber || c?.containerNo || c || '').trim().toUpperCase()
+        if (num) set.add(num)
+      })
+      ;(ord.content?.lines || []).forEach(l => {
+        const num = String(l?.declaration?.containerNumber || l?.containerNumber || '').trim().toUpperCase()
+        if (num) set.add(num)
+      })
+      ;(ord.containerSnapshots || ord.container_snapshots || []).forEach(c => {
+        const num = String(c?.containerNumber || '').trim().toUpperCase()
+        if (num) set.add(num)
+      })
+      ;(String(ord.sourceLabel || '').toUpperCase().match(/[A-Z]{4}\d{7}/g) || []).forEach(num => {
+        if (num) set.add(num)
+      })
+      return set
+    }
+
+    const rejectedConts = extractOrderContainers(rejectedOrder)
+    const validActiveOrders = (Array.isArray(activeOrders) ? activeOrders : []).filter(o => {
+      const st = String(o?.status || o?.orderStatus || '').toUpperCase()
+      return !['REJECTED', 'CANCELLED', 'DRAFT'].includes(st) && (!rejectedOrder.id || o?.id !== rejectedOrder.id)
+    })
+
+    const activeConts = new Set()
+    validActiveOrders.forEach(ao => {
+      extractOrderContainers(ao).forEach(c => activeConts.add(c))
+    })
+
+    // Xóa cache fleet của những container không còn nằm trong đơn hợp lệ nào
+    const keysToClear = []
+    rejectedConts.forEach(c => {
+      if (!activeConts.has(c)) keysToClear.push(c)
+    })
+    if (rejectedOrder.id) keysToClear.push(rejectedOrder.id)
+    if (rejectedOrder.number) keysToClear.push(rejectedOrder.number)
+    if (keysToClear.length > 0) {
+      this.clearOrderFleet(keysToClear)
+    }
+
+    let rawBookings = []
+    try {
+      rawBookings = JSON.parse(localStorage.getItem(GENERATED_BOOKINGS_KEY) || '[]')
+      if (!Array.isArray(rawBookings)) rawBookings = []
+    } catch {
+      rawBookings = []
+    }
+
+    let bookingsChanged = false
+    const touchedManifestKeys = new Set()
+    const rejId = rejectedOrder.id ? String(rejectedOrder.id) : null
+    const rejNum = rejectedOrder.number ? String(rejectedOrder.number).toUpperCase() : null
+
+    const updatedRaw = rawBookings.map(b => {
+      const bCont = String(b.containerId || '').trim().toUpperCase()
+      const matchesRejected =
+        (bCont && rejectedConts.has(bCont)) ||
+        (rejId && b.eportOrderId === rejId) ||
+        (rejNum && String(b.eportOrderNumber || '').toUpperCase() === rejNum)
+
+      if (!matchesRejected) return b
+      if (bCont && activeConts.has(bCont)) return b
+
+      this.clearOrderFleet([bCont, b.id, b.bookingCode])
+      this.dismissTransportSubmissionAlert(b.id)
+
+      const needsReset =
+        b.status !== 'WaitingTransport' ||
+        Boolean(b.transportSubmitted) ||
+        Boolean(b.licensePlate) ||
+        Boolean(b.vehiclePlate) ||
+        Boolean(b.suggestedPlate) ||
+        Boolean(b.driverName) ||
+        Boolean(b.suggestedDriver) ||
+        Boolean(b.eportOrderId) ||
+        Boolean(b.eportOrderNumber) ||
+        Boolean(b.portBill) ||
+        Boolean(b.portBillPaid)
+
+      if (!needsReset) return b
+
+      bookingsChanged = true
+      if (b.sourceManifestId || b.sourceManifestNumber) {
+        touchedManifestKeys.add(b.sourceManifestId || b.sourceManifestNumber)
+      }
+
+      return {
+        ...b,
+        status: 'WaitingTransport',
+        transportSubmitted: false,
+        licensePlate: null,
+        vehiclePlate: null,
+        suggestedPlate: null,
+        trailerPlate: null,
+        driverName: null,
+        suggestedDriver: null,
+        licenseNumber: null,
+        phone: null,
+        driverSnapshot: null,
+        vehicleSnapshot: null,
+        eportOrderId: null,
+        eportOrderNumber: null,
+        eportMatched: false,
+        portBill: null,
+        portBillPaid: false,
+        paymentStatus: 'Unpaid',
+        eportDocuments: [],
+        documents: [],
+        transportDocuments: [],
+        approvedAt: null,
+        approvedBy: null,
+        timelineStep: 1,
+      }
+    })
+
+    if (bookingsChanged) {
+      try {
+        localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(updatedRaw))
+      } catch (e) {
+        console.warn('Lỗi lưu generated gate bookings sau khi gỡ xe:', e)
+      }
+
+      const allManifests = this.getSyncedManifests()
+      for (const mKey of touchedManifestKeys) {
+        const matchedManifest = allManifests.find(m => m.id === mKey || m.manifestId === mKey || m.manifestNumber === mKey)
+        const targetManifestId = matchedManifest?.id || (mKey && !String(mKey).startsWith('MNF-') ? mKey : null)
+        if (targetManifestId) {
+          const manifestBookings = updatedRaw.filter(
+            b => b.sourceManifestId === targetManifestId ||
+              (matchedManifest?.manifestNumber && b.sourceManifestNumber === matchedManifest.manifestNumber) ||
+              b.sourceManifestNumber === mKey
+          )
+          try {
+            await shippingLineApi.savePortBookings(targetManifestId, manifestBookings)
+          } catch (err) {
+            console.warn('Lỗi đồng bộ gỡ xe lên PostgreSQL:', err)
+          }
+        }
+      }
+    }
+
+    // Nạp lại thông tin đội xe cho các đơn hợp lệ còn hiệu lực (nếu có)
+    for (const activeOrd of [...validActiveOrders].reverse()) {
+      try {
+        this.saveAllOrderFleets(activeOrd)
+      } catch { /* ignore */ }
+    }
+
+    if (bookingsChanged && !silent && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nexusport:manifest_synced', {
+        detail: { type: 'REJECTED_FLEET_UNASSIGNED', orderId: rejectedOrder.id }
+      }))
+      window.dispatchEvent(new Event('storage'))
+    }
+
+    return bookingsChanged
+  },
+
+  /**
+   * Lấy thông tin xe & tài xế thực tế theo đơn dịch vụ / container (được khai báo từ Transport Company)
+   */
+  getOrderFleet(key) {
+    if (!key) return null
+    try {
+      const map = JSON.parse(localStorage.getItem(ORDER_FLEET_KEY) || '{}')
+      const cleanK = String(key).trim().toUpperCase()
+
+      // 1. Khớp chính xác theo key (số container, mã booking,...)
+      if (map[cleanK]) return map[cleanK]
+
+      // 2. Tìm key trong map có đuôi số container khớp (ví dụ: BK-EG2605W-5749 khớp với container NXPU9465749)
+      const digitsMatch = cleanK.match(/\d{4}$/) || cleanK.match(/\d{4}/)
+      if (digitsMatch) {
+        const d = digitsMatch[0]
+        const matchedKey = Object.keys(map).find(k => k.includes(d))
+        if (matchedKey && map[matchedKey]) return map[matchedKey]
+      }
+
+      return null
+    } catch {
+      return null
+    }
+  },
+
+  /**
+   * Lưu fleet của toàn bộ các container trong đơn vào map (độc lập từng container)
+   */
+  saveAllOrderFleets(order) {
+    if (!order) return
+    const ordStatus = String(order.status || order.orderStatus || '').toUpperCase()
+    if (['REJECTED', 'CANCELLED'].includes(ordStatus)) return
+    const content = order.content || {}
+    const delivery = content.delivery || order.delivery || {}
+    const trips = delivery.trips || []
+    const lines = content.lines || []
+    const conts = order.containers || []
+    const orderDocuments = (delivery.documents || content.documents || order.documents || []).filter(
+      d => d && (d.fileUrl || d.fileReference || d.fileName || d.title) && !String(d.fileUrl || '').includes('pdfobject.com/pdf/sample.pdf')
+    )
+
+    let rawBookings = []
+    let bookingsChanged = false
+    const touchedManifests = new Set()
+    try {
+      rawBookings = JSON.parse(localStorage.getItem(GENERATED_BOOKINGS_KEY) || '[]')
+      if (!Array.isArray(rawBookings)) rawBookings = []
+    } catch {
+      rawBookings = []
+    }
+
+    trips.forEach((trip, idx) => {
+      const line = lines.find(l => l.sourceContainerId === trip.sourceContainerId)
+      const ordCont = conts.find(c => c.sourceContainerId === trip.sourceContainerId || c.id === trip.sourceContainerId)
+      const rawContNum = ordCont?.containerNumber ||
+        line?.declaration?.containerNumber ||
+        line?.containerNumber ||
+        trip.containerNumber ||
+        conts[idx]?.containerNumber ||
+        lines[idx]?.declaration?.containerNumber ||
+        lines[idx]?.containerNumber ||
+        ''
+      const contNum = String(rawContNum).trim().toUpperCase()
+
+      const plate = trip.vehicle?.plateNumber || trip.truckPlate
+      const driver = trip.driver?.fullName || trip.driverName
+      const phone = trip.driver?.phone || trip.driverPhone
+      const license = trip.driver?.licenseNumber || trip.licenseNumber
+      const idCard = trip.driver?.idCardNumber
+      const trailer = trip.trailerPlate || trip.vehicle?.trailerPlate
+      const vehicle = trip.vehicle
+      const driverSnapshot = trip.driver
+
+      if (contNum && (plate || driver || orderDocuments.length > 0)) {
+        const fleetData = { plate, driver, phone, license, idCard, trailer, vehicle, driverSnapshot, documents: orderDocuments }
+        this.saveOrderFleet(contNum, fleetData)
+
+        // Lưu thêm 4 số cuối của container để map với booking code (ví dụ: BK-EG2605W-5749 khớp với 5749)
+        const digits = contNum.match(/\d{4}$/)?.[0]
+        if (digits) {
+          this.saveOrderFleet(digits, fleetData)
+        }
+
+        // Cập nhật trực tiếp vào danh sách rawBookings nếu biển số/tài xế hoặc chứng từ khác, tránh gọi đệ quy getGeneratedGateBookings()
+        rawBookings = rawBookings.map(b => {
+          const bCont = String(b.containerId || '').trim().toUpperCase()
+          const bId = String(b.id || '').trim().toUpperCase()
+          const bCode = String(b.bookingCode || '').trim().toUpperCase()
+          const matches = bCont === contNum || bId === contNum || b.realId === contNum ||
+            (digits && (bId.includes(digits) || bCode.includes(digits) || bCont.includes(digits)))
+          if (!matches) return b
+
+          const docsNeedUpdate = orderDocuments.length > 0 && JSON.stringify(b.eportDocuments || []) !== JSON.stringify(orderDocuments)
+          const needsUpdate =
+            (plate && (b.licensePlate !== plate || b.suggestedPlate !== plate)) ||
+            (driver && (b.driverName !== driver || b.suggestedDriver !== driver)) ||
+            (phone && b.phone !== phone) ||
+            (license && b.licenseNumber !== license) ||
+            (trailer && b.trailerPlate !== trailer) ||
+            docsNeedUpdate
+
+          if (!needsUpdate) return b
+          bookingsChanged = true
+          if (b.sourceManifestId || b.sourceManifestNumber) {
+            touchedManifests.add(b.sourceManifestId || b.sourceManifestNumber)
+          }
+          return {
+            ...b,
+            ...(plate ? { suggestedPlate: plate, licensePlate: plate } : {}),
+            ...(driver ? { suggestedDriver: driver, driverName: driver } : {}),
+            ...(phone ? { phone } : {}),
+            ...(license ? { licenseNumber: license } : {}),
+            ...(trailer ? { trailerPlate: trailer } : {}),
+            ...(driverSnapshot ? { driverSnapshot } : {}),
+            ...(vehicle ? { vehicleSnapshot: vehicle } : {}),
+            ...(orderDocuments.length > 0 ? { eportDocuments: orderDocuments, documents: orderDocuments } : {}),
+          }
+        })
+      }
+    })
+
+    if (bookingsChanged) {
+      try {
+        localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(rawBookings))
+      } catch (e) {
+        console.warn('Lỗi lưu generated gate bookings:', e)
+      }
+      const allManifests = this.getSyncedManifests()
+      touchedManifests.forEach(mKey => {
+        const matchedManifest = allManifests.find(m => m.id === mKey || m.manifestId === mKey || m.manifestNumber === mKey)
+        const targetManifestId = matchedManifest?.id || (mKey && !String(mKey).startsWith('MNF-') ? mKey : null)
+        if (targetManifestId) {
+          const manifestBookings = rawBookings.filter(
+            b => b.sourceManifestId === targetManifestId ||
+              (matchedManifest?.manifestNumber && b.sourceManifestNumber === matchedManifest.manifestNumber) ||
+              b.sourceManifestNumber === mKey
+          )
+          shippingLineApi.savePortBookings(targetManifestId, manifestBookings).catch(() => {})
+        }
+      })
+    }
+
+    // Nếu đơn chỉ có đúng 1 container thì mới lưu theo order.id / order.number
+    if (trips.length === 1) {
+      const singleFleet = this.extractFleetFromOrder(order)
+      if (singleFleet) {
+        if (order.id) this.saveOrderFleet(order.id, singleFleet)
+        if (order.number) this.saveOrderFleet(order.number, singleFleet)
+      }
+    }
+  },
+
+  /**
+   * Trích xuất thông tin xe & tài xế từ đối tượng đơn dịch vụ / draft (trips)
+   */
+  extractFleetFromOrder(order, containerId) {
+    if (!order) return null
+    const content = order.content || {}
+    const delivery = content.delivery || order.delivery || {}
+    const trips = delivery.trips || []
+    const orderDocuments = (delivery.documents || content.documents || order.documents || []).filter(
+      d => d && (d.fileUrl || d.fileReference || d.fileName || d.title) && !String(d.fileUrl || '').includes('pdfobject.com/pdf/sample.pdf')
+    )
+    if (!trips.length) {
+      return orderDocuments.length > 0 ? { documents: orderDocuments } : null
+    }
+
+    const contUpper = String(containerId || '').trim().toUpperCase()
+    const digits = contUpper.match(/\d{4}$/)?.[0] || contUpper.match(/\d{4}/)?.[0]
+
+    let matchedTrip = null
+    if (contUpper) {
+      const lines = content.lines || []
+      const ordConts = order.containers || []
+
+      // 1. Match qua lines
+      const line = lines.find(l => {
+        const num = String(l.declaration?.containerNumber || l.containerNumber || l.sourceContainerId || '').trim().toUpperCase()
+        return num === contUpper || (digits && num.includes(digits))
+      })
+      if (line) {
+        matchedTrip = trips.find(t => t.sourceContainerId === line.sourceContainerId)
+      }
+
+      // 2. Match qua order.containers
+      if (!matchedTrip) {
+        const ordCont = ordConts.find(c => {
+          const num = String(c.containerNumber || c.id || '').trim().toUpperCase()
+          return num === contUpper || (digits && num.includes(digits))
+        })
+        if (ordCont) {
+          matchedTrip = trips.find(t => t.sourceContainerId === ordCont.sourceContainerId || t.sourceContainerId === ordCont.id)
+        }
+      }
+
+      // 3. Match qua containerNumber trực tiếp trên trip
+      if (!matchedTrip) {
+        matchedTrip = trips.find(t => {
+          const cNum = String(t.containerNumber || t.containerId || '').trim().toUpperCase()
+          return cNum === contUpper || (digits && cNum.includes(digits))
+        })
+      }
+
+      // 4. Match qua index nếu số lượng lines/conts khớp với trips
+      if (!matchedTrip && lines.length === trips.length) {
+        const lineIdx = lines.findIndex(l => {
+          const num = String(l.declaration?.containerNumber || l.containerNumber || '').trim().toUpperCase()
+          return num === contUpper || (digits && num.includes(digits))
+        })
+        if (lineIdx >= 0) matchedTrip = trips[lineIdx]
+      }
+      if (!matchedTrip && ordConts.length === trips.length) {
+        const contIdx = ordConts.findIndex(c => {
+          const num = String(c.containerNumber || '').trim().toUpperCase()
+          return num === contUpper || (digits && num.includes(digits))
+        })
+        if (contIdx >= 0) matchedTrip = trips[contIdx]
+      }
+    }
+
+    // Nếu KHÔNG truyền containerId thì mới lấy trips[0] làm fallback chung
+    if (!contUpper && !matchedTrip && trips.length > 0) {
+      matchedTrip = trips[0]
+    }
+
+    if (!matchedTrip) {
+      return orderDocuments.length > 0 ? { documents: orderDocuments } : null
+    }
+
+    const plate = matchedTrip?.vehicle?.plateNumber || matchedTrip?.truckPlate || delivery.truckPlate || null
+    const driver = matchedTrip?.driver?.fullName || matchedTrip?.driverName || delivery.driverName || null
+    const phone = matchedTrip?.driver?.phone || matchedTrip?.driverPhone || delivery.driverPhone || null
+    const license = matchedTrip?.driver?.licenseNumber || matchedTrip?.licenseNumber || null
+    const idCard = matchedTrip?.driver?.idCardNumber || matchedTrip?.idCardNumber || null
+    const trailer = matchedTrip?.trailerPlate || matchedTrip?.vehicle?.trailerPlate || null
+    const vehicle = matchedTrip?.vehicle || null
+    const driverSnapshot = matchedTrip?.driver || null
+
+    if (plate || driver || orderDocuments.length > 0) {
+      return { plate, driver, phone, license, idCard, trailer, vehicle, driverSnapshot, documents: orderDocuments }
+    }
+    return null
+  },
+  /**
+   * Chuyển đổi dữ liệu từ PostgreSQL shipping_manifests sang cấu trúc dùng chung trên giao diện Cảng
+   */
+  mapRemoteManifest(rm) {
+    const rawContainers = rm.records || rm.containers || []
+    const mappedContainers = rawContainers.map((r, idx) => {
+      const carrierProfile = TRANSPORT_COMPANIES_POOL[Math.floor(idx / 2) % TRANSPORT_COMPANIES_POOL.length]
+      return {
+        containerNumber: (r.containerNumber || r.container_no || '').trim().toUpperCase(),
+        isoType: r.isoType || '40HC',
+        sealNumber: r.sealNumber || '',
+        blNumber: r.blNumber || '',
+        shipper: r.shipper || '',
+        consignee: r.consignee || '',
+        isReefer: Boolean(r.isReefer || r.cargoType === 'REEFER' || /RF|RH|R[01]/.test(r.isoType || '')),
+        transportCompany: r.transportCompany || carrierProfile.companyName,
+        suggestedDriver: r.driverName || null,
+        suggestedPlate: r.licensePlate || null,
+        suggestedTrailer: r.trailerPlate || null,
+        suggestedLicense: r.licenseNumber || null,
+        suggestedGate: r.requestedGate || 'Gate 1',
+        suggestedEta: `0${8 + (idx % 4)}:30`,
+        cargoDescription: r.cargoDescription || r.commodity || '',
+        packageCount: r.packageCount ?? null,
+        grossWeightKg: Number(r.grossWeightKg) || 0,
+        tareWeightKg: Number(r.tareWeightKg) || 3820,
+        netWeightKg: Number(r.netWeightKg) || ((Number(r.grossWeightKg) || 25400) - 3820),
+        cbm: Number(r.cbm) || 68.5,
+        tempRequired: r.tempRequired || '',
+        ventilation: r.ventilation || 'Kín gió',
+        dgClass: r.dgClass || 'Non-DG (Hàng thường)',
+        vgmStatus: 'Verified (Hợp lệ)',
+        vgmMethod: 'Phương pháp 1 (Trạm cân điện tử)',
+        stowageCell: r.stowageCell || `Bay 0${2 + idx * 2} - Row 04 - Tier 82`,
+        customsStatus: 'Đã thông quan (Luồng Xanh)',
+      }
+    })
+
+    const manifestId = rm.id || rm.manifestId
+    const isApproved = rm.portApprovalStatus === 'PORT_APPROVED' || rm.status === 'PORT_APPROVED'
+    return {
+      manifestId,
+      id: manifestId,
+      manifestNumber: rm.manifestNumber || `MNF-${manifestId.slice(0, 8)}`,
+      bookingNumber: rm.bookingNumber || '',
+      blNumber: rm.blNumber || rm.bills?.[0]?.blNumber || mappedContainers.find(c => c.blNumber)?.blNumber || '',
+      voyageNumber: rm.voyageInfo?.voyageNumber || rm.voyageNumber || 'MM-2601S',
+      vesselName: rm.voyageInfo?.vesselName || rm.vesselName || 'MAERSK MC-KINNEY MOLLER',
+      shippingLine: rm.shippingLine || 'Maersk Line',
+      direction: rm.direction || 'IMPORT',
+      flag: rm.flag || 'Denmark (DK)',
+      imoNumber: rm.imoNumber || 'IMO 9619907',
+      callSign: rm.callSign || 'OWGR2',
+      vesselType: rm.vesselType || 'Container Ship (Triple-E)',
+      grossTonnage: rm.grossTonnage || '194,849 GT',
+      deadweight: rm.deadweight || '194,153 DWT',
+      lengthOverall: rm.lengthOverall || '399.2 m',
+      beam: rm.beam || '59.0 m',
+      draft: rm.draft || '16.0 m',
+      agent: rm.agent || 'Maersk Vietnam - Da Nang Branch',
+      nswRef: rm.nswRef || `NSW-DAD-2026-${manifestId.slice(-4)}`,
+      berth: rm.berth || 'Bến số 1 (TS-01) - Cảng Tiên Sa',
+      pol: rm.pol || 'Busan (KRPUS)',
+      pod: rm.pod || 'Đà Nẵng (VNDAD)',
+      eta: rm.eta || '2026-11-25 14:00',
+      etd: rm.etd || '2026-11-26 22:00',
+      sentToPortAt: rm.sentToPortAt || new Date().toISOString(),
+      status: isApproved ? 'PORT_APPROVED' : 'SENT_TO_PORT',
+      portApprovalStatus: isApproved ? 'PORT_APPROVED' : 'PENDING_APPROVAL',
+      portApprovedAt: rm.portApprovedAt || (isApproved ? new Date().toISOString() : null),
+      portApprovedBy: rm.portApprovedBy || (isApproved ? 'Dispatcher Cảng Tiên Sa' : null),
+      vesselStatus: rm.vesselStatus || 'BERTHED',
+      containers: mappedContainers,
+      generatedBookings: rm.generatedBookings || null,
+    }
+  },
+
+  /**
+   * Kéo toàn bộ danh sách Manifest đã gửi từ PostgreSQL Server về trình duyệt
+   */
+  async fetchRemoteSyncedManifests() {
+    try {
+      const res = await shippingLineApi.getSyncedManifests()
+      const remoteList = Array.isArray(res) ? res : (res?.data || res?.items || [])
+      if (Array.isArray(remoteList)) {
+        if (remoteList.length === 0) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify([]))
+          localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify([]))
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('nexusport:manifest_synced', {
+              detail: { type: 'REMOTE_FETCH_SYNC', count: 0 }
+            }))
+          }
+          return []
+        }
+
+        const current = []
+        const remoteGenerated = []
+        remoteList.forEach(rm => {
+          const id = rm.id || rm.manifestId
+          if (!id) return
+          const mapped = this.mapRemoteManifest(rm)
+          current.push(mapped)
+
+          const isApproved = mapped.portApprovalStatus === 'PORT_APPROVED' || mapped.status === 'PORT_APPROVED'
+          if (isApproved && Array.isArray(rm.generatedBookings) && rm.generatedBookings.length > 0) {
+            rm.generatedBookings.forEach(gb => {
+              if (gb) remoteGenerated.push(gb)
+            })
+          }
+        })
+
+        // Lưu danh sách manifest trước rồi thay thế GENERATED_BOOKINGS_KEY trực tiếp từ PostgreSQL
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(current))
+        localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(remoteGenerated))
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('nexusport:manifest_synced', {
+            detail: { type: 'REMOTE_FETCH_SYNC', count: remoteList.length }
+          }))
+        }
+        return current
+      }
+    } catch (e) {
+      console.warn('Lỗi fetch remote synced manifests:', e)
+    }
+    return this.getSyncedManifests()
+  },
+
   /**
    * Lấy danh sách Manifest ĐÃ ĐƯỢC HÃNG TÀU BẤM GỬI CHO CẢNG
    */
@@ -247,6 +882,13 @@ export const manifestPortSyncService = {
         b => b.sourceManifestId !== manifestId && b.sourceManifestNumber !== recalledNumber && b.sourceManifestNumber !== manifestId
       )
       localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(remaining))
+
+      // Đồng bộ tuần tự trạng thái về Pending rồi xóa generatedBookings trên PostgreSQL
+      try {
+        shippingLineApi.resetManifestPendingAtPort(manifestId)
+          .catch(() => {})
+          .then(() => shippingLineApi.savePortBookings(manifestId, []).catch(() => {}))
+      } catch (e) {}
     } catch (e) {
       console.warn(e)
     }
@@ -313,18 +955,26 @@ export const manifestPortSyncService = {
    */
   getGeneratedGateBookings() {
     try {
-      const raw = localStorage.getItem(GENERATED_BOOKINGS_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const approvedManifests = new Set(
-            this.getSyncedManifests()
-              .filter(m => m.portApprovalStatus === 'PORT_APPROVED')
-              .map(m => m.manifestNumber || m.manifestId)
-          )
-          const filteredApproved = parsed.filter(b =>
-            approvedManifests.has(b.sourceManifestNumber) || approvedManifests.has(b.sourceManifestId)
-          )
+      const allManifests = this.getSyncedManifests()
+      let raw = localStorage.getItem(GENERATED_BOOKINGS_KEY)
+      let parsed = raw ? JSON.parse(raw) : []
+      if (!Array.isArray(parsed)) parsed = []
+
+      // CHỈ hiển thị bookings của những tàu ĐÃ ĐƯỢC PHÊ DUYỆT (PORT_APPROVED)
+      const approvedManifests = new Set(
+        allManifests
+          .filter(m => m.portApprovalStatus === 'PORT_APPROVED' || m.status === 'PORT_APPROVED')
+          .map(m => m.manifestNumber || m.manifestId)
+      )
+
+      if (approvedManifests.size === 0) {
+        return []
+      }
+
+      if (parsed.length > 0) {
+        const filteredApproved = parsed.filter(b =>
+          approvedManifests.has(b.sourceManifestNumber) || approvedManifests.has(b.sourceManifestId)
+        )
           const allReservations = yardReservationStore.getReservations()
           let hasBookingsMigrated = false
           const enriched = filteredApproved.map((item, idx) => {
@@ -338,6 +988,16 @@ export const manifestPortSyncService = {
                 etaDate: '2026-11-25',
                 date: '25/11/2026',
               }
+            }
+            if (typeof item.eta === 'string' && item.eta.startsWith('2026-11-10')) {
+              const refSource = item.paidAt || item.approvedAt
+              const vnDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(refSource ? new Date(refSource) : new Date())
+              const timePart = (item.eta.split('T')[1] || '08:30:00').replace(/[Zz]|([+-]\d{2}:\d{2})$/, '')
+              patchDates = {
+                ...patchDates,
+                eta: `${vnDate}T${timePart}+07:00`,
+              }
+              hasBookingsMigrated = true
             }
 
             const slot = item.autoYardSlot || {}
@@ -371,23 +1031,65 @@ export const manifestPortSyncService = {
               fullLocation: `Block ${blockCode} · Bay ${bayStr} · Row ${rowStr} · Tier ${tierNum}`,
             }
 
-            let restoredStatus = item.status
+            let restoredStatus = item.status || 'Pending'
             let isSubmitted = item.transportSubmitted
-            let vPlate = item.licensePlate
+            let vPlate = item.licensePlate || item.vehiclePlate
             let vTrailer = item.trailerPlate
             let vDriver = item.driverName
             let pStatus = item.paymentStatus || 'Unpaid'
-            let pPaid = item.portBillPaid || false
+            let pPaid = Boolean(item.portBillPaid)
 
-            if (item.status !== 'Approved') {
-              restoredStatus = 'Pending'
-              isSubmitted = false
-              vPlate = null
-              vTrailer = null
-              vDriver = null
-              pStatus = 'Unpaid'
-              pPaid = false
-              hasBookingsMigrated = true
+            // Ưu tiên kiểm tra hóa đơn đã lưu trực tiếp từ PostgreSQL (item.portBill) trước rồi mới fallback sang localStorage
+            try {
+              const storedBills = JSON.parse(localStorage.getItem('NEXUSPORT_PORT_BILLS') || '{}')
+              const matchedBill = item.portBill || storedBills[item.id] || storedBills[item.bookingCode] || storedBills[item.containerId]
+              if (matchedBill) {
+                if (matchedBill.status === 'PAID' || matchedBill.paid || matchedBill.status === 'Paid') {
+                  pPaid = true
+                  pStatus = 'Paid'
+                  restoredStatus = 'Ready'
+                } else if (item.status === 'Approved' || matchedBill.status === 'SENT_TO_CARRIER') {
+                  restoredStatus = restoredStatus === 'Ready' ? 'Ready' : 'Approved'
+                }
+              }
+            } catch {}
+
+            // Kiểm tra thông tin đội xe theo đơn thực tế (nếu có khai báo từ đơn ePort)
+            const LEGACY_FAKE_PLATES = ['47AB-294.69', '43C-567.89', 'Chưa gán xe', 'Chưa gán', 'Chưa điều phối']
+            const LEGACY_FAKE_DRIVERS = ['TRẦN VĂN TÙNG', 'Nguyễn Văn Minh', 'Chưa điều phối', 'Chưa có tài xế']
+            if (LEGACY_FAKE_PLATES.includes(vPlate)) vPlate = null
+            if (LEGACY_FAKE_DRIVERS.includes(vDriver)) vDriver = null
+            let sPlate = LEGACY_FAKE_PLATES.includes(item.suggestedPlate) ? null : (item.suggestedPlate || null)
+            let sDriver = LEGACY_FAKE_DRIVERS.includes(item.suggestedDriver) ? null : (item.suggestedDriver || null)
+
+            const orderFleet = manifestPortSyncService.getOrderFleet(item.containerId) ||
+              manifestPortSyncService.getOrderFleet(item.bookingCode) ||
+              manifestPortSyncService.getOrderFleet(item.id)
+            if (orderFleet) {
+              if (orderFleet.plate) vPlate = orderFleet.plate
+              if (orderFleet.driver) vDriver = orderFleet.driver
+              if (orderFleet.phone) item.phone = orderFleet.phone
+              if (orderFleet.license) item.licenseNumber = orderFleet.license
+              if (orderFleet.trailer) vTrailer = orderFleet.trailer
+              if (orderFleet.driverSnapshot) item.driverSnapshot = orderFleet.driverSnapshot
+              if (orderFleet.vehicle) item.vehicleSnapshot = orderFleet.vehicle
+            }
+
+            const cleanRealDocs = (docs) => (Array.isArray(docs) ? docs : []).filter(
+              d => d && !String(d.fileUrl || '').includes('pdfobject.com/pdf/sample.pdf')
+            )
+            const rawDocsHadFake = Array.isArray(item.documents) && item.documents.some(d => String(d?.fileUrl || '').includes('pdfobject.com/pdf/sample.pdf'))
+            if (rawDocsHadFake) hasBookingsMigrated = true
+            const realOrderDocs = cleanRealDocs(orderFleet?.documents)
+            const realItemEportDocs = cleanRealDocs(item.eportDocuments)
+            const realItemDocs = cleanRealDocs(item.documents)
+            const mergedDocs = realOrderDocs.length > 0 ? realOrderDocs : (realItemEportDocs.length > 0 ? realItemEportDocs : realItemDocs)
+
+            // Nếu booking đã được duyệt hoặc đã thanh toán: giữ thông tin thật từ orderFleet hoặc đã lưu, không chèn xe/tài xế ảo
+            if (restoredStatus === 'Approved' || restoredStatus === 'Ready' || pPaid) {
+              isSubmitted = true
+              vPlate = orderFleet?.plate || vPlate || sPlate || null
+              vDriver = orderFleet?.driver || vDriver || sDriver || null
             }
 
             return {
@@ -398,6 +1100,10 @@ export const manifestPortSyncService = {
               licensePlate: vPlate,
               trailerPlate: vTrailer,
               driverName: vDriver,
+              suggestedPlate: orderFleet?.plate || sPlate || vPlate || null,
+              suggestedDriver: orderFleet?.driver || sDriver || vDriver || null,
+              eportDocuments: realOrderDocs.length > 0 ? realOrderDocs : realItemEportDocs,
+              documents: mergedDocs,
               paymentStatus: pStatus,
               portBillPaid: pPaid,
               rejectionReason: '',
@@ -414,12 +1120,11 @@ export const manifestPortSyncService = {
           }
           return enriched
         }
+      } catch (err) {
+        console.warn('Lỗi đọc generated gate bookings:', err)
       }
-    } catch (err) {
-      console.warn('Lỗi đọc generated gate bookings:', err)
-    }
-    return []
-  },
+      return []
+    },
 
   _old_getGeneratedGateBookings() {
     try {
@@ -503,15 +1208,32 @@ export const manifestPortSyncService = {
     try {
       const current = this.getGeneratedGateBookings()
       const idx = current.findIndex(b => b.id === bookingId || b.realId === bookingId || b.containerId === bookingId)
-      if (idx === -1) return false
+      if (idx === -1) return Promise.resolve(false)
       current[idx] = { ...current[idx], ...updates }
       localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(current))
+
+      // Đồng bộ trực tiếp lên cơ sở dữ liệu PostgreSQL Server qua shippingLineApi
+      const allManifests = this.getSyncedManifests()
+      const targetManifestId = current[idx]?.sourceManifestId ||
+        allManifests.find(m => m.manifestNumber === current[idx]?.sourceManifestNumber || m.id === current[idx]?.sourceManifestId)?.id
+
+      let savePromise = Promise.resolve(true)
+      if (targetManifestId) {
+        const manifestBookings = current.filter(b => b.sourceManifestId === targetManifestId || b.sourceManifestNumber === current[idx]?.sourceManifestNumber)
+        savePromise = shippingLineApi.savePortBookings(targetManifestId, manifestBookings)
+          .then(() => true)
+          .catch(err => {
+            console.warn('Lỗi lưu port bookings lên PostgreSQL:', err)
+            return true
+          })
+      }
+
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('nexusport:manifest_synced', { detail: { bookingId, updates } }))
       }
-      return true
+      return savePromise
     } catch (e) {
-      return false
+      return Promise.resolve(false)
     }
   },
 
@@ -530,13 +1252,15 @@ export const manifestPortSyncService = {
 
     const updated = current.map(item => {
       if (item.id === bookingIdOrContainerNo || item.containerId === bookingIdOrContainerNo) {
-        const plate = customFleetData.licensePlate || item.suggestedPlate || '47AB-294.69'
-        const trailer = customFleetData.trailerPlate || item.suggestedTrailer || '47R-012.88'
-        const driver = customFleetData.driverName || item.suggestedDriver || 'TRẦN VĂN TÙNG'
-        const licenseNo = customFleetData.licenseNumber || item.suggestedLicense || 'FC-782910'
-        const gate = customFleetData.requestedGate || item.suggestedGate || 'Gate 2'
+        const orderFleet = this.getOrderFleet(item.containerId) || this.getOrderFleet(item.bookingCode) || this.getOrderFleet(item.id)
+        const plate = customFleetData.licensePlate || orderFleet?.plate || (['47AB-294.69', '43C-567.89'].includes(item.suggestedPlate) ? null : item.suggestedPlate) || null
+        const trailer = customFleetData.trailerPlate || orderFleet?.trailer || (item.suggestedTrailer === '47R-012.88' ? null : item.suggestedTrailer) || null
+        const driver = customFleetData.driverName || orderFleet?.driver || (['TRẦN VĂN TÙNG', 'Nguyễn Văn Minh'].includes(item.suggestedDriver) ? null : item.suggestedDriver) || null
+        const licenseNo = customFleetData.licenseNumber || orderFleet?.license || (item.suggestedLicense === 'FC-782910' ? null : item.suggestedLicense) || null
+        const gate = customFleetData.requestedGate || item.suggestedGate || 'Gate 1'
         const etaTime = customFleetData.etaTime || item.suggestedEta || '08:30'
-        const etaIso = customFleetData.eta || `2026-11-10T${etaTime.slice(0, 5)}:00`
+        const todayVn = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date())
+        const etaIso = customFleetData.eta || `${todayVn}T${etaTime.slice(0, 5)}:00+07:00`
 
         const transportSubmittedDocs = [
           {
@@ -560,7 +1284,7 @@ export const manifestPortSyncService = {
           {
             code: 'VEHICLE_DRIVER_DOCS',
             name: 'Sổ đăng kiểm xe đầu kéo & GPLX Hạng FC',
-            docNo: `${plate} · ${licenseNo}`,
+            docNo: `${plate || 'Chưa khai báo'} · ${licenseNo || 'Chưa khai báo'}`,
             status: 'Còn hiệu lực'
           }
         ]
@@ -673,7 +1397,6 @@ export const manifestPortSyncService = {
     const rawContainers = manifest.records || manifest.containers || []
     const mappedContainers = rawContainers.map((r, idx) => {
       const carrierProfile = TRANSPORT_COMPANIES_POOL[Math.floor(idx / 2) % TRANSPORT_COMPANIES_POOL.length]
-      const fleetOpt = carrierProfile.fleetOptions[idx % carrierProfile.fleetOptions.length]
       return {
         containerNumber: r.containerNumber?.trim().toUpperCase(),
         isoType: r.isoType || '40HC',
@@ -683,11 +1406,11 @@ export const manifestPortSyncService = {
         consignee: r.consignee || '',
         isReefer: Boolean(r.isReefer || r.cargoType === 'REEFER' || /RF|RH|R[01]/.test(r.isoType || '')),
         transportCompany: r.transportCompany || carrierProfile.companyName,
-        suggestedDriver: r.driverName || fleetOpt.driverName,
-        suggestedPlate: r.licensePlate || fleetOpt.licensePlate,
-        suggestedTrailer: fleetOpt.trailerPlate,
-        suggestedLicense: r.licenseNumber || fleetOpt.licenseNumber,
-        suggestedGate: r.requestedGate || fleetOpt.requestedGate,
+        suggestedDriver: r.driverName || null,
+        suggestedPlate: r.licensePlate || null,
+        suggestedTrailer: r.trailerPlate || null,
+        suggestedLicense: r.licenseNumber || null,
+        suggestedGate: r.requestedGate || 'Gate 1',
         suggestedEta: `0${8 + (idx % 4)}:30`,
         cargoDescription: r.cargoDescription || r.commodity || '',
         packageCount: r.packageCount ?? null,
@@ -730,9 +1453,9 @@ export const manifestPortSyncService = {
       etd: manifest.etd || '2026-11-26 22:00',
       sentToPortAt: manifest.sentToPortAt || now,
       status: 'SENT_TO_PORT',
-      portApprovalStatus: 'PORT_APPROVED',
-      portApprovedAt: now,
-      portApprovedBy: 'Cảng Tiên Sa (Tự động chấp nhận e-Manifest)',
+      portApprovalStatus: 'PENDING_APPROVAL',
+      portApprovedAt: null,
+      portApprovedBy: null,
       vesselStatus: manifest.vesselStatus || 'BERTHED',
       containers: mappedContainers
     }
@@ -745,9 +1468,6 @@ export const manifestPortSyncService = {
     } catch (e) {
       console.warn('Lỗi ghi local manifests:', e)
     }
-
-    // Tự động chấp nhận và sinh danh sách Container vào bãi Cảng Tiên Sa ngay lập tức
-    this.approveManifestByPort(newRecord.manifestId)
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('nexusport:manifest_synced', {
@@ -857,7 +1577,6 @@ export const manifestPortSyncService = {
         const carrierProfile =
           TRANSPORT_COMPANIES_POOL.find(p => p.companyName === c.transportCompany) ||
           TRANSPORT_COMPANIES_POOL[idx % TRANSPORT_COMPANIES_POOL.length]
-        const defaultFleet = carrierProfile.fleetOptions[idx % carrierProfile.fleetOptions.length]
 
         const shortVoyage = (approvedManifest.voyageNumber || 'V26').replace(/[^A-Z0-9]/gi, '')
         const contSuffix = (c.containerNumber || `00${idx + 1}`).slice(-4)
@@ -881,90 +1600,8 @@ export const manifestPortSyncService = {
           console.warn('Auto yard reservation sync warning:', err)
         }
 
-        // Bộ giấy tờ gốc đã có sẵn từ Bản khai Tàu & Chủ hàng (Xem được ngay cả khi chưa có Xe & Tài xế)
-        const manifestDocuments = [
-          {
-            id: `DOC-BL-${c.containerNumber}`,
-            documentType: 'BillOfLading',
-            type: 'BillOfLading',
-            title: 'Vận Đơn Đường Biển Gốc (Original Bill of Lading - B/L)',
-            shortTitle: '1. Vận Đơn B/L',
-            documentNumber: c.blNumber || `BL-VNDAD-${contSuffix}`,
-            fileName: `BillOfLading_${c.blNumber || contSuffix}_${c.containerNumber}.pdf`,
-            fileUrl: 'https://pdfobject.com/pdf/sample.pdf',
-            issuer: approvedManifest.shippingLine || 'Hãng tàu Quốc tế',
-            verificationStatus: 'Verified',
-            scope: `Tàu ${approvedManifest.vesselName} (${approvedManifest.voyageNumber})`,
-            icon: 'directions_boat',
-            mandatory: true,
-          },
-          {
-            id: `DOC-EDO-${c.containerNumber}`,
-            documentType: isImport ? 'DeliveryOrder' : 'BookingNote',
-            type: isImport ? 'DeliveryOrder' : 'BookingNote',
-            title: isImport
-              ? 'Lệnh Giao Hàng Điện Tử (Electronic Delivery Order - eDO)'
-              : 'Lệnh Cấp Container & Hạ Bãi Xuất Khẩu (Booking Confirmation)',
-            shortTitle: isImport ? '2. Lệnh eDO' : '2. Booking Note',
-            documentNumber: isImport ? `EDO-${shortVoyage}-${contSuffix}` : `BKG-${shortVoyage}-${contSuffix}`,
-            fileName: `${isImport ? 'eDO' : 'BookingNote'}_${c.containerNumber}.pdf`,
-            fileUrl: 'https://pdfobject.com/pdf/sample.pdf',
-            issuer: approvedManifest.agent || approvedManifest.shippingLine,
-            verificationStatus: 'Verified',
-            scope: `Chủ hàng: ${c.shipper || c.consignee}`,
-            icon: 'assignment_turned_in',
-            mandatory: true,
-          },
-          {
-            id: `DOC-HQ-${c.containerNumber}`,
-            documentType: 'CustomsDeclaration',
-            type: 'CustomsDeclaration',
-            title: 'Tờ Khai Hải Quan Điện Tử (VNACCS/VCIS Clearance)',
-            shortTitle: '3. Tờ Khai HQ',
-            documentNumber: `HQ-105829${contSuffix}-04C1`,
-            fileName: `ToKhaiHaiQuan_VNACCS_${c.containerNumber}.pdf`,
-            fileUrl: 'https://pdfobject.com/pdf/sample.pdf',
-            issuer: 'Chi cục Hải quan Cửa khẩu Cảng Đà Nẵng',
-            verificationStatus: 'Verified',
-            scope: c.customsStatus || 'Đã thông quan (Luồng Xanh)',
-            icon: 'verified_user',
-            mandatory: true,
-          },
-          {
-            id: `DOC-VGM-${c.containerNumber}`,
-            documentType: 'VgmCertificate',
-            type: 'VgmCertificate',
-            title: 'Chứng Thư Xác Nhận Khối Lượng Toàn Bộ (SOLAS VGM Certificate)',
-            shortTitle: '4. Chứng Thư VGM',
-            documentNumber: `VGM-${c.containerNumber}-${c.grossWeightKg || 25400}KG`,
-            fileName: `VGM_SOLAS_${c.containerNumber}.pdf`,
-            fileUrl: 'https://pdfobject.com/pdf/sample.pdf',
-            issuer: c.vgmMethod || 'Trạm cân điện tử Cảng Tiên Sa',
-            verificationStatus: 'Verified',
-            scope: `Gross: ${(c.grossWeightKg || 25400).toLocaleString()} kg · Seal: ${c.sealNumber}`,
-            icon: 'scale',
-            mandatory: true,
-          },
-          ...(autoYardSlot.isReefer
-            ? [
-                {
-                  id: `DOC-RF-${c.containerNumber}`,
-                  documentType: 'ReeferInstructions',
-                  type: 'ReeferInstructions',
-                  title: 'Chỉ Dẫn Cài Đặt Nhiệt Độ & Thông Gió Container Lạnh (Reefer Manifest)',
-                  shortTitle: '5. Chỉ Dẫn Nhiệt Độ Lạnh',
-                  documentNumber: `RF-TEMP-${contSuffix}`,
-                  fileName: `Reefer_Temp_Setting_${c.containerNumber}.pdf`,
-                  fileUrl: 'https://pdfobject.com/pdf/sample.pdf',
-                  issuer: c.shipper || 'Chủ hàng Thủy sản Đông lạnh',
-                  verificationStatus: 'Verified',
-                  scope: `Nhiệt độ yêu cầu: ${c.tempRequired || '-18.0°C'} · Khu D (${autoYardSlot.blockCode})`,
-                  icon: 'ac_unit',
-                  mandatory: true,
-                },
-              ]
-            : []),
-        ]
+        // Bộ chứng từ chỉ lấy dữ liệu thật do khách hàng / vận tải tải lên từ đơn Dịch vụ ePort (không tự sinh sample.pdf giả)
+        const manifestDocuments = []
 
         return {
           id: bookingCode,
@@ -1022,11 +1659,11 @@ export const manifestPortSyncService = {
           requestedGate: 'Gate 1',
           transportDocuments: [],
 
-          // Lưu thông tin đội xe gợi ý để khi bên Transport bấm gửi sẽ điều phối đúng xe của hãng đó
-          suggestedPlate: c.suggestedPlate || defaultFleet.licensePlate,
-          suggestedTrailer: c.suggestedTrailer || defaultFleet.trailerPlate,
-          suggestedDriver: c.suggestedDriver || defaultFleet.driverName,
-          suggestedLicense: c.suggestedLicense || defaultFleet.licenseNumber,
+          // Chỉ giữ thông tin xe/tài xế thực tế nếu đã khai báo từ trước, không tự điền xe/tài xế mẫu
+          suggestedPlate: c.suggestedPlate || null,
+          suggestedTrailer: c.suggestedTrailer || null,
+          suggestedDriver: c.suggestedDriver || null,
+          suggestedLicense: c.suggestedLicense || null,
           suggestedGate: 'Gate 1',
           suggestedEta: c.suggestedEta || '08:30',
 
@@ -1054,6 +1691,13 @@ export const manifestPortSyncService = {
       } catch (e) {
         console.warn('Lỗi lưu generated gate bookings:', e)
       }
+
+      // Đồng bộ tuần tự lên PostgreSQL (duyệt manifest xong mới ghi danh sách generatedBookings) để tránh race condition JSONB
+      try {
+        shippingLineApi.approveManifestAtPort(manifestId)
+          .catch(() => {})
+          .then(() => shippingLineApi.savePortBookings(manifestId, newGateBookings).catch(() => {}))
+      } catch (e) {}
     }
 
     if (typeof window !== 'undefined') {
@@ -1097,6 +1741,13 @@ export const manifestPortSyncService = {
         b => b.sourceManifestId !== manifestId && b.sourceManifestNumber !== targetManifestNumber && b.sourceManifestNumber !== manifestId
       )
       localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(remaining))
+
+      // Đồng bộ tuần tự trạng thái về Pending rồi xóa generatedBookings trên PostgreSQL
+      try {
+        shippingLineApi.resetManifestPendingAtPort(manifestId)
+          .catch(() => {})
+          .then(() => shippingLineApi.savePortBookings(manifestId, []).catch(() => {}))
+      } catch (e) {}
     } catch (e) {
       console.warn(e)
     }
@@ -1169,6 +1820,29 @@ export const manifestPortSyncService = {
       }))
     }
     return updatedManifest
+  },
+
+  /**
+   * Reset toàn bộ dữ liệu Bản khai & Container về rỗng để test lại từ đầu
+   */
+  async resetAllData() {
+    try {
+      await shippingLineApi.resetAllManifestsAtPort().catch(() => {})
+    } catch (e) {
+      console.warn('Lỗi gọi resetAllManifestsAtPort:', e)
+    }
+    try {
+      clearLocalSyncStorage()
+    } catch (e) {
+      console.warn('Lỗi xóa localStorage khi reset:', e)
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nexusport:manifest_synced', {
+        detail: { type: 'RESET_ALL' }
+      }))
+      window.dispatchEvent(new Event('storage'))
+    }
+    return []
   },
 
   /**

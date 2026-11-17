@@ -165,175 +165,11 @@ function SummaryItem({ label, children }) {
   )
 }
 
-const KNOWN_BL_DATABASE = [
-  {
-    blNumber: 'BL-INB-DAD-2601',
-    vesselName: 'MAERSK MC-KINNEY MOLLER',
-    voyageNumber: 'MM-2601S',
-    direction: 'IMPORT',
-    shipper: 'Samsung C&T Corporation (Busan, Korea)',
-    consignee: 'Công ty TNHH Điện tử Da Nang Tech (KCN Điện Nam - Điện Ngọc)',
-    containers: [
-      { containerNumber: 'MSKU8829101', typeCode: '20GP', sealNumber: 'ML-55219', grossWeightKg: 19800, commodity: 'Linh kiện bán dẫn vi mạch điện tử cao cấp' },
-      { containerNumber: 'HLCU7719205', typeCode: '45HC', sealNumber: 'HL-33910', grossWeightKg: 26000, commodity: 'Màn hình OLED và bảng mạch điện thoại' },
-    ]
-  },
-  {
-    blNumber: 'BL-INB-DAD-2602',
-    vesselName: 'MAERSK MC-KINNEY MOLLER',
-    voyageNumber: 'MM-2601S',
-    direction: 'IMPORT',
-    shipper: 'CMA CGM Logistics Marseille (France)',
-    consignee: 'Công ty CP Sữa Quốc Tế (Chi nhánh Miền Trung)',
-    containers: [
-      { containerNumber: 'CMAU3381923', typeCode: '20RF', sealNumber: 'CM-18290', grossWeightKg: 24500, commodity: 'Bơ sữa thanh trùng nguyên liệu nhập khẩu', isReefer: true },
-      { containerNumber: 'HLCU8821947', typeCode: '20RF', sealNumber: 'HL-77182', grossWeightKg: 25000, commodity: 'Phô mai mozzarella bảo quản nhiệt độ âm', isReefer: true },
-    ]
-  },
-  {
-    blNumber: 'BL-VNDAD-001',
-    vesselName: 'EVER GLORY',
-    voyageNumber: 'EG-2605W',
-    direction: 'IMPORT',
-    shipper: 'Evergreen Logistics Taipei',
-    consignee: 'Công ty CP May Xuất Khẩu Hòa Thọ',
-    containers: [
-      { containerNumber: 'EMCU1234567', typeCode: '40HC', sealNumber: 'SEAL-VN-9081', grossWeightKg: 24500, commodity: 'Vải cuộn và phụ liệu may mặc' },
-      { containerNumber: 'EMCU1234568', typeCode: '40HC', sealNumber: 'SEAL-VN-9084', grossWeightKg: 25100, commodity: 'Sợi dệt nhân tạo và hạt nhựa' },
-    ]
-  },
-  {
-    blNumber: 'BL-VNDAD-9101',
-    vesselName: 'ONE CONTINUITY',
-    voyageNumber: 'OC-2612E',
-    direction: 'IMPORT',
-    shipper: 'Tokyo Precision Machinery Co.',
-    consignee: 'Công ty TNHH Cơ Khí Tiên Sa',
-    containers: [
-      { containerNumber: 'ONEU8821903', typeCode: '40GP', sealNumber: 'ONE-SL-55102', grossWeightKg: 22000, blNumber: 'BL-VNDAD-9101', commodity: 'Máy móc CNC gia công kim loại' },
-      { containerNumber: 'TLLU7728057', typeCode: '20GP', sealNumber: 'ONE-SL-55103', grossWeightKg: 18000, blNumber: 'BL-VNDAD-9101', commodity: 'Trục động cơ và linh kiện phụ tùng' },
-    ]
-  },
-  {
-    blNumber: 'BL-VNDAD-9102',
-    vesselName: 'ONE CONTINUITY',
-    voyageNumber: 'OC-2612E',
-    direction: 'IMPORT',
-    shipper: 'Tokyo Precision Machinery Co.',
-    consignee: 'Công ty Cổ phần Vận tải & Logistics Tiên Sa',
-    containers: [
-      { containerNumber: 'WHSU8103824', typeCode: '20GP', sealNumber: 'ONE-SL-55104', grossWeightKg: 24500, blNumber: 'BL-VNDAD-9102', commodity: 'Vải dệt may và quần áo bảo hộ xuất khẩu' },
-    ]
-  }
-]
+const KNOWN_BL_DATABASE = []
 
-const KNOWN_IMPORT_DATABASE = [
-  {
-    edoNumber: 'EDO-MM2601S-01',
-    bookingNumber: 'BK-MM2601S',
-    blNumber: 'BL-INB-DAD-2601',
-    vesselName: 'MAERSK MC-KINNEY MOLLER',
-    voyageNumber: 'MM-2601S',
-    shippingLine: 'Maersk Line',
-    validUntil: '2026-11-30',
-    eta: '2026-11-15T08:00:00Z',
-    dischargePort: 'VNDAD (Cảng Tiên Sa, Đà Nẵng)',
-    emptyReturnDepot: 'Depot Cảng Tiên Sa',
-    aliases: [
-      'EDO-MM2601S-01', 'EDO-MM2601S', 'MM2601S', 'MM-2601S',
-      'BK-MM2601S', 'BK-MM2601S-9101', 'BK-MM2601S-9205', 'BK-MM2601S-1923', 'BK-MM2601S-1947',
-      'BL-INB-DAD-2601', 'BL-INB-DAD-2602', 'MAERSK MC-KINNEY MOLLER', 'MAERSK', 'MM'
-    ],
-    shipper: 'Samsung C&T Corporation (Busan, Korea)',
-    consignee: 'Công ty TNHH Điện tử Da Nang Tech (KCN Điện Nam - Điện Ngọc)',
-    containers: [
-      { containerNumber: 'MSKU8829101', typeCode: '20GP', sealNumber: 'ML-55219', grossWeightKg: 19800, commodity: 'Linh kiện bán dẫn vi mạch điện tử cao cấp', blNumber: 'BL-INB-DAD-2601' },
-      { containerNumber: 'HLCU7719205', typeCode: '45HC', sealNumber: 'HL-33910', grossWeightKg: 26000, commodity: 'Màn hình OLED và bảng mạch điện thoại', blNumber: 'BL-INB-DAD-2601' },
-      { containerNumber: 'CMAU3381923', typeCode: '20RF', sealNumber: 'CM-18290', grossWeightKg: 24500, commodity: 'Bơ sữa thanh trùng nguyên liệu nhập khẩu', isReefer: true, blNumber: 'BL-INB-DAD-2602' },
-      { containerNumber: 'HLCU8821947', typeCode: '20RF', sealNumber: 'HL-77182', grossWeightKg: 25000, commodity: 'Phô mai mozzarella bảo quản nhiệt độ âm', isReefer: true, blNumber: 'BL-INB-DAD-2602' },
-    ]
-  },
-  {
-    edoNumber: 'EDO-EG2605W-2949',
-    bookingNumber: 'BK-EG2605W-2949',
-    blNumber: 'BL-VNDAD-001',
-    vesselName: 'EVER GLORY',
-    voyageNumber: 'EG-2605W',
-    shippingLine: 'Evergreen Line',
-    validUntil: '2026-11-28',
-    eta: '2026-11-18T08:00:00Z',
-    dischargePort: 'VNDAD (Cảng Tiên Sa, Đà Nẵng)',
-    emptyReturnDepot: 'Depot Tân Cảng Tiên Sa',
-    aliases: [
-      'EDO-EG2605W-2949', 'EDO-EG2605W', 'EG2605W', 'EG-2605W',
-      'BK-EG2605W', 'BK-EG2605W-2949', 'BKG-EVG-2026',
-      'BL-VNDAD-001', 'EVER GLORY', 'EVERGREEN', 'EG'
-    ],
-    shipper: 'Evergreen Logistics Taipei',
-    consignee: 'Công ty CP May Xuất Khẩu Hòa Thọ',
-    containers: [
-      { containerNumber: 'EMCU1234567', typeCode: '40HC', sealNumber: 'SEAL-VN-9081', grossWeightKg: 24500, commodity: 'Vải cuộn và phụ liệu may mặc', blNumber: 'BL-VNDAD-001' },
-      { containerNumber: 'EMCU1234568', typeCode: '40HC', sealNumber: 'SEAL-VN-9084', grossWeightKg: 25100, commodity: 'Sợi dệt nhân tạo và hạt nhựa', blNumber: 'BL-VNDAD-001' },
-    ]
-  }
-]
+const KNOWN_IMPORT_DATABASE = []
 
-const KNOWN_EXPORT_DATABASE = [
-  {
-    bookingNumber: 'BK-OC2612E',
-    bookingId: 'b-exp-oc2612e-01',
-    blNumber: 'BL-OC2612E-1903',
-    vesselName: 'ONE CONTINUITY',
-    voyageNumber: 'OC-2612E',
-    shippingLine: 'Evergreen Line (EMC)',
-    cyCutoff: '2026-11-25T18:00:00Z',
-    eta: '2026-11-25T08:00:00Z',
-    etd: '2026-11-26T18:00:00Z',
-    dischargePort: 'JPTYO (Tokyo, Japan)',
-    bookingAliases: ['BK-OC2612E', 'BK-OC2612E-1903', 'BK-OC2612E-8057', 'BK-OC2612E-3824', 'OC-2612E', 'OC2612E', 'MNF-2026-002', 'BL-OC2612E-1903', 'BL-VNDAD-9101', 'BL-VNDAD-9102', 'ONE CONTINUITY'],
-    shipper: 'Công ty CP Cơ Khí & Thiết Bị Tiên Sa',
-    consignee: 'Tokyo Precision Machinery Co.',
-    containers: [
-      { containerNumber: 'ONEU8821903', typeCode: '40GP', sealNumber: 'ONE-SL-55102', grossWeightKg: 22000, blNumber: 'BL-VNDAD-9101', commodity: 'Máy móc CNC gia công kim loại xuất khẩu', dischargePort: 'JPTYO' },
-      { containerNumber: 'TLLU7728057', typeCode: '20GP', sealNumber: 'ONE-SL-55103', grossWeightKg: 18000, blNumber: 'BL-VNDAD-9101', commodity: 'Trục động cơ và linh kiện cơ khí chính xác', dischargePort: 'JPOSA' },
-      { containerNumber: 'WHSU8103824', typeCode: '20GP', sealNumber: 'ONE-SL-55104', grossWeightKg: 24500, blNumber: 'BL-VNDAD-9102', commodity: 'Vải dệt may và quần áo bảo hộ xuất khẩu', dischargePort: 'JPTYO' },
-    ]
-  },
-  {
-    bookingNumber: 'BK-MM2601S-9101',
-    bookingId: 'b-exp-mm2601s-02',
-    blNumber: 'BL-EXP-DAD-2601',
-    vesselName: 'MAERSK MC-KINNEY MOLLER',
-    voyageNumber: 'MM-2601S',
-    shippingLine: 'Maersk Line',
-    cyCutoff: '2026-11-22T18:00:00Z',
-    dischargePort: 'SGSIN (Singapore)',
-    shipper: 'Tập đoàn Điện tử Công nghệ Da Nang Tech',
-    consignee: 'Samsung C&T Logistics Asia',
-    containers: [
-      { containerNumber: 'MSKU8829101', typeCode: '20GP', sealNumber: 'ML-55219', grossWeightKg: 19800, commodity: 'Linh kiện bán dẫn vi mạch điện tử cao cấp', dischargePort: 'SGSIN' },
-      { containerNumber: 'HLCU7719205', typeCode: '45HC', sealNumber: 'HL-33910', grossWeightKg: 26000, commodity: 'Màn hình OLED và phụ kiện điện thoại', dischargePort: 'NLRTM' },
-      { containerNumber: 'CMAU3381923', typeCode: '20RF', sealNumber: 'CM-18290', grossWeightKg: 24500, commodity: 'Tôm thẻ chân trắng đông lạnh xuất khẩu', isReefer: true, tempRequired: '-18.0°C', dischargePort: 'FRMRS' },
-      { containerNumber: 'HLCU8821947', typeCode: '20RF', sealNumber: 'HL-77182', grossWeightKg: 25000, commodity: 'Cá ngừ đại dương đóng gói chân không', isReefer: true, tempRequired: '-20.0°C', dischargePort: 'DEHAM' },
-    ]
-  },
-  {
-    bookingNumber: 'BKG-EVG-2026',
-    bookingId: 'b-exp-evg-03',
-    blNumber: 'BL-VNDAD-001',
-    vesselName: 'EVER GLORY',
-    voyageNumber: 'EG-2605W',
-    shippingLine: 'Evergreen Line',
-    cyCutoff: '2026-11-25T18:00:00Z',
-    dischargePort: 'USLAX (Los Angeles, USA)',
-    shipper: 'Công ty CP May Xuất Khẩu Hòa Thọ',
-    consignee: 'Evergreen Logistics America',
-    containers: [
-      { containerNumber: 'EMCU1234567', typeCode: '40HC', sealNumber: 'SEAL-VN-9081', grossWeightKg: 24500, commodity: 'Vải cuộn và phụ liệu may mặc xuất khẩu', dischargePort: 'USLAX' },
-      { containerNumber: 'EMCU1234568', typeCode: '40HC', sealNumber: 'SEAL-VN-9084', grossWeightKg: 25100, commodity: 'Sợi dệt nhân tạo và hạt nhựa tái sinh', dischargePort: 'USLGB' },
-    ]
-  }
-]
+const KNOWN_EXPORT_DATABASE = []
 
 export default function ServiceDraftWizard({ services = [], initialServiceId, draftId, onClose, onSaved, onReview }) {
   const headingId = useId()
@@ -380,12 +216,16 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   const sourceKey = JSON.stringify([form.flow, form.mainServiceId, form.source])
   const customsScope = JSON.stringify([sourceKey, form.lines.map(line => line.sourceContainerId).sort()])
 
+  const reeferService = useMemo(() => {
+    return (services || []).find(s => s.code === 'REEFER_POWER' || s.id === 'REEFER_POWER' || s.name?.toLowerCase().includes('cắm điện'))
+  }, [services])
+
   // Cấu hình các bước theo đúng chuẩn Hải Phòng ePort
   const stages = form.flow === 'IMPORT'
     ? [
       ['Lệnh eDO & Email', FileText],
       ['Khai báo container', Container],
-      ['Dịch vụ đính kèm', Layers3],
+      ['Thời gian & Kế hoạch', Layers3],
       ['Khai báo giao nhận', CalendarDays],
       ['Hồ sơ & Chứng từ', FileText],
       ['Kiểm tra & Gửi đăng ký', FileCheck2],
@@ -393,7 +233,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     : [
       ['eBooking & Email', FileText],
       ['Khai báo container', Container],
-      ['Dịch vụ đính kèm', Layers3],
+      ['Thời gian & Kế hoạch', Layers3],
       ['Khai báo giao nhận', CalendarDays],
       ['Hồ sơ & Chứng từ', FileText],
       ['Kiểm tra & Gửi đăng ký', FileCheck2],
@@ -407,6 +247,19 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   const sampleMode = import.meta.env.DEV && !draftId && form.dataMode === 'SAMPLE'
 
   const [step, setStep] = useState(0)
+  const [manifestSyncVersion, setManifestSyncVersion] = useState(0)
+  useEffect(() => {
+    let active = true
+    manifestPortSyncService.fetchRemoteSyncedManifests()
+      .then(() => { if (active) setManifestSyncVersion(v => v + 1) })
+      .catch(() => {})
+    const onManifestSync = () => setManifestSyncVersion(v => v + 1)
+    window.addEventListener('nexusport:manifest_synced', onManifestSync)
+    return () => {
+      active = false
+      window.removeEventListener('nexusport:manifest_synced', onManifestSync)
+    }
+  }, [])
   const [dirty, setDirty] = useState(false)
   const [leaveConfirm, setLeaveConfirm] = useState(false)
   const [pendingChange, setPendingChange] = useState(null)
@@ -419,6 +272,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   const [copyPreview, setCopyPreview] = useState(null)
   const [step2BlConfirmed, setStep2BlConfirmed] = useState(false)
   const [step2BlInput, setStep2BlInput] = useState('')
+  const [step2BlError, setStep2BlError] = useState('')
   const [step2ContInput, setStep2ContInput] = useState('')
 
   const [step1BookingConfirmed, setStep1BookingConfirmed] = useState(() => Boolean(form.source.referenceNumber?.trim() || form.source.bookingId?.trim()))
@@ -454,71 +308,47 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       return setFeedback(msg)
     }
 
-    // Tìm kiếm trong allExportManifests hoặc KNOWN_EXPORT_DATABASE hoặc fallback tự do
+    // Tìm kiếm chính xác trong allExportManifests hoặc KNOWN_EXPORT_DATABASE (không tự sinh dữ liệu giả)
     let matched = allExportManifests.find(b => {
       const bNum = (b.bookingNumber || '').trim().toUpperCase()
       const bId = (b.bookingId || '').trim().toUpperCase()
-      const blNum = (b.blNumber || '').trim().toUpperCase()
-      const voyNum = (b.voyageNumber || '').trim().toUpperCase()
-      const vName = (b.vesselName || '').trim().toUpperCase()
       const aliases = (b.bookingAliases || []).map(a => String(a).trim().toUpperCase())
 
       const bNumNorm = norm(bNum)
       const bIdNorm = norm(bId)
-      const blNumNorm = norm(blNum)
-      const voyNumNorm = norm(voyNum)
-      const vNameNorm = norm(vName)
 
       return (
         bNum === cleanBooking ||
         bId === cleanBooking ||
-        blNum === cleanBooking ||
-        aliases.includes(cleanBooking) ||
-        aliases.some(a => norm(a) === cleanNorm || norm(a).startsWith(cleanNorm) || cleanNorm.startsWith(norm(a))) ||
-        (bNumNorm && (bNumNorm === cleanNorm || bNumNorm.startsWith(cleanNorm) || cleanNorm.startsWith(bNumNorm))) ||
-        (voyNumNorm && (cleanNorm.includes(voyNumNorm) || voyNumNorm.includes(cleanNorm))) ||
-        (bIdNorm && (bIdNorm === cleanNorm || bIdNorm.startsWith(cleanNorm) || cleanNorm.startsWith(bIdNorm))) ||
-        (blNumNorm && (blNumNorm === cleanNorm || blNumNorm.startsWith(cleanNorm) || cleanNorm.startsWith(blNumNorm))) ||
-        (vNameNorm && (cleanNorm.includes(vNameNorm) || vNameNorm.includes(cleanNorm)))
+        (cleanNorm && (
+          bNumNorm === cleanNorm ||
+          bIdNorm === cleanNorm ||
+          aliases.some(a => norm(a) === cleanNorm)
+        ))
       )
     })
 
     if (!matched) {
       matched = KNOWN_EXPORT_DATABASE.find(b => {
         const bNumNorm = norm(b.bookingNumber)
-        const voyNorm = norm(b.voyageNumber)
         const aliases = (b.bookingAliases || []).map(a => norm(a))
-        return (
-          aliases.includes(cleanNorm) ||
-          aliases.some(a => a.includes(cleanNorm) || cleanNorm.includes(a)) ||
+        return Boolean(cleanNorm) && (
           bNumNorm === cleanNorm ||
-          bNumNorm.startsWith(cleanNorm) ||
-          cleanNorm.startsWith(bNumNorm) ||
-          (voyNorm && (cleanNorm.includes(voyNorm) || voyNorm.includes(cleanNorm)))
+          aliases.includes(cleanNorm)
         )
       })
     }
 
-    if (!matched && (cleanNorm.includes('OC') || cleanNorm.includes('2612') || cleanNorm.includes('BK') || cleanNorm.includes('ONE'))) {
-      matched = KNOWN_EXPORT_DATABASE[0]
-    }
-
     if (!matched) {
-      matched = {
-        bookingNumber: cleanBooking,
-        bookingId: `b-${cleanNorm}`,
-        blNumber: `BL-${cleanBooking}`,
-        vesselName: 'ONE CONTINUITY',
-        voyageNumber: 'OC-2612E',
-        shippingLine: 'Evergreen Line (EMC)',
-        eta: '2026-11-25T08:00:00Z',
-        cyCutoff: '2026-11-25T18:00:00Z',
-        dischargePort: 'JPTYO (Tokyo, Japan)',
-        containers: KNOWN_EXPORT_DATABASE[0].containers,
-      }
+      const msg = `Không tìm thấy mã Booking xuất khẩu '${cleanBooking}' trong Bản khai Hãng tàu đã được Cảng duyệt! Vui lòng kiểm tra lại mã Booking.`
+      setStep1BookingError(msg)
+      return setFeedback(msg)
     }
 
     setStep1BookingError('')
+    const resolvedBookingNo = (matched.bookingNumber && !cleanBooking.toUpperCase().startsWith('BK-'))
+      ? matched.bookingNumber
+      : cleanBooking
     const vesselData = {
       vesselName: matched.vesselName || 'ONE CONTINUITY',
       voyageNumber: matched.voyageNumber || 'OC-2612E',
@@ -526,9 +356,9 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       eta: matched.eta || '2026-11-25T08:00:00Z',
       cyCutoff: matched.cyCutoff || matched.eta || '2026-11-25T18:00:00Z',
       dischargePort: matched.dischargePort || 'JPTYO (Tokyo, Japan)',
-      bookingNumber: cleanBooking,
+      bookingNumber: resolvedBookingNo,
       blNumber: matched.blNumber || `BL-${cleanBooking}`,
-      containerCount: (matched.containers && matched.containers.length > 0) ? matched.containers.length : (KNOWN_EXPORT_DATABASE[0]?.containers?.length || 3),
+      containerCount: (matched.containers && matched.containers.length > 0) ? matched.containers.length : (KNOWN_EXPORT_DATABASE[0]?.containers?.length || 0),
       containers: (matched.containers && matched.containers.length > 0) ? matched.containers : (KNOWN_EXPORT_DATABASE[0]?.containers || []),
     }
 
@@ -538,7 +368,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       source: {
         ...previous.source,
         referenceNumber: cleanBooking,
-        bookingNumber: cleanBooking,
+        bookingNumber: resolvedBookingNo,
         bookingId: isMatchedGuid ? matched.bookingId : null,
         vesselName: vesselData.vesselName,
         voyageNumber: vesselData.voyageNumber,
@@ -552,6 +382,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     setStep1BookingInput(cleanBooking)
     setStep1VesselInfo(vesselData)
     setStep1BookingConfirmed(true)
+    setEmailSource(sourceKey)
     setFeedback('')
   }
 
@@ -559,6 +390,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     setStep1BookingConfirmed(false)
     setStep1VesselInfo(null)
     setStep1BookingError('')
+    setStep2BlError('')
   }
 
   const handleConfirmImportEdo = overrideCode => {
@@ -572,82 +404,173 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     const norm = str => String(str || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
     const cleanNorm = norm(cleanInput)
 
-    // 1. Kiểm tra nếu mã người dùng nhập thuộc luồng HÀNG XUẤT -> Chặn lại và báo lỗi!
-    const isExportMatch = allExportManifests.find(b => {
-      const bBkNorm = norm(b.bookingNumber)
-      const aliases = (b.bookingAliases || []).map(a => norm(a))
-      return (
-        bBkNorm === cleanNorm ||
-        aliases.includes(cleanNorm) ||
-        cleanNorm.startsWith('BK-OC') ||
-        cleanNorm.includes('OC2612') ||
-        cleanNorm === 'MNF-2026-002' ||
-        cleanNorm === 'OC-2612E'
-      )
-    }) || KNOWN_EXPORT_DATABASE.find(b => {
-      const bBkNorm = norm(b.bookingNumber)
-      const aliases = (b.bookingAliases || []).map(a => norm(a))
-      return bBkNorm === cleanNorm || aliases.includes(cleanNorm)
+    // 1. Thu thập dữ liệu HÀNG NHẬP thực tế từ Manifests và Gate Bookings
+    const allSynced = manifestPortSyncService.getSyncedManifests() || []
+    const allGateBookings = manifestPortSyncService.getGeneratedGateBookings() || []
+
+    const importSynced = allSynced.filter(m =>
+      String(m.direction || m.flow || '').toUpperCase() === 'IMPORT' ||
+      m.direction === 'Nhập khẩu'
+    )
+    const importGateBookings = allGateBookings.filter(b =>
+      b.direction === 'IMPORT' ||
+      b.operation === 'Pickup'
+    )
+
+    // Danh sách ứng viên hàng nhập
+    const importCandidates = []
+
+    // Từ Gate Bookings đã sinh cho hàng nhập
+    importGateBookings.forEach(gb => {
+      importCandidates.push({
+        bookingNumber: gb.id,
+        edoNumber: `EDO-${gb.voyageNumber || 'IMP'}`,
+        blNumber: gb.cargoDeclarationId || gb.blNumber || '',
+        containerNumber: gb.containerId,
+        vesselName: gb.vesselName,
+        voyageNumber: gb.voyageNumber,
+        shippingLine: gb.shippingLine || 'Ocean Network Express (ONE)',
+        validUntil: '2026-11-30',
+        emptyReturnDepot: 'Depot Cảng Tiên Sa',
+        dischargePort: gb.pod || 'VNDAD (Cảng Tiên Sa)',
+        containers: [{
+          containerNumber: gb.containerId,
+          typeCode: gb.containerType || '40HC',
+          sealNumber: gb.sealNumber || 'SL-88412',
+          grossWeightKg: gb.grossWeightKg || 24500,
+          commodity: gb.cargoDescription || 'Hàng hóa nhập khẩu',
+          blNumber: gb.cargoDeclarationId || gb.blNumber || '',
+          isReefer: Boolean(gb.cargoType?.includes('Reefer')),
+        }],
+        aliases: [
+          gb.id,
+          gb.cargoDeclarationId,
+          gb.containerId,
+          gb.sourceManifestNumber,
+          gb.voyageNumber,
+          `EDO-${gb.voyageNumber}`,
+          `BK-${gb.voyageNumber}`,
+        ].filter(Boolean),
+      })
     })
 
-    if (isExportMatch) {
-      const msg = `Mã '${cleanInput}' là mã Booking thuộc luồng HÀNG XUẤT (${isExportMatch.vesselName} - ${isExportMatch.voyageNumber}), không hợp lệ cho Đăng ký Giao hàng nhập (eDO)! Vui lòng nhập đúng số eDO hoặc mã Booking nhập khẩu.`
-      setStep1ImportError(msg)
-      return setFeedback(msg)
-    }
-
-    // 2. Tìm kiếm trong API sources nếu có
-    let matchedApi = (sources.data?.items || []).find(item => {
-      const ref = norm(item.referenceNumber)
-      const bNum = norm(item.bookingNumber)
-      return (ref && (ref === cleanNorm || cleanNorm.includes(ref) || ref.includes(cleanNorm))) ||
-             (bNum && (bNum === cleanNorm || cleanNorm.includes(bNum) || bNum.includes(cleanNorm)))
+    // Từ Bản khai Manifest nhập khẩu
+    importSynced.forEach(m => {
+      const rawVoy = m.voyageNumber || ''
+      const cleanVoy = rawVoy.replace(/[^A-Z0-9]/gi, '')
+      const conts = (m.containers || m.records || []).map(c => ({
+        containerNumber: c.containerNumber,
+        typeCode: c.isoType || c.typeCode || '40HC',
+        sealNumber: c.sealNumber || 'SL-88412',
+        grossWeightKg: c.grossWeightKg || 24500,
+        commodity: c.cargoDescription || c.commodity || 'Hàng hóa nhập khẩu',
+        blNumber: c.blNumber || m.blNumber || '',
+        isReefer: Boolean(c.isReefer || /RF|RH/.test(c.isoType || c.typeCode || '')),
+      }))
+      const firstBl = m.blNumber || conts[0]?.blNumber || `BL-${cleanVoy || 'IMP'}`
+      const bNum = m.bookingNumber || `BK-${cleanVoy || 'IMP'}`
+      const edoNum = `EDO-${cleanVoy || 'IMP'}`
+      importCandidates.push({
+        bookingNumber: bNum,
+        edoNumber: edoNum,
+        blNumber: firstBl,
+        vesselName: m.vesselName || 'Tàu nhập Hãng tàu',
+        voyageNumber: m.voyageNumber || 'Chuyến nhập',
+        shippingLine: m.shippingLine || 'Hãng tàu Quốc tế',
+        validUntil: '2026-11-30',
+        emptyReturnDepot: 'Depot Cảng Tiên Sa',
+        dischargePort: m.pod || m.portOfDischarge || 'VNDAD (Cảng Tiên Sa)',
+        containers: conts,
+        aliases: [
+          m.manifestNumber,
+          bNum,
+          edoNum,
+          firstBl,
+          rawVoy,
+          cleanVoy,
+          `BK-${rawVoy}`,
+          `BK-${cleanVoy}`,
+          `BL-${rawVoy}`,
+          `BL-${cleanVoy}`,
+          `EDO-${rawVoy}`,
+          `EDO-${cleanVoy}`,
+          ...conts.map(c => c.containerNumber),
+          ...conts.map(c => c.blNumber),
+        ].filter(Boolean),
+      })
     })
 
-    // 3. Tìm kiếm trong KNOWN_IMPORT_DATABASE
-    let matched = KNOWN_IMPORT_DATABASE.find(item => {
+    // Từ dữ liệu chuẩn KNOWN_IMPORT_DATABASE & KNOWN_BL_DATABASE
+    KNOWN_IMPORT_DATABASE.forEach(item => importCandidates.push(item))
+    KNOWN_BL_DATABASE.filter(b => b.direction === 'IMPORT').forEach(item => {
+      importCandidates.push({
+        edoNumber: `EDO-${item.voyageNumber}`,
+        bookingNumber: `BK-${item.voyageNumber}`,
+        blNumber: item.blNumber,
+        vesselName: item.vesselName,
+        voyageNumber: item.voyageNumber,
+        shippingLine: item.shippingLine || 'Hãng tàu Quốc tế',
+        validUntil: '2026-11-30',
+        emptyReturnDepot: 'Depot Cảng Tiên Sa',
+        dischargePort: 'VNDAD (Cảng Tiên Sa)',
+        containers: item.containers || [],
+        aliases: [item.blNumber, item.voyageNumber, ...(item.containers || []).map(c => c.containerNumber)],
+      })
+    })
+
+    // 2. Tìm kiếm chính xác trong danh sách HÀNG NHẬP TRƯỚC
+    let matchedImport = importCandidates.find(item => {
       const edoNorm = norm(item.edoNumber)
       const bNumNorm = norm(item.bookingNumber)
-      const blNorm = norm(item.blNumber)
-      const voyNorm = norm(item.voyageNumber)
-      const vNameNorm = norm(item.vesselName)
       const aliases = (item.aliases || []).map(a => norm(a))
 
       return (
-        edoNorm === cleanNorm ||
-        bNumNorm === cleanNorm ||
-        blNorm === cleanNorm ||
-        aliases.includes(cleanNorm) ||
-        aliases.some(a => a === cleanNorm || a.includes(cleanNorm) || cleanNorm.includes(a)) ||
-        (voyNorm && (cleanNorm.includes(voyNorm) || voyNorm.includes(cleanNorm))) ||
-        (vNameNorm && (cleanNorm.includes(vNameNorm) || vNameNorm.includes(cleanNorm)))
+        Boolean(cleanNorm) && (
+          edoNorm === cleanNorm ||
+          bNumNorm === cleanNorm ||
+          aliases.some(a => a === cleanNorm)
+        )
       )
     })
 
-    // 4. Fallback thông minh chỉ cho HÀNG NHẬP
-    if (!matched && !matchedApi) {
-      if (cleanNorm.includes('MM') || cleanNorm.includes('2601') || cleanNorm.includes('MAERSK') || cleanNorm.includes('9101') || cleanNorm.includes('9205')) {
-        matched = KNOWN_IMPORT_DATABASE[0]
-      } else if (cleanNorm.includes('EG') || cleanNorm.includes('2605') || cleanNorm.includes('EVER')) {
-        matched = KNOWN_IMPORT_DATABASE[1]
-      } else if (cleanInput.startsWith('EDO') || cleanInput.startsWith('BK-MM') || cleanInput.startsWith('BK-EG')) {
-        matched = {
-          edoNumber: cleanInput.startsWith('EDO') ? cleanInput : `EDO-${cleanInput}`,
-          bookingNumber: cleanInput.startsWith('BK') ? cleanInput : `BK-${cleanInput}`,
-          blNumber: `BL-${cleanInput}`,
-          vesselName: 'MAERSK MC-KINNEY MOLLER',
-          voyageNumber: 'MM-2601S',
-          shippingLine: 'Maersk Line',
-          validUntil: '2026-11-30',
-          emptyReturnDepot: 'Depot Cảng Tiên Sa',
-          dischargePort: 'VNDAD (Cảng Tiên Sa)',
-          containers: KNOWN_IMPORT_DATABASE[0].containers,
-        }
-      } else {
-        const msg = `Không tìm thấy lệnh eDO hoặc mã Booking nhập khẩu '${cleanInput}'! Vui lòng kiểm tra lại mã.`
+    let matchedApi = null
+    if (!matchedImport) {
+      matchedApi = (sources.data?.items || []).find(item => {
+        const ref = norm(item.referenceNumber)
+        const bNum = norm(item.bookingNumber)
+        return Boolean(cleanNorm) && ((ref && ref === cleanNorm) || (bNum && bNum === cleanNorm))
+      })
+    }
+
+    // 3. Nếu KHÔNG tìm thấy trong hàng nhập, mới kiểm tra xem có phải mã HÀNG XUẤT thực sự không
+    if (!matchedImport && !matchedApi) {
+      const exportSynced = allSynced.filter(m =>
+        String(m.direction || m.flow || '').toUpperCase() === 'EXPORT' ||
+        m.direction === 'Xuất khẩu'
+      )
+      const exportGateBookings = allGateBookings.filter(b =>
+        b.direction === 'EXPORT' ||
+        b.operation === 'Dropoff'
+      )
+      const isExportMatch = [...exportGateBookings, ...exportSynced, ...KNOWN_EXPORT_DATABASE].find(b => {
+        const bBkNorm = norm(b.bookingNumber || b.id)
+        const bBlNorm = norm(b.blNumber || b.cargoDeclarationId)
+        const aliases = (b.bookingAliases || b.aliases || []).map(a => norm(a))
+        return bBkNorm === cleanNorm || bBlNorm === cleanNorm || aliases.includes(cleanNorm)
+      })
+
+      if (isExportMatch) {
+        const msg = `Mã '${cleanInput}' là mã Booking thuộc luồng HÀNG XUẤT (${isExportMatch.vesselName || 'Tàu xuất'} - ${isExportMatch.voyageNumber || ''}), không hợp lệ cho Đăng ký Giao hàng nhập (eDO)! Vui lòng nhập đúng số eDO hoặc mã Booking nhập khẩu.`
         setStep1ImportError(msg)
         return setFeedback(msg)
       }
+    }
+
+    let matched = matchedImport
+    if (!matched && !matchedApi) {
+      const msg = `Không tìm thấy lệnh eDO hoặc mã Booking nhập khẩu '${cleanInput}'! Vui lòng kiểm tra lại mã.`
+      setStep1ImportError(msg)
+      return setFeedback(msg)
     }
 
     const finalMatched = matchedApi || matched
@@ -701,6 +624,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     setStep1ImportInput(cleanInput)
     setStep1ImportInfo(importData)
     setStep1ImportConfirmed(true)
+    setEmailSource(sourceKey)
     if (resolvedBl) {
       setStep2BlInput(resolvedBl)
     }
@@ -714,46 +638,124 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     setStep1ImportError('')
     setStep2BlConfirmed(false)
     setStep2BlInput('')
+    setStep2BlError('')
   }
 
   const handleConfirmBl = blOverride => {
     const raw = blOverride || step2BlInput || form.source.blNumber || ''
     const cleanBl = String(raw).trim().toUpperCase()
-    if (!cleanBl) {
-      return setFeedback('Vui lòng nhập số Vận Đơn (Bill / B/L)!')
-    }
     const norm = str => String(str || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
     const blNorm = norm(cleanBl)
+    if (!cleanBl || !blNorm) {
+      const msg = 'Vui lòng nhập số Vận Đơn (Bill / B/L)!'
+      setStep2BlConfirmed(false)
+      setStep2BlError(msg)
+      return setFeedback(msg)
+    }
 
-    const matched = (form.flow === 'EXPORT' ? allExportManifests : [...KNOWN_IMPORT_DATABASE, ...KNOWN_BL_DATABASE]).find(b => {
-      const bBl = (b.blNumber || '').trim().toUpperCase()
-      const bBk = (b.bookingNumber || b.edoNumber || '').trim().toUpperCase()
-      const bVoy = (b.voyageNumber || '').trim().toUpperCase()
-      const aliases = (b.bookingAliases || b.aliases || []).map(a => String(a).trim().toUpperCase())
+    let matched = null
+    let resolvedValidBl = ''
 
-      const bBlNorm = norm(bBl)
-      const bBkNorm = norm(bBk)
-      const bVoyNorm = norm(bVoy)
+    if (form.flow === 'EXPORT') {
+      const currentBkNorm = norm(form.source.referenceNumber || form.source.bookingNumber || '')
+      if (currentBkNorm) {
+        const targetManifest = allExportManifests.find(m =>
+          norm(m.bookingNumber) === currentBkNorm ||
+          norm(m.bookingId) === currentBkNorm ||
+          (m.bookingAliases || []).some(a => norm(a) === currentBkNorm)
+        )
+        if (targetManifest) {
+          const validBls = Array.from(new Set(
+            [targetManifest.blNumber, ...(targetManifest.containers || []).map(c => c.blNumber)]
+              .map(x => String(x || '').trim().toUpperCase())
+              .filter(Boolean)
+          ))
+          const exactBl = validBls.find(v => norm(v) === blNorm)
+          if (exactBl) {
+            matched = targetManifest
+            resolvedValidBl = exactBl
+          }
+        }
+      } else {
+        for (const m of allExportManifests) {
+          const validBls = Array.from(new Set(
+            [m.blNumber, ...(m.containers || []).map(c => c.blNumber)]
+              .map(x => String(x || '').trim().toUpperCase())
+              .filter(Boolean)
+          ))
+          const exactBl = validBls.find(v => norm(v) === blNorm)
+          if (exactBl) {
+            matched = m
+            resolvedValidBl = exactBl
+            break
+          }
+        }
+      }
 
-      return (
-        bBl === cleanBl ||
-        bBk === cleanBl ||
-        aliases.includes(cleanBl) ||
-        aliases.some(a => a === cleanBl || norm(a) === blNorm) ||
-        (bBlNorm && (bBlNorm === blNorm || bBlNorm.startsWith(blNorm) || blNorm.startsWith(bBlNorm))) ||
-        (bBkNorm && (bBkNorm === blNorm || bBkNorm.startsWith(blNorm) || blNorm.startsWith(bBkNorm))) ||
-        (bVoyNorm && (blNorm.includes(bVoyNorm) || bVoyNorm.includes(blNorm)))
+      if (!matched || !resolvedValidBl) {
+        const msg = `Số Vận đơn (B/L) '${cleanBl}' không khớp với dữ liệu Vận đơn trong Bản khai Hãng tàu của Booking ${form.source.referenceNumber || ''}! Vui lòng nhập đúng số B/L đã khai báo.`
+        setStep2BlConfirmed(false)
+        setStep2BlError(msg)
+        return setFeedback(msg)
+      }
+    } else {
+      const allSyncedForBl = (manifestPortSyncService.getSyncedManifests() || []).filter(m =>
+        (String(m.direction || m.flow || '').toUpperCase() === 'IMPORT' || m.direction === 'Nhập khẩu') &&
+        (m.portApprovalStatus === 'PORT_APPROVED' || m.status === 'PORT_APPROVED')
       )
-    })
+      const allGbForBl = (manifestPortSyncService.getGeneratedGateBookings() || []).filter(gb =>
+        gb.direction === 'IMPORT' || gb.operation === 'Pickup'
+      )
+      const searchPool = [
+        ...allSyncedForBl.map(m => ({
+          blNumber: m.blNumber || m.containers?.[0]?.blNumber || '',
+          vesselName: m.vesselName,
+          voyageNumber: m.voyageNumber,
+          dischargePort: m.pod || 'VNDAD (Cảng Tiên Sa)',
+          containers: m.records || m.containers || [],
+        })),
+        ...allGbForBl.map(gb => ({
+          blNumber: gb.cargoDeclarationId || gb.blNumber || gb.billOfLading || '',
+          vesselName: gb.vesselName,
+          voyageNumber: gb.voyageNumber,
+          dischargePort: gb.pod || 'VNDAD (Cảng Tiên Sa)',
+          containers: [{ blNumber: gb.cargoDeclarationId || gb.blNumber || gb.billOfLading || '' }],
+        })),
+        ...KNOWN_IMPORT_DATABASE,
+        ...KNOWN_BL_DATABASE.filter(b => !b.direction || b.direction === 'IMPORT'),
+      ]
 
+      for (const b of searchPool) {
+        const validBls = Array.from(new Set(
+          [b.blNumber, ...(b.containers || []).map(c => c.blNumber)]
+            .map(x => String(x || '').trim().toUpperCase())
+            .filter(Boolean)
+        ))
+        const exactBl = validBls.find(v => norm(v) === blNorm)
+        if (exactBl) {
+          matched = b
+          resolvedValidBl = exactBl
+          break
+        }
+      }
+
+      if (!matched || !resolvedValidBl) {
+        const msg = `Số Vận đơn (B/L) '${cleanBl}' không khớp với dữ liệu Vận đơn trong Bản khai / Gate Booking hàng nhập đã được Cảng duyệt! Vui lòng nhập đúng số B/L đã khai báo.`
+        setStep2BlConfirmed(false)
+        setStep2BlError(msg)
+        return setFeedback(msg)
+      }
+    }
+
+    const finalBl = resolvedValidBl || cleanBl
     mutate(previous => {
       const existingBls = previous.lines.map(l => snapshots[l.sourceContainerId]?.blNumber || l.blNumber || l.declaration?.blNumber).filter(Boolean)
-      const combinedBls = Array.from(new Set([...existingBls, cleanBl]))
+      const combinedBls = Array.from(new Set([...existingBls, finalBl]))
       return {
         ...previous,
         source: {
           ...previous.source,
-          blNumber: cleanBl,
+          blNumber: finalBl,
           allBlNumbers: combinedBls,
           vesselName: matched?.vesselName || previous.source.vesselName || '',
           voyageNumber: matched?.voyageNumber || previous.source.voyageNumber || '',
@@ -763,7 +765,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       }
     })
 
-    setStep2BlInput(cleanBl)
+    setStep2BlError('')
+    setStep2BlInput(finalBl)
     setStep2BlConfirmed(true)
     setFeedback('')
   }
@@ -771,6 +774,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   const handleBackToChangeBl = () => {
     setStep2BlConfirmed(false)
     setStep2BlInput('')
+    setStep2BlError('')
   }
 
   const handleAddNewContainer = (manualNo, containerData) => {
@@ -833,18 +837,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
     const getContainerGuid = num => {
       if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(num)) return num
-      const known = {
-        'MSKU8829101': 'c0000000-0000-0000-0000-000000000001',
-        'CMAU3381923': 'c0000000-0000-0000-0000-000000000003',
-        'HLCU7719205': 'c0000000-0000-0000-0000-000000000005',
-        'HLCU8821947': 'fa21c7e4-2c94-417b-a798-23fa5baf8fed',
-        'EMCU1234567': 'c0000000-0000-0000-0000-000000000007',
-        'EMCU1234568': 'c0000000-0000-0000-0000-000000000008',
-        'ONEU8821903': 'c0000000-0000-0000-0000-000000000009',
-        'TLLU7728057': 'c0000000-0000-0000-0000-000000000010',
-        'WHSU8103824': 'c0000000-0000-0000-0000-000000000011',
-      }
-      if (known[num]) return known[num]
       let hash = 0
       for (let i = 0; i < num.length; i++) hash = ((hash << 5) - hash) + num.charCodeAt(i) | 0
       const hex = Math.abs(hash).toString(16).padStart(8, '0')
@@ -1094,78 +1086,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   const containers = sampleContainers || liveContainers
   const containerScopeMatches = containers.data?.flow === form.flow &&
     (form.flow !== 'EXPORT' || containers.data?.sourceId === form.source.bookingId)
-  const fallbackImportContainers = useMemo(() => [
-    {
-      sourceContainerId: 'imp-cont-mm-1',
-      id: 'imp-cont-mm-1',
-      containerNumber: 'MSKU8829101',
-      typeCode: '20GP',
-      flow: 'IMPORT',
-      cargoType: 'General',
-      sealNumber: 'ML-55219',
-      grossWeightKg: 19800,
-      commodity: 'Linh kiện bán dẫn vi mạch điện tử cao cấp',
-      blNumber: 'BL-INB-DAD-2601',
-    },
-    {
-      sourceContainerId: 'imp-cont-mm-2',
-      id: 'imp-cont-mm-2',
-      containerNumber: 'HLCU7719205',
-      typeCode: '45HC',
-      flow: 'IMPORT',
-      cargoType: 'General',
-      sealNumber: 'HL-33910',
-      grossWeightKg: 26000,
-      commodity: 'Màn hình OLED và bảng mạch điện thoại',
-      blNumber: 'BL-INB-DAD-2601',
-    },
-    {
-      sourceContainerId: 'imp-cont-mm-3',
-      id: 'imp-cont-mm-3',
-      containerNumber: 'CMAU3381923',
-      typeCode: '20RF',
-      flow: 'IMPORT',
-      cargoType: 'Reefer',
-      sealNumber: 'CM-18290',
-      grossWeightKg: 24500,
-      commodity: 'Bơ sữa thanh trùng nguyên liệu nhập khẩu',
-      blNumber: 'BL-INB-DAD-2602',
-    },
-    {
-      sourceContainerId: 'imp-cont-mm-4',
-      id: 'imp-cont-mm-4',
-      containerNumber: 'HLCU8821947',
-      typeCode: '20RF',
-      flow: 'IMPORT',
-      cargoType: 'Reefer',
-      sealNumber: 'HL-77182',
-      grossWeightKg: 25000,
-      commodity: 'Phô mai mozzarella bảo quản nhiệt độ âm',
-      blNumber: 'BL-INB-DAD-2602',
-    },
-    {
-      sourceContainerId: 'imp-cont-1',
-      id: 'imp-cont-1',
-      containerNumber: 'EMCU1234567',
-      typeCode: '40HC',
-      flow: 'IMPORT',
-      cargoType: 'General',
-      sealNumber: 'SEAL-VN-9081',
-      grossWeightKg: 24500,
-      blNumber: form.source.blNumber || 'BL-VNDAD-001',
-    },
-    {
-      sourceContainerId: 'imp-cont-4',
-      id: 'imp-cont-4',
-      containerNumber: 'EMCU1234568',
-      typeCode: '40HC',
-      flow: 'IMPORT',
-      cargoType: 'General',
-      sealNumber: 'SEAL-VN-9084',
-      grossWeightKg: 25100,
-      blNumber: form.source.blNumber || 'BL-VNDAD-001',
-    },
-  ], [form.source.blNumber])
+  const fallbackImportContainers = useMemo(() => [], [])
 
   const eligibleContainers = containerScopeMatches && containers.data?.items?.length
     ? (containers.data.items || []).filter(row =>
@@ -1179,7 +1100,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   const allExportManifests = useMemo(() => {
     try {
       const allSynced = manifestPortSyncService.getSyncedManifests() || []
-      // Lấy toàn bộ các bản khai hợp lệ trong hệ thống (bao gồm cả bản khai mới tạo và bản khai đã gửi)
+      // Lấy toàn bộ các bản khai xuất khẩu hợp lệ trong hệ thống (loại trừ hàng nhập)
       const sentManifests = allSynced.filter(m => Boolean(
         m && (
           m.status === 'SENT_TO_PORT' ||
@@ -1190,6 +1111,9 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           m.sentToPortAt ||
           (m.containers && m.containers.length > 0) ||
           (m.records && m.records.length > 0)
+        ) && (
+          String(m.direction || m.flow || '').toUpperCase() !== 'IMPORT' &&
+          m.direction !== 'Nhập khẩu'
         )
       ))
 
@@ -1256,7 +1180,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
       // Tích hợp thêm các mã đơn / container từ Cảng Tiên Sa (Gate Booking)
       const generatedBookings = manifestPortSyncService.getGeneratedGateBookings() || []
-      const exportGen = generatedBookings.filter(b => b.direction === 'EXPORT' || b.operation === 'Dropoff' || b.id?.startsWith('BK-'))
+      const exportGen = generatedBookings.filter(b => b.direction === 'EXPORT' || b.operation === 'Dropoff')
       for (const gb of exportGen) {
         const voyKey = gb.voyageNumber || gb.vesselName
         if (!voyKey) continue
@@ -1295,7 +1219,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     } catch {
       return KNOWN_EXPORT_DATABASE
     }
-  }, [])
+  }, [manifestSyncVersion])
 
   // Lấy danh sách các container đã được booking và thanh toán rồi
   const paidGateBookingContainers = useMemo(() => {
@@ -1318,7 +1242,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       console.warn('Lỗi đọc paid gate bookings:', err)
     }
     return result
-  }, [])
+  }, [manifestSyncVersion])
 
   const ordersListQuery = useQuery({
     queryKey: ['service-orders', 'paid-wizard-check'],
@@ -1362,70 +1286,58 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     const blNorm = norm(currentBl)
     const bkNorm = norm(currentBookingNo)
 
+    if (!step2BlConfirmed || !currentBl || !blNorm) return []
+
     if (form.flow === 'EXPORT') {
-      if (!currentBl && !currentBookingNo) return []
       const matched = allExportManifests.find(b => {
         const bBlNorm = norm(b.blNumber)
         const bBkNorm = norm(b.bookingNumber)
-        const bVoyNorm = norm(b.voyageNumber)
+        const bIdNorm = norm(b.bookingId)
         const aliases = (b.bookingAliases || []).map(a => norm(a))
+        const hasMatchingContBl = (b.containers || []).some(c => norm(c.blNumber || '') === blNorm)
 
-        return (
-          b.blNumber?.toUpperCase() === currentBl ||
-          b.bookingNumber?.toUpperCase() === currentBl ||
-          b.bookingNumber?.toUpperCase() === currentBookingNo ||
-          (blNorm && (
-            bBlNorm === blNorm ||
-            bBkNorm === blNorm ||
-            bBlNorm.startsWith(blNorm) ||
-            blNorm.startsWith(bBlNorm) ||
-            aliases.includes(blNorm) ||
-            (bVoyNorm && (blNorm.includes(bVoyNorm) || bVoyNorm.includes(blNorm)))
-          )) ||
-          (bkNorm && (
+        if (bkNorm) {
+          const bkMatches =
             bBkNorm === bkNorm ||
-            bBkNorm.startsWith(bkNorm) ||
-            bkNorm.startsWith(bBkNorm) ||
-            aliases.includes(bkNorm) ||
-            (bVoyNorm && (bkNorm.includes(bVoyNorm) || bVoyNorm.includes(bkNorm)))
-          ))
-        )
+            bIdNorm === bkNorm ||
+            aliases.includes(bkNorm)
+          if (!bkMatches) return false
+        }
+        return bBlNorm === blNorm || hasMatchingContBl
       })
       if (matched && Array.isArray(matched.containers) && matched.containers.length > 0) {
-        if (currentBl) {
-          const filtered = matched.containers.filter(c => {
-            const cBl = norm(c.blNumber || matched.blNumber || '')
-            return cBl === blNorm || cBl.includes(blNorm) || blNorm.includes(cBl)
-          })
-          if (filtered.length > 0) return filtered
-        }
-        return matched.containers
+        return matched.containers.filter(c => {
+          const cBl = norm(c.blNumber || matched.blNumber || '')
+          return cBl === blNorm
+        })
       }
       return []
     }
 
     if (form.flow === 'IMPORT') {
-      if (!step2BlConfirmed || !currentBl) return []
-
-      const allSynced = manifestPortSyncService.getSyncedManifests() || []
+      const allSynced = (manifestPortSyncService.getSyncedManifests() || []).filter(m =>
+        (String(m.direction || m.flow || '').toUpperCase() === 'IMPORT' || m.direction === 'Nhập khẩu') &&
+        (m.portApprovalStatus === 'PORT_APPROVED' || m.status === 'PORT_APPROVED')
+      )
       const syncedManifestItems = allSynced.map(m => ({
         blNumber: m.blNumber || m.containers?.[0]?.blNumber,
         bookingNumber: m.bookingNumber,
         vesselName: m.vesselName,
         voyageNumber: m.voyageNumber,
-        aliases: [m.blNumber, m.bookingNumber, m.manifestNumber, ...(m.records || m.containers || []).map(r => r.blNumber)].filter(Boolean),
         containers: (m.records || m.containers || []).map(r => ({
           containerNumber: r.containerNumber,
           typeCode: r.isoType || r.typeCode || '40HC',
           sealNumber: r.sealNumber || 'SL-88412',
           grossWeightKg: r.grossWeightKg || 24500,
           commodity: r.cargoDescription || r.commodity || 'Hàng hóa nhập khẩu',
-          blNumber: r.blNumber || m.blNumber || currentBl,
+          blNumber: r.blNumber || m.blNumber || '',
           isReefer: Boolean(r.isReefer || /RF|RH/.test(r.isoType || r.typeCode || '')),
         }))
       }))
 
-      const gateBookings = manifestPortSyncService.getGeneratedGateBookings() || []
+      const gateBookings = (manifestPortSyncService.getGeneratedGateBookings() || []).filter(gb =>
+        gb.direction === 'IMPORT' || gb.operation === 'Pickup'
+      )
       const gbByBl = {}
       gateBookings.forEach(gb => {
         const bl = gb.cargoDeclarationId || gb.blNumber || gb.billOfLading
@@ -1435,7 +1347,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
             blNumber: bl,
             vesselName: gb.vesselName,
             voyageNumber: gb.voyageNumber,
-            aliases: [bl, gb.id, gb.voyageNumber].filter(Boolean),
             containers: []
           }
         }
@@ -1452,33 +1363,20 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
       const matched = [...syncedManifestItems, ...Object.values(gbByBl), ...KNOWN_IMPORT_DATABASE, ...KNOWN_BL_DATABASE].find(b => {
         const bNorm = norm(b.blNumber || '')
-        const aliases = (b.aliases || []).map(a => norm(a))
-        return (
-          b.blNumber === currentBl ||
-          bNorm === blNorm ||
-          (blNorm && (bNorm.includes(blNorm) || blNorm.includes(bNorm))) ||
-          aliases.includes(blNorm) ||
-          aliases.some(a => a && (a.includes(blNorm) || blNorm.includes(a)))
-        )
+        const hasMatchingContBl = (b.containers || []).some(c => norm(c.blNumber || '') === blNorm)
+        return bNorm === blNorm || hasMatchingContBl
       })
       if (matched?.containers) {
-        if (currentBl) {
-          const filtered = matched.containers.filter(c => {
-            const cBl = norm(c.blNumber || matched.blNumber || '')
-            return cBl === blNorm || cBl.includes(blNorm) || blNorm.includes(cBl)
-          })
-          if (filtered.length > 0) return filtered
-        }
-        return matched.containers
+        return matched.containers.filter(c => {
+          const cBl = norm(c.blNumber || matched.blNumber || '')
+          return cBl === blNorm
+        })
       }
-      return fallbackImportContainers.filter(c => {
-        const cNorm = norm(c.blNumber)
-        return c.blNumber === currentBl || cNorm === blNorm || cNorm.includes(blNorm) || blNorm.includes(cNorm)
-      })
+      return fallbackImportContainers.filter(c => norm(c.blNumber) === blNorm)
     }
 
     return []
-  }, [form.flow, form.source.blNumber, form.source.referenceNumber, step2BlInput, step2BlConfirmed, allExportManifests, fallbackImportContainers])
+  }, [form.flow, form.source.blNumber, form.source.referenceNumber, step2BlInput, step2BlConfirmed, allExportManifests, fallbackImportContainers, manifestSyncVersion])
 
   // LỌC BỎ CÁC CONTAINER ĐÃ BOOKING VÀ THANH TOÁN RỒI (thuộc đúng B/L hoặc Booking này)
   const availableContainersForBl = useMemo(() => {
@@ -1753,8 +1651,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       return setFeedback(`Không thể chọn container ${row.containerNumber}: ${lockReason}!`)
     }
     mutate(previous => {
-      const power = services.find(service => service.isActive && service.code === 'REEFER_POWER')
-      const autoReeferPower = isReefer(row) && power
       const isAlreadySelected = previous.lines.some(line => line.sourceContainerId === containerId(row))
       const currentBooking =
         (sampleMode ? sampleData.bookings : sources.data?.items)?.find(item => item.id === previous.source.bookingId) ||
@@ -1772,11 +1668,21 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
               customsSealRequired: false,
               declaration: previous.flow === 'EXPORT'
                 ? buildExportDeclaration(row, currentBooking)
-                : { containerNumber: row.containerNumber, isoCode: row.typeCode, blNumber: row.blNumber || form.source.blNumber || step2BlInput },
+                : {
+                    containerNumber: row.containerNumber,
+                    isoCode: row.typeCode,
+                    blNumber: row.blNumber || form.source.blNumber || step2BlInput,
+                    cargoType: row.cargoType || (isReefer(row) ? 'Reefer' : 'General'),
+                  },
               blNumber: row.blNumber || form.source.blNumber || step2BlInput,
               services: [
                 ...(main ? [serviceLine(main)] : []),
-                ...(autoReeferPower && power.id !== main?.id ? [serviceLine(power)] : []),
+                ...((isReefer(row) || /RF|RH/i.test(row.typeCode || '') || row.containerNumber?.startsWith('NXPU')) && reeferService ? [{
+                  serviceId: reeferService.id,
+                  startsAt: previous.plannedAt || defaultPlannedAt(),
+                  endsAt: previous.delivery.orderValidUntil || previous.source.validUntil || (previous.plannedAt ? localTime(new Date(new Date(previous.plannedAt).getTime() + 48 * 3600000).toISOString()) : ''),
+                  quantity: null,
+                }] : []),
               ],
             },
           ],
@@ -1789,7 +1695,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     if (!unlocked.length) {
       return setFeedback('Không có container nào đủ điều kiện để chọn tự động.')
     }
-    const power = services.find(service => service.isActive && service.code === 'REEFER_POWER')
     const currentBooking =
       (sampleMode ? sampleData.bookings : sources.data?.items)?.find(item => item.id === form.source.bookingId) ||
       bookingSnapshots[form.source.bookingId]
@@ -1800,7 +1705,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       lines: unlocked.slice(0, 50).map(row => {
         const existing = previous.lines.find(l => l.sourceContainerId === containerId(row))
         if (existing) return existing
-        const autoReeferPower = isReefer(row) && power
         return {
           sourceContainerId: containerId(row),
           customsSealRequired: false,
@@ -1809,7 +1713,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
             : { containerNumber: row.containerNumber, isoCode: row.typeCode },
           services: [
             ...(main ? [serviceLine(main)] : []),
-            ...(autoReeferPower && power.id !== main?.id ? [serviceLine(power)] : []),
           ],
         }
       }),
@@ -1995,28 +1898,48 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         validUntil: form.source.validUntil || null,
       },
       plannedAt: utcTime(form.plannedAt),
-      lines: form.lines.map(line => ({
-        ...line,
-        services: line.services.map(item => {
-          let itemStartsAt = item.startsAt
-          if (!itemStartsAt || (form.plannedAt && new Date(itemStartsAt) < new Date(form.plannedAt))) {
-            itemStartsAt = form.plannedAt
+      lines: form.lines.map(line => {
+        let lineServices = [...(line.services || [])]
+        const dec = line.declaration || {}
+        const snap = snapshots[line.sourceContainerId] || {}
+        const isReeferCont = isReefer(dec) || isReefer(snap) || /RF|RH/i.test(dec.isoCode || snap.typeCode || '') || dec.containerNumber?.startsWith('NXPU') || (dec.cargoType && /reefer|lạnh|frozen/i.test(dec.cargoType))
+        
+        // Tự động bổ sung dịch vụ cắm điện container lạnh trong payload ngầm nếu là container lạnh hàng nhập
+        if (isReeferCont && reeferService) {
+          const hasReeferService = lineServices.some(s => s.serviceId === reeferService.id || s.code === 'REEFER_POWER')
+          if (!hasReeferService) {
+            lineServices.push({
+              serviceId: reeferService.id,
+              startsAt: line.startsAt || form.plannedAt || defaultPlannedAt(),
+              endsAt: line.endsAt || form.delivery.orderValidUntil || form.source.validUntil || (form.plannedAt ? localTime(new Date(new Date(form.plannedAt).getTime() + 48 * 3600000).toISOString()) : ''),
+              quantity: null,
+            })
           }
-          let itemEndsAt = item.endsAt
-          if (itemStartsAt) {
-            const startDate = new Date(itemStartsAt)
-            if (!itemEndsAt || new Date(itemEndsAt) <= startDate) {
-              itemEndsAt = localTime(new Date(startDate.getTime() + 24 * 3600000).toISOString())
+        }
+
+        return {
+          ...line,
+          services: lineServices.map(item => {
+            let itemStartsAt = item.startsAt
+            if (!itemStartsAt || (form.plannedAt && new Date(itemStartsAt) < new Date(form.plannedAt))) {
+              itemStartsAt = form.plannedAt
             }
-          }
-          return {
-            ...item,
-            startsAt: utcTime(itemStartsAt),
-            endsAt: utcTime(itemEndsAt),
-            quantity: item.quantity === '' || item.quantity == null ? null : Number(item.quantity),
-          }
-        }),
-      })),
+            let itemEndsAt = item.endsAt
+            if (itemStartsAt) {
+              const startDate = new Date(itemStartsAt)
+              if (!itemEndsAt || new Date(itemEndsAt) <= startDate) {
+                itemEndsAt = localTime(new Date(startDate.getTime() + 24 * 3600000).toISOString())
+              }
+            }
+            return {
+              ...item,
+              startsAt: utcTime(itemStartsAt),
+              endsAt: utcTime(itemEndsAt),
+              quantity: item.quantity === '' || item.quantity == null ? null : Number(item.quantity),
+            }
+          }),
+        }
+      }),
     }
   }
 
@@ -2031,6 +1954,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     },
     onSuccess: async (saved, action) => {
       setDirty(false)
+      // Chỉ đồng bộ đội xe lên Cảng sau khi người dùng xác nhận gửi đơn (ServiceRegistrationReview), không đẩy dữ liệu nháp (DRAFT)
       await client.invalidateQueries({ queryKey: serviceDraftKey })
       if (action === 'review' && onReview) onReview(saved)
       else onSaved(saved)
@@ -2184,37 +2108,16 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         return setFeedback('Vui lòng nhập thời gian dự kiến thực hiện, người liên hệ và số điện thoại hợp lệ ở các ô có dấu (*)!')
       }
 
-      // Kiểm tra cont lạnh bắt buộc cắm điện hàng nhập
-      if (form.flow === 'IMPORT' && main?.code === 'IMPORT_PICKUP') {
-        const power = services.find(service => service.isActive && service.code === 'REEFER_POWER')
-        for (const line of form.lines) {
-          const row = snapshots[line.sourceContainerId]
-          if (isReefer(row) && power && !line.services.some(u => u.serviceId === power.id)) {
-            return setFeedback(`Container lạnh '${row?.containerNumber || line.sourceContainerId}' bắt buộc phải chọn dịch vụ Cắm điện container lạnh!`)
-          }
-        }
-      }
     }
 
-    // BƯỚC 4 VALIDATION: KHAI BÁO GIAO NHẬN (XE HOẶC SÀ LAN)
+    // BƯỚC 4 VALIDATION: KHAI BÁO GIAO NHẬN (XE)
     if (step === deliveryStep) {
       const data = form.delivery
-      if (data.transportMode === 'TRUCK') {
-        if (form.lines.some(line => {
-          const trip = data.trips?.find(t => t.sourceContainerId === line.sourceContainerId)
-          return !trip?.truckId || !trip?.driverId || !trip?.appointmentStart || !trip?.appointmentEnd
-            || new Date(trip.appointmentEnd) <= new Date(trip.appointmentStart)
-        })) {
-          return setFeedback('Chọn lịch, xe rảnh và tài xế rảnh cho từng container trước khi tiếp tục.')
-        }
-      } else if (data.transportMode === 'BARGE') {
-        const missing = []
-        if (!data.bargeName?.trim()) missing.push('Tên sà lan')
-        if (!data.bargeYear) missing.push('Năm sà lan')
-        if (!data.bargeVoyage?.trim()) missing.push('Số chuyến sà lan')
-        if (missing.length > 0) {
-          return setFeedback(`Vui lòng nhập đầy đủ thông tin sà lan (*): ${missing.join(', ')}!`)
-        }
+      if (form.lines.some(line => {
+        const trip = data.trips?.find(t => t.sourceContainerId === line.sourceContainerId)
+        return !trip?.truckId || !trip?.driverId
+      })) {
+        return setFeedback('Vui lòng chọn xe rảnh và tài xế rảnh cho từng container trước khi tiếp tục.')
       }
     }
 
@@ -2253,7 +2156,11 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   }
 
   const addonOptions = services.filter(
-    service => compatible(service, form.flow) && !['EXPORT_DROPOFF', 'IMPORT_PICKUP'].includes(service.code) && service.id !== form.mainServiceId
+    service => compatible(service, form.flow) &&
+      !['EXPORT_DROPOFF', 'IMPORT_PICKUP', 'REEFER_POWER'].includes(service.code) &&
+      service.id !== 'REEFER_POWER' &&
+      !service.name?.toLowerCase().includes('cắm điện') &&
+      service.id !== form.mainServiceId
   )
 
   const selectedBooking =
@@ -2473,37 +2380,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                               Kiểm tra
                             </button>
                           </div>
-
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '4px' }}>
-                            <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>💡 Mã mẫu test nhanh:</span>
-                            {['EDO-MM2601S-01', 'BK-MM2601S', 'EDO-EG2605W-2949', 'BL-INB-DAD-2601'].map(code => (
-                              <button
-                                key={code}
-                                type="button"
-                                onClick={() => {
-                                  setStep1ImportInput(code)
-                                  handleConfirmImportEdo(code)
-                                }}
-                                style={{
-                                  padding: '2px 8px',
-                                  fontSize: '11px',
-                                  fontFamily: 'monospace',
-                                  borderRadius: '4px',
-                                  border: '1px solid #bfdbfe',
-                                  background: '#eff6ff',
-                                  color: '#1d4ed8',
-                                  cursor: 'pointer',
-                                  fontWeight: 500,
-                                }}
-                              >
-                                {code}
-                              </button>
-                            ))}
-                          </div>
-
-                          <span style={{ color: '#64748b', fontSize: '12px' }}>
-                            Nhập số eDO hoặc mã Booking và nhấn <strong>Kiểm tra</strong> để tra cứu thông tin tàu từ hãng tàu trước khi sang bước 2.
-                          </span>
 
                           {step1ImportError && (
                             <div style={{
@@ -2742,7 +2618,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                     </div>
                   )}
 
-                  {emailSource === sourceKey && verifiedSource !== sourceKey && !sampleMode && (
+                  {((emailSource === sourceKey || step1ImportConfirmed || step1BookingConfirmed || form.source.referenceNumber || form.source.bookingId) && verifiedSource !== sourceKey && !sampleMode) && (
                     <div ref={emailPanelRef} style={{ scrollMargin: '40px' }}>
                       <ServiceSourceEmailPanel
                         recipientEmail={profile.data?.email}
@@ -2808,7 +2684,10 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                 <input
                                   aria-label="Nhập số Vận Đơn nhập"
                                   value={step2BlInput}
-                                  onChange={e => setStep2BlInput(e.target.value.toUpperCase())}
+                                  onChange={e => {
+                                    setStep2BlInput(e.target.value.toUpperCase())
+                                    if (step2BlError) setStep2BlError('')
+                                  }}
                                   onKeyDown={e => {
                                     if (e.key === 'Enter') {
                                       e.preventDefault()
@@ -2838,36 +2717,23 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                   Xác nhận
                                 </button>
                               </div>
-                              <small style={{ color: '#64748b', fontSize: '12px' }}>
-                                Nhập mã Vận đơn và nhấn <strong>Xác nhận</strong> để tải danh sách Container tương ứng từ Hãng tàu.
-                              </small>
-
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginTop: '6px' }}>
-                                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>💡 Vận đơn mẫu gợi ý:</span>
-                                {['BL-INB-DAD-2601', 'BL-INB-DAD-2602', 'BL-VNDAD-001'].map(blCode => (
-                                  <button
-                                    key={blCode}
-                                    type="button"
-                                    onClick={() => {
-                                      setStep2BlInput(blCode)
-                                      handleConfirmBl(blCode)
-                                    }}
-                                    style={{
-                                      padding: '2px 8px',
-                                      fontSize: '11px',
-                                      fontFamily: 'monospace',
-                                      borderRadius: '4px',
-                                      border: '1px solid #bfdbfe',
-                                      background: '#eff6ff',
-                                      color: '#1d4ed8',
-                                      cursor: 'pointer',
-                                      fontWeight: 500,
-                                    }}
-                                  >
-                                    {blCode}
-                                  </button>
-                                ))}
-                              </div>
+                              {step2BlError && (
+                                <div style={{
+                                  marginTop: '6px',
+                                  padding: '10px 14px',
+                                  background: '#fef2f2',
+                                  border: '1px solid #fecaca',
+                                  borderRadius: '6px',
+                                  color: '#991b1b',
+                                  fontSize: '12px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                }}>
+                                  <AlertCircle size={16} style={{ color: '#dc2626', flexShrink: 0 }} />
+                                  <span>{step2BlError}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -3166,29 +3032,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                 </table>
                               </div>
                             )}
-
-                            {/* Ô thêm container ngoài danh mục (nếu có) */}
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
-                              <input
-                                value={step2ContInput}
-                                onChange={e => setStep2ContInput(e.target.value.toUpperCase())}
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault()
-                                    handleAddNewContainer()
-                                  }
-                                }}
-                                placeholder="Nhập thêm số container khác ngoài danh sách (nếu có)"
-                                style={{ flex: '1 1 240px', height: '34px', padding: '0 10px', fontSize: '12px', borderRadius: '4px', border: '1px solid #cbd5e1', textTransform: 'uppercase', fontWeight: 600 }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleAddNewContainer()}
-                                style={{ height: '34px', padding: '0 12px', fontSize: '12px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '4px', color: '#334155', cursor: 'pointer', fontWeight: 600 }}
-                              >
-                                + Thêm container
-                              </button>
-                            </div>
                           </div>
 
                           {/* BẢNG TỔNG KẾT VÀ CHỈNH SỬA CÁC CONTAINER ĐÃ CHỌN */}
@@ -3310,7 +3153,10 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                 <input
                                   aria-label="Nhập số Vận Đơn xuất"
                                   value={step2BlInput}
-                                  onChange={e => setStep2BlInput(e.target.value.toUpperCase())}
+                                  onChange={e => {
+                                    setStep2BlInput(e.target.value.toUpperCase())
+                                    if (step2BlError) setStep2BlError('')
+                                  }}
                                   onKeyDown={e => {
                                     if (e.key === 'Enter') {
                                       e.preventDefault()
@@ -3343,6 +3189,23 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                               <small style={{ color: '#64748b', fontSize: '12px' }}>
                                 Nhập mã Vận đơn và nhấn <strong>Xác nhận</strong> để tải danh sách Container tương ứng từ Hãng tàu.
                               </small>
+                              {step2BlError && (
+                                <div style={{
+                                  marginTop: '6px',
+                                  padding: '10px 14px',
+                                  background: '#fef2f2',
+                                  border: '1px solid #fecaca',
+                                  borderRadius: '6px',
+                                  color: '#991b1b',
+                                  fontSize: '12px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '8px',
+                                }}>
+                                  <AlertCircle size={16} style={{ color: '#dc2626', flexShrink: 0 }} />
+                                  <span>{step2BlError}</span>
+                                </div>
+                              )}
                             </div>
                           </div>
 
@@ -3610,29 +3473,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                 </table>
                               </div>
                             )}
-
-                            {/* Ô thêm container ngoài danh mục (nếu có) */}
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
-                              <input
-                                value={step2ContInput}
-                                onChange={e => setStep2ContInput(e.target.value.toUpperCase())}
-                                onKeyDown={e => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault()
-                                    handleAddNewContainer()
-                                  }
-                                }}
-                                placeholder="Nhập thêm số container khác ngoài danh sách (nếu có)"
-                                style={{ flex: '1 1 240px', height: '34px', padding: '0 10px', fontSize: '12px', borderRadius: '4px', border: '1px solid #cbd5e1', textTransform: 'uppercase', fontWeight: 600 }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleAddNewContainer()}
-                                style={{ height: '34px', padding: '0 12px', fontSize: '12px', background: '#f8fafc', border: '1px solid #cbd5e1', borderRadius: '4px', color: '#334155', cursor: 'pointer', fontWeight: 600 }}
-                              >
-                                + Thêm container
-                              </button>
-                            </div>
                           </div>
 
                           {/* BẢNG TỔNG KẾT VÀ CHỈNH SỬA CÁC CONTAINER ĐÃ CHỌN */}
@@ -3678,8 +3518,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                   <div className="epd-stage-heading">
                     <span>03</span>
                     <div>
-                      <h3>Khai báo dịch vụ đính kèm</h3>
-                      <p>Chọn dịch vụ kèm (Lưu bãi, Cắm điện container lạnh...). Sử dụng nút Clone để áp dụng nhanh sang các cont khác.</p>
+                      <h3>Thời gian thực hiện &amp; Liên hệ</h3>
+                      <p>Xác nhận thời gian dự kiến thực hiện và thông tin người liên hệ giao nhận.</p>
                     </div>
                   </div>
 
@@ -3739,84 +3579,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                     </Field>
                   </div>
 
-                  {form.lines.length > 1 && (
-                    <div className="epd-copy-box">
-                      <div className="epd-section-label">
-                        <Copy size={17} />
-                        <h4>Sao chép dịch vụ đính kèm (Clone)</h4>
-                      </div>
-                      <p>Chọn container nguồn để clone các dịch vụ đính kèm đã chọn sang toàn bộ các container còn lại.</p>
-                      <div className="epd-copy-actions">
-                        <select
-                          aria-label="Container nguồn sao chép dịch vụ"
-                          value={copyFrom || form.lines[0].sourceContainerId}
-                          onChange={event => {
-                            setCopyFrom(event.target.value)
-                            setCopyPreview(null)
-                            setManualContainer('')
-                          }}
-                        >
-                          {form.lines.map((line, idx) => (
-                            <option key={line.sourceContainerId} value={line.sourceContainerId}>
-                              {line.declaration?.containerNumber || snapshots[line.sourceContainerId]?.containerNumber || `Cont #${idx + 1}`}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          className="epc-button secondary"
-                          onClick={() => setCopyPreview(copyFrom || form.lines[0].sourceContainerId)}
-                        >
-                          <Copy size={15} />
-                          Clone sang các container khác
-                        </button>
-                      </div>
-
-                      {copyPreview && (
-                        <div className="epd-copy-preview">
-                          <p>
-                            Xác nhận sao chép toàn bộ dịch vụ kèm sang {form.lines.length - 1} container còn lại (hệ thống tự động bỏ qua Cắm điện lạnh đối với container khô).
-                          </p>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <button type="button" className="epc-button secondary" onClick={() => setCopyPreview(null)}>Hủy bỏ</button>
-                            <button
-                              type="button"
-                              className="epc-button primary"
-                              onClick={() => {
-                                const sourceLine = form.lines.find(l => l.sourceContainerId === copyPreview)
-                                if (sourceLine) {
-                                  mutate(prev => ({
-                                    ...prev,
-                                    lines: prev.lines.map(l => {
-                                      if (l.sourceContainerId === copyPreview) return l
-                                      const targetRow = snapshots[l.sourceContainerId] || l.declaration || {}
-                                      const isTargetDry = (targetRow.typeCode || targetRow.isoCode || '').toUpperCase().startsWith('20G') ||
-                                        (targetRow.typeCode || targetRow.isoCode || '').toUpperCase().startsWith('40G') ||
-                                        (targetRow.typeCode || targetRow.isoCode || '').toUpperCase().startsWith('GP')
-
-                                      const filteredServices = sourceLine.services
-                                        .filter(s => {
-                                          if (s.serviceId === 'REEFER_POWER' && isTargetDry) return false
-                                          return true
-                                        })
-                                        .map(s => ({ ...s }))
-
-                                      return { ...l, services: filteredServices }
-                                    }),
-                                  }))
-                                }
-                                setCopyPreview(null)
-                                setManualContainer('')
-                              }}
-                            >
-                              <Check size={15} /> Đồng ý Clone
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   <div className="epd-line-list">
                     {form.lines.map((line, index) => {
                       const dec = line.declaration
@@ -3841,49 +3603,19 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                   </span>
                                 )}
                               </div>
-                              <small>{dec?.isoCode || row?.typeCode || 'Container'} · {line.services.length} dịch vụ chọn</small>
+                              <small>{dec?.isoCode || row?.typeCode || 'Container'}</small>
                             </div>
                             <span className="epd-line-index">{String(index + 1).padStart(2, '0')}</span>
                           </header>
 
                           <div className="epd-line-content">
-                            <div className="epd-main-service">
-                              <ShieldCheck size={17} />
-                              <div>
-                                <small>TÁC NGHIỆP CHÍNH</small>
-                                <strong>{main?.name || 'Tác nghiệp theo luồng'}</strong>
-                              </div>
-                            </div>
-
-                            {addonOptions.length > 0 && (
-                              <fieldset className="epd-addon-options">
-                                <legend>Dịch vụ đính kèm</legend>
-                                {addonOptions.map(service => {
-                                  const isReeferService = service.id === 'REEFER_POWER'
-                                  const disabled = isReeferService && isDry
-
-                                  return (
-                                    <label key={service.id} style={{ opacity: disabled ? 0.5 : 1, cursor: disabled ? 'not-allowed' : 'pointer' }}>
-                                      <input
-                                        type="checkbox"
-                                        disabled={disabled}
-                                        checked={line.services.some(u => u.serviceId === service.id)}
-                                        onChange={() => !disabled && toggleAddon(line.sourceContainerId, service)}
-                                      />
-                                      <span>
-                                        {service.name}
-                                        {disabled && <small style={{ color: '#dc2626', marginLeft: '4px' }}>(Chỉ áp dụng container lạnh)</small>}
-                                        {!disabled && <small>{labels.unit[service.unit]}</small>}
-                                      </span>
-                                    </label>
-                                  )
-                                })}
-                              </fieldset>
-                            )}
+                            {/* Bỏ hiển thị TÁC NGHIỆP CHÍNH & Dịch vụ đính kèm theo yêu cầu */}
 
                             {line.services.map(usage => {
                               const service = services.find(s => s.id === usage.serviceId)
                               if (!service || !timeUnit(service)) return null
+                              // Tự động có đi mà ko cần hiện ra: Ẩn khối nhập thời gian cắm điện container lạnh
+                              if (service.id === 'REEFER_POWER' || service.code === 'REEFER_POWER' || service.name?.toLowerCase().includes('cắm điện')) return null
                               return (
                                 <div className="epd-time-block" key={usage.serviceId}>
                                   <div className="epd-section-label">

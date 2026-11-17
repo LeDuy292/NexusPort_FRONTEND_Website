@@ -164,9 +164,11 @@ function App() {
           </Route>
 
           {/* 2. Nhóm Điều độ (Dispatcher) */}
+          <Route element={<RoleRoute allowedRoles={[ROLES.DISPATCHER, ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
+            <Route path="/dispatch" element={<VehicleDispatch />} />
+          </Route>
           <Route element={<RoleRoute allowedRoles={[ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
             <Route path="/dispatcher/gate-bookings" element={<GateBookingRequests />} />
-            <Route path="/dispatch" element={<VehicleDispatch />} />
             <Route path="/fleet" element={<VehicleManagement />} />
             <Route path="/container-flow" element={<ContainerFlow />} />
             <Route path="/dispatcher/drivers" element={<DispatcherDriverManagement />} />

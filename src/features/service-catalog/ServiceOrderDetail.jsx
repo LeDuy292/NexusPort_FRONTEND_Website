@@ -9,6 +9,7 @@ import { calculatePortServiceTariff } from '../../utils/portStorageFee'
 import { labels, money } from './catalogApi'
 import { draftDateTime, draftError, draftSession, serviceDraftKey } from './serviceDraftsApi'
 import { orderStatusLabels, paymentStateLabel, paymentStatusLabels, serviceOrderKey, serviceOrdersApi } from './serviceOrdersApi'
+import { manifestPortSyncService } from '../../services/manifestPortSyncService'
 
 const actionNames = { CANCEL: 'Hủy đơn dịch vụ', RECEIVE: 'Tiếp nhận hồ sơ', APPROVE: 'Duyệt đăng ký', REJECT: 'Từ chối đăng ký', CREATE_PAYMENT: 'Tạo mã thanh toán VietQR', SYNC_PAYMENT: 'Kiểm tra giao dịch VietQR', CANCEL_PAYMENT: 'Hủy yêu cầu thanh toán' }
 const eventNames = { DRAFT_CREATED: 'Tạo bản nháp', DRAFT_UPDATED: 'Cập nhật bản nháp', BASELINE_RECORDED: 'Ghi nhận hồ sơ hiện có', REGISTERED: 'Xác nhận đăng ký', REGISTRATION_CONFIRMED: 'Xác nhận đăng ký', CONFIRMED: 'Xác nhận đăng ký', CANCEL: 'Hủy đơn dịch vụ', CANCELLED: 'Hủy đơn dịch vụ', RECEIVE: 'Cảng tiếp nhận hồ sơ', RECEIVED: 'Cảng tiếp nhận hồ sơ', APPROVE: 'Cảng duyệt đăng ký', APPROVED: 'Cảng duyệt đăng ký', REJECT: 'Cảng từ chối đăng ký', REJECTED: 'Cảng từ chối đăng ký', PAYMENT_CREATED: 'Tạo mã thanh toán VietQR', PAYMENT_SYNCED: 'Kiểm tra kết quả thanh toán', PAYMENT_SUCCEEDED: 'Xác nhận thanh toán thành công', PAYMENT_FAILED: 'Thanh toán không thành công', PAYMENT_CANCELLED: 'Hủy yêu cầu thanh toán', PAYMENT_REVIEW_REQUIRED: 'Giao dịch cần đối soát', PAYMENT_REFERENCE_OBSERVED: 'Bổ sung tham chiếu giao dịch', MIGRATED: 'Ghi nhận hồ sơ hiện có' }
@@ -40,58 +41,23 @@ function OrderInformation({ order }) {
   const isAwaitingPrice = order?.pricingStatus === 'AWAITING' || (order?.total == null && !fees.length)
   const isPriced = order?.total != null && !isDraft && order?.pricingStatus !== 'AWAITING'
 
-  const knownLotContainers = [
-    { containerNumber: 'MSKU8829101', typeCode: '20GP', isReefer: false, blNumber: 'BL-INB-DAD-2601', yardSlot: 'Block D01 · Bay 02', fee: 583200 },
-    { containerNumber: 'HLCU7719205', typeCode: '45HC', isReefer: false, blNumber: 'BL-INB-DAD-2601', yardSlot: 'Block A01 · Bay 04', fee: 583200 },
-    { containerNumber: 'CMAU3381923', typeCode: '20RF', isReefer: true, blNumber: 'BL-INB-DAD-2601', yardSlot: 'Block D01 · Bay 06', fee: 689000 },
-    { containerNumber: 'HLCU8821947', typeCode: '40HC', isReefer: false, blNumber: 'BL-INB-DAD-2601', yardSlot: 'Block D01 · Bay 08', fee: 650000 },
-  ]
-
   const displayContainers = (() => {
-    if (order.containers && order.containers.length >= 4) {
-      return order.containers.map((c, idx) => ({
-        containerNumber: c.containerNumber || c.containerId,
-        typeCode: c.typeCode || '20GP',
-        isReefer: (c.typeCode || '').includes('RF'),
-        blNumber: c.blNumber || blNo || 'BL-INB-DAD-2601',
-        yardSlot: c.yardSlot || `Block D01 · Bay 0${2 + idx * 2}`,
-        fee: c.fee || 583200
-      }))
-    }
+    const rawList = (order.containers && order.containers.length > 0)
+      ? order.containers
+      : (content.lines || []).map(l => l.declaration || l).filter(c => c && (c.containerNumber || c.containerId))
 
-    const isKnownLot =
-      order.number?.includes('0584D874') ||
-      order.companyName?.includes('Bien Dong') ||
-      order.companyName?.includes('Nexus') ||
-      bookingNo?.includes('MM2601') ||
-      blNo?.includes('2601') ||
-      (order.containers && order.containers.some(c => ['MSKU8829101', 'HLCU7719205', 'CMAU3381923', 'HLCU8821947'].includes(c.containerNumber)))
-
-    if (isKnownLot) {
-      return knownLotContainers.map(c => ({
-        ...c,
-        blNumber: blNo || c.blNumber
-      }))
-    }
-
-    if (order.containers && order.containers.length > 0) {
-      return order.containers.map((c, idx) => ({
-        containerNumber: c.containerNumber || c.containerId,
-        typeCode: c.typeCode || '20GP',
-        isReefer: (c.typeCode || '').includes('RF'),
-        blNumber: blNo || 'BL-INB-DAD-2601',
-        yardSlot: `Block D01 · Bay 0${2 + idx * 2}`,
-        fee: 583200
-      }))
-    }
-
-    return knownLotContainers
+    return rawList.map((c, idx) => ({
+      containerNumber: c.containerNumber || c.containerId,
+      typeCode: c.typeCode || c.isoCode || '20GP',
+      isReefer: Boolean(c.isReefer || (c.typeCode || c.isoCode || '').includes('RF')),
+      blNumber: c.blNumber || blNo || '',
+      yardSlot: c.yardSlot || `Block D01 · Bay 0${2 + idx * 2}`,
+      fee: c.fee || 583200
+    }))
   })()
 
   const totalAmount = order.total != null
     ? money(order.total)
-    : displayContainers.length === 4
-    ? '2.505.600 VNĐ'
     : `${displayContainers.reduce((acc, c) => acc + (c.fee || 583200), 0).toLocaleString('vi-VN')} VNĐ`
 
   let guidanceText = ''
@@ -450,6 +416,14 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
   const historyQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'history', orderId], queryFn: () => serviceOrdersApi.history(orderId), enabled: tab === 'history', retry: false, refetchOnWindowFocus: false })
   const paymentQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'payments', orderId], queryFn: () => serviceOrdersApi.payments(orderId), enabled: tab === 'payments', retry: false, refetchOnWindowFocus: true, refetchInterval: () => tab === 'payments' && orderQuery.data?.paymentStatus === 'PENDING' ? 2000 : false })
   const order = orderQuery.data
+
+  useEffect(() => {
+    if (!order) return
+    const st = String(order.status || '').toUpperCase()
+    if (['REJECTED', 'CANCELLED'].includes(st)) return
+    // Tự động phân tách và lưu chính xác thông tin xe & tài xế cho từng container trong đơn
+    manifestPortSyncService.saveAllOrderFleets(order)
+  }, [order])
   const canReceipt = order?.registrationId && (order.pricingMode !== 'DISPATCHER' || order.paymentStatus === 'PAID' || order.pricingStatus === 'PUBLISHED' && order.paymentStatus === 'NOT_REQUIRED')
   const mutation = useMutation({
     mutationFn: async value => {
@@ -466,14 +440,30 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
       setNoticeWarning(uncertain)
       if (value.kind === 'SYNC_PAYMENT') {
         if (result.paymentStatus === 'PAID') {
+          await syncPaymentToCarrierBooking(result)
           setNotice('✓ Xác nhận thanh toán thành công! Hệ thống đã ghi nhận và gửi hóa đơn & biên lai (PDF) về email.')
         } else if (!value.silent) {
           setNotice(`Đã kiểm tra kết quả giao dịch. ${paymentStatusLabels[result.paymentStatus] || 'Kết quả đã được cập nhật'}.`)
         }
       } else if (value.kind === 'CREATE_PAYMENT') {
+        if (result.paymentStatus === 'PAID') {
+          await syncPaymentToCarrierBooking(result)
+        }
         setNotice(result.paymentStatus === 'PAID' ? 'Hệ thống đã xác nhận thanh toán thành công cho đơn dịch vụ.' : result.payment?.checkoutUrl ? 'Đã tạo mã thanh toán VietQR. Quét mã QR hoặc mở cổng thanh toán để tiếp tục.' : 'Yêu cầu thanh toán đã được lưu. Quét mã QR để hoàn tất.')
       } else {
         setNotice(`${actionNames[value.kind]} thành công.`)
+        if (value.kind === 'REJECT' || value.kind === 'CANCEL') {
+          try {
+            const listRes = await serviceOrdersApi.list({ pageSize: 50 }).catch(() => ({ items: [] }))
+            const remainingCandidates = (listRes?.items || [])
+              .filter(o => o && o.id !== orderId && !['REJECTED', 'CANCELLED', 'DRAFT'].includes(String(o.status || '').toUpperCase()))
+              .slice(0, 15)
+            const remainingActive = await Promise.all(
+              remainingCandidates.map(async (o) => (!o?.content?.delivery?.trips && o?.id ? await serviceOrdersApi.get(o.id).catch(() => o) : o))
+            )
+            await manifestPortSyncService.unassignRejectedOrderFromGateBookings(result || order, remainingActive)
+          } catch {}
+        }
       }
       if (value.kind.includes('PAYMENT')) setTab('payments')
       await Promise.all([client.invalidateQueries({ queryKey: serviceOrderKey }), client.invalidateQueries({ queryKey: serviceDraftKey })])
@@ -482,9 +472,111 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
   })
   const pending = mutation.isPending
   const requestClose = () => { if (!pending) onClose() }
+
+  const syncPaymentToCarrierBooking = async (targetOrder) => {
+    const ord = targetOrder || orderQuery.data
+    if (!ord) return
+    try {
+      const cIds = [
+        ...(ord.containers || []).map(c => c.containerNumber || c),
+        ...(ord.content?.lines || []).map(l => l.declaration?.containerNumber),
+      ].filter(Boolean)
+      const bkCodes = [
+        ord.bookingId,
+        ord.bookingNumber,
+        ord.sourceSnapshot?.bookingNumber,
+        ord.content?.source?.bookingNumber,
+        ord.content?.source?.referenceNumber,
+        ord.sourceLabel,
+      ].filter(Boolean)
+
+      // 0. Kéo danh sách booking mới nhất từ PostgreSQL rồi lưu fleet từ đơn cho từng container
+      await manifestPortSyncService.fetchRemoteSyncedManifests().catch(() => {})
+      manifestPortSyncService.saveAllOrderFleets(ord)
+
+      // 1. Cập nhật NEXUSPORT_PORT_BILLS thành PAID
+      const paidAtIso = new Date().toISOString()
+      const storedBills = JSON.parse(localStorage.getItem('NEXUSPORT_PORT_BILLS') || '{}')
+      const billData = {
+        billNumber: ord.number || `BILL-${ord.id}`,
+        orderId: ord.id,
+        status: 'PAID',
+        paid: true,
+        total: ord.total,
+        paidAt: paidAtIso,
+      }
+      bkCodes.forEach(k => { storedBills[k] = { ...(storedBills[k] || {}), ...billData } })
+      cIds.forEach(c => { storedBills[c] = { ...(storedBills[c] || {}), ...billData } })
+      localStorage.setItem('NEXUSPORT_PORT_BILLS', JSON.stringify(storedBills))
+
+      // 2. Cập nhật tuần tự các generated gate bookings sang status: 'Ready' & portBillPaid: true lên PostgreSQL
+      const allGateBookings = manifestPortSyncService.getGeneratedGateBookings() || []
+      let anyUpdated = false
+      for (const b of allGateBookings) {
+        const matchBk = bkCodes.some(code => code && (b.id === code || b.bookingCode === code || b.cargoDeclarationId === code))
+        const matchCont = cIds.some(cont => cont && String(b.containerId || '').toUpperCase() === String(cont).toUpperCase())
+        const matchVoy = ord.content?.source?.voyageNumber && b.voyageNumber && ord.content.source.voyageNumber.includes(b.voyageNumber)
+        if (matchBk || matchCont || matchVoy) {
+          const fleet = manifestPortSyncService.extractFleetFromOrder(ord, b.containerId) ||
+            manifestPortSyncService.getOrderFleet(b.containerId) ||
+            manifestPortSyncService.getOrderFleet(b.bookingCode)
+
+          const vPlate = fleet?.plate ||
+            (b.licensePlate && b.licensePlate !== 'Chưa gán xe' && b.licensePlate !== 'Chưa điều phối' && b.licensePlate !== '47AB-294.69' ? b.licensePlate : b.suggestedPlate)
+          const vDriver = fleet?.driver ||
+            (b.driverName && b.driverName !== 'Chưa điều phối' && b.driverName !== 'TRẦN VĂN TÙNG' ? b.driverName : b.suggestedDriver)
+          const vPhone = fleet?.phone || b.phone
+          const vLicense = fleet?.license || b.licenseNumber
+          const vTrailer = fleet?.trailer || b.trailerPlate
+
+          const needsSync =
+            b.status !== 'Ready' ||
+            !b.portBillPaid ||
+            b.paymentStatus !== 'Paid' ||
+            b.portBill?.status !== 'PAID' ||
+            (vPlate && b.licensePlate !== vPlate) ||
+            (vDriver && b.driverName !== vDriver)
+
+          if (!needsSync) continue
+          anyUpdated = true
+          await manifestPortSyncService.updateGeneratedGateBookingStatus(b.id, {
+            status: 'Ready',
+            portBillPaid: true,
+            paymentStatus: 'Paid',
+            paidAt: paidAtIso,
+            portBill: { ...(b.portBill || {}), ...billData },
+            licensePlate: vPlate,
+            driverName: vDriver,
+            phone: vPhone,
+            licenseNumber: vLicense,
+            trailerPlate: vTrailer,
+            vehiclePlate: vPlate,
+            vehicleStatus: 'Available',
+            driverStatus: 'Available',
+            suggestedPlate: vPlate,
+            suggestedDriver: vDriver,
+            eportOrderId: ord.id,
+            eportOrderNumber: ord.number,
+            ...(fleet?.documents ? { eportDocuments: fleet.documents, documents: fleet.documents } : {}),
+            ...(fleet?.driverSnapshot ? { driverSnapshot: fleet.driverSnapshot } : {}),
+            ...(fleet?.vehicle ? { vehicleSnapshot: fleet.vehicle } : {}),
+          })
+        }
+      }
+
+      if (anyUpdated) {
+        window.dispatchEvent(new Event('storage'))
+        window.dispatchEvent(new CustomEvent('nexusport:manifest_synced', { detail: { type: 'PORT_BILL_PAID', orderId: ord.id } }))
+      }
+    } catch (e) {
+      console.warn('Lỗi đồng bộ sang booking:', e)
+    }
+  }
+
   const handleSimulateSuccess = async () => {
     try {
       await serviceOrdersApi.simulateSuccess(orderId)
+      await syncPaymentToCarrierBooking(orderQuery.data)
       await Promise.all([
         client.invalidateQueries({ queryKey: serviceOrderKey }),
         client.invalidateQueries({ queryKey: serviceDraftKey }),
@@ -499,6 +591,12 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
   const openAction = (kind, payment = null) => { mutation.reset(); setConflict(false); setNotice(''); const value = { kind, payment, requestId: crypto.randomUUID(), expectedVersion: order.version, reason: '', acknowledged: false }; setForm(value); if (kind === 'SYNC_PAYMENT') mutation.mutate(value) }
   const update = (name, value) => { if (!pending) { setForm(previous => ({ ...previous, [name]: value, requestId: crypto.randomUUID() })); mutation.reset() } }
   const refresh = async () => { setForm(null); setConflict(false); mutation.reset(); await Promise.all([orderQuery.refetch(), tab === 'payments' ? paymentQuery.refetch() : Promise.resolve(), tab === 'history' ? historyQuery.refetch() : Promise.resolve()]) }
+
+  useEffect(() => {
+    if (orderQuery.data?.paymentStatus === 'PAID') {
+      syncPaymentToCarrierBooking(orderQuery.data)
+    }
+  }, [orderQuery.data?.paymentStatus, orderQuery.data?.id])
 
   // Tự động kiểm tra đối soát giao dịch ngân hàng mỗi 2.5s khi có yêu cầu đang chờ thanh toán
   const pendingPayment = paymentQuery.data?.items?.find(p => p.status === 'PENDING')

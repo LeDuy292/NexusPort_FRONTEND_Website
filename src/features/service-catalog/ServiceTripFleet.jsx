@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AlertCircle, CalendarClock, Loader2, RefreshCw, Truck } from 'lucide-react'
 import BookingFleetDetails from '../../components/Containers/BookingFleetDetails'
+import { bookingService } from '../../services/bookingService'
 import { draftDateTime, draftError, serviceDraftsApi } from './serviceDraftsApi'
 import './serviceTripFleet.css'
 
@@ -11,24 +12,6 @@ const local = value => {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
 }
 const overlap = (a, b) => new Date(a.appointmentStart) < new Date(b.appointmentEnd) && new Date(b.appointmentStart) < new Date(a.appointmentEnd)
-
-const FALLBACK_TRUCKS = [
-  { id: '3f36b68c-6505-4c07-81ed-b2d2cd0c4ecb', plateNumber: '38AA-196.90', vehicleType: 'Đầu kéo Container (ROAD_TRUCK)', status: 'active', driverId: '051b640a-c657-42c9-b722-3f9c5f93a235' },
-  { id: '7dc1acd5-786e-468f-948e-d452562ce78f', plateNumber: '90B2-999.99', vehicleType: 'Đầu kéo Container (ROAD_TRUCK)', status: 'active', driverId: '13b9afa1-4205-46fa-896f-fe492da28f06' },
-  { id: 'a70d28a2-25ad-49a1-8965-29882b090a96', plateNumber: '47K1-137.87', vehicleType: 'Đầu kéo Container (ROAD_TRUCK)', status: 'active', driverId: '351284e9-821c-4308-b673-8b961995a9cd' },
-  { id: 'e7340342-11c2-433c-afab-06b31fb255ef', plateNumber: '15C-492.18', vehicleType: 'Đầu kéo Container (ROAD_TRUCK)', status: 'active', driverId: '6bc46b87-d528-4248-8643-d22bbc17bd4f' },
-  { id: 'dc184dca-e363-453e-a3fc-fac89211d7ed', plateNumber: '12E-98765', vehicleType: 'Đầu kéo Container (ROAD_TRUCK)', status: 'active', driverId: '89898736-e813-426b-ac26-8e1669ec307d' },
-  { id: 'b32cb6bc-81d6-470e-9b7d-15ace48ca132', plateNumber: '43-D1 567.89', vehicleType: 'Đầu kéo Container (ROAD_TRUCK)', status: 'active' },
-]
-
-const FALLBACK_DRIVERS = [
-  { id: '051b640a-c657-42c9-b722-3f9c5f93a235', fullName: 'PHAN NGUYÊN GIA HUY', phone: '0842737474', status: 'active' },
-  { id: '13b9afa1-4205-46fa-896f-fe492da28f06', fullName: 'Nguyễn Đình Tiến', phone: '0799000699', status: 'active' },
-  { id: '351284e9-821c-4308-b673-8b961995a9cd', fullName: 'Vũ Quốc Toàn', phone: '0904291845', status: 'active' },
-  { id: '6bc46b87-d528-4248-8643-d22bbc17bd4f', fullName: 'Đặng Tuấn Anh', phone: '0978192841', status: 'active' },
-  { id: '89898736-e813-426b-ac26-8e1669ec307d', fullName: 'Ngô Minh Đức', phone: '0915283910', status: 'active' },
-  { id: 'f14f283f-9bc7-42fe-bd52-4fd81bb67651', fullName: 'Lê Hoàng Nam', phone: '0900910003', status: 'active' },
-]
 
 export default function ServiceTripFleet({
   request,
@@ -43,11 +26,21 @@ export default function ServiceTripFleet({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
-  const start = instant(request.plannedAt)
-  const trips = request.lines.map(line => request.delivery.trips?.find(t => t.sourceContainerId === line.sourceContainerId) || {
-    sourceContainerId: line.sourceContainerId, appointmentStart: start,
-    appointmentEnd: start ? new Date(new Date(start).getTime() + 2 * 3600000).toISOString() : null,
-    truckId: null, driverId: null,
+  const defaultStartTime = new Date(Date.now() + 2 * 3600000).toISOString()
+  const start = instant(request.plannedAt) || defaultStartTime
+  const trips = request.lines.map(line => {
+    const existing = request.delivery.trips?.find(t => t.sourceContainerId === line.sourceContainerId)
+    const tripStart = existing?.appointmentStart || start
+    const tripEnd = existing?.appointmentEnd || new Date(new Date(tripStart).getTime() + 2 * 3600000).toISOString()
+    return {
+      sourceContainerId: line.sourceContainerId,
+      appointmentStart: tripStart,
+      appointmentEnd: tripEnd,
+      truckId: existing?.truckId || null,
+      driverId: existing?.driverId || null,
+      vehicle: existing?.vehicle || null,
+      driver: existing?.driver || null,
+    }
   })
   const body = { ...request, delivery: { ...request.delivery, trips } }
   const signature = JSON.stringify([request.flow, request.source, request.plannedAt, trips.map(t => [t.sourceContainerId, t.appointmentStart, t.appointmentEnd, t.truckId, t.driverId])])
@@ -64,34 +57,51 @@ export default function ServiceTripFleet({
     }
     setBusy(true)
     const timer = setTimeout(async () => {
-      const applyFallback = () => {
-        const byId = Object.fromEntries(latest.current.body.delivery.trips.map((trip, idx) => {
-          const truck = FALLBACK_TRUCKS[idx % FALLBACK_TRUCKS.length]
-          const driver = FALLBACK_DRIVERS[idx % FALLBACK_DRIVERS.length]
-          return [trip.sourceContainerId, {
-            sourceContainerId: trip.sourceContainerId,
-            trucks: FALLBACK_TRUCKS,
-            drivers: FALLBACK_DRIVERS,
-            recommendedTruckId: truck.id,
-            recommendedDriverId: driver.id,
-            message: 'Đã tự động ghép xe và tài xế phụ trách cho container.',
-            unavailableReasons: []
-          }]
-        }))
-        setOptions(byId)
-        latest.current.onTrips(latest.current.body.delivery.trips.map((trip, idx) => {
-          const item = byId[trip.sourceContainerId]
-          const truck = item?.trucks.find(t => t.id === item.recommendedTruckId)
-          const driver = item?.drivers.find(d => d.id === item.recommendedDriverId)
-          return {
-            ...trip,
-            truckId: trip.truckId || item?.recommendedTruckId || null,
-            driverId: trip.driverId || item?.recommendedDriverId || null,
-            vehicle: trip.vehicle || truck || null,
-            driver: trip.driver || driver || null
+      const applyFallback = async (failure) => {
+        try {
+          const res = await bookingService.getAvailableResources()
+          if (cancelled || latest.current.signature !== signature) return
+          const trucks = res?.trucks || []
+          const drivers = res?.drivers || []
+          if (!trucks.length && !drivers.length) {
+            setOptions({})
+            setError(draftError(failure))
+            return
           }
-        }))
-        setError('')
+          const byId = Object.fromEntries(latest.current.body.delivery.trips.map((trip, idx) => {
+            const truck = trucks.length ? trucks[idx % trucks.length] : null
+            const driver = (truck?.driverId && drivers.find(d => d.id === truck.driverId)) ||
+              (drivers.length ? drivers[idx % drivers.length] : null)
+            return [trip.sourceContainerId, {
+              sourceContainerId: trip.sourceContainerId,
+              trucks,
+              drivers,
+              recommendedTruckId: truck?.id || null,
+              recommendedDriverId: driver?.id || null,
+              message: res?.message || 'Đã tự động ghép xe và tài xế phụ trách cho container từ đội xe trong CSDL.',
+              unavailableReasons: res?.unavailableReasons || []
+            }]
+          }))
+          setOptions(byId)
+          latest.current.onTrips(latest.current.body.delivery.trips.map((trip) => {
+            const item = byId[trip.sourceContainerId]
+            const truck = item?.trucks.find(t => t.id === (trip.truckId || item.recommendedTruckId))
+            const driver = item?.drivers.find(d => d.id === (trip.driverId || item.recommendedDriverId))
+            return {
+              ...trip,
+              truckId: trip.truckId || item?.recommendedTruckId || null,
+              driverId: trip.driverId || item?.recommendedDriverId || null,
+              vehicle: trip.vehicle || truck || null,
+              driver: trip.driver || driver || null
+            }
+          }))
+          setError('')
+        } catch {
+          if (!cancelled && latest.current.signature === signature) {
+            setOptions({})
+            setError(draftError(failure))
+          }
+        }
       }
 
       try {
@@ -107,7 +117,7 @@ export default function ServiceTripFleet({
         }))
       } catch (failure) {
         if (!cancelled && latest.current.signature === signature) {
-          applyFallback()
+          await applyFallback(failure)
         }
       } finally { if (!cancelled && latest.current.signature === signature) setBusy(false) }
     }, 400)
@@ -149,8 +159,6 @@ export default function ServiceTripFleet({
       return <article className="esf-trip" key={trip.sourceContainerId}>
         <header><span className="esf-index">{String(index + 1).padStart(2, '0')}</span><div><h4>{containers[trip.sourceContainerId]?.containerNumber || `Container ${index + 1}`}</h4><small>Chuyến giao nhận · {containers[trip.sourceContainerId]?.typeCode || 'Container hàng'}</small></div><Truck size={21} /></header>
         <div className="epd-form-grid">
-          <label className="epd-field"><span>Bắt đầu chuyến <b className="epd-required">*</b></span><input aria-label={`Bắt đầu chuyến ${index + 1}`} type="datetime-local" value={local(trip.appointmentStart)} min={minDate || local(start)} max={maxDate || undefined} disabled={disabled} onChange={e => changeTime(trip.sourceContainerId, 'appointmentStart', e.target.value)} /></label>
-          <label className="epd-field"><span>Kết thúc chuyến <b className="epd-required">*</b></span><input aria-label={`Kết thúc chuyến ${index + 1}`} type="datetime-local" value={local(trip.appointmentEnd)} min={local(trip.appointmentStart)} max={maxDate || undefined} disabled={disabled} onChange={e => changeTime(trip.sourceContainerId, 'appointmentEnd', e.target.value)} /></label>
           <label className="epd-field"><span>Xe rảnh <b className="epd-required">*</b></span><select aria-label={`Xe chuyến ${index + 1}`} value={trip.truckId || ''} disabled={busy || disabled || !fleet} onChange={e => select(trip.sourceContainerId, 'truckId', e.target.value)}><option value="">Chọn xe trong khung giờ</option>{fleet?.trucks.filter(t => !others.some(x => x.truckId === t.id)).map(t => <option key={t.id} value={t.id}>{t.plateNumber} · {t.vehicleType}</option>)}</select></label>
           <label className="epd-field"><span>Tài xế rảnh <b className="epd-required">*</b></span><select aria-label={`Tài xế chuyến ${index + 1}`} value={trip.driverId || ''} disabled={busy || disabled || !fleet} onChange={e => select(trip.sourceContainerId, 'driverId', e.target.value)}><option value="">Chọn tài xế trong khung giờ</option>{fleet?.drivers.filter(d => !others.some(x => x.driverId === d.id)).map(d => <option key={d.id} value={d.id}>{d.fullName} · {d.phone || 'Chưa có SĐT'}</option>)}</select></label>
         </div>
