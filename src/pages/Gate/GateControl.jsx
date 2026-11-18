@@ -196,11 +196,12 @@ export default function GateControl() {
     }
     barrierInFlightRef.current=true;setBarrierBusy(true)
     try{
-      // Đồng thời kích hoạt mở/đóng Servo phần cứng ESP32 qua AI Service
+      // Đồng thời kích hoạt mở/đóng Servo phần cứng ESP32 qua AI Service theo làn Vào/Ra
+      const targetLane = mode === 'checkout' ? 'OUT' : 'IN'
       if (action === 'open') {
-        void gateService.manualBarrierOpen().catch(() => {})
+        void gateService.manualBarrierOpen(targetLane).catch(() => {})
       } else {
-        void gateService.manualBarrierFail().catch(() => {})
+        void gateService.manualBarrierFail(targetLane).catch(() => {})
       }
 
       const result=await gateService.commandBarrier({requestId:barrierRequestRef.current.requestId,gateCode:mappedGateCode,
@@ -218,11 +219,12 @@ export default function GateControl() {
     setBarrierState(nextState)
     simulationLockRef.current = false
 
-    // Gửi tín hiệu điều khiển phần cứng ESP32 (Servo SG90 / Buzzer)
+    // Gửi tín hiệu điều khiển phần cứng ESP32 (Servo SG90 / Buzzer) theo làn Vào/Ra
+    const targetLane = mode === 'checkout' ? 'OUT' : 'IN'
     if (action === 'open') {
-      void gateService.manualBarrierOpen().catch(() => {})
+      void gateService.manualBarrierOpen(targetLane).catch(() => {})
     } else {
-      void gateService.manualBarrierClose().catch(() => {})
+      void gateService.manualBarrierClose(targetLane).catch(() => {})
     }
 
     // Xóa bỏ bất kỳ chu trình mô phỏng treo nào trong bộ nhớ

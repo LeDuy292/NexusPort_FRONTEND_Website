@@ -167,27 +167,30 @@ export const gateService = {
     }
   },
 
-  async manualBarrierOpen() {
+  async manualBarrierOpen(lane = 'IN') {
     try {
-      const res = await aiClient.post('/api/v1/gate/barrier/open')
+      const endpoint = String(lane).toUpperCase() === 'OUT' ? '/api/v1/gate/barrier/open/out' : '/api/v1/gate/barrier/open/in'
+      const res = await aiClient.post(endpoint)
       return { success: true, data: res.data }
     } catch (err) {
       return { success: false, error: err.message }
     }
   },
 
-  async manualBarrierClose() {
+  async manualBarrierClose(lane = 'IN') {
     try {
-      const res = await aiClient.post('/api/v1/gate/barrier/close')
+      const endpoint = String(lane).toUpperCase() === 'OUT' ? '/api/v1/gate/barrier/close/out' : '/api/v1/gate/barrier/close/in'
+      const res = await aiClient.post(endpoint)
       return { success: true, data: res.data }
     } catch (err) {
       return { success: false, error: err.message }
     }
   },
 
-  async manualBarrierFail() {
+  async manualBarrierFail(lane = 'IN') {
     try {
-      const res = await aiClient.post('/api/v1/gate/barrier/fail')
+      const endpoint = String(lane).toUpperCase() === 'OUT' ? '/api/v1/gate/barrier/fail/out' : '/api/v1/gate/barrier/fail/in'
+      const res = await aiClient.post(endpoint)
       return { success: true, data: res.data }
     } catch (err) {
       return { success: false, error: err.message }
