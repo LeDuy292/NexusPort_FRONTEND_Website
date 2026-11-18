@@ -64,10 +64,12 @@ export default function BookingManagement() {
     window.addEventListener('storage', refreshManifestTransport)
     window.addEventListener('nexusport:manifest_synced', refreshManifestTransport)
     window.addEventListener('nexusport_manifest_synced', refreshManifestTransport)
+    window.addEventListener('yard-reservation-updated', refreshManifestTransport)
     return () => {
       window.removeEventListener('storage', refreshManifestTransport)
       window.removeEventListener('nexusport:manifest_synced', refreshManifestTransport)
       window.removeEventListener('nexusport_manifest_synced', refreshManifestTransport)
+      window.removeEventListener('yard-reservation-updated', refreshManifestTransport)
     }
   }, [])
 
@@ -381,26 +383,50 @@ export default function BookingManagement() {
   const getBookingYardSlot = (bk) => {
     if (!bk) return null
 
-    // 1. Từ autoYardSlot có sẵn
-    if (bk.autoYardSlot?.slotName || bk.autoYardSlot?.fullLocation) {
-      return {
-        short: bk.autoYardSlot.slotName || bk.autoYardSlot.posId || `Block ${bk.autoYardSlot.blockCode} · ${bk.autoYardSlot.bayDisplay || 'Bay 01'}`,
-        detail: bk.autoYardSlot.fullLocation || `Block ${bk.autoYardSlot.blockCode} · ${bk.autoYardSlot.bayDisplay || 'Bay 01'} · T${bk.autoYardSlot.tier || 1}-R${bk.autoYardSlot.row || 1}`,
-        zoneName: bk.autoYardSlot.zoneName || 'Khu Bãi Container Tiên Sa'
-      }
-    }
-
-    // 2. Từ yardSlot
-    if (bk.yardSlot) {
-      return {
-        short: bk.yardSlot,
-        detail: bk.yardSlot,
-        zoneName: 'Khu Bãi Container Tiên Sa'
-      }
-    }
-
     const conts = getBookingContainers(bk)
-    const contNo = conts[0]
+    const contNo = (conts[0] || bk.containerNumber || bk.containerId || '').trim().toUpperCase()
+    const bookNo = (bk.bookingCode || bk.id || '').trim().toUpperCase()
+
+    // 1. ƯU TIÊN SỐ 1: Vị trí thực tế mới nhất từ yardReservationStore (Khi điều độ viên đổi vị trí bãi)
+    try {
+      if (contNo || bookNo) {
+        const resv = (contNo ? yardReservationStore.getReservation(contNo) : null) || (bookNo ? yardReservationStore.getReservation(bookNo) : null)
+        if (resv && (resv.bay || resv.posId)) {
+          const block = resv.blockCode || resv.block || 'D01'
+          const bayNum = Number(resv.bay) || 1
+          const bayStr = String(bayNum).padStart(2, '0')
+          const rowNum = Number(resv.row) || 1
+          const rowStr = String(rowNum).padStart(2, '0')
+          const tierNum = Number(resv.tier) || 1
+          return {
+            short: `Khu ${block} · Bay ${bayStr} (R${rowStr}-T${tierNum})`,
+            detail: `Block ${block} - Bay ${bayStr} (${rowNum}-${tierNum})`,
+            zoneName: resv.zoneName || `Khu ${block[0]} Bãi Cảng Tiên Sa`,
+            slotCode: resv.slotCode || `${block}.${bayStr}.${rowStr}.${tierNum}`
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Lỗi đọc yardReservationStore:', e)
+    }
+
+    // 2. ƯU TIÊN SỐ 2: Vị trí cập nhật từ Lịch tài xế Transport (orderFleet)
+    try {
+      const fleet = (contNo ? manifestPortSyncService.getOrderFleet(contNo) : null) || (bookNo ? manifestPortSyncService.getOrderFleet(bookNo) : null)
+      if (fleet?.yardSlot || (fleet?.blockCode && fleet?.bay)) {
+        const block = fleet.blockCode || 'D01'
+        const bayNum = Number(fleet.bay) || 1
+        const bayStr = String(bayNum).padStart(2, '0')
+        const rowNum = Number(fleet.row) || 1
+        const rowStr = String(rowNum).padStart(2, '0')
+        const tierNum = Number(fleet.tier) || 1
+        return {
+          short: fleet.yardSlot?.includes('·') ? fleet.yardSlot : `Khu ${block} · Bay ${bayStr} (R${rowStr}-T${tierNum})`,
+          detail: `Block ${block} - Bay ${bayStr} (${rowNum}-${tierNum})`,
+          zoneName: `Khu ${block[0]} Bãi Cảng Tiên Sa`
+        }
+      }
+    } catch {}
 
     // 3. Từ NEXUSPORT_PORT_BILLS
     try {
@@ -415,19 +441,23 @@ export default function BookingManagement() {
       }
     } catch { }
 
-    // 4. Từ yardReservationStore
-    try {
-      if (contNo) {
-        const resv = yardReservationStore.getReservation(contNo)
-        if (resv) {
-          return {
-            short: resv.slotName || resv.posId || `Block ${resv.blockCode} · Bay ${resv.bayCode || resv.bay}`,
-            detail: resv.fullLocation || `Block ${resv.blockCode} · Bay ${resv.bayCode || resv.bay} · Row ${resv.row} · Tier ${resv.tier}`,
-            zoneName: resv.zoneName || 'Khu Bãi Container Tiên Sa'
-          }
-        }
+    // 4. Từ autoYardSlot có sẵn trên booking (nếu chưa có điều chỉnh mới)
+    if (bk.autoYardSlot?.slotName || bk.autoYardSlot?.fullLocation) {
+      return {
+        short: bk.autoYardSlot.slotName || bk.autoYardSlot.posId || `Block ${bk.autoYardSlot.blockCode} · ${bk.autoYardSlot.bayDisplay || 'Bay 01'}`,
+        detail: bk.autoYardSlot.fullLocation || `Block ${bk.autoYardSlot.blockCode} · ${bk.autoYardSlot.bayDisplay || 'Bay 01'} · T${bk.autoYardSlot.tier || 1}-R${bk.autoYardSlot.row || 1}`,
+        zoneName: bk.autoYardSlot.zoneName || 'Khu Bãi Container Tiên Sa'
       }
-    } catch { }
+    }
+
+    // 5. Từ yardSlot
+    if (bk.yardSlot) {
+      return {
+        short: bk.yardSlot,
+        detail: bk.yardSlot,
+        zoneName: 'Khu Bãi Container Tiên Sa'
+      }
+    }
 
     // 5. Từ manifestTransportBookings
     try {

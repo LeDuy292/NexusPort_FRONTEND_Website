@@ -8,6 +8,7 @@ import expressApiClient from '../../services/expressApiClient'
 import YardSlotHistoryModal from '../../components/Yard/YardSlotHistoryModal'
 import ContainerYardDetailModal from '../../components/Yard/ContainerYardDetailModal'
 import { yardReservationStore } from '../../services/yardReservationStore'
+import yardDischargeService from '../../services/yardDischargeService'
 import { padPosition } from '../../features/yard-design/positions'
 import '../../features/yard-design/YardDesignPreview.css'
 
@@ -38,6 +39,43 @@ export default function YardDesignPreview({ previewOnly = false }) {
 
   // Đồng bộ danh sách giữ chỗ từ Gate Booking sang Sơ đồ bãi Tiên Sa
   const [localReservations, setLocalReservations] = useState(() => yardReservationStore.getReservations())
+  const [inYardMap, setInYardMap] = useState(new Map())
+
+  useEffect(() => {
+    let active = true
+    const syncInYardFromBackend = async () => {
+      try {
+        const plans = await yardDischargeService.getPlans()
+        if (Array.isArray(plans)) {
+          const map = new Map()
+          for (const p of plans) {
+            for (const c of (p.containers || [])) {
+              if (c.dischargeStatus === 'IN_YARD') {
+                const cNo = (c.containerNumber || '').trim().toUpperCase()
+                if (cNo) map.set(cNo, 'in_yard')
+                if (c.reservedSlot) {
+                  const rawSlot = c.reservedSlot.trim().toUpperCase()
+                  map.set(rawSlot, 'in_yard')
+                  // Format variants: D01-06-04-1 and D01.06.04.1
+                  map.set(rawSlot.replace(/-/g, '.'), 'in_yard')
+                  map.set(rawSlot.replace(/\./g, '-'), 'in_yard')
+                }
+              }
+            }
+          }
+          if (active) setInYardMap(map)
+        }
+      } catch (err) {
+        console.warn('Lỗi đồng bộ IN_YARD trong YardDesignPreview:', err)
+      }
+    }
+    syncInYardFromBackend()
+    const timer = setInterval(syncInYardFromBackend, 5000)
+    return () => {
+      active = false
+      clearInterval(timer)
+    }
+  }, [])
 
   useEffect(() => {
     const handleUpdate = () => {
@@ -100,7 +138,11 @@ export default function YardDesignPreview({ previewOnly = false }) {
     const uniqueRes = []
     for (let i = blockRes.length - 1; i >= 0; i--) {
       const r = blockRes[i]
-      const key = (r.containerNo || r.containerId || r.bookingCode || '').trim().toUpperCase()
+      const key = (r.containerNo && r.containerNo !== 'CONT' && r.containerNo !== 'CONT-40')
+        ? r.containerNo.trim().toUpperCase()
+        : (r.containerId && r.containerId !== 'CONT')
+        ? r.containerId.trim().toUpperCase()
+        : `${r.bookingCode || 'BK'}_${r.bay}_${r.row}_${r.tier}`
       if (key && !seen.has(key)) {
         seen.add(key)
         uniqueRes.unshift(r)
@@ -111,6 +153,16 @@ export default function YardDesignPreview({ previewOnly = false }) {
       const size = Number(r.size) || 40
       const bayNum = Number(r.bay)
       const moduleStart = size === 40 ? Math.floor(bayNum / 2) : Math.ceil(bayNum / 2)
+      const contNo = (r.containerNo || r.containerId || '').trim().toUpperCase()
+      const slotCode1 = `${r.blockCode}-${String(bayNum).padStart(2, '0')}-${String(r.row).padStart(2, '0')}-${r.tier}`.toUpperCase()
+      const slotCode2 = `${r.blockCode}.${padPosition(bayNum)}.${padPosition(r.row)}.${r.tier}`.toUpperCase()
+
+      const isInYard = inYardMap.has(contNo) || inYardMap.has(slotCode1) || inYardMap.has(slotCode2) ||
+                       String(r.status || '').toLowerCase() === 'in_yard' ||
+                       String(r.dischargeStatus || '').toUpperCase() === 'IN_YARD'
+
+      const finalStatus = isInYard ? 'in_yard' : (r.status ? String(r.status).toLowerCase() : 'reserved')
+
       return {
         id: `res-${r.posId || r.slotId || bayNum}`,
         block: r.blockCode,
@@ -120,7 +172,7 @@ export default function YardDesignPreview({ previewOnly = false }) {
         moduleStart: Math.max(1, moduleStart),
         moduleSpan: size === 40 ? 2 : 1,
         containerLengthFt: size,
-        status: 'reserved',
+        status: finalStatus,
         containerNumber: r.containerNo || r.containerId || 'CONT',
         reservedContainerNumber: r.containerNo || r.containerId || 'CONT',
         bookingDetails: r.booking || {},
@@ -148,11 +200,19 @@ export default function YardDesignPreview({ previewOnly = false }) {
         }
         return false
       })
+    }).map(bs => {
+      const bsCont = (bs.containerNumber || bs.containerId || '').trim().toUpperCase()
+      const bsSlot1 = `${bs.block}-${String(bs.bay).padStart(2, '0')}-${String(bs.row).padStart(2, '0')}-${bs.tier}`.toUpperCase()
+      const bsSlot2 = `${bs.block}.${padPosition(bs.bay)}.${padPosition(bs.row)}.${bs.tier}`.toUpperCase()
+      if (inYardMap.has(bsCont) || inYardMap.has(bsSlot1) || inYardMap.has(bsSlot2)) {
+        return { ...bs, status: 'in_yard' }
+      }
+      return bs
     })
 
     // syntheticSlots (vị trí giữ chỗ mới nhất) có ưu tiên cao nhất
     return [...syntheticSlots, ...filteredBackend]
-  }, [selected, inventory, localReservations])
+  }, [selected, inventory, localReservations, inYardMap])
   const choose = (area) => {
     setCode(area.code)
     setDetail(true)

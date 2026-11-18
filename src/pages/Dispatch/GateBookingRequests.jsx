@@ -14,7 +14,8 @@ import BookingDocumentsModal from '../../components/Booking/BookingDocumentsModa
 import sourceLayout from '../../features/yard-design/tienSaLayout.json'
 import { yardReservationStore } from '../../services/yardReservationStore'
 import { calculatePortStorageFee, calculatePortServiceTariff, computeAutoBookingTariff, calculateShiftingFee, PORT_STORAGE_TIERS } from '../../utils/portStorageFee'
-import { manifestPortSyncService, TRANSPORT_COMPANIES_POOL } from '../../services/manifestPortSyncService'
+import { manifestPortSyncService, TRANSPORT_COMPANIES_POOL, sortContainersForYardAllocation, isManifestPermanentlyApproved } from '../../services/manifestPortSyncService'
+import yardDischargeService from '../../services/yardDischargeService'
 import { serviceOrdersApi, orderStatusLabels, paymentStatusLabels, paymentStateLabel, statusTone } from '../../features/service-catalog/serviceOrdersApi'
 import { money } from '../../features/service-catalog/catalogApi'
 import { draftDateTime } from '../../features/service-catalog/serviceDraftsApi'
@@ -225,8 +226,24 @@ export default function GateBookingRequests() {
   const [popupContainerPageSize, setPopupContainerPageSize] = useState(5)
 
   // Cảng phê duyệt / chấp nhận Bản khai Tàu -> Tự động tách ra bảng mới chia theo từng Công ty vận tải để xét duyệt
-  const handleApproveVesselManifest = (manifestId) => {
-    const res = manifestPortSyncService.approveManifestByPort(manifestId)
+  const handleApproveVesselManifest = async (manifestId) => {
+    // 1. Kiểm tra xem tàu này đã có Kế hoạch Phân Bổ Bãi Tự Động (Smart Yard Pre-Allocation) từ Backend chưa
+    let matchedPlan = null
+    try {
+      const plans = await yardDischargeService.getPlans()
+      if (Array.isArray(plans)) {
+        matchedPlan = plans.find(p =>
+          p.manifestId === manifestId ||
+          p.manifestNumber === manifestId ||
+          (p.voyageNumber && (selectedVesselManifest?.voyageNumber === p.voyageNumber || String(manifestId).includes(p.voyageNumber)))
+        )
+      }
+    } catch (e) {
+      console.warn('Lấy kế hoạch phân bổ bãi tự động có sẵn:', e)
+    }
+
+    // 2. Phê duyệt bản khai tàu, áp dụng ngay vị trí từ Kế Hoạch Phân Bổ Bãi Tự Động đã có (nếu có)
+    const res = manifestPortSyncService.approveManifestByPort(manifestId, matchedPlan)
     const approvedManifest = res?.approvedManifest
     const newGateBookings = res?.newGateBookings || []
 
@@ -239,9 +256,34 @@ export default function GateBookingRequests() {
       setSelectedVesselManifest(null)
     }
 
-    const companyCount = new Set(newGateBookings.map(b => b.company)).size
+    // 3. Tự động kích hoạt thuật toán Phân bổ bãi thông minh (Smart Yard Pre-Allocation) từ Backend C#
+    try {
+      const targetManifestId = matchedPlan?.manifestId || approvedManifest?.id || (manifestId && !String(manifestId).startsWith('MNF-') ? manifestId : null)
+      if (targetManifestId) {
+        yardDischargeService.preAllocate(targetManifestId).then(updatedPlan => {
+          if (updatedPlan?.containers && Array.isArray(updatedPlan.containers)) {
+            for (const c of updatedPlan.containers) {
+              if (c.reservedSlot) {
+                manifestPortSyncService.syncYardSlotAcrossAll({
+                  containerNumber: c.containerNumber,
+                  manifestId: targetManifestId,
+                  newSlotCoordinate: c.reservedSlot,
+                  reason: c.allocationReason || 'Thuật toán Smart Yard Pre-Allocation tự động phân bổ',
+                  status: c.dischargeStatus === 'IN_YARD' ? 'in_yard' : 'reserved',
+                  vesselName: updatedPlan.vesselName,
+                  voyageNumber: updatedPlan.voyageNumber,
+                })
+              }
+            }
+          }
+        }).catch(() => { })
+      }
+    } catch (e) {
+      console.warn('Auto preAllocate warning:', e)
+    }
+
     showToast(
-      `🟢 Đã phê duyệt tàu ${approvedManifest?.vesselName || manifestId}! Đã thêm ${newGateBookings.length} container vào Danh sách theo Ngày & Chuyến tàu ở bên dưới.`
+      `🟢 Đã duyệt tàu ${approvedManifest?.vesselName || manifestId}! Đã áp dụng phân bổ bãi tự động chuẩn: Hàng xuất gần cổng, Hàng nhập gần biển, Cont lạnh/DG ưu tiên, Cont nặng hạ tầng dưới.`
     )
   }
 
@@ -279,32 +321,99 @@ export default function GateBookingRequests() {
     showToast('⚪ Đã xóa toàn bộ bộ lọc, hiển thị đầy đủ tất cả Container.')
   }
 
-  const [transportAlerts, setTransportAlerts] = useState(() => {
-    try { return manifestPortSyncService.getTransportSubmissionAlerts() } catch { return [] }
-  })
+  // Xóa sạch thông báo hồ sơ xe/tài xế cũ khỏi bộ nhớ
+  try {
+    localStorage.removeItem('NEXUSPORT_TRANSPORT_SUBMISSIONS_ALERT')
+  } catch { }
 
-  // Lắng nghe sự kiện Hãng tàu truyền Manifest sang Cảng, Bên vận tải gửi hồ sơ & sự kiện đặt/đổi vị trí bãi
+  const getBillAlerts = () => {
+    try {
+      const rawBills = JSON.parse(localStorage.getItem('NEXUSPORT_PORT_BILLS') || '{}')
+      const dismissedIds = new Set(JSON.parse(localStorage.getItem('NEXUSPORT_DISMISSED_BILLS') || '[]'))
+      const list = []
+      Object.entries(rawBills).forEach(([k, b]) => {
+        if (!b || typeof b !== 'object') return
+        const billId = b.billNumber || b.reference || (k.startsWith('BILL-') ? k : `BILL-${k}`)
+        if (!b.billNumber && !b.total && !b.totalFormatted) return
+        if (dismissedIds.has(billId)) return
+        if (list.some(item => item.id === billId || item.billNumber === b.billNumber)) return
+
+        const isPaid = b.status === 'PAID' || b.paid === true
+        list.push({
+          id: billId,
+          billNumber: b.billNumber || billId,
+          bookingCode: b.bookingCode || null,
+          company: b.company || b.customerName || 'Doanh nghiệp vận tải / Khách hàng',
+          total: b.total,
+          totalFormatted: b.totalFormatted || (b.total ? `${Number(b.total).toLocaleString('vi-VN')} VNĐ` : '583.200 VNĐ'),
+          isPaid,
+          status: isPaid ? 'PAID' : (b.status || 'SENT_TO_CARRIER'),
+          approvedAt: b.approvedAt || b.paidAt || new Date().toLocaleString('vi-VN'),
+          containers: b.containers || [],
+          containerCount: b.containers?.length || 1,
+        })
+      })
+      return list.slice(0, 5)
+    } catch {
+      return []
+    }
+  }
+
+  const [billAlerts, setBillAlerts] = useState(() => getBillAlerts())
+
+  const handleDismissBillAlert = (id) => {
+    try {
+      const dismissed = JSON.parse(localStorage.getItem('NEXUSPORT_DISMISSED_BILLS') || '[]')
+      if (!dismissed.includes(id)) {
+        dismissed.push(id)
+        localStorage.setItem('NEXUSPORT_DISMISSED_BILLS', JSON.stringify(dismissed))
+      }
+    } catch { }
+    setBillAlerts(prev => prev.filter(b => b.id !== id))
+  }
+
+  const handleDismissAllBillAlerts = () => {
+    try {
+      const allIds = billAlerts.map(b => b.id)
+      const dismissed = JSON.parse(localStorage.getItem('NEXUSPORT_DISMISSED_BILLS') || '[]')
+      const next = Array.from(new Set([...dismissed, ...allIds]))
+      localStorage.setItem('NEXUSPORT_DISMISSED_BILLS', JSON.stringify(next))
+    } catch { }
+    setBillAlerts([])
+  }
+
+  const handleViewBill = (bill) => {
+    const matched = manifestGeneratedBookings.find(b =>
+      (bill.bookingCode && (b.id === bill.bookingCode || b.bookingCode === bill.bookingCode)) ||
+      (bill.billNumber && b.id && bill.billNumber.includes(b.id)) ||
+      (bill.containers && bill.containers.some(c => c.containerNo === b.containerId))
+    )
+    if (matched) {
+      setSelectedBooking(matched)
+      setShowTariffPopup(true)
+    } else {
+      showToast(`🧾 Hóa đơn ${bill.billNumber}: ${bill.totalFormatted} (${bill.isPaid ? 'Đã thanh toán' : 'Chờ thanh toán'})`)
+    }
+  }
+
+  // Lắng nghe sự kiện Hãng tàu truyền Manifest sang Cảng, Hóa đơn/Bill phát sinh & sự kiện đặt/đổi vị trí bãi
   useEffect(() => {
     const unsub = manifestPortSyncService.subscribe((newManifest) => {
       setManifestSyncVersion(v => v + 1)
       setYardResVersion(v => v + 1)
-      setTransportAlerts(manifestPortSyncService.getTransportSubmissionAlerts())
+      setBillAlerts(getBillAlerts())
       if (newManifest?.manifestNumber) {
         showToast(`🚢 Đã nhận Bản khai hàng hóa (${newManifest?.manifestNumber || 'Manifest'}) do Hãng tàu gửi sang Cảng!`)
       }
     })
-    const handleManifestCustomEvent = (e) => {
+    const handleManifestCustomEvent = () => {
       setManifestSyncVersion(v => v + 1)
-      setTransportAlerts(manifestPortSyncService.getTransportSubmissionAlerts())
-      if (e?.detail?.type === 'TRANSPORT_SUBMITTED' && e?.detail?.item) {
-        const it = e.detail.item
-        showToast(`🚚 Bên Vận tải (${it.company}) vừa gửi hồ sơ ${it.containerId} (${it.licensePlate})! Vui lòng kiểm tra khớp trước khi duyệt.`)
-      }
+      setBillAlerts(getBillAlerts())
     }
     const handleStorageUpdate = (e) => {
-      if (!e?.key || e.key === 'NEXUSPORT_MANIFEST_GATE_BOOKINGS_V1' || e.key === 'NEXUSPORT_TRANSPORT_SUBMISSIONS_ALERT') {
+      if (!e?.key || e.key === 'NEXUSPORT_PORT_BILLS' || e.key === 'NEXUSPORT_MANIFEST_GATE_BOOKINGS_V1') {
         setManifestSyncVersion(v => v + 1)
-        setTransportAlerts(manifestPortSyncService.getTransportSubmissionAlerts())
+        setBillAlerts(getBillAlerts())
       }
     }
     const handleYardResUpdate = () => {
@@ -870,13 +979,13 @@ export default function GateBookingRequests() {
         for (const rejOrd of detailedRejected) {
           try {
             await manifestPortSyncService.unassignRejectedOrderFromGateBookings(rejOrd, detailedOrders, { silent: true })
-          } catch {}
+          } catch { }
         }
         // Duyệt từ đơn cũ nhất đến đơn mới nhất để thông tin đội xe của đơn mới nhất luôn được ưu tiên
         for (const orderToSync of [...detailedOrders].reverse()) {
           try {
             manifestPortSyncService.saveAllOrderFleets(orderToSync)
-          } catch {}
+          } catch { }
         }
       } catch (e) { }
 
@@ -1455,7 +1564,7 @@ export default function GateBookingRequests() {
         setEportValidationMap(prev => ({ ...prev, ...nextMap }))
         if (anyBookingUpdated) {
           setManifestSyncVersion(v => v + 1)
-          setTransportAlerts(manifestPortSyncService.getTransportSubmissionAlerts())
+          setBillAlerts(getBillAlerts())
           showToast('✅ Đơn ePort khớp thông tin! Đã tự động cập nhật Đơn vị vận tải và sẵn sàng phê duyệt cổng.')
         }
         if (anyOrderRejected) {
@@ -2567,7 +2676,7 @@ export default function GateBookingRequests() {
       try {
         localStorage.setItem('NEXUSPORT_STORAGE_FEES', JSON.stringify(storedFees))
         localStorage.setItem('NEXUSPORT_PORT_BILLS', JSON.stringify(storedBills))
-        setTransportAlerts(manifestPortSyncService.getTransportSubmissionAlerts())
+        setBillAlerts(getBillAlerts())
         setManifestSyncVersion(v => v + 1)
         window.dispatchEvent(new Event('storage'))
 
@@ -2743,14 +2852,14 @@ export default function GateBookingRequests() {
             const rejectedConts = new Set((targetList || []).map(t => String(t.containerId || '').trim().toUpperCase()))
             const activeContSet = new Set()
             remainingActive.forEach(ao => {
-              ;(ao?.containers || []).forEach(c => {
+              ; (ao?.containers || []).forEach(c => {
                 const n = String(c?.containerNumber || c || '').trim().toUpperCase()
                 if (n) activeContSet.add(n)
               })
-              ;(ao?.content?.lines || []).forEach(l => {
-                const n = String(l?.declaration?.containerNumber || l?.containerNumber || '').trim().toUpperCase()
-                if (n) activeContSet.add(n)
-              })
+                ; (ao?.content?.lines || []).forEach(l => {
+                  const n = String(l?.declaration?.containerNumber || l?.containerNumber || '').trim().toUpperCase()
+                  if (n) activeContSet.add(n)
+                })
             })
             setBookings(prev => prev.map(b => {
               const bCont = String(b.containerId || '').trim().toUpperCase()
@@ -3168,7 +3277,7 @@ export default function GateBookingRequests() {
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-100 font-medium">
-                            {group.items.map((b) => {
+                            {group.items.map((b, bIdx) => {
                               const isSubmitted = isBookingTransportSubmitted(b)
                               const isPickup = b.operation === 'Pickup'
                               const slot = b.autoYardSlot || {}
@@ -3209,7 +3318,7 @@ export default function GateBookingRequests() {
 
                               return (
                                 <tr
-                                  key={b.id}
+                                  key={b.id ? `${b.id}-${bIdx}` : bIdx}
                                   onClick={() => handleSelectBooking(b)}
                                   className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
                                 >
@@ -3351,7 +3460,7 @@ export default function GateBookingRequests() {
           <button
             type="button"
             onClick={handleResetTestData}
-            className="epc-button secondary text-red-600 border-red-200 hover:bg-red-50"
+            className="epc-button secondary text-red-600 border-red-200 hover:bg-red-50 flex items-center gap-1.5"
             title="Xóa toàn bộ bản khai tàu & booking để test lại từ đầu"
           >
             <span className="material-symbols-outlined text-base text-red-500">delete_sweep</span>
@@ -3391,61 +3500,50 @@ export default function GateBookingRequests() {
         </div>
       </section>
 
-      {/* ── THÔNG BÁO HỒ SƠ MỚI TỪ BÊN VẬN TẢI (CARRIER) GỬI SANG ĐỂ KIỂM TRA KHỚP ── */}
-      {transportAlerts.length > 0 && (
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 shadow-2xs space-y-2">
+      {/* ── THÔNG BÁO HÓA ĐƠN & PHÍ CẢNG (CHỈ HIỂN THỊ KHI CÓ BILL TỚI) ── */}
+      {billAlerts.length > 0 && (
+        <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3.5 shadow-2xs space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
-              <span className="material-symbols-outlined text-amber-600 text-lg animate-bounce">notifications_active</span>
-              <span>Thông báo mới từ Công Ty Vận Tải ({transportAlerts.length} hồ sơ chờ kiểm tra khớp &amp; duyệt gửi Bill)</span>
+            <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
+              <span className="material-symbols-outlined text-emerald-600 text-lg">receipt_long</span>
+              <span>Thông báo Hóa Đơn &amp; Phí Cảng ({billAlerts.length} hóa đơn mới)</span>
             </div>
             <button
               type="button"
-              onClick={() => {
-                manifestPortSyncService.dismissTransportSubmissionAlert(null)
-                setTransportAlerts([])
-              }}
-              className="text-[11px] font-semibold text-amber-700 hover:text-amber-900 cursor-pointer"
+              onClick={handleDismissAllBillAlerts}
+              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 cursor-pointer"
             >
               Ẩn tất cả
             </button>
           </div>
           <div className="space-y-1.5">
-            {transportAlerts.slice(0, 3).map((alert) => (
-              <div key={alert.id} className="bg-white/90 border border-amber-200 rounded-lg px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div className="min-w-0">
-                  <span className="font-bold text-slate-900">{alert.company}</span>{' '}
-                  <span className="text-slate-600">vừa gửi hồ sơ cho Container</span>{' '}
-                  <strong className="font-mono text-blue-700">{alert.containerId}</strong>{' '}
-                  <span className="text-slate-500">
-                    (Xe <strong className="font-mono text-slate-800">{alert.licensePlate}</strong> · Tài xế <strong>{alert.driverName}</strong>{alert.billOfLading ? ` · B/L: ${alert.billOfLading}` : ''})
-                    (Xe <strong className="font-mono text-slate-800">{alert.licensePlate}</strong> · Tài xế <strong>{alert.driverName}</strong>{alert.billOfLading && alert.billOfLading !== 'N/A' ? ` · B/L: ${alert.billOfLading}` : ''})
+            {billAlerts.slice(0, 3).map((bill) => (
+              <div key={bill.id} className="bg-white/95 border border-emerald-200 rounded-lg px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${bill.isPaid ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-800 border border-amber-300'}`}>
+                    {bill.isPaid ? '✓ ĐÃ THANH TOÁN' : '⏳ CHỜ THANH TOÁN'}
                   </span>
+                  <span className="font-bold text-slate-900">{bill.company || 'Doanh nghiệp vận tải'}</span>
+                  <span className="text-slate-600">Hóa đơn:</span>
+                  <strong className="font-mono text-emerald-700">{bill.billNumber || bill.id}</strong>
+                  {bill.totalFormatted && (
+                    <span className="font-bold text-slate-800">({bill.totalFormatted})</span>
+                  )}
+                  {bill.containerCount > 0 && (
+                    <span className="text-slate-500">· {bill.containerCount} Container</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
-                    onClick={() => {
-                      const found = manifestGeneratedBookings.find(b => b.id === alert.id || b.containerId === alert.containerId)
-                        || bookings.find(b => b.id === alert.id || b.containerId === alert.containerId)
-                      if (found) {
-                        setSelectedBooking(found)
-                        setShowContainerDetailModal(false)
-                        setShowEportSyncPopup(true)
-                      } else {
-                        showToast(`Không tìm thấy đơn ${alert.containerId} trong danh sách hiện tại.`)
-                      }
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-[11px] font-bold cursor-pointer inline-flex items-center gap-1"
+                    onClick={() => handleViewBill(bill)}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer inline-flex items-center gap-1"
                   >
-                    <span>Kiểm tra khớp &amp; Duyệt ➔</span>
+                    <span>Xem Hóa Đơn ➔</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      manifestPortSyncService.dismissTransportSubmissionAlert(alert.id)
-                      setTransportAlerts(manifestPortSyncService.getTransportSubmissionAlerts())
-                    }}
+                    onClick={() => handleDismissBillAlert(bill.id)}
                     className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[11px] font-semibold cursor-pointer"
                   >
                     Ẩn
@@ -3765,7 +3863,7 @@ export default function GateBookingRequests() {
                     </tr>
                   ) : (
                     pagedVessels.map(m => {
-                      const isApproved = m.portApprovalStatus === 'PORT_APPROVED'
+                      const isApproved = isManifestPermanentlyApproved(m) || m.portApprovalStatus === 'PORT_APPROVED' || m.status === 'PORT_APPROVED'
                       const vKey = m.manifestNumber || m.manifestId
                       const isSelectedFilter = selectedVesselFilter === vKey || selectedVesselFilter === m.vesselName
 
@@ -3863,11 +3961,11 @@ export default function GateBookingRequests() {
                                       setVesselContainersPopup(null)
                                     }
                                   }}
-                                  title="Xem danh sách Container của tàu này"
-                                  className="h-7 px-2 bg-fog hover:bg-chalk/70 text-carbon border border-chalk rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer transition"
+                                  title="Tàu đã được duyệt tại Cảng. Bấm để lọc và xem danh sách Container của tàu này"
+                                  className="h-7 px-2.5 bg-fog hover:bg-chalk/70 text-carbon border border-chalk rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer transition shadow-2xs"
                                 >
-                                  <span className="material-symbols-outlined text-[13px]">filter_alt</span>
-                                  <span>Lọc Cont</span>
+                                  <span className="material-symbols-outlined text-[13px] text-emerald-600 font-bold">check_circle</span>
+                                  <span>Đã duyệt (Lọc Cont)</span>
                                 </button>
                               )}
 
@@ -4023,7 +4121,7 @@ export default function GateBookingRequests() {
                       const gateVal = 'Gate 1'
 
                       return (
-                        <tr key={item.id || item.containerId || idx} className="hover:bg-slate-50/80 transition">
+                        <tr key={`${item.id || item.containerId || 'pop'}-${idx}`} className="hover:bg-slate-50/80 transition">
                           <td className="py-2.5 px-3 font-mono text-slate-400">{globalIdx}</td>
                           <td className="py-2.5 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
                             {item.containerId || item.containerNumber}
@@ -4544,7 +4642,7 @@ export default function GateBookingRequests() {
               </div>
 
               <div className="flex items-center gap-3">
-                {selectedVesselManifest.portApprovalStatus !== 'PORT_APPROVED' && (
+                {!isManifestPermanentlyApproved(selectedVesselManifest) && selectedVesselManifest.portApprovalStatus !== 'PORT_APPROVED' && selectedVesselManifest.status !== 'PORT_APPROVED' && (
                   <button
                     type="button"
                     onClick={() => {
@@ -5385,7 +5483,7 @@ export default function GateBookingRequests() {
 
                 <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
                   {approveTargets.map((c, idx) => (
-                    <div key={c.containerId || idx} className="p-3 hover:bg-slate-50/70 transition-colors">
+                    <div key={`${c.containerId || 'c'}-${c.id || ''}-${idx}`} className="p-3 hover:bg-slate-50/70 transition-colors">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-extrabold text-slate-900 text-xs">
@@ -5553,19 +5651,25 @@ export default function GateBookingRequests() {
         currentReservation={reservedSlot}
         onConfirm={async (slotInfo) => {
           try {
-            // 1. Lưu giữ chỗ vào shared yardReservationStore đồng bộ ngay sang Sơ đồ bãi Tiên Sa
-            yardReservationStore.addReservation({
-              ...slotInfo,
-              containerId: selectedBooking?.containerId,
-              containerNo: selectedBooking?.containerId,
+            const newTier = Number(slotInfo.tier) || 1
+            const bayStr = String(slotInfo.bay).padStart(2, '0')
+            const rowStr = String(slotInfo.row).padStart(2, '0')
+            const coordinate = `${slotInfo.blockCode}-${bayStr}-${rowStr}-${newTier}`
+
+            // Đồng bộ 4 bên: Smart Yard Pre-Allocation + Danh Sách Container Theo Ngày & Chuyến Tàu + Sơ Đồ Bãi + Lịch Tài Xế Đã Gửi Cho Transport
+            await manifestPortSyncService.syncYardSlotAcrossAll({
+              containerNumber: selectedBooking?.containerId,
               bookingCode: selectedBooking?.id,
-              booking: selectedBooking,
+              manifestId: selectedBooking?.sourceManifestId,
+              newSlotCoordinate: coordinate,
+              reason: 'Điều độ viên thay đổi vị trí bãi tại Gate Dispatching',
               vehiclePlate: selectedBooking?.licensePlate,
               driverName: selectedBooking?.driverName,
               company: selectedBooking?.company,
+              vesselName: selectedBooking?.vesselName,
+              voyageNumber: selectedBooking?.voyageNumber,
             })
 
-            const newTier = Number(slotInfo.tier) || 1
             const updatedSlot = {
               ...(reservedSlot || selectedBooking?.autoYardSlot || {}),
               ...slotInfo,
@@ -5579,14 +5683,7 @@ export default function GateBookingRequests() {
             setSelectedZone((slotInfo.blockCode || 'A')[0])
             setSelectedBlock(slotInfo.blockCode || 'A01')
             setYardResVersion(v => v + 1)
-
-            // Nếu là container thuộc bảng Công ty vận tải tách từ Tàu, cập nhật luôn vị trí bãi mới vào bảng
-            if (selectedBooking?.isFromVesselManifest) {
-              manifestPortSyncService.updateGeneratedGateBookingStatus(selectedBooking.id, {
-                autoYardSlot: updatedSlot,
-              })
-              setManifestSyncVersion(v => v + 1)
-            }
+            setManifestSyncVersion(v => v + 1)
 
             // 2. Gọi các API Backend
             if (slotInfo.slotId && slotInfo.slotId.length > 10) {
@@ -5596,7 +5693,7 @@ export default function GateBookingRequests() {
             }
             handleReserveSlot(slotInfo.slotId, slotInfo.blockCode, slotInfo)
             fetchYardMap()
-            showToast(`🟢 Đã chuyển & đặt container ${selectedBooking?.containerId || ''} vào Block ${slotInfo.blockCode} (${slotInfo.bayDisplay || `Bay ${slotInfo.bay}`}, Tầng ${slotInfo.tier}, Hàng ${slotInfo.row})!`)
+            showToast(`🟢 Đã chuyển & đồng bộ container ${selectedBooking?.containerId || ''} sang Block ${slotInfo.blockCode} (${slotInfo.bayDisplay || `Bay ${slotInfo.bay}`}, Tầng ${slotInfo.tier}, Hàng ${slotInfo.row}) cho cả 3 bên và lịch tài xế!`)
           } catch (err) {
             showToast(`❌ Không thể giữ chỗ: ${err.message}`, 'error')
           }
@@ -5892,6 +5989,12 @@ export default function GateBookingRequests() {
                 <div className="flex justify-between py-1.5">
                   <span className="text-slate-500">Cổng đăng ký vào:</span>
                   <span className="font-bold text-slate-900">{selectedBooking.requestedGate || 'Gate 1 (Cổng Cảng Tiên Sa)'}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-t border-slate-100">
+                  <span className="text-slate-500 font-bold">Vị trí bãi chỉ định cho tài xế:</span>
+                  <span className="font-mono font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                    {selectedBooking.yardSlot || (reservedSlot ? `Block ${reservedSlot.blockCode} · ${reservedSlot.bayDisplay || `Bay ${String(reservedSlot.bay || '02').padStart(2, '0')}`} (${reservedSlot.row}-${reservedSlot.tier})` : 'Block D01 · Bay 02 (1-1)')}
+                  </span>
                 </div>
               </div>
 
@@ -6551,8 +6654,8 @@ export default function GateBookingRequests() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-xs">
-                          {eportComparison.containerBreakdown.map((item) => (
-                            <tr key={item.containerNumber} className="hover:bg-slate-50/50">
+                          {eportComparison.containerBreakdown.map((item, idx) => (
+                            <tr key={`${item.containerNumber || 'cont'}-${item.gateBl || ''}-${idx}`} className="hover:bg-slate-50/50">
                               <td className="py-2 px-3 font-mono font-bold text-slate-900">
                                 <div>{item.containerNumber}</div>
                                 <div className="text-[10px] text-slate-500 font-sans font-normal">

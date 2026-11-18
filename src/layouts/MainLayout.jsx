@@ -39,6 +39,12 @@ const sidebarItems = [
     roles: [ROLES.DISPATCHER],
   },
   {
+    path: '/dispatcher/yard-discharge',
+    label: 'Dỡ Tàu & Phân Bổ Bãi',
+    icon: 'anchor',
+    roles: [ROLES.DISPATCHER],
+  },
+  {
     path: '/dispatcher/gate-bookings',
     label: 'Yêu Cầu Booking Cổng',
     icon: 'calendar_month',
@@ -75,7 +81,7 @@ const sidebarItems = [
     path: '/yard-staff/dashboard',
     label: 'Tổng Quan Khai Thác Bãi',
     icon: 'grid_view',
-    roles: [ROLES.YARD_OPERATOR],
+    roles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER],
   },
   {
     path: '/yard-staff/map',
