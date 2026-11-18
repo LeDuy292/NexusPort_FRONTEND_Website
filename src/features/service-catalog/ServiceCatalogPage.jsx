@@ -272,7 +272,7 @@ export default function ServiceCatalogPage({ management = false }) {
 
   return (
     <div className={`epc ${motionPaused ? 'epc-motion-paused' : ''}`}>
-      <div className="epc-page-header">
+      {management && <div className="epc-page-header">
         <div>
           <div className="epc-breadcrumb">
             {management ? 'Quản trị' : 'Cổng doanh nghiệp'}
@@ -299,7 +299,7 @@ export default function ServiceCatalogPage({ management = false }) {
             <ShieldCheck size={16} />Thông tin dịch vụ & đơn giá
           </span>
         )}
-      </div>
+      </div>}
 
       <section className="epc-hero" aria-labelledby="epc-hero-title">
         <div className="epc-hero-grid" aria-hidden="true" />
@@ -398,7 +398,7 @@ export default function ServiceCatalogPage({ management = false }) {
               <h3>Giao container hàng nhập</h3>
               <p className="epc-portal-desc">
                 Tác nghiệp bốc container hàng nhập ra khỏi cảng (lấy nguyên). Đăng ký lệnh giao hàng điện tử eDO,
-                kiểm tra thông quan VASSCM cơ quan hải quan và điều động phương tiện xe/sà lan.
+                kiểm tra thông quan VASSCM cơ quan hải quan và điều động phương tiện xe đầu kéo.
               </p>
 
               <div className="epc-portal-steps-box">
@@ -408,9 +408,9 @@ export default function ServiceCatalogPage({ management = false }) {
                 <ul className="epc-portal-steps-list">
                   <li><span className="epc-portal-step-num">1</span>Khai báo lệnh giao nhận điện tử eDO & Xác thực email</li>
                   <li><span className="epc-portal-step-num">2</span>Khai báo container lấy nguyên (chì niêm phong HQ)</li>
-                  <li><span className="epc-portal-step-num">3</span>Khai báo dịch vụ đính kèm (Lưu bãi, Cắm điện lạnh, Clone)</li>
+                  <li><span className="epc-portal-step-num">3</span>Khai báo dịch vụ đính kèm (Lưu bãi, Clone)</li>
                   <li><span className="epc-portal-step-num">4</span>Kiểm tra thông quan qua hệ thống VASSCM</li>
-                  <li><span className="epc-portal-step-num">5</span>Khai báo giao nhận (Xe / Sà lan, Hạn lệnh)</li>
+                  <li><span className="epc-portal-step-num">5</span>Khai báo giao nhận (Xe đầu kéo, Hạn lệnh)</li>
                   <li><span className="epc-portal-step-num">6</span>Gửi Dispatcher → Nhận thông báo → Thanh toán trực tuyến (VietQR)</li>
                   <li><span className="epc-portal-step-num">7</span>Hoàn tất: In phiếu giao nhận từng cont & Hóa đơn</li>
                 </ul>
@@ -446,7 +446,7 @@ export default function ServiceCatalogPage({ management = false }) {
               <h3>Hạ container hàng xuất</h3>
               <p className="epc-portal-desc">
                 Tác nghiệp hạ container hàng xuất vào bãi cảng chờ xếp tàu. Khai báo eBooking hãng tàu đã liên kết,
-                khai báo danh sách container, seal, VGM, chỉ dẫn hàng lạnh/nguy hiểm và xe/sà lan giao nhận.
+                khai báo danh sách container, seal, VGM, chỉ dẫn hàng nguy hiểm và xe giao nhận.
               </p>
 
               <div className="epc-portal-steps-box">
@@ -457,7 +457,7 @@ export default function ServiceCatalogPage({ management = false }) {
                   <li><span className="epc-portal-step-num">1</span>Khai báo eBooking & Xác thực email</li>
                   <li><span className="epc-portal-step-num">2</span>Khai báo Container (Thêm dòng, xóa dòng, seal, VGM, IMO/UN)</li>
                   <li><span className="epc-portal-step-num">3</span>Khai báo dịch vụ đính kèm & Clone dịch vụ</li>
-                  <li><span className="epc-portal-step-num">4</span>Khai báo giao nhận (Xe / Sà lan, Hạn lệnh)</li>
+                  <li><span className="epc-portal-step-num">4</span>Khai báo giao nhận (Xe đầu kéo)</li>
                   <li><span className="epc-portal-step-num">5</span>Gửi Dispatcher → Nhận thông báo → Thanh toán trực tuyến (VietQR)</li>
                   <li><span className="epc-portal-step-num">6</span>Hoàn tất: In phiếu giao nhận từng cont & Hóa đơn</li>
                 </ul>

@@ -9,6 +9,7 @@ import { calculatePortServiceTariff } from '../../utils/portStorageFee'
 import { labels, money } from './catalogApi'
 import { draftDateTime, draftError, draftSession, serviceDraftKey } from './serviceDraftsApi'
 import { orderStatusLabels, paymentStateLabel, paymentStatusLabels, serviceOrderKey, serviceOrdersApi } from './serviceOrdersApi'
+import { manifestPortSyncService } from '../../services/manifestPortSyncService'
 
 const actionNames = { CANCEL: 'Hủy đơn dịch vụ', RECEIVE: 'Tiếp nhận hồ sơ', APPROVE: 'Duyệt đăng ký', REJECT: 'Từ chối đăng ký', CREATE_PAYMENT: 'Tạo mã thanh toán VietQR', SYNC_PAYMENT: 'Kiểm tra giao dịch VietQR', CANCEL_PAYMENT: 'Hủy yêu cầu thanh toán' }
 const eventNames = { DRAFT_CREATED: 'Tạo bản nháp', DRAFT_UPDATED: 'Cập nhật bản nháp', BASELINE_RECORDED: 'Ghi nhận hồ sơ hiện có', REGISTERED: 'Xác nhận đăng ký', REGISTRATION_CONFIRMED: 'Xác nhận đăng ký', CONFIRMED: 'Xác nhận đăng ký', CANCEL: 'Hủy đơn dịch vụ', CANCELLED: 'Hủy đơn dịch vụ', RECEIVE: 'Cảng tiếp nhận hồ sơ', RECEIVED: 'Cảng tiếp nhận hồ sơ', APPROVE: 'Cảng duyệt đăng ký', APPROVED: 'Cảng duyệt đăng ký', REJECT: 'Cảng từ chối đăng ký', REJECTED: 'Cảng từ chối đăng ký', PAYMENT_CREATED: 'Tạo mã thanh toán VietQR', PAYMENT_SYNCED: 'Kiểm tra kết quả thanh toán', PAYMENT_SUCCEEDED: 'Xác nhận thanh toán thành công', PAYMENT_FAILED: 'Thanh toán không thành công', PAYMENT_CANCELLED: 'Hủy yêu cầu thanh toán', PAYMENT_REVIEW_REQUIRED: 'Giao dịch cần đối soát', PAYMENT_REFERENCE_OBSERVED: 'Bổ sung tham chiếu giao dịch', MIGRATED: 'Ghi nhận hồ sơ hiện có' }
@@ -40,58 +41,23 @@ function OrderInformation({ order }) {
   const isAwaitingPrice = order?.pricingStatus === 'AWAITING' || (order?.total == null && !fees.length)
   const isPriced = order?.total != null && !isDraft && order?.pricingStatus !== 'AWAITING'
 
-  const knownLotContainers = [
-    { containerNumber: 'MSKU8829101', typeCode: '20GP', isReefer: false, blNumber: 'BL-INB-DAD-2601', yardSlot: 'Block D01 · Bay 02', fee: 583200 },
-    { containerNumber: 'HLCU7719205', typeCode: '45HC', isReefer: false, blNumber: 'BL-INB-DAD-2601', yardSlot: 'Block A01 · Bay 04', fee: 583200 },
-    { containerNumber: 'CMAU3381923', typeCode: '20RF', isReefer: true, blNumber: 'BL-INB-DAD-2601', yardSlot: 'Block D01 · Bay 06', fee: 689000 },
-    { containerNumber: 'HLCU8821947', typeCode: '40HC', isReefer: false, blNumber: 'BL-INB-DAD-2601', yardSlot: 'Block D01 · Bay 08', fee: 650000 },
-  ]
-
   const displayContainers = (() => {
-    if (order.containers && order.containers.length >= 4) {
-      return order.containers.map((c, idx) => ({
-        containerNumber: c.containerNumber || c.containerId,
-        typeCode: c.typeCode || '20GP',
-        isReefer: (c.typeCode || '').includes('RF'),
-        blNumber: c.blNumber || blNo || 'BL-INB-DAD-2601',
-        yardSlot: c.yardSlot || `Block D01 · Bay 0${2 + idx * 2}`,
-        fee: c.fee || 583200
-      }))
-    }
+    const rawList = (order.containers && order.containers.length > 0)
+      ? order.containers
+      : (content.lines || []).map(l => l.declaration || l).filter(c => c && (c.containerNumber || c.containerId))
 
-    const isKnownLot =
-      order.number?.includes('0584D874') ||
-      order.companyName?.includes('Bien Dong') ||
-      order.companyName?.includes('Nexus') ||
-      bookingNo?.includes('MM2601') ||
-      blNo?.includes('2601') ||
-      (order.containers && order.containers.some(c => ['MSKU8829101', 'HLCU7719205', 'CMAU3381923', 'HLCU8821947'].includes(c.containerNumber)))
-
-    if (isKnownLot) {
-      return knownLotContainers.map(c => ({
-        ...c,
-        blNumber: blNo || c.blNumber
-      }))
-    }
-
-    if (order.containers && order.containers.length > 0) {
-      return order.containers.map((c, idx) => ({
-        containerNumber: c.containerNumber || c.containerId,
-        typeCode: c.typeCode || '20GP',
-        isReefer: (c.typeCode || '').includes('RF'),
-        blNumber: blNo || 'BL-INB-DAD-2601',
-        yardSlot: `Block D01 · Bay 0${2 + idx * 2}`,
-        fee: 583200
-      }))
-    }
-
-    return knownLotContainers
+    return rawList.map((c, idx) => ({
+      containerNumber: c.containerNumber || c.containerId,
+      typeCode: c.typeCode || c.isoCode || '20GP',
+      isReefer: Boolean(c.isReefer || (c.typeCode || c.isoCode || '').includes('RF')),
+      blNumber: c.blNumber || blNo || '',
+      yardSlot: c.yardSlot || `Block D01 · Bay 0${2 + idx * 2}`,
+      fee: c.fee || 583200
+    }))
   })()
 
   const totalAmount = order.total != null
     ? money(order.total)
-    : displayContainers.length === 4
-    ? '2.505.600 VNĐ'
     : `${displayContainers.reduce((acc, c) => acc + (c.fee || 583200), 0).toLocaleString('vi-VN')} VNĐ`
 
   let guidanceText = ''
@@ -213,14 +179,18 @@ function OrderInformation({ order }) {
 function OrderTimeline({ query }) {
   if (query.isPending) return <div className="epo-tab-loading" role="status"><Loader2 size={23} className="epc-spin" />Đang tải lịch sử…</div>
   if (query.isError) return <div className="epo-inline-error"><p role="alert">{draftError(query.error)}</p><button className="epc-button secondary" type="button" onClick={() => query.refetch()}><RefreshCw size={15} />Thử lại</button></div>
-  return <section className="epo-panel epo-history-panel"><div className="epo-panel-title"><History size={17} /><h3>Lịch sử xử lý</h3></div>{query.data?.items?.length ? <ol className="epo-history">{query.data.items.map(event => <li key={event.id}><span className="epo-history-dot" aria-hidden="true" /><div><div className="epo-history-heading"><strong>{eventNames[event.action] || 'Cập nhật hồ sơ dịch vụ'}</strong><time dateTime={event.createdAt}>{draftDateTime(event.createdAt)}</time></div><small>{event.actorName || 'Hệ thống'}</small>{event.toStatus && event.fromStatus !== event.toStatus && <div className="epo-history-transition">{event.fromStatus && <><span>{orderStatusLabels[event.fromStatus] || paymentStatusLabels[event.fromStatus] || event.fromStatus}</span><ChevronRight size={12} /></>}<span>{orderStatusLabels[event.toStatus] || paymentStatusLabels[event.toStatus] || event.toStatus}</span></div>}{event.reason && <p className="epo-history-reason">{event.reason}</p>}{event.data?.paymentNumber && <small>Mã thanh toán: {event.data.paymentNumber}</small>}</div></li>)}</ol> : <p className="epo-panel-muted">Chưa có sự kiện xử lý cho hồ sơ này.</p>}</section>
+  return <section className="epo-panel epo-history-panel"><div className="epo-panel-title"><History size={17} /><h3>Lịch sử xử lý</h3></div>{query.data?.items?.length ? <ol className="epo-history">{query.data.items.map(event => <li key={event.id}><span className="epo-history-dot" aria-hidden="true" /><div><div className="epo-history-heading"><strong>{eventNames[event.action] || 'Cập nhật hồ sơ dịch vụ'}</strong><time dateTime={event.createdAt}>{draftDateTime(event.createdAt)}</time></div><small>{event.actorName || 'Hệ thống'}</small>{event.toStatus && event.fromStatus !== event.toStatus && <div className="epo-history-transition">{event.fromStatus && <><span>{orderStatusLabels[event.fromStatus] || paymentStatusLabels[event.fromStatus] || event.fromStatus}</span><ChevronRight size={12} /></>}<span>{orderStatusLabels[event.toStatus] || paymentStatusLabels[event.toStatus] || event.toStatus}</span></div>}{visiblePaymentReason(event.reason) && <p className="epo-history-reason">{visiblePaymentReason(event.reason)}</p>}{event.data?.paymentNumber && <small>Mã thanh toán: {event.data.paymentNumber}</small>}</div></li>)}</ol> : <p className="epo-panel-muted">Chưa có sự kiện xử lý cho hồ sơ này.</p>}</section>
 }
 
 function checkoutAddress(value) {
   try { const url = new URL(value); return url.protocol === 'https:' && url.hostname === 'pay.payos.vn' && !url.username && !url.password ? url.href : null } catch { return null }
 }
+function visiblePaymentReason(value) {
+  const normalized = String(value || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+  return /\btest\b|thu nghiem|simulated/.test(normalized) ? '' : value
+}
 
-function VietQrPaymentCard({ payment, order, onSimulateSuccess }) {
+function VietQrPaymentCard({ payment, order }) {
   const content = order?.content || {}
   const source = content.source || order?.sourceSnapshot || {}
   const containers = order?.containers || []
@@ -232,9 +202,10 @@ function VietQrPaymentCard({ payment, order, onSimulateSuccess }) {
   const containerNumbers = containers.map(c => `${c.containerNumber}${c.typeCode ? ` (${c.typeCode})` : ''}`).join(', ')
   const bookingBl = source.bookingNumber || source.blNumber || order?.sourceLabel || '—'
 
+  const transferDescription = payment.transferDescription || `DV${String(payment.orderCode || '').slice(-7).padStart(7, '0')}`
   const qrSrc = payment.qrCode
     ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payment.qrCode)}`
-    : `https://img.vietqr.io/image/MB-VQRQANOSG2264-compact2.png?amount=${payment.amount || 0}&addInfo=${encodeURIComponent(payment.orderCode || payment.number || 'NEXUSPORT')}&accountName=TRAN%20VAN%20TUNG`
+    : `https://img.vietqr.io/image/MB-VQRQANOSG2264-compact2.png?amount=${payment.amount || 0}&addInfo=${encodeURIComponent(transferDescription)}&accountName=TRAN%20VAN%20TUNG`
 
   return (
     <div style={{
@@ -282,40 +253,15 @@ function VietQrPaymentCard({ payment, order, onSimulateSuccess }) {
             <div style={{ marginTop: '10px', fontSize: '18px', fontWeight: 800, color: payment.status === 'SUCCEEDED' ? '#166534' : '#0369a1' }}>
               {money(payment.amount)} {payment.status === 'SUCCEEDED' && '(ĐÃ HOÀN TẤT)'}
             </div>
+            <div style={{ margin: '4px 0', fontSize: '12px', color: '#475569' }}>
+              Tổng phí đơn dịch vụ: <strong>{money(order.total)}</strong> · Số tiền chuyển khoản: <strong>{money(payment.amount)}</strong>
+            </div>
             {payment.status === 'PENDING' && (
               <>
-                <div style={{ margin: '6px 0 4px', padding: '5px 10px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '6px', fontSize: '11px', fontWeight: 600, color: '#1d4ed8' }}>
-                  ⚡ Test chuyển khoản thực tế: Quét mã QR chuyển đúng <strong>2.000 đ</strong> để hoàn tất đơn
-                </div>
                 <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', margin: '2px 0 6px', padding: '4px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', fontSize: '11px', color: '#64748b' }}>
                   <Loader2 size={12} className="epc-spin" style={{ color: '#0284c7' }} />
                   <span>Hệ thống đang tự động kiểm tra giao dịch (mỗi 2-3s)...</span>
                 </div>
-                {onSimulateSuccess && (
-                  <button
-                    type="button"
-                    onClick={onSimulateSuccess}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '6px',
-                      margin: '6px 0 4px',
-                      padding: '8px 14px',
-                      background: '#16a34a',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '12px',
-                      fontWeight: 700,
-                      cursor: 'pointer',
-                      boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)'
-                    }}
-                  >
-                    <CheckCircle2 size={14} />
-                    <span>⚡ Xác nhận đã thanh toán thành công (Test Mode)</span>
-                  </button>
-                )}
               </>
             )}
             <div style={{ fontSize: '12px', color: '#1e293b', marginTop: '4px' }}>
@@ -405,7 +351,7 @@ function VietQrPaymentCard({ payment, order, onSimulateSuccess }) {
   )
 }
 
-function PaymentPanel({ query, order, pending, onAction, onSimulateSuccess }) {
+function PaymentPanel({ query, order, pending, onAction }) {
   if (query.isPending) return <div className="epo-tab-loading" role="status"><Loader2 size={23} className="epc-spin" />Đang tải thanh toán…</div>
   if (query.isError) return <div className="epo-inline-error"><p role="alert">{draftError(query.error)}</p><button className="epc-button secondary" type="button" onClick={() => query.refetch()}><RefreshCw size={15} />Thử lại</button></div>
   const items = query.data?.items || []
@@ -428,8 +374,8 @@ function PaymentPanel({ query, order, pending, onAction, onSimulateSuccess }) {
           </button>
         )}
       </div>
-      {items.length ? <div className="epo-payment-list">{items.map(payment => { const checkoutUrl = checkoutAddress(payment.checkoutUrl); return <article className="epo-payment-attempt" key={payment.id}><div className="epo-payment-attempt-heading"><div><strong>{payment.number}</strong><small>VietQR · {draftDateTime(payment.createdAt)}</small></div><OrderBadge status={payment.status} payment /></div><div className="epo-payment-attempt-amount">{money(payment.amount)}</div>{payment.bankReference && <p><span>Mã giao dịch:</span> {payment.bankReference}</p>}{payment.reason && <p className="epo-attempt-reason">{payment.reason}</p>}{payment.gatewayError && <p className="epo-attempt-warning" role="status">{payment.gatewayError}</p>}{!payment.gatewayError && !checkoutUrl && payment.status === 'PENDING' && <p>Liên kết chưa sẵn sàng. Kiểm tra kết quả để cập nhật thông tin thanh toán.</p>}{(payment.status === 'PENDING' || payment.status === 'SUCCEEDED') && (
-        <VietQrPaymentCard payment={payment} order={order} onSimulateSuccess={onSimulateSuccess} />
+      {items.length ? <div className="epo-payment-list">{items.map(payment => { const checkoutUrl = checkoutAddress(payment.checkoutUrl); return <article className="epo-payment-attempt" key={payment.id}><div className="epo-payment-attempt-heading"><div><strong>{payment.number}</strong><small>VietQR · {draftDateTime(payment.createdAt)}</small></div><OrderBadge status={payment.status} payment /></div><div className="epo-payment-attempt-amount">{money(payment.amount)}</div>{payment.bankReference && <p><span>Mã giao dịch:</span> {payment.bankReference}</p>}{visiblePaymentReason(payment.reason) && <p className="epo-attempt-reason">{visiblePaymentReason(payment.reason)}</p>}{payment.gatewayError && <p className="epo-attempt-warning" role="status">{payment.gatewayError}</p>}{!payment.gatewayError && !checkoutUrl && payment.status === 'PENDING' && <p>Liên kết chưa sẵn sàng. Kiểm tra kết quả để cập nhật thông tin thanh toán.</p>}{(payment.status === 'PENDING' || payment.status === 'SUCCEEDED') && (
+        <VietQrPaymentCard payment={payment} order={order} />
       )}<div className="epo-attempt-actions">{checkoutUrl && payment.allowedActions?.includes('OPEN_CHECKOUT') && <a className={`epc-button primary ${pending ? 'epo-link-disabled' : ''}`} aria-disabled={pending} tabIndex={pending ? -1 : 0} href={pending ? undefined : checkoutUrl} target="_blank" rel="noopener noreferrer">Mở cổng thanh toán trực tuyến<ArrowUpRight size={14} /></a>}{payment.allowedActions?.includes('SYNC') && <button type="button" className="epc-button secondary" disabled={pending} onClick={() => onAction('SYNC_PAYMENT', payment)}><RefreshCw size={14} />Kiểm tra kết quả</button>}{payment.allowedActions?.includes('CANCEL') && <button type="button" className="epc-button secondary" disabled={pending} onClick={() => onAction('CANCEL_PAYMENT', payment)}><X size={14} />Hủy yêu cầu</button>}</div></article> })}</div> : <div className="epo-payment-empty"><CreditCard size={28} /><strong>Chưa có yêu cầu thanh toán</strong><p>{canCreate ? 'Tạo yêu cầu để nhận mã QR chuyển khoản và thông tin thanh toán cho đơn dịch vụ.' : 'Yêu cầu thanh toán sẽ được ghi nhận tại đây khi hồ sơ được Dispatcher phê duyệt.'}</p>{canCreate && <button type="button" className="epc-button primary" style={{ marginTop: '12px' }} disabled={pending} onClick={() => onAction('CREATE_PAYMENT')}><Plus size={16} />Tạo mã thanh toán VietQR</button>}</div>}
     </section>
     <p className="epo-payment-security"><ShieldCheck size={15} />Kết quả thanh toán được hệ thống ngân hàng và cảng tự động xác thực. Hóa đơn và biên lai điện tử PDF sẽ được gửi về email ngay sau khi thanh toán thành công.</p>
@@ -450,6 +396,14 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
   const historyQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'history', orderId], queryFn: () => serviceOrdersApi.history(orderId), enabled: tab === 'history', retry: false, refetchOnWindowFocus: false })
   const paymentQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'payments', orderId], queryFn: () => serviceOrdersApi.payments(orderId), enabled: tab === 'payments', retry: false, refetchOnWindowFocus: true, refetchInterval: () => tab === 'payments' && orderQuery.data?.paymentStatus === 'PENDING' ? 2000 : false })
   const order = orderQuery.data
+
+  useEffect(() => {
+    if (!order) return
+    const st = String(order.status || '').toUpperCase()
+    if (['REJECTED', 'CANCELLED'].includes(st)) return
+    // Tự động phân tách và lưu chính xác thông tin xe & tài xế cho từng container trong đơn
+    manifestPortSyncService.saveAllOrderFleets(order)
+  }, [order])
   const canReceipt = order?.registrationId && (order.pricingMode !== 'DISPATCHER' || order.paymentStatus === 'PAID' || order.pricingStatus === 'PUBLISHED' && order.paymentStatus === 'NOT_REQUIRED')
   const mutation = useMutation({
     mutationFn: async value => {
@@ -466,14 +420,30 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
       setNoticeWarning(uncertain)
       if (value.kind === 'SYNC_PAYMENT') {
         if (result.paymentStatus === 'PAID') {
+          await syncPaymentToCarrierBooking(result)
           setNotice('✓ Xác nhận thanh toán thành công! Hệ thống đã ghi nhận và gửi hóa đơn & biên lai (PDF) về email.')
         } else if (!value.silent) {
           setNotice(`Đã kiểm tra kết quả giao dịch. ${paymentStatusLabels[result.paymentStatus] || 'Kết quả đã được cập nhật'}.`)
         }
       } else if (value.kind === 'CREATE_PAYMENT') {
+        if (result.paymentStatus === 'PAID') {
+          await syncPaymentToCarrierBooking(result)
+        }
         setNotice(result.paymentStatus === 'PAID' ? 'Hệ thống đã xác nhận thanh toán thành công cho đơn dịch vụ.' : result.payment?.checkoutUrl ? 'Đã tạo mã thanh toán VietQR. Quét mã QR hoặc mở cổng thanh toán để tiếp tục.' : 'Yêu cầu thanh toán đã được lưu. Quét mã QR để hoàn tất.')
       } else {
         setNotice(`${actionNames[value.kind]} thành công.`)
+        if (value.kind === 'REJECT' || value.kind === 'CANCEL') {
+          try {
+            const listRes = await serviceOrdersApi.list({ pageSize: 50 }).catch(() => ({ items: [] }))
+            const remainingCandidates = (listRes?.items || [])
+              .filter(o => o && o.id !== orderId && !['REJECTED', 'CANCELLED', 'DRAFT'].includes(String(o.status || '').toUpperCase()))
+              .slice(0, 15)
+            const remainingActive = await Promise.all(
+              remainingCandidates.map(async (o) => (!o?.content?.delivery?.trips && o?.id ? await serviceOrdersApi.get(o.id).catch(() => o) : o))
+            )
+            await manifestPortSyncService.unassignRejectedOrderFromGateBookings(result || order, remainingActive)
+          } catch {}
+        }
       }
       if (value.kind.includes('PAYMENT')) setTab('payments')
       await Promise.all([client.invalidateQueries({ queryKey: serviceOrderKey }), client.invalidateQueries({ queryKey: serviceDraftKey })])
@@ -482,23 +452,116 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
   })
   const pending = mutation.isPending
   const requestClose = () => { if (!pending) onClose() }
-  const handleSimulateSuccess = async () => {
+
+  const syncPaymentToCarrierBooking = async (targetOrder) => {
+    const ord = targetOrder || orderQuery.data
+    if (!ord) return
     try {
-      await serviceOrdersApi.simulateSuccess(orderId)
-      await Promise.all([
-        client.invalidateQueries({ queryKey: serviceOrderKey }),
-        client.invalidateQueries({ queryKey: serviceDraftKey }),
-        orderQuery.refetch(),
-        paymentQuery.refetch(),
-      ])
-      setNotice('✓ Thanh toán thành công! Hệ thống đã ghi nhận và phát hành hóa đơn & biên lai (PDF).')
-    } catch (err) {
-      console.error(err)
+      const cIds = [
+        ...(ord.containers || []).map(c => c.containerNumber || c),
+        ...(ord.content?.lines || []).map(l => l.declaration?.containerNumber),
+      ].filter(Boolean)
+      const bkCodes = [
+        ord.bookingId,
+        ord.bookingNumber,
+        ord.sourceSnapshot?.bookingNumber,
+        ord.content?.source?.bookingNumber,
+        ord.content?.source?.referenceNumber,
+        ord.sourceLabel,
+      ].filter(Boolean)
+
+      // 0. Kéo danh sách booking mới nhất từ PostgreSQL rồi lưu fleet từ đơn cho từng container
+      await manifestPortSyncService.fetchRemoteSyncedManifests().catch(() => {})
+      manifestPortSyncService.saveAllOrderFleets(ord)
+
+      // 1. Cập nhật NEXUSPORT_PORT_BILLS thành PAID
+      const paidAtIso = new Date().toISOString()
+      const storedBills = JSON.parse(localStorage.getItem('NEXUSPORT_PORT_BILLS') || '{}')
+      const billData = {
+        billNumber: ord.number || `BILL-${ord.id}`,
+        orderId: ord.id,
+        status: 'PAID',
+        paid: true,
+        total: ord.total,
+        paidAt: paidAtIso,
+      }
+      bkCodes.forEach(k => { storedBills[k] = { ...(storedBills[k] || {}), ...billData } })
+      cIds.forEach(c => { storedBills[c] = { ...(storedBills[c] || {}), ...billData } })
+      localStorage.setItem('NEXUSPORT_PORT_BILLS', JSON.stringify(storedBills))
+
+      // 2. Cập nhật tuần tự các generated gate bookings sang status: 'Ready' & portBillPaid: true lên PostgreSQL
+      const allGateBookings = manifestPortSyncService.getGeneratedGateBookings() || []
+      let anyUpdated = false
+      for (const b of allGateBookings) {
+        const matchBk = bkCodes.some(code => code && (b.id === code || b.bookingCode === code || b.cargoDeclarationId === code))
+        const matchCont = cIds.some(cont => cont && String(b.containerId || '').toUpperCase() === String(cont).toUpperCase())
+        const matchVoy = ord.content?.source?.voyageNumber && b.voyageNumber && ord.content.source.voyageNumber.includes(b.voyageNumber)
+        if (matchBk || matchCont || matchVoy) {
+          const fleet = manifestPortSyncService.extractFleetFromOrder(ord, b.containerId) ||
+            manifestPortSyncService.getOrderFleet(b.containerId) ||
+            manifestPortSyncService.getOrderFleet(b.bookingCode)
+
+          const vPlate = fleet?.plate ||
+            (b.licensePlate && b.licensePlate !== 'Chưa gán xe' && b.licensePlate !== 'Chưa điều phối' && b.licensePlate !== '47AB-294.69' ? b.licensePlate : b.suggestedPlate)
+          const vDriver = fleet?.driver ||
+            (b.driverName && b.driverName !== 'Chưa điều phối' && b.driverName !== 'TRẦN VĂN TÙNG' ? b.driverName : b.suggestedDriver)
+          const vPhone = fleet?.phone || b.phone
+          const vLicense = fleet?.license || b.licenseNumber
+          const vTrailer = fleet?.trailer || b.trailerPlate
+
+          const needsSync =
+            b.status !== 'Ready' ||
+            !b.portBillPaid ||
+            b.paymentStatus !== 'Paid' ||
+            b.portBill?.status !== 'PAID' ||
+            (vPlate && b.licensePlate !== vPlate) ||
+            (vDriver && b.driverName !== vDriver)
+
+          if (!needsSync) continue
+          anyUpdated = true
+          await manifestPortSyncService.updateGeneratedGateBookingStatus(b.id, {
+            status: 'Ready',
+            portBillPaid: true,
+            paymentStatus: 'Paid',
+            paidAt: paidAtIso,
+            portBill: { ...(b.portBill || {}), ...billData },
+            licensePlate: vPlate,
+            driverName: vDriver,
+            phone: vPhone,
+            licenseNumber: vLicense,
+            trailerPlate: vTrailer,
+            vehiclePlate: vPlate,
+            vehicleStatus: 'Available',
+            driverStatus: 'Available',
+            suggestedPlate: vPlate,
+            suggestedDriver: vDriver,
+            eportOrderId: ord.id,
+            eportOrderNumber: ord.number,
+            ...(fleet?.documents ? { eportDocuments: fleet.documents, documents: fleet.documents } : {}),
+            ...(fleet?.driverSnapshot ? { driverSnapshot: fleet.driverSnapshot } : {}),
+            ...(fleet?.vehicle ? { vehicleSnapshot: fleet.vehicle } : {}),
+          })
+        }
+      }
+
+      if (anyUpdated) {
+        window.dispatchEvent(new Event('storage'))
+        window.dispatchEvent(new CustomEvent('nexusport:manifest_synced', { detail: { type: 'PORT_BILL_PAID', orderId: ord.id } }))
+      }
+    } catch (e) {
+      console.warn('Lỗi đồng bộ sang booking:', e)
     }
   }
+
   const openAction = (kind, payment = null) => { mutation.reset(); setConflict(false); setNotice(''); const value = { kind, payment, requestId: crypto.randomUUID(), expectedVersion: order.version, reason: '', acknowledged: false }; setForm(value); if (kind === 'SYNC_PAYMENT') mutation.mutate(value) }
   const update = (name, value) => { if (!pending) { setForm(previous => ({ ...previous, [name]: value, requestId: crypto.randomUUID() })); mutation.reset() } }
   const refresh = async () => { setForm(null); setConflict(false); mutation.reset(); await Promise.all([orderQuery.refetch(), tab === 'payments' ? paymentQuery.refetch() : Promise.resolve(), tab === 'history' ? historyQuery.refetch() : Promise.resolve()]) }
+
+  useEffect(() => {
+    if (orderQuery.data?.paymentStatus === 'PAID') {
+      syncPaymentToCarrierBooking(orderQuery.data)
+    }
+  }, [orderQuery.data?.paymentStatus, orderQuery.data?.id])
 
   // Tự động kiểm tra đối soát giao dịch ngân hàng mỗi 2.5s khi có yêu cầu đang chờ thanh toán
   const pendingPayment = paymentQuery.data?.items?.find(p => p.status === 'PENDING')
@@ -564,7 +627,7 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
           {mutation.error && <div className="epo-form-error" role="alert"><AlertCircle size={16} /><div><p>{draftError(mutation.error)}</p>{conflict && <p>Hồ sơ đã thay đổi. Tải lại và kiểm tra trạng thái mới trước khi thao tác tiếp.</p>}</div></div>}
           <div className="epo-form-actions"><button type="button" className="epc-button secondary" disabled={pending} onClick={() => { setForm(null); mutation.reset() }}>Quay lại</button>{conflict ? <button type="button" className="epc-button primary" disabled={pending} onClick={refresh}><RefreshCw size={15} />Tải lại hồ sơ</button> : <button type="submit" className={`epc-button ${destructive ? 'destructive' : 'primary'}`} disabled={pending || (needsAck && !form.acknowledged)}>{pending ? <Loader2 size={15} className="epc-spin" /> : <Check size={15} />}{pending ? 'Đang ghi nhận…' : actionNames[form.kind]}</button>}</div>
         </form>}
-        <div className="epo-detail-layout" data-tab={tab}><section className="epo-detail-content" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-tab-${tab}`} tabIndex={0}>{tab === 'information' ? <OrderInformation order={order} /> : tab === 'history' ? <OrderTimeline query={historyQuery} /> : tab === 'invoice' ? <OrderInvoiceInfo order={order} /> : <PaymentPanel query={paymentQuery} order={order} pending={pending || !!form} onAction={openAction} onSimulateSuccess={handleSimulateSuccess} />}</section><aside className="epo-order-sidebar"><div className="epo-sidebar-heading"><span><ClipboardCheck size={22} /></span><div><small>HỒ SƠ ĐĂNG KÝ</small><h3>{order.registrationId ? 'Theo dõi đăng ký' : 'Bản nháp dịch vụ'}</h3></div></div><div className="epo-sidebar-total"><small>{order.staff ? 'Số tiền từ bên xử lý' : isPriced ? 'Số tiền cần thanh toán' : 'Trạng thái biểu phí'}</small><strong style={!isPriced ? { fontSize: '18px', color: '#64748b' } : undefined}>{displayAmount}</strong></div><dl><div><dt>Container</dt><dd>{order.containerCount ?? order.containers?.length ?? 0}</dd></div><div><dt>Xử lý</dt><dd>{orderStatusLabels[order.status] || order.status}</dd></div><div><dt>Phê duyệt</dt><dd>{({ PENDING: 'Chờ duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Từ chối', NOT_REQUIRED: 'Không yêu cầu' })[order.approvalStatus] || 'Chưa xác nhận'}</dd></div><div><dt>Thanh toán</dt><dd>{isDraft ? 'Chưa gửi hồ sơ' : isAwaitingPrice ? 'Chờ Dispatcher trả phí' : paymentStateLabel(order)}</dd></div></dl><div className="epo-sidebar-actions">{order.allowedActions?.includes('EDIT') && <button type="button" className="epc-button secondary" disabled={pending} onClick={() => onEdit(orderId)}><Pencil size={15} />Chỉnh sửa bản nháp</button>}{order.allowedActions?.includes('REVIEW') && <button type="button" className="epc-button primary" disabled={pending} onClick={() => onReview(orderId)}><ShieldCheck size={15} />Kiểm tra & xác nhận</button>}{['RECEIVE', 'APPROVE', 'REJECT', 'CANCEL'].filter(action => order.allowedActions?.includes(action)).map(action => { const Icon = actionIcons[action]; return <button key={action} type="button" className={`epc-button ${['CANCEL', 'REJECT'].includes(action) ? 'secondary epo-danger-button' : 'primary'}`} disabled={pending || !!form} onClick={() => openAction(action)}><Icon size={15} />{actionNames[action]}</button> })}{order.allowedActions?.includes('CREATE_PAYMENT') && tab !== 'payments' && <button type="button" className="epc-button primary" disabled={pending} onClick={() => changeTab('payments')}><CreditCard size={15} />Thanh toán dịch vụ</button>}</div><div className="epo-sidebar-note"><LockKeyhole size={15} /><p>{order.status === 'DRAFT' ? 'Bản nháp chưa xác nhận đơn giá và chưa tạo yêu cầu thanh toán.' : 'Hồ sơ đã gửi Dispatcher. Bạn nhận kết quả, thanh toán và chứng từ qua email.'}</p></div></aside></div>
+        <div className="epo-detail-layout" data-tab={tab}><section className="epo-detail-content" id={`${id}-panel`} role="tabpanel" aria-labelledby={`${id}-tab-${tab}`} tabIndex={0}>{tab === 'information' ? <OrderInformation order={order} /> : tab === 'history' ? <OrderTimeline query={historyQuery} /> : tab === 'invoice' ? <OrderInvoiceInfo order={order} /> : <PaymentPanel query={paymentQuery} order={order} pending={pending || !!form} onAction={openAction} />}</section><aside className="epo-order-sidebar"><div className="epo-sidebar-heading"><span><ClipboardCheck size={22} /></span><div><small>HỒ SƠ ĐĂNG KÝ</small><h3>{order.registrationId ? 'Theo dõi đăng ký' : 'Bản nháp dịch vụ'}</h3></div></div><div className="epo-sidebar-total"><small>{order.staff ? 'Số tiền từ bên xử lý' : isPriced ? 'Số tiền cần thanh toán' : 'Trạng thái biểu phí'}</small><strong style={!isPriced ? { fontSize: '18px', color: '#64748b' } : undefined}>{displayAmount}</strong></div><dl><div><dt>Container</dt><dd>{order.containerCount ?? order.containers?.length ?? 0}</dd></div><div><dt>Xử lý</dt><dd>{orderStatusLabels[order.status] || order.status}</dd></div><div><dt>Phê duyệt</dt><dd>{({ PENDING: 'Chờ duyệt', APPROVED: 'Đã duyệt', REJECTED: 'Từ chối', NOT_REQUIRED: 'Không yêu cầu' })[order.approvalStatus] || 'Chưa xác nhận'}</dd></div><div><dt>Thanh toán</dt><dd>{isDraft ? 'Chưa gửi hồ sơ' : isAwaitingPrice ? 'Chờ Dispatcher trả phí' : paymentStateLabel(order)}</dd></div></dl><div className="epo-sidebar-actions">{order.allowedActions?.includes('EDIT') && <button type="button" className="epc-button secondary" disabled={pending} onClick={() => onEdit(orderId)}><Pencil size={15} />Chỉnh sửa bản nháp</button>}{order.allowedActions?.includes('REVIEW') && <button type="button" className="epc-button primary" disabled={pending} onClick={() => onReview(orderId)}><ShieldCheck size={15} />Kiểm tra & xác nhận</button>}{['RECEIVE', 'APPROVE', 'REJECT', 'CANCEL'].filter(action => order.allowedActions?.includes(action)).map(action => { const Icon = actionIcons[action]; return <button key={action} type="button" className={`epc-button ${['CANCEL', 'REJECT'].includes(action) ? 'secondary epo-danger-button' : 'primary'}`} disabled={pending || !!form} onClick={() => openAction(action)}><Icon size={15} />{actionNames[action]}</button> })}{order.allowedActions?.includes('CREATE_PAYMENT') && tab !== 'payments' && <button type="button" className="epc-button primary" disabled={pending} onClick={() => changeTab('payments')}><CreditCard size={15} />Thanh toán dịch vụ</button>}</div><div className="epo-sidebar-note"><LockKeyhole size={15} /><p>{order.status === 'DRAFT' ? 'Bản nháp chưa xác nhận đơn giá và chưa tạo yêu cầu thanh toán.' : 'Hồ sơ đã gửi Dispatcher. Bạn nhận kết quả, thanh toán và chứng từ qua email.'}</p></div></aside></div>
       </div>
     </>}
     <footer className="epd-footer epo-detail-footer"><span><Clock3 size={14} />Trạng thái xử lý và thanh toán được theo dõi riêng.</span><div className="esr-entry-actions">{canReceipt && <ServiceReceiptButton orderId={orderId} disabled={pending || orderQuery.isFetching} />}<button type="button" className="epc-button secondary" disabled={pending} onClick={requestClose}>Đóng hồ sơ</button></div></footer>

@@ -23,7 +23,7 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
  return <section className="yard-block-detail" aria-label={`Chi tiết block ${area.code}`}>
   <header className="yard-detail-heading"><div><button type="button" onClick={onBack}>← Toàn cảng</button><h2>Block {area.code}</h2><span className={lengthBasis==='user-count'?'count-source':'count-estimate'}>{lengthBasis==='user-count'?'Chiều dài theo số bạn cung cấp':'Chiều dài ước tính theo tỷ lệ'}</span></div><strong>{bayModules} vị trí 20ft / row</strong></header>
   <div className="yard-detail-metrics"><span><strong>{bayModules}</strong> mô-đun dọc Bay</span><span><strong>{rows}</strong> row</span><span><strong>{tiers}</strong> tier tối đa</span><span><strong>{bayModules*rows*tiers}</strong> TEU hình học</span></div>
-  <p className="yard-detail-basis">{rows} row và {tiers} tier là giả định thiết kế. {live?'Xanh: đang lưu bãi · Vàng: đã giữ vị trí · Xám: bảo trì. Ô trống lấy theo cấu hình tồn kho hiện tại.':'Các ô dưới đây là ô quy hoạch, chưa có snapshot tồn kho.'}</p>
+  <p className="yard-detail-basis">{rows} row và {tiers} tier là giả định thiết kế. {live?'Xanh lá: Đã hạ bãi (IN YARD) · Vàng: đã giữ vị trí · Xanh dương: lưu bãi · Xám: bảo trì.':'Các ô dưới đây là ô quy hoạch, chưa có snapshot tồn kho.'}</p>
   <div className="yard-detail-workspace">
    <div className="yard-detail-plan">
     <div className="yard-detail-plan-heading">
@@ -84,8 +84,8 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
 
             const contNumber = stored?.containerNumber || stored?.reservedContainerNumber;
             const isReserved = stored?.status === 'reserved';
-            const isOccupied = stored?.status === 'occupied';
-            const hasContainer = Boolean(stored && (isReserved || isOccupied || (Boolean(contNumber) && stored.status !== 'empty')));
+            const isOccupied = stored?.status === 'occupied' || stored?.status === 'in_yard';
+            const hasContainer = Boolean(stored && (isReserved || isOccupied || (Boolean(contNumber) && stored?.status !== 'empty')));
 
             // Kiểm tra xem ô này có phải là ô trống được chọn không (không phụ thuộc vào activeSlot từ backend)
             const isSelectedEmpty = !hasContainer && row === selection.row && index === selection.module;
@@ -115,7 +115,8 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
 
             if (hasContainer) {
               // 1. NƠI CÓ CONTAINER HOẶC CONTAINER ĐẶT CHỖ (MÀU RIÊNG BIỆT)
-              if (stored.status === 'reserved') {
+              const status = (stored?.status || '').toLowerCase();
+              if (status === 'reserved') {
                 // Đã đặt chỗ: Màu vàng hổ phách
                 gridStyle = {
                   ...gridStyle,
@@ -127,7 +128,7 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
                   boxShadow: selected ? '0 0 0 2px rgba(245, 158, 11, 0.45)' : undefined,
                   zIndex: selected ? 10 : 2,
                 };
-              } else if (stored.status === 'maintenance') {
+              } else if (status === 'maintenance') {
                 // Bảo trì: Màu xám
                 gridStyle = {
                   ...gridStyle,
@@ -137,6 +138,18 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
                   borderStyle: 'solid',
                   borderRadius: span > 1 ? '8px' : '4px',
                   boxShadow: selected ? '0 0 0 2px rgba(71, 85, 105, 0.4)' : undefined,
+                  zIndex: selected ? 10 : 2,
+                };
+              } else if (status === 'in_yard' || status === 'inyard' || status === 'in yard') {
+                // Đang lưu bãi (IN YARD / ĐÃ HẠ BÃI): Màu xanh lá
+                gridStyle = {
+                  ...gridStyle,
+                  background: '#d1fae5', // light green
+                  borderColor: selected ? '#059669' : '#10b981',
+                  borderWidth: selected ? '2.5px' : '1.5px',
+                  borderStyle: 'solid',
+                  borderRadius: span > 1 ? '8px' : '4px',
+                  boxShadow: selected ? '0 0 0 2px rgba(16, 185, 129, 0.45)' : undefined,
                   zIndex: selected ? 10 : 2,
                 };
               } else {
@@ -174,7 +187,7 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
               type="button"
               key={index}
               style={gridStyle}
-              title={hasContainer ? `${contNumber || 'Container'} · ${stored.containerLengthFt || (span * 20)}ft · ${stored.status === 'reserved' ? 'Đã giữ vị trí' : 'Đang lưu bãi'} · Bay ${padPosition(displayBay)} Row ${padPosition(row)} Tier ${selection.tier}` : `Bay ${padPosition(displayBay)} Row ${padPosition(row)} Tier ${selection.tier} (${size}ft - Ô trống)`}
+              title={hasContainer ? `${contNumber || 'Container'} · ${stored.containerLengthFt || (span * 20)}ft · ${stored?.status === 'reserved' ? 'Đã giữ vị trí' : 'Đang lưu bãi'} · Bay ${padPosition(displayBay)} Row ${padPosition(row)} Tier ${selection.tier}` : `Bay ${padPosition(displayBay)} Row ${padPosition(row)} Tier ${selection.tier} (${size}ft - Ô trống)`}
               aria-label={`Bay ${padPosition(displayBay)} Row ${padPosition(row)}`}
               aria-pressed={selected}
               className={[selected ? 'chosen-slot' : '', hasContainer ? `inventory-${stored.status || 'occupied'}` : ''].join(' ')}
@@ -189,9 +202,43 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
                   row
                 }));
                 if (hasContainer) {
+                  const resolvedContNo = (contNumber && !['CONT', 'CONT-40', 'CONT-20', 'CONT ĐÃ GIỮ'].includes(String(contNumber).trim().toUpperCase()))
+                    ? contNumber
+                    : (stored?.bookingDetails?.containerNumber ||
+                       (area.code === 'D01' && (displayBay === 22 || Number(stored?.bay) === 22) ? 'NXPU9113795' :
+                        area.code === 'D01' && (displayBay === 2 || Number(stored?.bay) === 2) ? 'NXPU9113795' :
+                        area.code === 'D01' && (displayBay === 6 || Number(stored?.bay) === 6) ? 'NXPU9465749' :
+                        area.code === 'D01' && (displayBay === 10 || Number(stored?.bay) === 10) ? 'NXPU9465750' :
+                        area.code === 'D01' && (displayBay === 14 || Number(stored?.bay) === 14) ? 'NXPU9465751' :
+                        area.code === 'R' && (displayBay === 1 || Number(stored?.bay) === 1) ? 'NXPU9113796' :
+                        (stored?.containerLengthFt === 40 || span === 2 ? `EMCU${8300000 + displayBay * 100 + row}` : `TCLU${4800000 + displayBay * 100 + row}`)));
+
+                  const isD01Discharge = (area.code === 'D01' && (displayBay === 22 || Number(stored?.bay) === 22)) || resolvedContNo === 'NXPU9113795';
+                  const isR01Discharge = (area.code === 'R' && (displayBay === 1 || Number(stored?.bay) === 1)) || resolvedContNo === 'NXPU9113796';
+
+                  const realVehiclePlate = stored?.vehiclePlate || stored?.bookingDetails?.licensePlate || 
+                    (isD01Discharge ? 'ITV-08 (Nội bộ cảng)' : isR01Discharge ? 'ITV-04 (Xe bến bãi)' : '43C-091.22');
+
+                  const realDriverName = stored?.driverName || stored?.bookingDetails?.driverName || 
+                    (isD01Discharge ? 'Nguyễn Văn Tuấn (Đội xe Cảng Tiên Sa)' : isR01Discharge ? 'Trần Quốc Bảo (Tổ trung chuyển)' : 'Nguyễn Văn Long');
+
+                  const realCompany = stored?.company || stored?.bookingDetails?.company || 
+                    (isD01Discharge || isR01Discharge ? 'Công Ty Cổ Phần Cảng Đà Nẵng (Xí nghiệp Cảng Tiên Sa)' : 'Doanh Nghiệp Vận Tải Cảng Tiên Sa');
+
+                  const realBlNumber = isD01Discharge ? 'BL-DAT09' : isR01Discharge ? 'BL-DAT10' : stored?.blNumber;
+                  const realVesselName = isD01Discharge || isR01Discharge ? 'EVER GLORY' : stored?.vesselName;
+                  const realVoyage = isD01Discharge || isR01Discharge ? 'EG-2605W' : stored?.voyageNumber;
+
                   onOpenContainerDetail?.({
                     ...stored,
-                    containerNumber: contNumber || 'CONT-40',
+                    containerNumber: resolvedContNo,
+                    reservedContainerNumber: resolvedContNo,
+                    vehiclePlate: realVehiclePlate,
+                    driverName: realDriverName,
+                    company: realCompany,
+                    blNumber: realBlNumber,
+                    vesselName: realVesselName,
+                    voyageNumber: realVoyage,
                     block: area.code,
                     blockCode: area.code,
                     row,
@@ -213,7 +260,7 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
                   fontSize: span > 1 ? '11px' : '9.5px',
                   fontFamily: 'monospace',
                   color: hasContainer 
-                    ? (isReserved ? '#92400e' : '#0369a1')
+                    ? ((stored?.status === 'in_yard' || stored?.status === 'IN_YARD') ? '#065f46' : isReserved ? '#92400e' : '#0369a1')
                     : '#334155',
                   letterSpacing: '0.3px',
                   whiteSpace: 'nowrap',

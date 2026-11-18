@@ -69,6 +69,11 @@ export function createGatePassageSimulation({ storage, recordPassage, closeBarri
 
   return {
     pending,
+    clear() {
+      storage.removeItem(key)
+      state = null
+      running = null
+    },
     subscribe(listener) {
       listeners.add(listener)
       if (state && pending()) listener(state)

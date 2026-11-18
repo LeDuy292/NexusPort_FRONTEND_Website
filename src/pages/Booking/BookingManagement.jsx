@@ -1,8 +1,6 @@
-import ContainerBookingForm from '../../components/Containers/ContainerBookingForm'
-import BookingBatchWorkspace from '../../components/Containers/BookingBatchWorkspace'
 import BookingFleetDetails from '../../components/Containers/BookingFleetDetails'
 import ContainerJourneySearch from '../Containers/ContainerJourneySearch'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import React, { useState, useEffect, useMemo } from 'react'
 import { bookingService } from '../../services/bookingService'
 import driverService from '../../services/driverService'
@@ -11,12 +9,13 @@ import { formatPlateNumber } from '../../utils/format'
 import { manifestPortSyncService } from '../../services/manifestPortSyncService'
 import { yardReservationStore } from '../../services/yardReservationStore'
 import { calculatePortServiceTariff, computeAutoBookingTariff } from '../../utils/portStorageFee'
+import { serviceOrdersApi } from '../../features/service-catalog/serviceOrdersApi'
 
 export default function BookingManagement() {
-  const location = useLocation()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const detailBookingId = searchParams.get('bookingId')
-  const [activeTab, setActiveTab] = useState(!detailBookingId && location.state?.containerNumber ? 'create' : 'my_bookings')
+  const [activeTab, setActiveTab] = useState('my_bookings')
 
   // Data States for My Bookings
   const [bookings, setBookings] = useState([])
@@ -25,7 +24,7 @@ export default function BookingManagement() {
   const [pageNumber, setPageNumber] = useState(1)
   const [pageSize] = useState(10)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('All')
+  const [statusFilter, setStatusFilter] = useState('Ready')
   const [typeFilter, setTypeFilter] = useState('All')
 
   // Available Fleet & Yard Resources (Loaded 100% from Database)
@@ -45,6 +44,9 @@ export default function BookingManagement() {
     const refreshManifestTransport = (e) => {
       try {
         setManifestTransportBookings(manifestPortSyncService.getGeneratedGateBookings())
+        if (e?.detail?.type === 'REMOTE_FETCH_SYNC' || e?.detail?.type === 'REJECTED_FLEET_UNASSIGNED') {
+          return
+        }
         fetchBookings()
         if (e?.detail?.type === 'PORT_BILL_SENT' && e?.detail?.bill) {
           const bill = e.detail.bill
@@ -59,10 +61,12 @@ export default function BookingManagement() {
     window.addEventListener('storage', refreshManifestTransport)
     window.addEventListener('nexusport:manifest_synced', refreshManifestTransport)
     window.addEventListener('nexusport_manifest_synced', refreshManifestTransport)
+    window.addEventListener('yard-reservation-updated', refreshManifestTransport)
     return () => {
       window.removeEventListener('storage', refreshManifestTransport)
       window.removeEventListener('nexusport:manifest_synced', refreshManifestTransport)
       window.removeEventListener('nexusport_manifest_synced', refreshManifestTransport)
+      window.removeEventListener('yard-reservation-updated', refreshManifestTransport)
     }
   }, [])
 
@@ -283,37 +287,35 @@ export default function BookingManagement() {
   // Helper lấy biển số xe chính xác cho từng booking
   const getBookingVehiclePlate = (bk) => {
     if (!bk) return null
-    if (bk.vehiclePlate) return formatPlateNumber(bk.vehiclePlate)
-    if (bk.licensePlate) return formatPlateNumber(bk.licensePlate)
-    if (bk.suggestedPlate) return formatPlateNumber(bk.suggestedPlate)
+    const conts = getBookingContainers(bk)
+    const contNo = conts[0]
+    const orderFleet = manifestPortSyncService.getOrderFleet(contNo) ||
+      manifestPortSyncService.getOrderFleet(bk.bookingCode) ||
+      manifestPortSyncService.getOrderFleet(bk.id)
+    if (orderFleet?.plate) return formatPlateNumber(orderFleet.plate)
+
+    const isFakePlate = p => !p || ['Chưa gán xe', 'Chưa gán', 'Chưa điều phối', '47AB-294.69', '43C-567.89'].includes(p)
+    if (!isFakePlate(bk.vehiclePlate)) return formatPlateNumber(bk.vehiclePlate)
+    if (!isFakePlate(bk.licensePlate)) return formatPlateNumber(bk.licensePlate)
+    if (!isFakePlate(bk.suggestedPlate)) return formatPlateNumber(bk.suggestedPlate)
     if (bk.vehicleDetails?.plateNumber) return formatPlateNumber(bk.vehicleDetails.plateNumber)
     if (bk.vehicleDetails?.licensePlate) return formatPlateNumber(bk.vehicleDetails.licensePlate)
 
     const cached = fleetCache[bk.bookingCode] || fleetCache[bk.id]
-    if (cached?.vehiclePlate) return formatPlateNumber(cached.vehiclePlate)
-    if (cached?.licensePlate) return formatPlateNumber(cached.licensePlate)
+    if (cached?.vehiclePlate && !isFakePlate(cached.vehiclePlate)) return formatPlateNumber(cached.vehiclePlate)
+    if (cached?.licensePlate && !isFakePlate(cached.licensePlate)) return formatPlateNumber(cached.licensePlate)
 
     const truck = (availableResources.trucks || []).find(t => t.id === bk.truckId || t.id === bk.vehicleId)
     if (truck?.plateNumber) return formatPlateNumber(truck.plateNumber)
 
-    const conts = getBookingContainers(bk)
-    const contNo = conts[0]
     const matched = manifestTransportBookings.find(m =>
       (m.id && m.id === bk.id) ||
       (m.bookingCode && m.bookingCode === bk.bookingCode) ||
       (contNo && m.containerId === contNo)
     )
-    if (matched?.licensePlate) return formatPlateNumber(matched.licensePlate)
-    if (matched?.suggestedPlate) return formatPlateNumber(matched.suggestedPlate)
-    if (matched?.vehiclePlate) return formatPlateNumber(matched.vehiclePlate)
-
-    // Nếu đơn đã được duyệt hoặc sẵn sàng vào cổng / đã thanh toán: luôn tự động gán xe từ đội xe vận tải
-    if (bk.status === 'Ready' || bk.status === 'Approved' || bk.status === 'CheckedIn' || bk.status === 'Completed' || (bk.paymentStatus || '').toLowerCase() === 'paid') {
-      if (availableResources.trucks && availableResources.trucks.length > 0) {
-        return formatPlateNumber(availableResources.trucks[0].plateNumber)
-      }
-      return formatPlateNumber(bk.company?.includes('Bien Dong') ? '43C-567.89' : '47AB-294.69')
-    }
+    if (!isFakePlate(matched?.licensePlate)) return formatPlateNumber(matched.licensePlate)
+    if (!isFakePlate(matched?.suggestedPlate)) return formatPlateNumber(matched.suggestedPlate)
+    if (!isFakePlate(matched?.vehiclePlate)) return formatPlateNumber(matched.vehiclePlate)
 
     return null
   }
@@ -321,34 +323,32 @@ export default function BookingManagement() {
   // Helper lấy tên tài xế chính xác cho từng booking
   const getBookingDriverName = (bk) => {
     if (!bk) return null
-    if (bk.driverName) return bk.driverName
-    if (bk.suggestedDriver) return bk.suggestedDriver
+    const conts = getBookingContainers(bk)
+    const contNo = conts[0]
+    const orderFleet = manifestPortSyncService.getOrderFleet(contNo) ||
+      manifestPortSyncService.getOrderFleet(bk.bookingCode) ||
+      manifestPortSyncService.getOrderFleet(bk.id)
+    if (orderFleet?.driver) return orderFleet.driver
+
+    const isFakeDriver = d => !d || ['Chưa điều phối', 'Chưa có tài xế', 'TRẦN VĂN TÙNG', 'Nguyễn Văn Minh'].includes(d)
+    if (!isFakeDriver(bk.driverName)) return bk.driverName
+    if (!isFakeDriver(bk.suggestedDriver)) return bk.suggestedDriver
     if (bk.driverDetails?.fullName) return bk.driverDetails.fullName
     if (bk.driverDetails?.name) return bk.driverDetails.name
 
     const cached = fleetCache[bk.bookingCode] || fleetCache[bk.id]
-    if (cached?.driverName) return cached.driverName
+    if (cached?.driverName && !isFakeDriver(cached.driverName)) return cached.driverName
 
     const driver = (availableResources.drivers || []).find(d => d.id === bk.driverId)
     if (driver?.fullName) return driver.fullName
 
-    const conts = getBookingContainers(bk)
-    const contNo = conts[0]
     const matched = manifestTransportBookings.find(m =>
       (m.id && m.id === bk.id) ||
       (m.bookingCode && m.bookingCode === bk.bookingCode) ||
       (contNo && m.containerId === contNo)
     )
-    if (matched?.driverName) return matched.driverName
-    if (matched?.suggestedDriver) return matched.suggestedDriver
-
-    // Nếu đơn đã được duyệt hoặc sẵn sàng vào cổng / đã thanh toán: luôn tự động gán tài xế
-    if (bk.status === 'Ready' || bk.status === 'Approved' || bk.status === 'CheckedIn' || bk.status === 'Completed' || (bk.paymentStatus || '').toLowerCase() === 'paid') {
-      if (availableResources.drivers && availableResources.drivers.length > 0) {
-        return availableResources.drivers[0].fullName
-      }
-      return bk.company?.includes('Bien Dong') ? 'Nguyễn Văn Minh' : 'TRẦN VĂN TÙNG'
-    }
+    if (!isFakeDriver(matched?.driverName)) return matched.driverName
+    if (!isFakeDriver(matched?.suggestedDriver)) return matched.suggestedDriver
 
     return null
   }
@@ -380,26 +380,50 @@ export default function BookingManagement() {
   const getBookingYardSlot = (bk) => {
     if (!bk) return null
 
-    // 1. Từ autoYardSlot có sẵn
-    if (bk.autoYardSlot?.slotName || bk.autoYardSlot?.fullLocation) {
-      return {
-        short: bk.autoYardSlot.slotName || bk.autoYardSlot.posId || `Block ${bk.autoYardSlot.blockCode} · ${bk.autoYardSlot.bayDisplay || 'Bay 01'}`,
-        detail: bk.autoYardSlot.fullLocation || `Block ${bk.autoYardSlot.blockCode} · ${bk.autoYardSlot.bayDisplay || 'Bay 01'} · T${bk.autoYardSlot.tier || 1}-R${bk.autoYardSlot.row || 1}`,
-        zoneName: bk.autoYardSlot.zoneName || 'Khu Bãi Container Tiên Sa'
-      }
-    }
-
-    // 2. Từ yardSlot
-    if (bk.yardSlot) {
-      return {
-        short: bk.yardSlot,
-        detail: bk.yardSlot,
-        zoneName: 'Khu Bãi Container Tiên Sa'
-      }
-    }
-
     const conts = getBookingContainers(bk)
-    const contNo = conts[0]
+    const contNo = (conts[0] || bk.containerNumber || bk.containerId || '').trim().toUpperCase()
+    const bookNo = (bk.bookingCode || bk.id || '').trim().toUpperCase()
+
+    // 1. ƯU TIÊN SỐ 1: Vị trí thực tế mới nhất từ yardReservationStore (Khi điều độ viên đổi vị trí bãi)
+    try {
+      if (contNo || bookNo) {
+        const resv = (contNo ? yardReservationStore.getReservation(contNo) : null) || (bookNo ? yardReservationStore.getReservation(bookNo) : null)
+        if (resv && (resv.bay || resv.posId)) {
+          const block = resv.blockCode || resv.block || 'D01'
+          const bayNum = Number(resv.bay) || 1
+          const bayStr = String(bayNum).padStart(2, '0')
+          const rowNum = Number(resv.row) || 1
+          const rowStr = String(rowNum).padStart(2, '0')
+          const tierNum = Number(resv.tier) || 1
+          return {
+            short: `Khu ${block} · Bay ${bayStr} (R${rowStr}-T${tierNum})`,
+            detail: `Block ${block} - Bay ${bayStr} (${rowNum}-${tierNum})`,
+            zoneName: resv.zoneName || `Khu ${block[0]} Bãi Cảng Tiên Sa`,
+            slotCode: resv.slotCode || `${block}.${bayStr}.${rowStr}.${tierNum}`
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Lỗi đọc yardReservationStore:', e)
+    }
+
+    // 2. ƯU TIÊN SỐ 2: Vị trí cập nhật từ Lịch tài xế Transport (orderFleet)
+    try {
+      const fleet = (contNo ? manifestPortSyncService.getOrderFleet(contNo) : null) || (bookNo ? manifestPortSyncService.getOrderFleet(bookNo) : null)
+      if (fleet?.yardSlot || (fleet?.blockCode && fleet?.bay)) {
+        const block = fleet.blockCode || 'D01'
+        const bayNum = Number(fleet.bay) || 1
+        const bayStr = String(bayNum).padStart(2, '0')
+        const rowNum = Number(fleet.row) || 1
+        const rowStr = String(rowNum).padStart(2, '0')
+        const tierNum = Number(fleet.tier) || 1
+        return {
+          short: fleet.yardSlot?.includes('·') ? fleet.yardSlot : `Khu ${block} · Bay ${bayStr} (R${rowStr}-T${tierNum})`,
+          detail: `Block ${block} - Bay ${bayStr} (${rowNum}-${tierNum})`,
+          zoneName: `Khu ${block[0]} Bãi Cảng Tiên Sa`
+        }
+      }
+    } catch {}
 
     // 3. Từ NEXUSPORT_PORT_BILLS
     try {
@@ -414,19 +438,23 @@ export default function BookingManagement() {
       }
     } catch { }
 
-    // 4. Từ yardReservationStore
-    try {
-      if (contNo) {
-        const resv = yardReservationStore.getReservation(contNo)
-        if (resv) {
-          return {
-            short: resv.slotName || resv.posId || `Block ${resv.blockCode} · Bay ${resv.bayCode || resv.bay}`,
-            detail: resv.fullLocation || `Block ${resv.blockCode} · Bay ${resv.bayCode || resv.bay} · Row ${resv.row} · Tier ${resv.tier}`,
-            zoneName: resv.zoneName || 'Khu Bãi Container Tiên Sa'
-          }
-        }
+    // 4. Từ autoYardSlot có sẵn trên booking (nếu chưa có điều chỉnh mới)
+    if (bk.autoYardSlot?.slotName || bk.autoYardSlot?.fullLocation) {
+      return {
+        short: bk.autoYardSlot.slotName || bk.autoYardSlot.posId || `Block ${bk.autoYardSlot.blockCode} · ${bk.autoYardSlot.bayDisplay || 'Bay 01'}`,
+        detail: bk.autoYardSlot.fullLocation || `Block ${bk.autoYardSlot.blockCode} · ${bk.autoYardSlot.bayDisplay || 'Bay 01'} · T${bk.autoYardSlot.tier || 1}-R${bk.autoYardSlot.row || 1}`,
+        zoneName: bk.autoYardSlot.zoneName || 'Khu Bãi Container Tiên Sa'
       }
-    } catch { }
+    }
+
+    // 5. Từ yardSlot
+    if (bk.yardSlot) {
+      return {
+        short: bk.yardSlot,
+        detail: bk.yardSlot,
+        zoneName: 'Khu Bãi Container Tiên Sa'
+      }
+    }
 
     // 5. Từ manifestTransportBookings
     try {
@@ -483,6 +511,72 @@ export default function BookingManagement() {
         })
       } catch { }
 
+      // Kéo danh sách mới nhất từ PostgreSQL server về để đồng bộ giữa các máy khác nhau
+      try {
+        await manifestPortSyncService.fetchRemoteSyncedManifests().catch(() => {})
+      } catch {}
+
+      // Đọc các đơn dịch vụ ePort từ Database API (PostgreSQL qua C#) để cập nhật tức thời trên mọi máy
+      try {
+        const eportRes = await serviceOrdersApi.list({ pageSize: 50 }).catch(() => ({ items: [] }))
+        const allEportItems = eportRes?.items || []
+        const ordersToSync = allEportItems
+          .filter(ord => !['REJECTED', 'CANCELLED', 'DRAFT'].includes(String(ord?.status || '').toUpperCase()))
+          .slice(0, 15)
+        const rejectedOrders = allEportItems
+          .filter(ord => ['REJECTED', 'CANCELLED'].includes(String(ord?.status || '').toUpperCase()))
+          .slice(0, 15)
+        const detailedOrders = await Promise.all(
+          ordersToSync.map(async (ord) => {
+            try {
+              if (!ord?.content?.delivery?.trips && ord?.id) {
+                return await serviceOrdersApi.get(ord.id).catch(() => ord)
+              }
+              return ord
+            } catch {
+              return ord
+            }
+          })
+        )
+        const detailedRejected = await Promise.all(
+          rejectedOrders.map(async (ord) => {
+            try {
+              if (!ord?.containers?.length && !ord?.content?.lines?.length && ord?.id) {
+                return await serviceOrdersApi.get(ord.id).catch(() => ord)
+              }
+              return ord
+            } catch {
+              return ord
+            }
+          })
+        )
+        for (const rejOrd of detailedRejected) {
+          try {
+            await manifestPortSyncService.unassignRejectedOrderFromGateBookings(rejOrd, detailedOrders, { silent: true })
+          } catch {}
+        }
+        // Duyệt từ đơn cũ nhất đến đơn mới nhất để thông tin đội xe của đơn mới nhất luôn được ưu tiên
+        for (const orderToSync of [...detailedOrders].reverse()) {
+          try {
+            manifestPortSyncService.saveAllOrderFleets(orderToSync)
+          } catch {}
+
+          if (['PAID', 'SUCCEEDED'].includes(String(orderToSync?.paymentStatus || '').toUpperCase())) {
+            if (orderToSync.id) activePaymentCache[orderToSync.id] = { status: 'Paid' }
+            if (orderToSync.number) activePaymentCache[orderToSync.number] = { status: 'Paid' }
+            if (orderToSync.sourceLabel) activePaymentCache[orderToSync.sourceLabel] = { status: 'Paid' }
+            const voyMatch = String(orderToSync.sourceLabel || '').match(/[A-Z]{2}-?\d{4}[A-Z]?/i)
+            if (voyMatch) activePaymentCache[voyMatch[0].toUpperCase()] = { status: 'Paid' }
+            const contMatch = String(orderToSync.sourceLabel || '').match(/[A-Z]{4}\d{7}/g)
+            if (contMatch) contMatch.forEach(c => { activePaymentCache[c.toUpperCase()] = { status: 'Paid' } })
+            ;(orderToSync.containers || []).forEach(c => {
+              const cNo = String(c.containerNumber || c || '').toUpperCase()
+              if (cNo) activePaymentCache[cNo] = { status: 'Paid' }
+            })
+          }
+        }
+      } catch (e) {}
+
       const apiItems = res.items || []
 
       // Lấy danh sách booking đồng bộ từ Cảng (e-Manifest / Gate Booking đã phân bổ cho công ty vận tải)
@@ -490,16 +584,36 @@ export default function BookingManagement() {
       try {
         const generated = manifestPortSyncService.getGeneratedGateBookings() || []
         portItems = generated.map((p, idx) => {
+          const voyClean = (p.voyageNumber || '').replace(/[^A-Z0-9]/gi, '').toUpperCase()
           const isPaid = (p.bookingCode && activePaymentCache[p.bookingCode]?.status === 'Paid') ||
             (p.id && activePaymentCache[p.id]?.status === 'Paid') ||
             (p.containerId && activePaymentCache[p.containerId]?.status === 'Paid') ||
+            (voyClean && activePaymentCache[voyClean]?.status === 'Paid') ||
             Boolean(p.portBillPaid) ||
             p.status === 'Ready' ||
-            (p.portBill && (p.portBill.status === 'PAID' || p.portBill.status === 'Paid')) ||
-            ['MSKU8829101', 'HLCU7719205', 'CMAU3381923', 'HLCU8821947'].includes(p.containerId)
+            (p.portBill && (p.portBill.status === 'PAID' || p.portBill.status === 'Paid'))
 
           const opName = p.operation || (p.direction === 'IMPORT' ? 'Lấy container nhập' : 'Hạ container xuất')
           const defaultStart = new Date(Date.now() + (idx * 3600000)).toISOString()
+
+          const orderFleet = manifestPortSyncService.getOrderFleet(p.containerId) ||
+            manifestPortSyncService.getOrderFleet(p.bookingCode) ||
+            manifestPortSyncService.getOrderFleet(p.id)
+
+          const vPlate = orderFleet?.plate ||
+            (p.licensePlate && !['Chưa gán xe', 'Chưa điều phối', '47AB-294.69', '43C-567.89'].includes(p.licensePlate)
+              ? p.licensePlate
+              : null)
+
+          const vDriver = orderFleet?.driver ||
+            (p.driverName && !['Chưa điều phối', 'TRẦN VĂN TÙNG', 'Nguyễn Văn Minh'].includes(p.driverName)
+              ? p.driverName
+              : null)
+
+          const resolvedStartRaw = p.appointmentStart || p.eta || defaultStart
+          const resolvedStartMs = Date.parse(resolvedStartRaw)
+          const appointmentStartIso = Number.isFinite(resolvedStartMs) ? new Date(resolvedStartMs).toISOString() : defaultStart
+          const appointmentEndIso = p.appointmentEnd || new Date((Number.isFinite(resolvedStartMs) ? resolvedStartMs : Date.now()) + 90 * 60000).toISOString()
 
           return {
             id: p.id,
@@ -509,10 +623,10 @@ export default function BookingManagement() {
             containerNumbers: [p.containerId],
             containerIds: [p.containerId],
             containerType: p.containerType || '40HC',
-            vehiclePlate: p.licensePlate || p.vehiclePlate || p.suggestedPlate || (p.company?.includes('Bien Dong') ? '43C-567.89' : '47AB-294.69'),
-            driverName: p.driverName || p.suggestedDriver || (p.company?.includes('Bien Dong') ? 'Nguyễn Văn Minh' : 'TRẦN VĂN TÙNG'),
-            appointmentStart: p.appointmentStart || p.eta || defaultStart,
-            appointmentEnd: p.appointmentEnd || new Date(new Date(p.appointmentStart || defaultStart).getTime() + 45 * 60000).toISOString(),
+            vehiclePlate: vPlate,
+            driverName: vDriver,
+            appointmentStart: appointmentStartIso,
+            appointmentEnd: appointmentEndIso,
             status: isPaid ? 'Ready' : (p.status || 'Pending'),
             paymentStatus: isPaid ? 'Paid' : 'Unpaid',
             yardSlot: p.yardSlot || p.autoYardSlot?.fullLocation || p.autoYardSlot?.slotName || p.autoYardSlot?.posId,
@@ -521,7 +635,12 @@ export default function BookingManagement() {
             company: p.company,
             vesselName: p.vesselName,
             billOfLading: p.billOfLading,
-            documents: p.documents || [],
+            documents: (() => {
+              const rawDocs = orderFleet?.documents || p.eportDocuments || p.documents || []
+              return (Array.isArray(rawDocs) ? rawDocs : []).filter(
+                d => d && !String(d.fileUrl || '').includes('pdfobject.com/pdf/sample.pdf')
+              )
+            })(),
             isFromPortSync: true,
             createdAt: p.createdAt || new Date().toISOString()
           }
@@ -552,15 +671,11 @@ export default function BookingManagement() {
           (b.driverName || '').toLowerCase().includes(s)
         )
       }
-      if (statusFilter !== 'All') {
-        allCombined = allCombined.filter(b => b.status === statusFilter)
-      }
       if (typeFilter !== 'All') {
         allCombined = allCombined.filter(b => b.bookingType === typeFilter)
       }
 
       const enriched = allCombined.map(b => {
-        const cIds = getBookingContainers(b)
         const isPaid = (b.bookingCode && activePaymentCache[b.bookingCode]?.status === 'Paid') ||
           (b.id && activePaymentCache[b.id]?.status === 'Paid') ||
           (b.paymentStatus || '').toLowerCase() === 'paid' ||
@@ -568,8 +683,7 @@ export default function BookingManagement() {
           b.status === 'Ready' ||
           b.status === 'CheckedIn' ||
           b.status === 'Completed' ||
-          (b.portBill && (b.portBill.status === 'PAID' || b.portBill.status === 'Paid')) ||
-          cIds.some(c => ['MSKU8829101', 'HLCU7719205', 'CMAU3381923', 'HLCU8821947'].includes(c))
+          (b.portBill && (b.portBill.status === 'PAID' || b.portBill.status === 'Paid'))
         return {
           ...b,
           paymentStatus: isPaid ? 'Paid' : (b.paymentStatus || 'Unpaid'),
@@ -577,11 +691,21 @@ export default function BookingManagement() {
         }
       })
 
-      // Nghiệp vụ Cảng TAS: "Quản Lý Lịch Hẹn & Điều Phối Bãi Thông Minh chỉ hiện xe đã thanh toán rồi thôi"
-      const paidOnly = enriched.filter(b => b.paymentStatus === 'Paid' || b.status === 'Ready' || b.status === 'CheckedIn' || b.status === 'Completed')
-
-      setBookings(paidOnly)
-      setTotalCount(paidOnly.length)
+      // Xử lý bộ lọc trạng thái: tab "Tất cả" hiển thị toàn bộ hồ sơ; tab "Sẵn sàng" hiển thị đơn đã thanh toán/sẵn sàng
+      const isReady = b => b.paymentStatus === 'Paid' || ['Ready', 'CheckedIn', 'Completed'].includes(b.status)
+      const isCanceled = b => ['Canceled', 'Cancelled'].includes(String(b.status || '').toLowerCase().replace(/^./, c => c.toUpperCase()))
+      const selected = statusFilter === 'Ready' ? enriched.filter(isReady)
+        : statusFilter === 'Canceled' ? enriched.filter(isCanceled)
+          : enriched
+      selected.sort((a, b) => {
+        if (statusFilter === 'All' && isReady(a) !== isReady(b)) return isReady(a) ? -1 : 1
+        const timeA = Date.parse(a.appointmentStart || a.createdAt || '')
+        const timeB = Date.parse(b.appointmentStart || b.createdAt || '')
+        return (Number.isFinite(timeA) ? timeA : Number.MAX_SAFE_INTEGER)
+          - (Number.isFinite(timeB) ? timeB : Number.MAX_SAFE_INTEGER)
+      })
+      setBookings(selected)
+      setTotalCount(selected.length)
     } catch (err) {
       console.error('Lỗi tải danh sách booking:', err)
     } finally {
@@ -997,6 +1121,17 @@ export default function BookingManagement() {
 
       updatePaymentCache(paymentBooking.bookingCode, paymentBooking.id, newPaymentData)
 
+      try {
+        await manifestPortSyncService.updateGeneratedGateBookingStatus(code, {
+          status: 'Ready',
+          portBillPaid: true,
+          paymentStatus: 'Paid',
+          paidAt: paidDate,
+        })
+      } catch (syncErr) {
+        console.warn('Sync ready status to manifest warning:', syncErr)
+      }
+
       // Cập nhật booking trong state danh sách:
       // Nếu booking đang ở Approved hoặc Pending thì chuyển sang Ready (kích hoạt vé e-Pass vào cổng)
       setBookings(prev => prev.map(b => {
@@ -1306,17 +1441,6 @@ export default function BookingManagement() {
             </h1>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            <button
-              onClick={() => {
-                setActiveTab('create')
-              }}
-              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 group cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-base group-hover:rotate-90 transition-transform">add_circle</span>
-              Tạo Lịch Hẹn Mới
-            </button>
-          </div>
         </div>
 
         {/* METRICS / STATS RIBBON - SÁNG, TRONG TRẺO, TINH TẾ */}
@@ -1332,7 +1456,11 @@ export default function BookingManagement() {
             <div className="text-[10px] text-slate-400 mt-0.5">Dữ liệu thời gian thực</div>
           </div>
 
-          <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:border-emerald-300 hover:shadow-sm transition-all group">
+          <div
+            onClick={() => navigate('/dispatch')}
+            className="bg-white/95 backdrop-blur-sm rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:border-emerald-300 hover:shadow-sm transition-all group cursor-pointer"
+            title="Chuyển sang Theo dõi & điều phối xe"
+          >
             <div className="flex items-center justify-between text-emerald-700 text-xs mb-1 font-semibold">
               <span>Sẵn Sàng Vào Cổng</span>
               <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -1340,7 +1468,9 @@ export default function BookingManagement() {
               </div>
             </div>
             <div className="text-2xl font-black font-heading text-emerald-600 tracking-tight">{metrics.ready}</div>
-            <div className="text-[10px] text-emerald-600/80 mt-0.5 font-medium">Đã cấp vé QR vào cổng</div>
+            <div className="text-[10px] text-emerald-700 mt-0.5 font-semibold flex items-center gap-1 group-hover:underline">
+              <span>Đã cấp vé QR · Điều phối xe ➔</span>
+            </div>
           </div>
 
           <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:border-amber-300 hover:shadow-sm transition-all group">
@@ -1374,8 +1504,6 @@ export default function BookingManagement() {
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none w-full sm:w-auto">
           {[
             { key: 'my_bookings', label: 'Danh Sách Lịch Hẹn', icon: 'format_list_bulleted', badge: totalCount },
-            { key: 'create', label: 'Tạo Lịch Hẹn Mới', icon: 'add_circle' },
-            { key: 'batch', label: 'Booking Theo Lô', icon: 'view_list' },
             { key: 'container_status', label: 'Lộ Trình Container', icon: 'timeline' },
           ].map((tab) => (
             <button
@@ -1486,12 +1614,8 @@ export default function BookingManagement() {
                   Trạng thái:
                 </span>
                 {[
-                  { id: 'All', label: 'Tất cả' },
                   { id: 'Ready', label: '✨ Sẵn sàng' },
-                  { id: 'Pending', label: 'Chờ điều phối' },
-                  { id: 'Approved', label: 'Đã duyệt' },
-                  { id: 'CheckedIn', label: 'Đã vào cổng' },
-                  { id: 'Completed', label: 'Hoàn tất' },
+                  { id: 'All', label: 'Tất cả' },
                   { id: 'Canceled', label: 'Đã hủy' },
                 ].map((s) => (
                   <button
@@ -1534,18 +1658,9 @@ export default function BookingManagement() {
                 <div className="space-y-1">
                   <h4 className="font-bold text-carbon text-base">Không tìm thấy hồ sơ Đặt chỗ phù hợp</h4>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                    Thử thay đổi bộ lọc tìm kiếm hoặc nhấn nút Tạo Đặt chỗ Mới bên trên để bắt đầu.
+                    Thử thay đổi bộ lọc tìm kiếm để xem các lịch hẹn phù hợp.
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setActiveTab('create')
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-signal-orange text-white font-bold text-xs hover:bg-orange-600 transition-all inline-flex items-center gap-2 cursor-pointer shadow-sm"
-                >
-                  <span className="material-symbols-outlined text-sm">add_circle</span>
-                  Tạo Đặt chỗ Ngay
-                </button>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1592,7 +1707,9 @@ export default function BookingManagement() {
                               </span>
                               {bk.createdAt && (
                                 <span className="text-[10px] text-slate-400">
-                                  • {new Date(bk.createdAt).toLocaleDateString('vi-VN')}
+                                  • {Number.isFinite(Date.parse(bk.createdAt))
+                                      ? new Date(bk.createdAt).toLocaleDateString('vi-VN')
+                                      : (String(bk.createdAt).split(' ')[1] || bk.createdAt)}
                                 </span>
                               )}
                             </div>
@@ -1736,19 +1853,21 @@ export default function BookingManagement() {
                                 <span>Xem chi tiết ➔</span>
                               </button>
 
-                              {/* Vé e-Pass QR khi đã Ready */}
+                              {/* Vé e-Pass QR & chuyển sang Theo dõi & điều phối xe khi đã Ready */}
                               {(bk.status === 'Ready' || bk.status === 'Approved' || bk.status === 'CheckedIn') && (
-                                <button
-                                  onClick={() => {
-                                    setSelectedBooking(bk)
-                                    setShowQrModal(true)
-                                  }}
-                                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-[11px] transition-all flex items-center gap-1 shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 cursor-pointer group whitespace-nowrap"
-                                  title="Xem Vé Điện Tử e-Pass để quét vào cổng"
-                                >
-                                  <span className="material-symbols-outlined text-sm text-white group-hover:scale-110 transition-transform">qr_code_2</span>
-                                  <span>Vé QR</span>
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => {
+                                      setSelectedBooking(bk)
+                                      setShowQrModal(true)
+                                    }}
+                                    className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-[11px] transition-all flex items-center gap-1 shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 cursor-pointer group whitespace-nowrap"
+                                    title="Xem Vé Điện Tử e-Pass để quét vào cổng"
+                                  >
+                                    <span className="material-symbols-outlined text-sm text-white group-hover:scale-110 transition-transform">qr_code_2</span>
+                                    <span>Vé QR</span>
+                                  </button>
+                                </>
                               )}
 
                               {bk.status === 'Pending' && (
@@ -1835,8 +1954,6 @@ export default function BookingManagement() {
       {/* ========================================================================= */}
       {/* TAB 2: CREATE BOOKING WIZARD */}
       {/* ========================================================================= */}
-      {activeTab === 'create' && <ContainerBookingForm onClose={() => setActiveTab('my_bookings')} onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
-      {activeTab === 'batch' && <BookingBatchWorkspace onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
 
       {/* ========================================================================= */}
       {/* TAB 3: CONTAINER JOURNEY TRACKING */}

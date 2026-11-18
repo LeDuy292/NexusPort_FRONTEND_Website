@@ -91,6 +91,7 @@ export default function ManifestManagementPage() {
       catch (e) { if (selectedManifest.source === 'NODE_CORE') throw e; result = await shippingLineApi.reconcileManifest(selectedManifest.id) }
       const sentToPortAt = result?.sentToPortAt || result?.data?.sentToPortAt || new Date().toISOString()
       manifestPortSyncService.saveSyncedManifest({ ...selectedManifest, sentToPortAt, status: 'SENT_TO_PORT' })
+      await manifestPortSyncService.fetchRemoteSyncedManifests().catch(() => {})
       setSuccessMsg('Đã gửi bản khai cho cảng.')
       loadData()
     } catch (e) { setError(formatApiErrorMessage(e, 'Không thể gửi bản khai.')) }

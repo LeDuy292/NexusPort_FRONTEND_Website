@@ -39,6 +39,12 @@ const sidebarItems = [
     roles: [ROLES.DISPATCHER],
   },
   {
+    path: '/dispatcher/yard-discharge',
+    label: 'Dỡ Tàu & Phân Bổ Bãi',
+    icon: 'anchor',
+    roles: [ROLES.DISPATCHER],
+  },
+  {
     path: '/dispatcher/gate-bookings',
     label: 'Yêu Cầu Booking Cổng',
     icon: 'calendar_month',
@@ -75,7 +81,7 @@ const sidebarItems = [
     path: '/yard-staff/dashboard',
     label: 'Tổng Quan Khai Thác Bãi',
     icon: 'grid_view',
-    roles: [ROLES.YARD_OPERATOR],
+    roles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER],
   },
   {
     path: '/yard-staff/map',
@@ -251,7 +257,13 @@ const sidebarItems = [
     path: '/carrier-portal',
     label: 'Cổng Doanh Nghiệp',
     icon: 'corporate_fare',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
+  },
+  {
+    path: '/cargo/tracking',
+    label: 'Theo Dõi Chứng Từ',
+    icon: 'notifications_active',
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
   },
   {
     path: '/booking',

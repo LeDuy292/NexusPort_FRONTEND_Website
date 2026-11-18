@@ -203,7 +203,7 @@ export const routeConfig = [
   {
     path: '/dispatch',
     title: 'Lệnh điều phối xe',
-    allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.DISPATCHER, ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
   },
   {
     path: '/fleet',

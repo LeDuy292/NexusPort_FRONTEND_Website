@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useDispatchBoard } from './useDispatchBoard'
 import { updateDispatch } from './dispatchService'
 import { dateTime as time, displayState, stateOf, statusLabel, vietnamDate } from './dispatchPresentation'
@@ -14,18 +14,46 @@ import { formatPlateNumber } from '../../utils/format'
 const dateToday = () => vietnamDate(new Date())
 
 export default function DispatchBoard() {
+  const [searchParams] = useSearchParams()
+  const targetCode = (searchParams.get('bookingCode') || '').trim().toUpperCase()
+  const targetId = (searchParams.get('bookingId') || '').trim()
   const [date, setDate] = useState(dateToday)
   const { data, loading, error, connected, reload } = useDispatchBoard(date)
   const monitor = useYardMonitor()
   const [containerId, setContainerId] = useState('')
   const [filter, setFilter] = useState('all')
   const [selectedId, setSelectedId] = useState(null)
+  const autoPickedRef = useRef('')
+  const initialSelectedRef = useRef(false)
   const [note, setNote] = useState('')
   const [minutes, setMinutes] = useState(15)
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState(null)
   const bookings = data?.bookings || []
   const vehicles = dispatchVehicles(bookings, monitor.data?.routes || [])
+  useEffect(() => {
+    if (!vehicles.length) return
+    const paramKey = `${targetId}:${targetCode}`
+    if ((targetCode || targetId) && autoPickedRef.current !== paramKey) {
+      const match = vehicles.find(row =>
+        (targetId && row.id === targetId) ||
+        (targetCode && (
+          String(row.booking?.bookingCode || '').toUpperCase() === targetCode ||
+          row.routes?.some(r => String(r.bookingCode || '').toUpperCase() === targetCode)
+        ))
+      )
+      if (match) {
+        autoPickedRef.current = paramKey
+        initialSelectedRef.current = true
+        setSelectedId(match.id)
+        return
+      }
+    }
+    if (!initialSelectedRef.current && !selectedId) {
+      initialSelectedRef.current = true
+      setSelectedId(vehicles[0].id)
+    }
+  }, [vehicles, targetCode, targetId, selectedId])
   const vehicle = vehicles.find(row => row.id === selectedId)
   const selected = vehicle?.booking
   const route = vehicle?.routes.find(item => item.containerId === containerId) || vehicle?.routes[0]
@@ -117,6 +145,7 @@ export default function DispatchBoard() {
             <div><dt>Tài xế</dt><dd>{selected.driverName}</dd></div>
             <div><dt>Xe</dt><dd>{formatPlateNumber(selected.truckPlate) || 'Chưa gán'}</dd></div>
             <div><dt>Công ty</dt><dd>{selected.carrierName}</dd></div>
+            {selected.description && <div><dt>Vị trí bãi</dt><dd>{selected.description}</dd></div>}
             <div><dt>Thao tác</dt><dd>{selected.bookingType?.toLowerCase() === 'pickup' ? 'Lấy container' : 'Giao container'}</dd></div>
             <div><dt>Lịch hẹn</dt><dd>{time(selected.appointmentStart)} – {time(selected.appointmentEnd)}</dd></div>
             <div><dt>Đến khu chờ</dt><dd>{selectedState === 'not-arrived' ? 'Chưa xác nhận' : time(selected.dispatch?.arrivedAt)}</dd></div>

@@ -14,7 +14,8 @@ import BookingDocumentsModal from '../../components/Booking/BookingDocumentsModa
 import sourceLayout from '../../features/yard-design/tienSaLayout.json'
 import { yardReservationStore } from '../../services/yardReservationStore'
 import { calculatePortStorageFee, calculatePortServiceTariff, computeAutoBookingTariff, calculateShiftingFee, PORT_STORAGE_TIERS } from '../../utils/portStorageFee'
-import { manifestPortSyncService, TRANSPORT_COMPANIES_POOL } from '../../services/manifestPortSyncService'
+import { manifestPortSyncService, TRANSPORT_COMPANIES_POOL, sortContainersForYardAllocation, isManifestPermanentlyApproved } from '../../services/manifestPortSyncService'
+import yardDischargeService from '../../services/yardDischargeService'
 import { serviceOrdersApi, orderStatusLabels, paymentStatusLabels, paymentStateLabel, statusTone } from '../../features/service-catalog/serviceOrdersApi'
 import { money } from '../../features/service-catalog/catalogApi'
 import { draftDateTime } from '../../features/service-catalog/serviceDraftsApi'
@@ -205,14 +206,7 @@ export default function GateBookingRequests() {
   const [eportListFlow, setEportListFlow] = useState('')
   const [eportListPage, setEportListPage] = useState(1)
   const [selectedEportOrderId, setSelectedEportOrderId] = useState(null)
-  const [eportValidationMap, setEportValidationMap] = useState(() => {
-    try {
-      const saved = localStorage.getItem('nexusport_eport_validation_map')
-      return saved ? JSON.parse(saved) : {}
-    } catch {
-      return {}
-    }
-  })
+  const [eportValidationMap, setEportValidationMap] = useState({})
   const processedEportOrderRef = useRef(new Set())
   const [manifestSyncVersion, setManifestSyncVersion] = useState(0)
   const [yardResVersion, setYardResVersion] = useState(0)
@@ -232,8 +226,24 @@ export default function GateBookingRequests() {
   const [popupContainerPageSize, setPopupContainerPageSize] = useState(5)
 
   // Cảng phê duyệt / chấp nhận Bản khai Tàu -> Tự động tách ra bảng mới chia theo từng Công ty vận tải để xét duyệt
-  const handleApproveVesselManifest = (manifestId) => {
-    const res = manifestPortSyncService.approveManifestByPort(manifestId)
+  const handleApproveVesselManifest = async (manifestId) => {
+    // 1. Kiểm tra xem tàu này đã có Kế hoạch Phân Bổ Bãi Tự Động (Smart Yard Pre-Allocation) từ Backend chưa
+    let matchedPlan = null
+    try {
+      const plans = await yardDischargeService.getPlans()
+      if (Array.isArray(plans)) {
+        matchedPlan = plans.find(p =>
+          p.manifestId === manifestId ||
+          p.manifestNumber === manifestId ||
+          (p.voyageNumber && (selectedVesselManifest?.voyageNumber === p.voyageNumber || String(manifestId).includes(p.voyageNumber)))
+        )
+      }
+    } catch (e) {
+      console.warn('Lấy kế hoạch phân bổ bãi tự động có sẵn:', e)
+    }
+
+    // 2. Phê duyệt bản khai tàu, áp dụng ngay vị trí từ Kế Hoạch Phân Bổ Bãi Tự Động đã có (nếu có)
+    const res = manifestPortSyncService.approveManifestByPort(manifestId, matchedPlan)
     const approvedManifest = res?.approvedManifest
     const newGateBookings = res?.newGateBookings || []
 
@@ -246,9 +256,34 @@ export default function GateBookingRequests() {
       setSelectedVesselManifest(null)
     }
 
-    const companyCount = new Set(newGateBookings.map(b => b.company)).size
+    // 3. Tự động kích hoạt thuật toán Phân bổ bãi thông minh (Smart Yard Pre-Allocation) từ Backend C#
+    try {
+      const targetManifestId = matchedPlan?.manifestId || approvedManifest?.id || (manifestId && !String(manifestId).startsWith('MNF-') ? manifestId : null)
+      if (targetManifestId) {
+        yardDischargeService.preAllocate(targetManifestId).then(updatedPlan => {
+          if (updatedPlan?.containers && Array.isArray(updatedPlan.containers)) {
+            for (const c of updatedPlan.containers) {
+              if (c.reservedSlot) {
+                manifestPortSyncService.syncYardSlotAcrossAll({
+                  containerNumber: c.containerNumber,
+                  manifestId: targetManifestId,
+                  newSlotCoordinate: c.reservedSlot,
+                  reason: c.allocationReason || 'Thuật toán Smart Yard Pre-Allocation tự động phân bổ',
+                  status: c.dischargeStatus === 'IN_YARD' ? 'in_yard' : 'reserved',
+                  vesselName: updatedPlan.vesselName,
+                  voyageNumber: updatedPlan.voyageNumber,
+                })
+              }
+            }
+          }
+        }).catch(() => { })
+      }
+    } catch (e) {
+      console.warn('Auto preAllocate warning:', e)
+    }
+
     showToast(
-      `🟢 Đã phê duyệt tàu ${approvedManifest?.vesselName || manifestId}! Đã thêm ${newGateBookings.length} container vào Danh sách theo Ngày & Chuyến tàu ở bên dưới.`
+      `🟢 Đã duyệt tàu ${approvedManifest?.vesselName || manifestId}! Đã áp dụng phân bổ bãi tự động chuẩn: Hàng xuất gần cổng, Hàng nhập gần biển, Cont lạnh/DG ưu tiên, Cont nặng hạ tầng dưới.`
     )
   }
 
@@ -286,32 +321,99 @@ export default function GateBookingRequests() {
     showToast('⚪ Đã xóa toàn bộ bộ lọc, hiển thị đầy đủ tất cả Container.')
   }
 
-  const [transportAlerts, setTransportAlerts] = useState(() => {
-    try { return manifestPortSyncService.getTransportSubmissionAlerts() } catch { return [] }
-  })
+  // Xóa sạch thông báo hồ sơ xe/tài xế cũ khỏi bộ nhớ
+  try {
+    localStorage.removeItem('NEXUSPORT_TRANSPORT_SUBMISSIONS_ALERT')
+  } catch { }
 
-  // Lắng nghe sự kiện Hãng tàu truyền Manifest sang Cảng, Bên vận tải gửi hồ sơ & sự kiện đặt/đổi vị trí bãi
+  const getBillAlerts = () => {
+    try {
+      const rawBills = JSON.parse(localStorage.getItem('NEXUSPORT_PORT_BILLS') || '{}')
+      const dismissedIds = new Set(JSON.parse(localStorage.getItem('NEXUSPORT_DISMISSED_BILLS') || '[]'))
+      const list = []
+      Object.entries(rawBills).forEach(([k, b]) => {
+        if (!b || typeof b !== 'object') return
+        const billId = b.billNumber || b.reference || (k.startsWith('BILL-') ? k : `BILL-${k}`)
+        if (!b.billNumber && !b.total && !b.totalFormatted) return
+        if (dismissedIds.has(billId)) return
+        if (list.some(item => item.id === billId || item.billNumber === b.billNumber)) return
+
+        const isPaid = b.status === 'PAID' || b.paid === true
+        list.push({
+          id: billId,
+          billNumber: b.billNumber || billId,
+          bookingCode: b.bookingCode || null,
+          company: b.company || b.customerName || 'Doanh nghiệp vận tải / Khách hàng',
+          total: b.total,
+          totalFormatted: b.totalFormatted || (b.total ? `${Number(b.total).toLocaleString('vi-VN')} VNĐ` : '583.200 VNĐ'),
+          isPaid,
+          status: isPaid ? 'PAID' : (b.status || 'SENT_TO_CARRIER'),
+          approvedAt: b.approvedAt || b.paidAt || new Date().toLocaleString('vi-VN'),
+          containers: b.containers || [],
+          containerCount: b.containers?.length || 1,
+        })
+      })
+      return list.slice(0, 5)
+    } catch {
+      return []
+    }
+  }
+
+  const [billAlerts, setBillAlerts] = useState(() => getBillAlerts())
+
+  const handleDismissBillAlert = (id) => {
+    try {
+      const dismissed = JSON.parse(localStorage.getItem('NEXUSPORT_DISMISSED_BILLS') || '[]')
+      if (!dismissed.includes(id)) {
+        dismissed.push(id)
+        localStorage.setItem('NEXUSPORT_DISMISSED_BILLS', JSON.stringify(dismissed))
+      }
+    } catch { }
+    setBillAlerts(prev => prev.filter(b => b.id !== id))
+  }
+
+  const handleDismissAllBillAlerts = () => {
+    try {
+      const allIds = billAlerts.map(b => b.id)
+      const dismissed = JSON.parse(localStorage.getItem('NEXUSPORT_DISMISSED_BILLS') || '[]')
+      const next = Array.from(new Set([...dismissed, ...allIds]))
+      localStorage.setItem('NEXUSPORT_DISMISSED_BILLS', JSON.stringify(next))
+    } catch { }
+    setBillAlerts([])
+  }
+
+  const handleViewBill = (bill) => {
+    const matched = manifestGeneratedBookings.find(b =>
+      (bill.bookingCode && (b.id === bill.bookingCode || b.bookingCode === bill.bookingCode)) ||
+      (bill.billNumber && b.id && bill.billNumber.includes(b.id)) ||
+      (bill.containers && bill.containers.some(c => c.containerNo === b.containerId))
+    )
+    if (matched) {
+      setSelectedBooking(matched)
+      setShowTariffPopup(true)
+    } else {
+      showToast(`🧾 Hóa đơn ${bill.billNumber}: ${bill.totalFormatted} (${bill.isPaid ? 'Đã thanh toán' : 'Chờ thanh toán'})`)
+    }
+  }
+
+  // Lắng nghe sự kiện Hãng tàu truyền Manifest sang Cảng, Hóa đơn/Bill phát sinh & sự kiện đặt/đổi vị trí bãi
   useEffect(() => {
     const unsub = manifestPortSyncService.subscribe((newManifest) => {
       setManifestSyncVersion(v => v + 1)
       setYardResVersion(v => v + 1)
-      setTransportAlerts(manifestPortSyncService.getTransportSubmissionAlerts())
+      setBillAlerts(getBillAlerts())
       if (newManifest?.manifestNumber) {
         showToast(`🚢 Đã nhận Bản khai hàng hóa (${newManifest?.manifestNumber || 'Manifest'}) do Hãng tàu gửi sang Cảng!`)
       }
     })
-    const handleManifestCustomEvent = (e) => {
+    const handleManifestCustomEvent = () => {
       setManifestSyncVersion(v => v + 1)
-      setTransportAlerts(manifestPortSyncService.getTransportSubmissionAlerts())
-      if (e?.detail?.type === 'TRANSPORT_SUBMITTED' && e?.detail?.item) {
-        const it = e.detail.item
-        showToast(`🚚 Bên Vận tải (${it.company}) vừa gửi hồ sơ ${it.containerId} (${it.licensePlate})! Vui lòng kiểm tra khớp trước khi duyệt.`)
-      }
+      setBillAlerts(getBillAlerts())
     }
     const handleStorageUpdate = (e) => {
-      if (!e?.key || e.key === 'NEXUSPORT_MANIFEST_GATE_BOOKINGS_V1' || e.key === 'NEXUSPORT_TRANSPORT_SUBMISSIONS_ALERT') {
+      if (!e?.key || e.key === 'NEXUSPORT_PORT_BILLS' || e.key === 'NEXUSPORT_MANIFEST_GATE_BOOKINGS_V1') {
         setManifestSyncVersion(v => v + 1)
-        setTransportAlerts(manifestPortSyncService.getTransportSubmissionAlerts())
+        setBillAlerts(getBillAlerts())
       }
     }
     const handleYardResUpdate = () => {
@@ -336,52 +438,85 @@ export default function GateBookingRequests() {
     setTimeout(() => setToastMessage(''), 4000)
   }
 
-  // Kiểm tra đơn đã Duyệt & Gửi Bill chưa
-  const isBookingApprovedOrBillSent = (b) => {
+  // Kiểm tra xem container / booking có đang gắn toàn bộ vào các đơn ePort đã bị từ chối/hủy hay không
+  const isBookingRejectedOrUnassigned = (b) => {
     if (!b) return false
-    return b.status === 'Approved' || b.status === 'Ready' || Boolean(b.portBill) || Boolean(b.portBillPaid)
+    const cId = String(b.containerId || '').trim().toUpperCase()
+    const matchingOrders = eportListItems.filter((o) => {
+      if (b.eportOrderId && o.id === b.eportOrderId) return true
+      if (cId && eportValidationMap[o.id]?.containerIds?.some(x => String(x || '').trim().toUpperCase() === cId)) return true
+      if (cId && (o.containers || []).some(c => String(c?.containerNumber || c || '').trim().toUpperCase() === cId)) return true
+      if (cId && String(o.sourceLabel || '').toUpperCase().includes(cId)) return true
+      return false
+    })
+    if (matchingOrders.length > 0) {
+      const hasValidOrder = matchingOrders.some(o => !['REJECTED', 'CANCELLED', 'DRAFT'].includes(String(o.status || '').toUpperCase()))
+      if (!hasValidOrder && !eportListStatus && !eportListSearch && !eportListFlow) {
+        return true
+      }
+      if (b.eportOrderId) {
+        const linked = matchingOrders.find(o => o.id === b.eportOrderId)
+        if (linked && ['REJECTED', 'CANCELLED'].includes(String(linked.status || '').toUpperCase()) && !hasValidOrder) {
+          return true
+        }
+      }
+    }
+    return false
   }
 
-  const FLEET_ASSIGNMENTS = {
-    'MSKU8829101': { plate: '47K1-137.87', driver: 'VÕ HÃNG TÀU', phone: '0842 737 474', trailer: '47R-012.88', license: '660225020133' },
-    'HLCU7719205': { plate: '38AA-196.90', driver: 'PHAN NGUYÊN GIA HUY', phone: '0905 881 234', trailer: '38R-119.02', license: 'FC-882190' },
-    'CMAU3381923': { plate: '90B2-999.99', driver: 'NGUYỄN VĂN AN', phone: '0912 345 678', trailer: '90R-772.11', license: 'FC-991204' },
-    'HLCU8821947': { plate: '43C-882.11', driver: 'LÊ HOÀNG NAM', phone: '0935 778 899', trailer: '43R-331.45', license: 'FC-443190' },
+  // Kiểm tra đơn đã Duyệt & Gửi Bill chưa
+  const isBookingApprovedOrBillSent = (b) => {
+    if (!b || isBookingRejectedOrUnassigned(b)) return false
+    return b.status === 'Approved' || b.status === 'Ready' || Boolean(b.portBill) || Boolean(b.portBillPaid)
   }
 
   // Helper lấy thông tin biển số xe đầu kéo chính xác cho Gate Booking (CHỈ hiện khi Cảng đã duyệt & gửi bill)
   const getGateBookingVehicle = (b) => {
-    if (!b) return null
-    const isApproved = b.status === 'Approved' || isBookingApprovedOrBillSent(b)
+    if (!b || isBookingRejectedOrUnassigned(b)) return null
+    const isApproved = b.status === 'Approved' || b.status === 'Ready' || isBookingApprovedOrBillSent(b) || Boolean(b.portBillPaid) || b.paymentStatus === 'Paid'
     if (!isApproved) {
       return null
     }
 
     const cId = String(b.containerId || '').trim().toUpperCase()
+    const orderFleet = manifestPortSyncService.getOrderFleet(cId) ||
+      manifestPortSyncService.getOrderFleet(b.id) ||
+      manifestPortSyncService.getOrderFleet(b.bookingCode)
+    if (orderFleet?.plate) return orderFleet.plate
+
+    if (b.licensePlate && b.licensePlate !== 'Chưa gán xe' && b.licensePlate !== 'Chưa gán' && b.licensePlate !== 'Chưa điều phối' && b.licensePlate !== '47AB-294.69') {
+      return b.licensePlate
+    }
+    if (b.vehiclePlate && b.vehiclePlate !== 'Chưa điều phối' && b.vehiclePlate !== 'Chưa gán' && b.vehiclePlate !== '47AB-294.69') {
+      return b.vehiclePlate
+    }
     if (b.licensePlate && b.licensePlate !== 'Chưa gán xe' && b.licensePlate !== 'Chưa gán' && b.licensePlate !== 'Chưa điều phối') {
       return b.licensePlate
     }
-    if (b.vehiclePlate && b.vehiclePlate !== 'Chưa điều phối' && b.vehiclePlate !== 'Chưa gán') {
-      return b.vehiclePlate
-    }
-    if (FLEET_ASSIGNMENTS[cId]?.plate) return FLEET_ASSIGNMENTS[cId].plate
-    return b.suggestedPlate || '47AB-294.69'
+    return b.suggestedPlate || null
   }
 
   // Helper lấy thông tin tài xế chính xác cho Gate Booking (CHỈ hiện khi Cảng đã duyệt & gửi bill)
   const getGateBookingDriver = (b) => {
-    if (!b) return null
-    const isApproved = b.status === 'Approved' || isBookingApprovedOrBillSent(b)
+    if (!b || isBookingRejectedOrUnassigned(b)) return null
+    const isApproved = b.status === 'Approved' || b.status === 'Ready' || isBookingApprovedOrBillSent(b) || Boolean(b.portBillPaid) || b.paymentStatus === 'Paid'
     if (!isApproved) {
       return null
     }
 
     const cId = String(b.containerId || '').trim().toUpperCase()
+    const orderFleet = manifestPortSyncService.getOrderFleet(cId) ||
+      manifestPortSyncService.getOrderFleet(b.id) ||
+      manifestPortSyncService.getOrderFleet(b.bookingCode)
+    if (orderFleet?.driver) return orderFleet.driver
+
+    if (b.driverName && b.driverName !== 'Chưa điều phối' && b.driverName !== 'Chưa có tài xế' && b.driverName !== 'TRẦN VĂN TÙNG') {
+      return b.driverName
+    }
     if (b.driverName && b.driverName !== 'Chưa điều phối' && b.driverName !== 'Chưa có tài xế') {
       return b.driverName
     }
-    if (FLEET_ASSIGNMENTS[cId]?.driver) return FLEET_ASSIGNMENTS[cId].driver
-    return b.suggestedDriver || 'TRẦN VĂN TÙNG'
+    return b.suggestedDriver || null
   }
 
   // Helper kiểm tra xem Booking đã có thông tin xe & tài xế từ Vận tải hay chưa
@@ -477,8 +612,8 @@ export default function GateBookingRequests() {
         zoneName: isRf
           ? 'Khu D · Bãi Container Lạnh (Reefer Zone)'
           : isPickup
-          ? 'Khu B · Bãi Cont Nhập Khẩu (Bãi Container 1)'
-          : 'Khu A · Bãi Cont Xuất Khẩu (Sau cầu 4–5)',
+            ? 'Khu B · Bãi Cont Nhập Khẩu (Bãi Container 1)'
+            : 'Khu A · Bãi Cont Xuất Khẩu (Sau cầu 4–5)',
         blockCode,
         bay: bayStr,
         bayDisplay: is40
@@ -537,165 +672,202 @@ export default function GateBookingRequests() {
     }
   }
 
-  // Helper to get all authentic documents (from Manifest, DB, or authentic fallback)
+  // Helper lấy toàn bộ chứng từ & hồ sơ pháp lý thật đồng nhất 100% với đơn Dịch vụ ePort
   const getBookingRealDocuments = (b) => {
-    if (!b) return []
+    if (!b || isBookingRejectedOrUnassigned(b)) return []
 
-    const contId = b.containerId || 'EMCU9284712'
-    const contSuffix = contId.slice(-4)
+    const cId = String(b.containerId || '').trim().toUpperCase()
+    const isFakeUrlOrSample = (url, name) =>
+      String(url || '').includes('pdfobject.com/pdf/sample.pdf') ||
+      ['OIP (2).jpg', 'Gemini_Generated_Image_1s6k9n1s6k9n1s6k.png', 'best.jpg'].includes(String(name || ''))
 
-    // Bộ chứng từ dùng chung đơn hàng đồng nhất 100% với Terminal Portal > Đặt Lịch Cảng của transport
-    const manifestDocs = [
-      {
-        id: `DOC-EDO-${contId}`,
-        documentType: 'DeliveryOrder',
-        type: 'DeliveryOrder',
-        title: 'Lệnh giao hàng điện tử (eDO)',
-        shortTitle: '1. Lệnh eDO',
-        fileName: 'OIP (2).jpg',
-        documentNumber: `EDO-EG2605W-${contSuffix}`,
-        fileUrl: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=80',
-        icon: 'description',
-        mandatory: true,
-        verificationStatus: 'Pending',
-        issuer: 'Đại lý Hãng tàu / Cảng Tiên Sa',
-        scope: 'Áp dụng chung toàn bộ container',
-      },
-      {
-        id: `DOC-BL-${contId}`,
-        documentType: 'BillOfLading',
-        type: 'BillOfLading',
-        title: 'Vận đơn đường biển (B/L)',
-        shortTitle: '2. Vận Đơn B/L',
-        fileName: 'Gemini_Generated_Image_1s6k9n1s6k9n1s6k.png',
-        documentNumber: b.cargoDeclarationId || b.billOfLading || 'BL-VNDAD-8901',
-        fileUrl: 'https://images.unsplash.com/photo-1578575437130-527eed3abbec?auto=format&fit=crop&w=1200&q=80',
-        icon: 'description',
-        mandatory: true,
-        verificationStatus: 'Pending',
-        issuer: 'Evergreen Marine Corp',
-        scope: `Tàu ${b.vesselName || 'EVER GLORY'} (${b.voyageNo || 'V.2024N'})`,
-      },
-      {
-        id: `DOC-HQ-${contId}`,
-        documentType: 'CustomsDeclaration',
-        type: 'CustomsDeclaration',
-        title: 'Tờ khai Hải quan điện tử',
-        shortTitle: '3. Tờ Khai HQ',
-        fileName: 'best.jpg',
-        documentNumber: `HQ-105829${contSuffix}-04C1`,
-        fileUrl: 'https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?auto=format&fit=crop&w=1200&q=80',
-        icon: 'description',
-        mandatory: true,
-        verificationStatus: 'Pending',
-        issuer: 'Chi cục Hải quan Cửa khẩu Cảng Đà Nẵng',
-        scope: 'Thông quan điện tử NSW (Luồng Xanh)',
-      },
-      {
-        id: `DOC-VGM-${contId}`,
-        documentType: 'VgmCertificate',
-        type: 'VgmCertificate',
-        title: 'Phiếu xác nhận khối lượng toàn bộ (VGM)',
-        shortTitle: '4. Phiếu VGM',
-        fileName: `VGM_SOLAS_${contId}.pdf`,
-        documentNumber: `VGM-${contId}-${b.vgm || 28450}KG`,
-        fileUrl: 'https://pdfobject.com/pdf/sample.pdf',
-        icon: 'description',
-        mandatory: true,
-        verificationStatus: 'Verified',
-        issuer: 'Trạm cân điện tử Cảng Tiên Sa',
-        scope: `Gross: ${Number(b.vgm || 28450).toLocaleString('vi-VN')} kg`,
-      },
-      ...( (b.isReefer || (b.containerType || '').includes('RF')) ? [
-        {
-          id: `DOC-RF-${contId}`,
-          documentType: 'ReeferInstructions',
-          type: 'ReeferInstructions',
-          title: 'Chỉ dẫn cài đặt nhiệt độ container lạnh',
-          shortTitle: '5. Chỉ Dẫn Nhiệt Độ',
-          fileName: `Reefer_Setting_${contId}.pdf`,
-          documentNumber: `RF-TEMP-${contSuffix}`,
-          fileUrl: 'https://pdfobject.com/pdf/sample.pdf',
-          icon: 'description',
-          mandatory: true,
-          verificationStatus: 'Verified',
-          issuer: 'Chủ hàng Thủy sản Đông lạnh Đà Nẵng',
-          scope: 'Nhiệt độ cài đặt -18.0°C (Khu D)',
-        }
-      ] : [])
-    ]
+    // 1. Tìm đơn ePort hợp lệ tương ứng (không bị REJECTED / CANCELLED)
+    const candidates = [
+      eportComparison?.order,
+      eportDetail,
+      ...(eportOrders || []),
+      ...(eportListItems || []),
+    ].filter(Boolean)
 
-    // Nếu là container được tách từ Bản khai Tàu (Manifest):
-    // Hiển thị đầy đủ các giấy tờ Hàng hóa / Tàu / Hải quan / VGM đã có sẵn để xem ngay,
-    // còn GPLX & Đăng kiểm xe thì nếu bên Transport chưa gửi sẽ ghi rõ "Đang đợi bên Transport gửi kèm Xe & Tài xế"
-    const isApprovedOrBilled = isBookingApprovedOrBillSent(b)
-    const isVesselUnsubmitted = b.isFromVesselManifest && !b.transportSubmitted && !isApprovedOrBilled
-    const vPlate = isVesselUnsubmitted ? null : (getGateBookingVehicle(b) || (isApprovedOrBilled ? (b.suggestedPlate || '47AB-294.69') : (b.licensePlate || null)))
-    const vDriver = isVesselUnsubmitted ? null : (getGateBookingDriver(b) || (isApprovedOrBilled ? (b.suggestedDriver || 'TRẦN VĂN TÙNG') : (b.driverName || null)))
-    const vTrailer = b.trailerPlate || b.suggestedTrailer || '47R-012.88'
-    const vLicense = b.licenseNumber || b.suggestedLicense || 'FC-782910'
-    const driverNameSafe = (vDriver || 'TaiXe').replace(/\s+/g, '_')
+    const activeOrder = candidates.find((o) => {
+      const st = String(o.status || '').toUpperCase()
+      if (['REJECTED', 'CANCELLED'].includes(st)) return false
+      if (b.eportOrderId && o.id === b.eportOrderId) return true
+      const inConts = (o.containers || []).some(c => String(c?.containerNumber || c || '').trim().toUpperCase() === cId)
+      const inLines = (o.content?.lines || []).some(l => String(l?.declaration?.containerNumber || l?.containerNumber || '').trim().toUpperCase() === cId)
+      const inLabel = cId && String(o.sourceLabel || '').toUpperCase().includes(cId)
+      return inConts || inLines || inLabel
+    }) || null
 
-    const baseDocs = (b.documents && b.documents.length > 0) ? b.documents : manifestDocs
+    const orderFleetForCont =
+      (activeOrder && manifestPortSyncService.extractFleetFromOrder(activeOrder, cId)) ||
+      manifestPortSyncService.getOrderFleet(cId) ||
+      manifestPortSyncService.getOrderFleet(b.id) ||
+      manifestPortSyncService.getOrderFleet(b.bookingCode)
 
-    // Khi đã duyệt & gửi bill (hoặc đơn vị vận tải đã gửi hồ sơ xe & tài xế):
-    // Bổ sung đúng 2 giấy tờ định danh tài xế thực tế mà bên Vận tải / ePort gửi lên (GPLX FC & CCCD)
-    if (vPlate || vDriver || isApprovedOrBilled || b.transportSubmitted) {
-      const driverSnap = b.driverSnapshot || b.driver_snapshot || b.driverDetails || b.rawBooking?.driverSnapshot || {}
-      const cccdNumber = driverSnap.IdCardNumber || driverSnap.idCardNumber || b.idCardNumber || (vDriver === 'PHAN NGUYÊN GIA HUY' ? '066204016135' : '048092004812')
-      const rawCccdUrl = driverSnap.IdCardFrontUrl || driverSnap.idCardFrontUrl || driverSnap.id_card_front_url || b.idCardFrontUrl || (vDriver === 'PHAN NGUYÊN GIA HUY' ? 'https://nexusport.s3.us-east-1.amazonaws.com/NexusPort/drivers/front_bca43912-70b1-42e7-8178-01306ec4a395.jpg' : 'https://nexusport.s3.us-east-1.amazonaws.com/NexusPort/drivers/front_leynhi.jpg')
-      const rawLicenseUrl = driverSnap.LicenseImageUrl || driverSnap.licenseImageUrl || driverSnap.license_image_url || b.licenseImageUrl || (vDriver === 'PHAN NGUYÊN GIA HUY' ? 'https://nexusport.s3.us-east-1.amazonaws.com/NexusPort/drivers/license_bca43912-70b1-42e7-8178-01306ec4a395.jpg' : 'https://nexusport.s3.us-east-1.amazonaws.com/NexusPort/drivers/license_leynhi.jpg')
+    const activeOrderStatus = String(activeOrder?.status || '').toUpperCase()
+    const isOrderApproved = activeOrderStatus === 'APPROVED' || isBookingApprovedOrBillSent(b)
 
-      const cccdUrl = resolveMediaUrl(rawCccdUrl)
-      const licenseUrl = resolveMediaUrl(rawLicenseUrl)
+    // 2. Nhóm 1: Bộ hồ sơ chứng từ nộp Dispatcher từ đơn ePort (delivery.documents)
+    const rawOrderDocs =
+      activeOrder?.content?.delivery?.documents ||
+      activeOrder?.content?.documents ||
+      orderFleetForCont?.documents ||
+      b.eportDocuments ||
+      b.documents ||
+      []
 
-      const fleetDocs = [
-        {
-          id: `DOC-GPLX-${contId}`,
-          documentType: 'DriverLicense',
-          type: 'DriverLicense',
-          title: 'Giấy Phép Lái Xe Hạng FC (Bằng lái chuyên dụng container)',
-          shortTitle: 'GPLX Hạng FC',
-          documentNumber: vLicense,
-          fileName: `GPLX_FC_${driverNameSafe}.jpg`,
-          fileUrl: licenseUrl,
-          icon: 'badge',
-          mandatory: true,
-          issuer: 'Sở GTVT (Bên Vận tải / ePort gửi)',
-          verificationStatus: 'Verified',
-          scope: `Tài xế: ${vDriver || 'TRẦN VĂN TÙNG'} · Bằng lái Hạng FC hợp lệ`,
-          isDriverDoc: true,
-        },
-        {
-          id: `DOC-CCCD-${contId}`,
-          documentType: 'NationalId',
-          type: 'NationalId',
-          title: 'Căn Cước Công Dân Gắn Chip (Định danh tài xế)',
-          shortTitle: 'CCCD Tài Xế',
-          documentNumber: cccdNumber,
-          fileName: `CCCD_Chip_${driverNameSafe}.jpg`,
-          fileUrl: cccdUrl,
-          icon: 'person_pin',
-          mandatory: true,
-          issuer: 'Bộ Công An (Bên Vận tải / ePort gửi)',
-          verificationStatus: 'Verified',
-          scope: `Tài xế: ${vDriver || 'TRẦN VĂN TÙNG'} · Số CCCD: ${cccdNumber}`,
-          isDriverDoc: true,
-        },
-      ]
-
-      const seenIds = new Set()
-      const merged = []
-      for (const d of [...baseDocs, ...fleetDocs]) {
-        if (!seenIds.has(d.id)) {
-          seenIds.add(d.id)
-          merged.push(d)
-        }
-      }
-      return merged
+    const docIconMap = {
+      CarrierBookingReference: 'receipt_long',
+      BookingNote: 'receipt_long',
+      DeliveryOrder: 'assignment_turned_in',
+      BillOfLading: 'directions_boat',
+      CustomsDeclaration: 'verified_user',
+      VgmCertificate: 'scale',
+      ReeferInstructions: 'ac_unit',
+      ReeferTemperatureInstructions: 'ac_unit',
+      DangerousGoodsDeclaration: 'warning',
     }
 
-    return baseDocs
+    const formatDocSize = (bytes) => {
+      if (!bytes) return ''
+      if (bytes < 1024) return `${bytes} B`
+      if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`
+      return `${(bytes / 1048576).toFixed(1)} MB`
+    }
+
+    const orderDocs = (Array.isArray(rawOrderDocs) ? rawOrderDocs : [])
+      .filter(d => d && !isFakeUrlOrSample(d.fileUrl || d.fileReference, d.fileName))
+      .map((d, idx) => {
+        const docType = d.documentType || d.type || 'Other'
+        const rawUrl = d.fileUrl || d.fileReference || ''
+        const resolvedUrl = resolveMediaUrl(rawUrl) || rawUrl
+        const sizeLabel = formatDocSize(d.fileSizeBytes)
+        return {
+          ...d,
+          id: d.id || `ORD-DOC-${cId}-${docType}-${idx}`,
+          documentType: docType,
+          type: docType,
+          title: d.title || getDocTypeVi(docType),
+          fileName: d.fileName || '',
+          fileSizeBytes: d.fileSizeBytes || 0,
+          fileUrl: resolvedUrl,
+          icon: d.icon || docIconMap[docType] || 'description',
+          mandatory: d.mandatory ?? true,
+          verificationStatus: d.verificationStatus || d.status || (isOrderApproved ? 'Verified' : 'Pending'),
+          scope: sizeLabel ? `Dung lượng: ${sizeLabel}` : (d.scope || 'Chứng từ khách hàng nộp Dispatcher'),
+          isOrderDoc: true,
+        }
+      })
+
+    // 3. Nhóm 2: Hồ sơ pháp lý Phương tiện & Tài xế của container (đồng nhất 4 thẻ với FleetDocumentsReview)
+    const isFakePlateDoc = p => !p || ['Chưa gán xe', 'Chưa gán', 'Chưa điều phối', '47AB-294.69', '43C-567.89'].includes(p)
+    const isFakeDriverDoc = d => !d || ['Chưa điều phối', 'Chưa có tài xế', 'TRẦN VĂN TÙNG', 'Nguyễn Văn Minh'].includes(d)
+    const vehicleSnap = orderFleetForCont?.vehicle || b.vehicleSnapshot || {}
+    const driverSnap = orderFleetForCont?.driverSnapshot || b.driverSnapshot || b.driverDetails || b.rawBooking?.driverSnapshot || {}
+
+    const rawPlate = orderFleetForCont?.plate || vehicleSnap?.plateNumber || getGateBookingVehicle(b) || b.licensePlate || b.suggestedPlate || null
+    const rawDriver = orderFleetForCont?.driver || driverSnap?.fullName || driverSnap?.FullName || getGateBookingDriver(b) || b.driverName || b.suggestedDriver || null
+    const vPlate = isFakePlateDoc(rawPlate) ? null : rawPlate
+    const vDriver = isFakeDriverDoc(rawDriver) ? null : rawDriver
+    const vPhone = orderFleetForCont?.phone || driverSnap?.phone || driverSnap?.Phone || b.phone || ''
+    const vLicense =
+      orderFleetForCont?.license ||
+      driverSnap?.licenseNumber ||
+      driverSnap?.LicenseNumber ||
+      (b.licenseNumber && b.licenseNumber !== 'FC-782910' ? b.licenseNumber : null) ||
+      (b.suggestedLicense && b.suggestedLicense !== 'FC-782910' ? b.suggestedLicense : null) ||
+      'Chưa khai báo'
+
+    const hasSubmittedFleet = Boolean(
+      vPlate ||
+      vDriver ||
+      (activeOrder && !['DRAFT', 'REJECTED', 'CANCELLED'].includes(activeOrderStatus))
+    )
+
+    const fleetDocs = []
+    if (hasSubmittedFleet && (vPlate || vDriver)) {
+      const rawVehiclePhoto = vehicleSnap.photoUrl || vehicleSnap.PhotoUrl || (vPlate ? '/gate-camera-truck.png' : '')
+      const rawRegImg = vehicleSnap.registrationImageUrl || vehicleSnap.RegistrationImageUrl || ''
+      const rawDriverPhoto = driverSnap.photoUrl || driverSnap.PhotoUrl || ''
+      const rawLicenseImg = driverSnap.licenseImageUrl || driverSnap.LicenseImageUrl || driverSnap.licenseBackImageUrl || ''
+
+      const plateSafe = (vPlate || 'Xe').replace(/\s+/g, '_')
+      const driverSafe = (vDriver || 'TaiXe').replace(/\s+/g, '_')
+
+      fleetDocs.push(
+        {
+          id: `DOC-TRUCK-PHOTO-${cId}`,
+          documentType: 'VehiclePhoto',
+          type: 'VehiclePhoto',
+          title: 'Ảnh chụp phương tiện',
+          shortTitle: 'Ảnh xe đầu kéo',
+          documentNumber: vPlate || 'Chưa gán biển số',
+          fileName: `Xe_${plateSafe}.jpg`,
+          fileUrl: rawVehiclePhoto ? (resolveMediaUrl(rawVehiclePhoto) || rawVehiclePhoto) : '',
+          icon: 'local_shipping',
+          mandatory: true,
+          verificationStatus: rawVehiclePhoto ? 'Verified' : 'Pending',
+          scope: vPlate ? `Xe đầu kéo: ${vPlate}${vehicleSnap.rfidTag ? ` · RFID: ${vehicleSnap.rfidTag}` : ''}` : 'Chưa gán biển số xe',
+          isDriverDoc: true,
+        },
+        {
+          id: `DOC-TRUCK-REG-${cId}`,
+          documentType: 'VehicleRegistration',
+          type: 'VehicleRegistration',
+          title: 'Giấy chứng nhận đăng kiểm xe',
+          shortTitle: 'Đăng kiểm xe',
+          documentNumber: vehicleSnap.rfidTag || vPlate || 'Chưa khai báo',
+          fileName: `DangKiem_${plateSafe}.jpg`,
+          fileUrl: rawRegImg ? (resolveMediaUrl(rawRegImg) || rawRegImg) : '',
+          icon: 'verified',
+          mandatory: true,
+          verificationStatus: rawRegImg ? 'Verified' : 'Pending',
+          scope: vPlate ? `Sổ kiểm định: ${vPlate}` : 'Chưa có thông tin đăng kiểm',
+          isDriverDoc: true,
+        },
+        {
+          id: `DOC-DRIVER-PHOTO-${cId}`,
+          documentType: 'DriverPhoto',
+          type: 'DriverPhoto',
+          title: 'Ảnh chân dung tài xế',
+          shortTitle: 'Ảnh tài xế',
+          documentNumber: driverSnap.idCardNumber || driverSnap.IdCardNumber || vPhone || vDriver || 'Tài xế',
+          fileName: `TaiXe_${driverSafe}.jpg`,
+          fileUrl: rawDriverPhoto ? (resolveMediaUrl(rawDriverPhoto) || rawDriverPhoto) : '',
+          icon: 'person_pin',
+          mandatory: true,
+          verificationStatus: rawDriverPhoto ? 'Verified' : 'Pending',
+          scope: vDriver ? `${vDriver}${vPhone ? ` · ${vPhone}` : ''}` : 'Chưa gán tài xế phụ trách',
+          isDriverDoc: true,
+        },
+        {
+          id: `DOC-GPLX-${cId}`,
+          documentType: 'DriverLicense',
+          type: 'DriverLicense',
+          title: 'Giấy phép lái xe (GPLX)',
+          shortTitle: 'GPLX Hạng FC',
+          documentNumber: vLicense,
+          fileName: `GPLX_FC_${driverSafe}.jpg`,
+          fileUrl: rawLicenseImg ? (resolveMediaUrl(rawLicenseImg) || rawLicenseImg) : '',
+          icon: 'badge',
+          mandatory: true,
+          verificationStatus: rawLicenseImg ? 'Verified' : 'Pending',
+          scope: vLicense && vLicense !== 'Chưa khai báo' ? `Số GPLX: ${vLicense} (Hạng FC)` : `Tài xế: ${vDriver || 'Chưa khai báo'}`,
+          isDriverDoc: true,
+        }
+      )
+    }
+
+    const seenIds = new Set()
+    const merged = []
+    for (const d of [...orderDocs, ...fleetDocs]) {
+      if (!seenIds.has(d.id)) {
+        seenIds.add(d.id)
+        merged.push(d)
+      }
+    }
+    return merged
   }
 
 
@@ -744,24 +916,84 @@ export default function GateBookingRequests() {
         icon: 'badge',
         mandatory: true,
       }
-     
+
     ]
   }
 
   // Refresh handler
-  const handleRefresh = () => {
+  const handleRefresh = async () => {
+    await manifestPortSyncService.fetchRemoteSyncedManifests().catch(() => { })
     fetchBookings()
     showToast('🔄 Đã cập nhật danh sách Yêu Cầu Booking Cổng mới nhất từ các Hãng xe!')
+  }
+
+  // Reset toàn bộ dữ liệu test về 0
+  const handleResetTestData = async () => {
+    if (window.confirm('Bạn có chắc muốn xóa toàn bộ bản khai tàu và container để test lại từ đầu không?')) {
+      await manifestPortSyncService.resetAllData().catch(() => { })
+      fetchBookings()
+      showToast('🗑️ Đã xóa sạch dữ liệu tàu & container về 0 để test từ đầu!')
+    }
   }
 
   const fetchBookings = async () => {
     setLoading(true)
     try {
+      await manifestPortSyncService.fetchRemoteSyncedManifests().catch(() => { })
+
+      // Trích xuất thông tin đội xe từ các đơn ePort trong cơ sở dữ liệu để đồng bộ trên tất cả thiết bị
+      try {
+        const eportRes = await serviceOrdersApi.list({ pageSize: 50 }).catch(() => ({ items: [] }))
+        const allEportItems = eportRes?.items || []
+        const ordersToSync = allEportItems
+          .filter(ord => !['REJECTED', 'CANCELLED', 'DRAFT'].includes(String(ord?.status || '').toUpperCase()))
+          .slice(0, 15)
+        const rejectedOrders = allEportItems
+          .filter(ord => ['REJECTED', 'CANCELLED'].includes(String(ord?.status || '').toUpperCase()))
+          .slice(0, 15)
+        const detailedOrders = await Promise.all(
+          ordersToSync.map(async (ord) => {
+            try {
+              if (!ord?.content?.delivery?.trips && ord?.id) {
+                return await serviceOrdersApi.get(ord.id).catch(() => ord)
+              }
+              return ord
+            } catch {
+              return ord
+            }
+          })
+        )
+        const detailedRejected = await Promise.all(
+          rejectedOrders.map(async (ord) => {
+            try {
+              if (!ord?.containers?.length && !ord?.content?.lines?.length && ord?.id) {
+                return await serviceOrdersApi.get(ord.id).catch(() => ord)
+              }
+              return ord
+            } catch {
+              return ord
+            }
+          })
+        )
+        // Gỡ xe & tài xế khỏi Gate Booking nếu toàn bộ đơn ePort của container đó đã bị từ chối/hủy
+        for (const rejOrd of detailedRejected) {
+          try {
+            await manifestPortSyncService.unassignRejectedOrderFromGateBookings(rejOrd, detailedOrders, { silent: true })
+          } catch { }
+        }
+        // Duyệt từ đơn cũ nhất đến đơn mới nhất để thông tin đội xe của đơn mới nhất luôn được ưu tiên
+        for (const orderToSync of [...detailedOrders].reverse()) {
+          try {
+            manifestPortSyncService.saveAllOrderFleets(orderToSync)
+          } catch { }
+        }
+      } catch (e) { }
+
       const [res, companiesData] = await Promise.all([
         bookingService.getBookings({ pageNumber: 1, pageSize: 100 }),
         companyService.getAll().catch(() => [])
       ])
-      
+
       const defaultCompanyMap = {
         'c1010101-0000-0000-0000-000000000001': {
           companyName: 'Bien Dong Logistics - Nexus Logistics',
@@ -821,48 +1053,48 @@ export default function GateBookingRequests() {
             phone,
             email,
             containerId: resolvedCont,
-          containerType: '40HC',
-          cargoType: 'General',
-          cargoDeclarationId: 'N/A',
-          cargoDeclarationStatus: 'Approved',
-          vehicleId: b.vehicleId,
-          licensePlate: b.vehiclePlate || 'Chưa điều phối',
-          vehicleType: 'Xe Đầu Kéo',
-          vehicleStatus: b.vehiclePlate ? 'Available' : 'Pending',
-          driverId: b.driverId,
-          driverName: b.driverName || 'Chưa điều phối',
-          licenseNumber: b.licenseNumber || b.driverSnapshot?.LicenseNumber || b.driverDetails?.licenseNumber || 'FC-123456',
-          licenseClass: 'FC',
-          licenseStatus: 'Valid',
-          driverStatus: b.driverName ? 'Available' : 'Pending',
-          driverSnapshot: b.driverSnapshot || b.driver_snapshot || null,
-          driverDetails: b.driverDetails || null,
-          documents: b.documents || [],
-          suggestedDriver: b.suggestedDriver || null,
-          suggestedPlate: b.suggestedPlate || null,
-          suggestedTrailer: b.suggestedTrailer || null,
-          idCardFrontUrl: b.idCardFrontUrl || b.driverSnapshot?.IdCardFrontUrl || null,
-          licenseImageUrl: b.licenseImageUrl || b.driverSnapshot?.LicenseImageUrl || null,
-          idCardNumber: b.idCardNumber || b.driverSnapshot?.IdCardNumber || null,
-          rawBooking: b,
-          operation: b.bookingType,
-          eta: b.appointmentStart,
-          expectedDuration: '45 phút',
-          requestedGate: 'Gate 1',
-          gateFee: 300000,
-          handlingFee: 200000,
-          totalFee: 500000,
-          paymentStatus: 'Paid',
-          gateCapacity: { gate: 'Gate 1', current: 10, max: 20, status: 'Available' },
-          status: b.status,
-          createdAt: new Date(b.createdAt).toLocaleString('vi-VN'),
-          reviewStartedAt: null,
-          reviewedBy: b.approvedBy ? 'Dispatcher' : null,
-          approvedAt: b.approvedAt ? new Date(b.approvedAt).toLocaleString('vi-VN') : null,
-          approvedBy: b.approvedBy ? 'Dispatcher' : null,
-          rejectionReason: '',
-          rejectionNote: '',
-          dispatchOrderId: null,
+            containerType: '40HC',
+            cargoType: 'General',
+            cargoDeclarationId: 'N/A',
+            cargoDeclarationStatus: 'Approved',
+            vehicleId: b.vehicleId,
+            licensePlate: b.vehiclePlate || 'Chưa điều phối',
+            vehicleType: 'Xe Đầu Kéo',
+            vehicleStatus: b.vehiclePlate ? 'Available' : 'Pending',
+            driverId: b.driverId,
+            driverName: b.driverName || 'Chưa điều phối',
+            licenseNumber: b.licenseNumber || b.driverSnapshot?.LicenseNumber || b.driverDetails?.licenseNumber || 'FC-123456',
+            licenseClass: 'FC',
+            licenseStatus: 'Valid',
+            driverStatus: b.driverName ? 'Available' : 'Pending',
+            driverSnapshot: b.driverSnapshot || b.driver_snapshot || null,
+            driverDetails: b.driverDetails || null,
+            documents: b.documents || [],
+            suggestedDriver: b.suggestedDriver || null,
+            suggestedPlate: b.suggestedPlate || null,
+            suggestedTrailer: b.suggestedTrailer || null,
+            idCardFrontUrl: b.idCardFrontUrl || b.driverSnapshot?.IdCardFrontUrl || null,
+            licenseImageUrl: b.licenseImageUrl || b.driverSnapshot?.LicenseImageUrl || null,
+            idCardNumber: b.idCardNumber || b.driverSnapshot?.IdCardNumber || null,
+            rawBooking: b,
+            operation: b.bookingType,
+            eta: b.appointmentStart,
+            expectedDuration: '45 phút',
+            requestedGate: 'Gate 1',
+            gateFee: 300000,
+            handlingFee: 200000,
+            totalFee: 500000,
+            paymentStatus: 'Paid',
+            gateCapacity: { gate: 'Gate 1', current: 10, max: 20, status: 'Available' },
+            status: b.status,
+            createdAt: new Date(b.createdAt).toLocaleString('vi-VN'),
+            reviewStartedAt: null,
+            reviewedBy: b.approvedBy ? 'Dispatcher' : null,
+            approvedAt: b.approvedAt ? new Date(b.approvedAt).toLocaleString('vi-VN') : null,
+            approvedBy: b.approvedBy ? 'Dispatcher' : null,
+            rejectionReason: '',
+            rejectionNote: '',
+            dispatchOrderId: null,
             timelineStep: b.status === 'Approved' ? 4 : (b.status === 'Pending' ? 2 : 3)
           }
         })
@@ -886,17 +1118,17 @@ export default function GateBookingRequests() {
       const blocks = await expressApiClient.get('/yard/blocks')
       setBlocksData(blocks)
       if (blocks.length > 0) {
-        const firstBlock = blocks.find(block=>block.blockCode==='C01')||blocks[0]
+        const firstBlock = blocks.find(block => block.blockCode === 'C01') || blocks[0]
         const firstCode = firstBlock.blockCode || firstBlock.description
         setSelectedBlock(firstCode)
-        setSelectedBay(firstBlock.slots?.length?String(Math.min(...firstBlock.slots.map(slot=>slot.bay))).padStart(2,'0'):'')
+        setSelectedBay(firstBlock.slots?.length ? String(Math.min(...firstBlock.slots.map(slot => slot.bay))).padStart(2, '0') : '')
       }
     } catch (e) {
       console.error(e)
     }
   }
 
-  
+
   // Đồng bộ 100% với Sơ đồ bãi cảng Tiên Sa (sourceLayout.areas) kết hợp tồn kho từ API + yardReservationStore
   const combinedBlocks = useMemo(() => {
     const storeReservations = yardReservationStore.getReservations()
@@ -1076,11 +1308,19 @@ export default function GateBookingRequests() {
       const items = res?.items || []
       setEportOrders(items)
       if (items.length > 0) {
+        const preferred = items.find(x => !['REJECTED', 'CANCELLED'].includes(String(x?.status || '').toUpperCase())) || items[0]
+        let orderObj = preferred
         try {
-          const detail = await serviceOrdersApi.get(items[0].id)
+          const detail = await serviceOrdersApi.get(preferred.id)
           setEportDetail(detail)
+          orderObj = detail
         } catch {
-          setEportDetail(items[0])
+          setEportDetail(preferred)
+        }
+        try {
+          manifestPortSyncService.saveAllOrderFleets(orderObj)
+        } catch (e) {
+          console.warn('Lỗi lưu fleet từ eport order:', e)
         }
       } else {
         // Chỉ khớp khi và chỉ khi đơn đã thực sự được khách hàng gửi về cho Cảng
@@ -1155,7 +1395,7 @@ export default function GateBookingRequests() {
       let anyBookingUpdated = false
       let anyOrderRejected = false
 
-      for (const order of eportListItems) {
+      for (const order of [...eportListItems].reverse()) {
         if (cancelled) break
         if (order.status === 'DRAFT' || order.status === 'CANCELLED') continue
 
@@ -1220,6 +1460,9 @@ export default function GateBookingRequests() {
             const primary = matchedBookings[0]
             const blExpected = String(primary.cargoDeclarationId || primary.billOfLading || '').trim().toUpperCase()
             const bkExpected = cleanBookingCode(primary.bookingNumber || primary.bookingNo || primary.id || '').toUpperCase()
+            const mfExpected = String(primary.sourceManifestNumber || '').trim().toUpperCase()
+            const voyExpected = String(primary.voyageNumber || '').trim().toUpperCase()
+            const orderVoy = String(detail.content?.source?.voyageNumber || detail.sourceSnapshot?.voyageNumber || '').trim().toUpperCase()
             const cleanOrderBk = cleanBookingCode(orderBk).toUpperCase()
 
             const blMatches = !blExpected || blExpected === 'N/A' ||
@@ -1228,6 +1471,9 @@ export default function GateBookingRequests() {
 
             const bkMatches = !bkExpected ||
               (cleanOrderBk && (cleanOrderBk.includes(bkExpected) || bkExpected.includes(cleanOrderBk))) ||
+              (mfExpected && ((cleanOrderBk && (cleanOrderBk.includes(mfExpected) || mfExpected.includes(cleanOrderBk))) || refTokens.some(t => t.includes(mfExpected) || mfExpected.includes(t)))) ||
+              (voyExpected && orderVoy && voyExpected === orderVoy) ||
+              (containerTokens.length > 0 && missingTokens.length === 0) ||
               refTokens.some(t => cleanBookingCode(t).toUpperCase().includes(bkExpected) || bkExpected.includes(cleanBookingCode(t).toUpperCase()))
 
             const refMatches = blMatches || bkMatches
@@ -1241,42 +1487,13 @@ export default function GateBookingRequests() {
           }
         }
 
+        const containerIdsList = matchedBookings.map(b => b.containerId)
         if (rejectReason) {
-          nextMap[order.id] = { status: 'AUTO_REJECTED', reason: rejectReason }
-          const canAutoRejectBackend = ['CONFIRMED', 'PENDING_APPROVAL', 'RECEIVED'].includes(detail.status)
-          const cacheKey = `reject:${order.id}:${detail.version}`
-          if (canAutoRejectBackend && !processedEportOrderRef.current.has(cacheKey)) {
-            processedEportOrderRef.current.add(cacheKey)
-            try {
-              if (detail.allowedActions?.includes('REJECT')) {
-                await serviceOrdersApi.action(order.id, {
-                  requestId: crypto.randomUUID(),
-                  expectedVersion: detail.version,
-                  action: 'REJECT',
-                  reason: rejectReason,
-                })
-                anyOrderRejected = true
-              } else if (detail.allowedActions?.includes('RECEIVE')) {
-                const received = await serviceOrdersApi.action(order.id, {
-                  requestId: crypto.randomUUID(),
-                  expectedVersion: detail.version,
-                  action: 'RECEIVE',
-                  reason: 'Tiếp nhận kiểm tra đối chiếu tự động',
-                })
-                const nextVer = received?.version ?? (detail.version + 1)
-                if (received?.allowedActions?.includes('REJECT')) {
-                  await serviceOrdersApi.action(order.id, {
-                    requestId: crypto.randomUUID(),
-                    expectedVersion: nextVer,
-                    action: 'REJECT',
-                    reason: rejectReason,
-                  })
-                }
-                anyOrderRejected = true
-              }
-            } catch {
-              // Giữ trạng thái cảnh báo tự động Reject trên UI nếu backend không cho phép thao tác trạng thái này
-            }
+          // Chỉ ghi nhận cảnh báo trên giao diện, KHÔNG tự động gọi API từ chối ngầm trong background
+          nextMap[order.id] = {
+            status: 'AUTO_REJECTED',
+            reason: rejectReason,
+            ...(containerIdsList.length > 0 ? { containerIds: containerIdsList } : {}),
           }
         } else if (order.status === 'REJECTED') {
           let manualReason = ''
@@ -1288,7 +1505,11 @@ export default function GateBookingRequests() {
           } catch {
             manualReason = ''
           }
-          nextMap[order.id] = { status: 'REJECTED', reason: manualReason || 'Đơn đã bị từ chối.' }
+          nextMap[order.id] = {
+            status: 'REJECTED',
+            reason: manualReason || 'Đơn đã bị từ chối.',
+            ...(containerIdsList.length > 0 ? { containerIds: containerIdsList } : {}),
+          }
         } else if (matchedBookings.length > 0) {
           const primary = matchedBookings[0]
           nextMap[order.id] = {
@@ -1343,7 +1564,7 @@ export default function GateBookingRequests() {
         setEportValidationMap(prev => ({ ...prev, ...nextMap }))
         if (anyBookingUpdated) {
           setManifestSyncVersion(v => v + 1)
-          setTransportAlerts(manifestPortSyncService.getTransportSubmissionAlerts())
+          setBillAlerts(getBillAlerts())
           showToast('✅ Đơn ePort khớp thông tin! Đã tự động cập nhật Đơn vị vận tải và sẵn sàng phê duyệt cổng.')
         }
         if (anyOrderRejected) {
@@ -1405,14 +1626,16 @@ export default function GateBookingRequests() {
     }
     const allGates = Array.from(allGatesMap.values())
     const matchedGateBookings = allGates.filter(b => {
+      const bCont = String(b.containerId || '').trim().toUpperCase()
+      if (allEportContList.length > 0) {
+        return Boolean(bCont && allEportContList.includes(bCont))
+      }
       if (b.id === selectedBooking.id || b.containerId === selectedBooking.containerId) return true
       if (activeOrder.id && b.eportOrderId === activeOrder.id) return true
-      const bCont = String(b.containerId || '').trim().toUpperCase()
-      if (bCont && allEportContList.includes(bCont)) return true
       // Cùng chung mã Vận đơn (B/L) và Tàu
       if (selectedBooking.cargoDeclarationId && selectedBooking.cargoDeclarationId !== 'N/A' &&
-          b.cargoDeclarationId === selectedBooking.cargoDeclarationId &&
-          (b.sourceManifestNumber === selectedBooking.sourceManifestNumber || b.vesselName === selectedBooking.vesselName)) {
+        b.cargoDeclarationId === selectedBooking.cargoDeclarationId &&
+        (b.sourceManifestNumber === selectedBooking.sourceManifestNumber || b.vesselName === selectedBooking.vesselName)) {
         return true
       }
       // Cùng chung mã Booking
@@ -1441,10 +1664,7 @@ export default function GateBookingRequests() {
         ''
       ).trim()
       if (!gateBl) {
-        if (['MSKU8829101', 'HLCU7719205'].includes(contNo)) gateBl = 'BL-INB-DAD-2601'
-        else if (['CMAU3381923', 'HLCU8821947'].includes(contNo)) gateBl = 'BL-INB-DAD-2602'
-        else if (['EMCU1234567', 'EMCU1234568'].includes(contNo)) gateBl = 'BL-VNDAD-001'
-        else gateBl = selectedManifestInfo?.blNumber || selectedBooking.billOfLading || ''
+        gateBl = selectedManifestInfo?.blNumber || selectedBooking.billOfLading || ''
       }
 
       // 2. Tìm B/L phía ePort cho container này
@@ -1463,10 +1683,7 @@ export default function GateBookingRequests() {
         }
       }
       if (!eportBl) {
-        if (['MSKU8829101', 'HLCU7719205'].includes(contNo)) eportBl = 'BL-INB-DAD-2601'
-        else if (['CMAU3381923', 'HLCU8821947'].includes(contNo)) eportBl = 'BL-INB-DAD-2602'
-        else if (['EMCU1234567', 'EMCU1234568'].includes(contNo)) eportBl = 'BL-VNDAD-001'
-        else eportBl = activeOrder.content?.source?.blNumber || activeOrder.sourceSnapshot?.blNumber || ''
+        eportBl = activeOrder.content?.source?.blNumber || activeOrder.sourceSnapshot?.blNumber || ''
       }
 
       const isSubmittedToPort = Boolean(
@@ -1480,7 +1697,9 @@ export default function GateBookingRequests() {
         || normBl(gateBl) === normBl(eportBl)
         || gateFlow === 'EXPORT'
         || (normBl(gateBl).startsWith('BLVNDAD') && normBl(eportBl).startsWith('BLVNDAD'))
-      const isMatch = isSubmittedToPort && inEport && inGate && blMatch
+        || inEport
+
+      const isMatch = isSubmittedToPort && inEport && inGate && (blMatch || isSubmittedToPort)
 
       return {
         containerNumber: contNo,
@@ -1503,9 +1722,18 @@ export default function GateBookingRequests() {
       }
     })
 
-    const containerMatch = allKnownConts.length > 0
-      ? containerBreakdown.every(c => c.isMatch)
-      : (allEportContList.length === 0 || allEportContList.includes(String(selectedBooking.containerId).toUpperCase()))
+    const gateContSet = new Set(matchedGateBookings.map(b => String(b.containerId || '').trim().toUpperCase()).filter(Boolean))
+    const eportContSet = new Set(allEportContList.map(c => String(c || '').trim().toUpperCase()).filter(Boolean))
+
+    const isContListIdentical = gateContSet.size > 0 && eportContSet.size > 0 &&
+      gateContSet.size === eportContSet.size &&
+      [...gateContSet].every(c => eportContSet.has(c))
+
+    const containerMatch = isContListIdentical || (
+      allKnownConts.length > 0
+        ? containerBreakdown.every(c => c.inEport && c.inGate)
+        : (allEportContList.length === 0 || allEportContList.includes(String(selectedBooking.containerId).toUpperCase()))
+    )
 
     const flowMatch = !eportFlow || eportFlow === gateFlow
     // Bỏ 4 số cuối của mã Booking (ví dụ: BK-MM2601S-9101 -> BK-MM2601S, BK-MM2601S-9205 -> BK-MM2601S) để đối chiếu thống nhất
@@ -1531,6 +1759,9 @@ export default function GateBookingRequests() {
     const normCode = (s) => String(s || '').toUpperCase().replace(/^BK[-_]?/i, '').replace(/[^A-Z0-9]/g, '')
     const gateBookingNo = stripTrailingDigits(rawGateBookingNo)
     const eportBookingNo = stripTrailingDigits(rawEportBookingNo)
+    const gateManifestNo = String(selectedBooking.sourceManifestNumber || selectedManifestInfo?.manifestNumber || '').trim()
+    const gateVoyageNo = String(selectedBooking.voyageNumber || selectedManifestInfo?.voyageNumber || '').trim()
+    const eportVoyageNo = String(activeOrder.content?.source?.voyageNumber || activeOrder.sourceSnapshot?.voyageNumber || '').trim()
 
     const bookingMatch = !gateBookingNo || !eportBookingNo
       || normCode(gateBookingNo) === normCode(eportBookingNo)
@@ -1538,16 +1769,29 @@ export default function GateBookingRequests() {
       || normCode(eportBookingNo).includes(normCode(gateBookingNo))
       || eportBookingNo.toUpperCase().includes(gateBookingNo.toUpperCase())
       || gateBookingNo.toUpperCase().includes(eportBookingNo.toUpperCase())
+      || Boolean(gateManifestNo && (
+        normCode(gateManifestNo) === normCode(eportBookingNo) ||
+        normCode(gateManifestNo).includes(normCode(eportBookingNo)) ||
+        normCode(eportBookingNo).includes(normCode(gateManifestNo))
+      ))
+      || Boolean(gateVoyageNo && eportVoyageNo && normCode(gateVoyageNo) === normCode(eportVoyageNo))
+      || isContListIdentical
+
+    const refTag = gateManifestNo || eportBookingNo
+    const isManifestCodeMatch = Boolean(bookingMatch && gateBookingNo && eportBookingNo && normCode(gateBookingNo) !== normCode(eportBookingNo))
 
     const eportCompany = String(activeOrder.companyName || '').trim().toLowerCase()
     const gateCompany = String(selectedBooking.company || '').trim().toLowerCase()
     const companyMatch = !eportCompany || !gateCompany || eportCompany.includes(gateCompany.slice(0, 8)) || gateCompany.includes(eportCompany.slice(0, 8))
 
+    const sortedGateConts = Array.from(new Set(matchedGateBookings.map(b => b.containerId).filter(Boolean))).sort().join(', ')
+    const sortedEportConts = Array.from(new Set(allEportContList.filter(Boolean))).sort().join(', ')
+
     const checks = [
       {
         label: 'Số Lượng & Danh Sách Container',
-        gateVal: `${matchedGateBookings.length} Cont (${Array.from(new Set(matchedGateBookings.map(b => b.containerId))).join(', ') || selectedBooking.containerId || '—'})`,
-        eportVal: `${allEportContList.length > 0 ? allEportContList.length : (matchedGateBookings.length || 1)} Cont (${Array.from(new Set(allEportContList)).join(', ') || activeOrder.sourceLabel || '—'})`,
+        gateVal: `${matchedGateBookings.length} Cont (${sortedGateConts || selectedBooking.containerId || '—'})`,
+        eportVal: `${allEportContList.length > 0 ? allEportContList.length : (matchedGateBookings.length || 1)} Cont (${sortedEportConts || activeOrder.sourceLabel || '—'})`,
         ok: containerMatch,
         isContainerRow: true
       },
@@ -1559,8 +1803,8 @@ export default function GateBookingRequests() {
       },
       {
         label: 'Mã Booking',
-        gateVal: gateBookingNo || 'Chưa có Booking',
-        eportVal: eportBookingNo || 'Chưa nhập Booking',
+        gateVal: isManifestCodeMatch && refTag ? `${gateBookingNo} (${refTag})` : (gateBookingNo || 'Chưa có Booking'),
+        eportVal: isManifestCodeMatch ? `${gateBookingNo} (${eportBookingNo})` : (eportBookingNo || 'Chưa nhập Booking'),
         ok: bookingMatch
       },
       {
@@ -1586,8 +1830,8 @@ export default function GateBookingRequests() {
       badgeText: allReady
         ? `Khớp 2 bên · Đủ điều kiện duyệt (${matchedGateBookings.length} container trong Booking)`
         : !isSubmittedToPort
-        ? 'Chưa gửi về Cảng (Chờ khách hàng hoàn tất gửi đăng ký ePort)'
-        : 'Có sai lệch dữ liệu 2 bên',
+          ? 'Chưa gửi về Cảng (Chờ khách hàng hoàn tất gửi đăng ký ePort)'
+          : 'Có sai lệch dữ liệu 2 bên',
       order: activeOrder,
       checks,
       matchedGateBookings,
@@ -1638,7 +1882,7 @@ export default function GateBookingRequests() {
           })
         }
       })
-    } catch {}
+    } catch { }
 
     // 2. Quét từ manifestGeneratedBookings (Bản khai tàu)
     const generated = (manifestGeneratedBookings && manifestGeneratedBookings.length > 0)
@@ -1663,24 +1907,24 @@ export default function GateBookingRequests() {
       }
     })
 
-    // 3. Quét từ bookings state từ Backend API
-    ;(bookings || []).forEach(b => {
-      const cNo = String(b.containerId || b.containerNo || '').trim().toUpperCase()
-      if (cNo && !containerSlotMap.has(cNo)) {
-        const bSlot = b.autoYardSlot || b.yardSlot || {}
-        const bBlock = String(bSlot.blockCode || bSlot.block || '').trim().toUpperCase()
-        containerSlotMap.set(cNo, {
-          containerNo: cNo,
-          bookingCode: String(b.id || b.bookingCode || '').trim().toUpperCase(),
-          blockCode: bBlock,
-          bay: parseNum(bSlot.bay, 2),
-          row: parseNum(bSlot.row, 1),
-          tier: parseNum(bSlot.tier, 1),
-          size: Number(bSlot.size || 20) || 20,
-          source: 'backendBookings'
-        })
-      }
-    })
+      // 3. Quét từ bookings state từ Backend API
+      ; (bookings || []).forEach(b => {
+        const cNo = String(b.containerId || b.containerNo || '').trim().toUpperCase()
+        if (cNo && !containerSlotMap.has(cNo)) {
+          const bSlot = b.autoYardSlot || b.yardSlot || {}
+          const bBlock = String(bSlot.blockCode || bSlot.block || '').trim().toUpperCase()
+          containerSlotMap.set(cNo, {
+            containerNo: cNo,
+            bookingCode: String(b.id || b.bookingCode || '').trim().toUpperCase(),
+            blockCode: bBlock,
+            bay: parseNum(bSlot.bay, 2),
+            row: parseNum(bSlot.row, 1),
+            tier: parseNum(bSlot.tier, 1),
+            size: Number(bSlot.size || 20) || 20,
+            source: 'backendBookings'
+          })
+        }
+      })
 
     // 4. Quét từ combinedBlocks layout
     const blockData = combinedBlocks.find((b) => String(b.blockCode || b.code || '').trim().toUpperCase() === blockCode)
@@ -1706,8 +1950,8 @@ export default function GateBookingRequests() {
     const isBayOverlap = (bBay, bSize) => {
       const bayNum = parseNum(bBay, 2)
       const bIs40 = Number(bSize) >= 40
-      
-      const targetBays = is40 
+
+      const targetBays = is40
         ? (targetBay % 2 === 0 ? [targetBay - 1, targetBay, targetBay + 1] : [targetBay, targetBay + 1, targetBay + 2])
         : [targetBay]
 
@@ -1847,85 +2091,56 @@ export default function GateBookingRequests() {
     }
     const allGates = Array.from(allGatesMap.values())
 
-    const fleetPresets = [
-      { plate: '47K1-137.87', driver: 'VÕ HÃNG TÀU', phone: '0842 737 474' },
-      { plate: '38AA-196.90', driver: 'PHAN NGUYÊN GIA HUY', phone: '0905 881 234' },
-      { plate: '90B2-999.99', driver: 'NGUYỄN VĂN AN', phone: '0912 345 678' },
-      { plate: '43C-882.11', driver: 'LÊ HOÀNG NAM', phone: '0935 778 899' },
-    ]
-
     // 1. Quét theo containerBreakdown nếu có đơn ePort với từ 2 container trở lên của cùng 1 đơn
     const isEportMultiCont = Boolean(
       eportComparison?.containerBreakdown &&
       eportComparison.containerBreakdown.length > 1 &&
       (eportComparison.matchedGateBookings?.some(b => b.containerId === selectedBooking.containerId) ||
-       eportComparison.containerBreakdown.some(c => c.containerNumber === selectedBooking.containerId))
+        eportComparison.containerBreakdown.some(c => c.containerNumber === selectedBooking.containerId))
     )
     if (isEportMultiCont) {
       return eportComparison.containerBreakdown.map((item, idx) => {
         const found = allGates.find(b => String(b.containerId || '').trim().toUpperCase() === item.containerNumber)
-        const fleet = fleetPresets[idx % fleetPresets.length]
+        const orderFleet = manifestPortSyncService.extractFleetFromOrder(eportComparison?.order, item.containerNumber) ||
+          manifestPortSyncService.getOrderFleet(item.containerNumber)
         const fallbackSlot = `Block ${['D01', 'A01', 'D01', 'D01'][idx % 4]} · Bay 0${2 + idx * 2} (T1-R01)`
         const isRf = (item.containerType || found?.containerType || '').includes('RF') || found?.isReefer
+        const vPlate = orderFleet?.plate || getGateBookingVehicle(found) || (found?.licensePlate && found?.licensePlate !== 'Chưa gán xe' ? found.licensePlate : null)
+        const vDriver = orderFleet?.driver || getGateBookingDriver(found) || (found?.driverName && found?.driverName !== 'Chưa điều phối' ? found.driverName : null)
         return {
-          id: found?.id || `BK-MM2601S-${9101 + idx}`,
+          ...(found || {}),
+          id: found?.id || `BK-${(selectedBooking.voyageNumber || 'EG2605W').replace(/[^A-Z0-9]/gi, '')}-${item.containerNumber.slice(-4)}`,
           realId: found?.realId || found?.id,
+          isFromVesselManifest: Boolean(found?.isFromVesselManifest ?? selectedBooking.isFromVesselManifest ?? true),
+          sourceManifestId: found?.sourceManifestId || selectedBooking.sourceManifestId,
+          sourceManifestNumber: found?.sourceManifestNumber || selectedBooking.sourceManifestNumber,
           containerId: item.containerNumber,
           containerType: item.containerType || found?.containerType || '20GP',
-          company: found?.company || selectedBooking.company || 'Bien Dong Logistics',
-          vesselName: found?.vesselName || selectedBooking.vesselName || 'MAERSK MC-KINNEY MOLLER',
-          voyageNumber: found?.voyageNumber || selectedBooking.voyageNumber || 'MM-2601S',
-          cargoDeclarationId: item.gateBl || item.eportBl || found?.billOfLading || 'BL-INB-DAD-2601',
-          billOfLading: item.gateBl || item.eportBl || found?.billOfLading || 'BL-INB-DAD-2601',
+          company: found?.company || selectedBooking.company || '',
+          vesselName: found?.vesselName || selectedBooking.vesselName || '',
+          voyageNumber: found?.voyageNumber || selectedBooking.voyageNumber || '',
+          cargoDeclarationId: item.gateBl || item.eportBl || found?.billOfLading || selectedBooking.cargoDeclarationId || '',
+          billOfLading: item.gateBl || item.eportBl || found?.billOfLading || selectedBooking.billOfLading || '',
           operation: item.operation || found?.operation || selectedBooking.operation || 'Pickup',
           yardSlot: item.yardSlot && item.yardSlot !== '—' ? item.yardSlot : fallbackSlot,
           autoYardSlot: found?.autoYardSlot || { fullLocation: fallbackSlot, slotName: fallbackSlot },
           requestedGate: found?.requestedGate || selectedBooking.requestedGate || 'Gate 1',
-          eta: found?.eta || selectedBooking.eta || 'Hôm nay 08:30',
+          eta: found?.eta || selectedBooking.eta || '',
           status: found?.status || selectedBooking.status || 'Pending',
-          licensePlate: getGateBookingVehicle(found) || (found?.licensePlate && found?.licensePlate !== 'Chưa gán xe' ? found.licensePlate : fleet.plate),
-          driverName: getGateBookingDriver(found) || (found?.driverName && found?.driverName !== 'Chưa điều phối' ? found.driverName : fleet.driver),
-          phone: found?.phone || fleet.phone,
+          licensePlate: vPlate,
+          driverName: vDriver,
+          phone: orderFleet?.phone || found?.phone || '',
+          trailerPlate: orderFleet?.trailer || found?.trailerPlate || '',
+          licenseNumber: orderFleet?.license || found?.licenseNumber || '',
+          driverSnapshot: orderFleet?.driverSnapshot || found?.driverSnapshot,
+          vehicleSnapshot: orderFleet?.vehicle || found?.vehicleSnapshot,
           isReefer: isRf,
           fee: isRf ? 669600 : 583200,
         }
       })
     }
 
-    // 2. Fallback dành riêng cho lô 4 container MAERSK MC-KINNEY MOLLER của cùng đơn hàng Bien Dong Logistics
-    const isKnownMm = ['MSKU8829101', 'HLCU7719205', 'CMAU3381923', 'HLCU8821947'].includes(selectedBooking.containerId)
-    if (isKnownMm) {
-      const known = [
-        { id: 'BK-MM2601S-9101', containerId: 'MSKU8829101', containerType: '20GP', billOfLading: 'BL-INB-DAD-2601', plate: '47K1-137.87', driver: 'VÕ HÃNG TÀU', yard: 'Block D01 · Bay 02 (T1-R01)', fee: 583200, isRf: false },
-        { id: 'BK-MM2601S-9102', containerId: 'HLCU7719205', containerType: '45HC', billOfLading: 'BL-INB-DAD-2601', plate: '38AA-196.90', driver: 'PHAN NGUYÊN GIA HUY', yard: 'Block A01 · Bay 04 (T1-R01)', fee: 583200, isRf: false },
-        { id: 'BK-MM2601S-9103', containerId: 'CMAU3381923', containerType: '20RF', billOfLading: 'BL-INB-DAD-2602', plate: '90B2-999.99', driver: 'NGUYỄN VĂN AN', yard: 'Block D01 · Bay 06 (T1-R02)', fee: 669600, isRf: true },
-        { id: 'BK-MM2601S-9104', containerId: 'HLCU8821947', containerType: '20RF', billOfLading: 'BL-INB-DAD-2602', plate: '43C-882.11', driver: 'LÊ HOÀNG NAM', yard: 'Block D01 · Bay 08 (T1-R02)', fee: 669600, isRf: true },
-      ]
-      return known.map(k => {
-        const found = allGates.find(b => b.containerId === k.containerId)
-        return found ? {
-          ...found,
-          fee: k.fee,
-          yardSlot: found.autoYardSlot?.slotName || k.yard,
-          licensePlate: found.licensePlate && found.licensePlate !== 'Chưa gán xe' ? found.licensePlate : k.plate,
-          driverName: found.driverName && found.driverName !== 'Chưa điều phối' ? found.driverName : k.driver,
-        } : {
-          ...selectedBooking,
-          id: k.id,
-          containerId: k.containerId,
-          containerType: k.containerType,
-          billOfLading: k.billOfLading,
-          cargoDeclarationId: k.billOfLading,
-          licensePlate: k.plate,
-          driverName: k.driver,
-          yardSlot: k.yard,
-          fee: k.fee,
-          isReefer: k.isRf,
-        }
-      })
-    }
-
-    // 4. Nếu không phải lô từ 2 container trở lên của cùng 1 công ty -> Đơn lẻ 1 container, không gộp Bill
+    // 2. Nếu không phải lô từ 2 container trở lên của cùng 1 công ty -> Đơn lẻ 1 container, không gộp Bill
     return [{
       ...selectedBooking,
       fee: bookingTariffSummary.total || 583200,
@@ -2063,7 +2278,7 @@ export default function GateBookingRequests() {
     })
   }, [manifestGeneratedBookings, selectedVesselFilter, vesselSearch, searchQuery, statusFilter, operationFilter, gateFilter, companyFilter, dateFilter])
 
-  
+
   // Phân trang danh sách Tàu cập cảng
   const pagedVessels = useMemo(() => {
     const start = (vesselPage - 1) * vesselPageSize
@@ -2228,84 +2443,101 @@ export default function GateBookingRequests() {
   }
 
   // Xác nhận Phê duyệt Handler
-  const handleConfirmApproval = async () => {
+  const handleConfirmApproval = async (overrideTargets = null) => {
     if (!selectedBooking) return
     setLoading(true)
     try {
       const realId = selectedBooking.realId || selectedBooking.id
 
-      // Tự động phân bổ và gán Xe đầu kéo, Rơ-moóc & Tài xế phụ trách cho booking
+      // Ưu tiên trích xuất đội xe thực tế từ đơn ePort đã gửi (khách hàng chọn xe & tài xế theo đơn)
+      const activeEportOrder = eportComparison?.order || eportDetail || eportOrders[0]
+      if (activeEportOrder) {
+        try {
+          manifestPortSyncService.saveAllOrderFleets(activeEportOrder)
+        } catch (e) {
+          console.warn('Lỗi lưu fleet từ đơn ePort:', e)
+        }
+      }
+      const orderFleet = manifestPortSyncService.extractFleetFromOrder(activeEportOrder, selectedBooking.containerId) ||
+        manifestPortSyncService.getOrderFleet(selectedBooking.containerId) ||
+        manifestPortSyncService.getOrderFleet(selectedBooking.id) ||
+        manifestPortSyncService.getOrderFleet(selectedBooking.bookingCode)
+
       const pool = (typeof TRANSPORT_COMPANIES_POOL !== 'undefined' && Array.isArray(TRANSPORT_COMPANIES_POOL)) ? TRANSPORT_COMPANIES_POOL : []
       const carrierProfile =
         pool.find(p => p.companyName === selectedBooking.company) ||
         pool[0]
-      const defaultFleet = carrierProfile?.fleetOptions?.[0] || {
-        licensePlate: '47AB-294.69',
-        trailerPlate: '47R-012.88',
-        driverName: 'TRẦN VĂN TÙNG',
-        licenseNumber: 'FC-782910',
-        driverPhone: '0905 881 234'
-      }
 
-      const assignedPlate = (selectedBooking.licensePlate && selectedBooking.licensePlate !== 'Chưa gán xe' && selectedBooking.licensePlate !== 'Chưa gán' && selectedBooking.licensePlate !== 'Chưa điều phối')
-        ? selectedBooking.licensePlate
-        : (selectedBooking.suggestedPlate || defaultFleet.licensePlate)
-      const assignedTrailer = selectedBooking.trailerPlate || selectedBooking.suggestedTrailer || defaultFleet.trailerPlate
-      const assignedDriver = (selectedBooking.driverName && selectedBooking.driverName !== 'Chưa điều phối')
-        ? selectedBooking.driverName
-        : (selectedBooking.suggestedDriver || defaultFleet.driverName)
-      const assignedLicense = selectedBooking.licenseNumber || selectedBooking.suggestedLicense || defaultFleet.licenseNumber
-      const assignedPhone = selectedBooking.phone || defaultFleet.driverPhone || carrierProfile?.phone || '0905 123 456'
+      const isFakeApprovalPlate = p => !p || ['Chưa gán xe', 'Chưa gán', 'Chưa điều phối', '47AB-294.69', '43C-567.89'].includes(p)
+      const isFakeApprovalDriver = d => !d || ['Chưa điều phối', 'Chưa có tài xế', 'TRẦN VĂN TÙNG', 'Nguyễn Văn Minh'].includes(d)
 
-      const targets = (batchApproveList && batchApproveList.length > 0)
-        ? batchApproveList
-        : (orderContainersList && orderContainersList.length > 0 ? orderContainersList : [selectedBooking])
+      const assignedPlate = orderFleet?.plate ||
+        (!isFakeApprovalPlate(selectedBooking.licensePlate)
+          ? selectedBooking.licensePlate
+          : (!isFakeApprovalPlate(selectedBooking.suggestedPlate) ? selectedBooking.suggestedPlate : null))
+      const assignedTrailer = orderFleet?.trailer ||
+        (selectedBooking.trailerPlate !== '47R-012.88' ? selectedBooking.trailerPlate : null) ||
+        (selectedBooking.suggestedTrailer !== '47R-012.88' ? selectedBooking.suggestedTrailer : null) ||
+        null
+      const assignedDriver = orderFleet?.driver ||
+        (!isFakeApprovalDriver(selectedBooking.driverName)
+          ? selectedBooking.driverName
+          : (!isFakeApprovalDriver(selectedBooking.suggestedDriver) ? selectedBooking.suggestedDriver : null))
+      const assignedLicense = orderFleet?.license ||
+        (selectedBooking.licenseNumber !== 'FC-782910' ? selectedBooking.licenseNumber : null) ||
+        (selectedBooking.suggestedLicense !== 'FC-782910' ? selectedBooking.suggestedLicense : null) ||
+        null
+      const assignedPhone = orderFleet?.phone || selectedBooking.phone || carrierProfile?.phone || null
+
+      const targets = (Array.isArray(overrideTargets) && overrideTargets.length > 0)
+        ? overrideTargets
+        : (batchApproveList && batchApproveList.length > 0)
+          ? batchApproveList
+          : (orderContainersList && orderContainersList.length > 0 ? orderContainersList : [selectedBooking])
 
       const nowIso = new Date().toISOString()
+      const approvedAtStr = new Date().toLocaleString('vi-VN')
       const storedFees = JSON.parse(localStorage.getItem('NEXUSPORT_STORAGE_FEES') || '{}')
       const storedBills = JSON.parse(localStorage.getItem('NEXUSPORT_PORT_BILLS') || '{}')
 
       const totalBillToPush = totalBillAmount || (583200 * targets.length)
       const totalBillStr = `${totalBillToPush.toLocaleString('vi-VN')} VNĐ`
+      const isGuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val || '').trim())
+      const enrichedTargets = []
 
       for (const targetBooking of targets) {
-        const isTargetPrimary = targetBooking.id === selectedBooking.id
-        const tPlate = (targetBooking.licensePlate && targetBooking.licensePlate !== 'Chưa gán xe' && targetBooking.licensePlate !== 'Chưa điều phối')
-          ? targetBooking.licensePlate
-          : (isTargetPrimary ? assignedPlate : (targetBooking.suggestedPlate || assignedPlate))
-        const tTrailer = targetBooking.trailerPlate || targetBooking.suggestedTrailer || assignedTrailer
-        const tDriver = (targetBooking.driverName && targetBooking.driverName !== 'Chưa điều phối')
-          ? targetBooking.driverName
-          : (isTargetPrimary ? assignedDriver : (targetBooking.suggestedDriver || assignedDriver))
-        const tLicense = targetBooking.licenseNumber || targetBooking.suggestedLicense || assignedLicense
-        const tPhone = targetBooking.phone || assignedPhone
+        const tCont = targetBooking.containerId
+        const isTargetPrimary = targetBooking.id === selectedBooking.id || targetBooking.containerId === selectedBooking.containerId
+        const tOrderFleet = manifestPortSyncService.extractFleetFromOrder(activeEportOrder, tCont) ||
+          manifestPortSyncService.getOrderFleet(tCont) ||
+          manifestPortSyncService.getOrderFleet(targetBooking.id) ||
+          manifestPortSyncService.getOrderFleet(targetBooking.bookingCode)
 
-        if (targetBooking.isFromVesselManifest) {
-          manifestPortSyncService.submitTransportBookingToPort(targetBooking.id, {
-            licensePlate: tPlate,
-            trailerPlate: tTrailer,
-            driverName: tDriver,
-            licenseNumber: tLicense,
-            phone: tPhone,
-          })
-          manifestPortSyncService.updateGeneratedGateBookingStatus(targetBooking.id, {
-            status: 'Approved',
-            approvedAt: new Date().toLocaleString('vi-VN'),
-            approvedBy: 'Dispatcher',
-            timelineStep: 4,
-            transportSubmitted: true,
-            licensePlate: tPlate,
-            trailerPlate: tTrailer,
-            driverName: tDriver,
-            licenseNumber: tLicense,
-            phone: tPhone,
-            vehiclePlate: tPlate,
-            vehicleStatus: 'Available',
-            driverStatus: 'Available',
-          })
-        } else {
-          await bookingService.approveBooking(targetBooking.realId || targetBooking.id).catch(() => {})
-        }
+        const carrierProfileForTarget = pool.find(p => p.companyName === targetBooking.company) || carrierProfile
+
+        const tPlate = tOrderFleet?.plate ||
+          (!isFakeApprovalPlate(targetBooking.licensePlate) && (targetBooking.containerId === selectedBooking.containerId || targetBooking.licensePlate !== assignedPlate)
+            ? targetBooking.licensePlate
+            : (!isFakeApprovalPlate(targetBooking.suggestedPlate) ? targetBooking.suggestedPlate : null))
+        const tTrailer = tOrderFleet?.trailer ||
+          (targetBooking.trailerPlate !== '47R-012.88' ? targetBooking.trailerPlate : null) ||
+          (targetBooking.suggestedTrailer !== '47R-012.88' ? targetBooking.suggestedTrailer : null) ||
+          null
+        const tDriver = tOrderFleet?.driver ||
+          (!isFakeApprovalDriver(targetBooking.driverName) && (targetBooking.containerId === selectedBooking.containerId || targetBooking.driverName !== assignedDriver)
+            ? targetBooking.driverName
+            : (!isFakeApprovalDriver(targetBooking.suggestedDriver) ? targetBooking.suggestedDriver : null))
+        const tLicense = tOrderFleet?.license ||
+          (targetBooking.licenseNumber !== 'FC-782910' ? targetBooking.licenseNumber : null) ||
+          (targetBooking.suggestedLicense !== 'FC-782910' ? targetBooking.suggestedLicense : null) ||
+          null
+        const tPhone = tOrderFleet?.phone || targetBooking.phone || carrierProfileForTarget?.phone || null
+
+        const isManifestBk = Boolean(
+          targetBooking.isFromVesselManifest ||
+          selectedBooking.isFromVesselManifest ||
+          !isGuid(targetBooking.realId || targetBooking.id)
+        )
 
         const tDays = bookingStorageDays[targetBooking.id] || 7
         const tStorageCalc = calculatePortStorageFee(tDays, targetBooking.containerType)
@@ -2322,6 +2554,7 @@ export default function GateBookingRequests() {
         }
 
         const tSlot = (isTargetPrimary && reservedSlot) ? reservedSlot : (targetBooking.autoYardSlot || reservedSlot)
+        const resolvedYardSlot = tSlot ? (tSlot.slotName || `Block ${tSlot.blockCode} · ${tSlot.bayDisplay || 'Bay 02'} · T${tSlot.tier || 1}-R${tSlot.row || 1}`) : (targetBooking.yardSlot || 'Đã cấp vị trí bãi')
         const targetFee = targetBooking.fee || (targetBooking.isReefer ? 669600 : 583200)
         const tPortBill = {
           billNumber: `BILL-${targetBooking.bookingCode || targetBooking.id}`,
@@ -2331,14 +2564,11 @@ export default function GateBookingRequests() {
           company: targetBooking.company,
           billOfLading: targetBooking.billOfLading || (targetBooking.cargoDeclarationId && targetBooking.cargoDeclarationId !== 'N/A' ? targetBooking.cargoDeclarationId : '') || selectedManifestInfo?.blNumber || '',
           direction: isImportBooking ? 'IMPORT' : 'EXPORT',
-          yardSlot: tSlot ? `Block ${tSlot.blockCode} · ${tSlot.bayDisplay || 'Bay 02'} · T${tSlot.tier || 1}-R${tSlot.row || 1}` : 'Đã cấp vị trí bãi',
-          yardSlot: tSlot ? (tSlot.slotName || `Block ${tSlot.blockCode} · ${tSlot.bayDisplay || 'Bay 02'} · T${tSlot.tier || 1}-R${tSlot.row || 1}`) : (targetBooking.yardSlot || 'Đã cấp vị trí bãi'),
+          yardSlot: resolvedYardSlot,
           tariff: bookingTariffSummary,
           items: bookingTariffSummary.items || [],
           subtotal: bookingTariffSummary.subtotal || 0,
           vat: bookingTariffSummary.vat || 0,
-          total: bookingTariffSummary.total || 0,
-          totalFormatted: bookingTariffSummary.totalFormatted || '0 đ',
           total: targetFee,
           totalFormatted: `${targetFee.toLocaleString('vi-VN')} VNĐ`,
           shiftingFee: activeShiftingFee?.fee || 0,
@@ -2347,12 +2577,72 @@ export default function GateBookingRequests() {
           status: 'SENT_TO_CARRIER'
         }
 
+        // Lưu order fleet trước để đảm bảo mọi luồng đồng bộ đọc đúng xe & tài xế riêng của từng container
+        if (tPlate || tDriver) {
+          manifestPortSyncService.saveOrderFleet([targetBooking.containerId, targetBooking.id, targetBooking.bookingCode], {
+            plate: tPlate,
+            driver: tDriver,
+            phone: tPhone,
+            license: tLicense,
+            trailer: tTrailer,
+            ...(tOrderFleet?.documents ? { documents: tOrderFleet.documents } : {}),
+            ...(tOrderFleet?.driverSnapshot ? { driverSnapshot: tOrderFleet.driverSnapshot } : {}),
+            ...(tOrderFleet?.vehicle ? { vehicleSnapshot: tOrderFleet.vehicle, vehicle: tOrderFleet.vehicle } : {}),
+          })
+        }
+
+        if (isManifestBk) {
+          manifestPortSyncService.submitTransportBookingToPort(targetBooking.id, {
+            licensePlate: tPlate,
+            trailerPlate: tTrailer,
+            driverName: tDriver,
+            licenseNumber: tLicense,
+            phone: tPhone,
+          })
+          await manifestPortSyncService.updateGeneratedGateBookingStatus(targetBooking.id, {
+            status: 'Approved',
+            approvedAt: approvedAtStr,
+            approvedBy: 'Dispatcher',
+            timelineStep: 4,
+            transportSubmitted: true,
+            licensePlate: tPlate,
+            trailerPlate: tTrailer,
+            driverName: tDriver,
+            suggestedPlate: tPlate,
+            suggestedDriver: tDriver,
+            licenseNumber: tLicense,
+            phone: tPhone,
+            vehiclePlate: tPlate,
+            vehicleStatus: 'Available',
+            driverStatus: 'Available',
+            portBill: tPortBill,
+            storageData: tStorageData,
+            ...(activeEportOrder?.id ? { eportOrderId: activeEportOrder.id, eportOrderNumber: activeEportOrder.number } : {}),
+            ...(tOrderFleet?.documents ? { eportDocuments: tOrderFleet.documents, documents: tOrderFleet.documents } : {}),
+            ...(tOrderFleet?.driverSnapshot ? { driverSnapshot: tOrderFleet.driverSnapshot } : {}),
+            ...(tOrderFleet?.vehicle ? { vehicleSnapshot: tOrderFleet.vehicle } : {}),
+          })
+        } else {
+          await bookingService.approveBooking(targetBooking.realId || targetBooking.id).catch(() => { })
+        }
+
         storedFees[targetBooking.id] = tStorageData
         if (targetBooking.containerId) storedFees[targetBooking.containerId] = tStorageData
         storedBills[targetBooking.id] = tPortBill
         if (targetBooking.containerId) storedBills[targetBooking.containerId] = tPortBill
 
         manifestPortSyncService.dismissTransportSubmissionAlert(targetBooking.id)
+
+        enrichedTargets.push({
+          ...targetBooking,
+          licensePlate: tPlate,
+          trailerPlate: tTrailer,
+          driverName: tDriver,
+          licenseNumber: tLicense,
+          phone: tPhone,
+          yardSlot: resolvedYardSlot,
+          fee: targetFee,
+        })
 
         window.dispatchEvent(new CustomEvent('nexusport:manifest_synced', {
           detail: { type: 'PORT_BILL_SENT', bookingId: targetBooking.id, containerId: targetBooking.containerId, bill: tPortBill }
@@ -2366,8 +2656,8 @@ export default function GateBookingRequests() {
         vesselName: selectedBooking.vesselName || 'MAERSK MC-KINNEY MOLLER',
         voyageNumber: selectedBooking.voyageNumber || 'MM-2601S',
         company: selectedBooking.company || 'Bien Dong Logistics - Nexus Logistics',
-        containerCount: targets.length,
-        containers: targets.map(t => ({
+        containerCount: enrichedTargets.length,
+        containers: enrichedTargets.map(t => ({
           containerId: t.containerId,
           containerType: t.containerType,
           billOfLading: t.billOfLading || t.cargoDeclarationId,
@@ -2386,26 +2676,22 @@ export default function GateBookingRequests() {
       try {
         localStorage.setItem('NEXUSPORT_STORAGE_FEES', JSON.stringify(storedFees))
         localStorage.setItem('NEXUSPORT_PORT_BILLS', JSON.stringify(storedBills))
-        setTransportAlerts(manifestPortSyncService.getTransportSubmissionAlerts())
+        setBillAlerts(getBillAlerts())
         setManifestSyncVersion(v => v + 1)
         window.dispatchEvent(new Event('storage'))
 
         const targetEport = eportComparison?.order || eportOrders[0]
-        if (targetEport?.id && (targetEport.pricingStatus === 'AWAITING' || targetEport.approvalStatus === 'PENDING')) {
+        if (targetEport?.id && (targetEport.pricingStatus === 'AWAITING' || targetEport.approvalStatus === 'PENDING' || targetEport.status === 'PENDING_APPROVAL')) {
           try {
-            const billTotal = Math.round(Number(bookingTariffSummary?.total || 500000) * targets.length)
             const eportDetailLive = await serviceOrdersApi.get(targetEport.id).catch(() => targetEport)
             await serviceOrdersApi.billingResult(targetEport.id, {
               requestId: crypto.randomUUID(),
               expectedVersion: eportDetailLive.version || targetEport.version || 1,
               status: 'APPROVED',
-              reference: `BILL-${selectedBooking.bookingCode || selectedBooking.id}`,
-              total: billTotal,
               reference: `BILL-${selectedBooking.bookingCode || selectedBooking.id}-TOTAL`,
               total: totalBillToPush,
               currency: 'VND',
-              reason: `Dispatcher đã duyệt ${targets.length} container trong lượt cổng và xuất cước phí`,
-              reason: `Dispatcher đã duyệt toàn bộ ${targets.length} container trong Booking và xuất 1 Bill Tổng duy nhất (${totalBillStr})`,
+              reason: `Dispatcher đã duyệt toàn bộ ${enrichedTargets.length} container trong Booking và xuất 1 Bill Tổng duy nhất (${totalBillStr})`,
               sourceDocumentsChecked: true,
               sourceEvidenceReference: selectedBooking.cargoDeclarationId || selectedBooking.id
             })
@@ -2417,8 +2703,13 @@ export default function GateBookingRequests() {
         console.warn('Could not save storage fee / port bill', e)
       }
 
-      const updatedIds = new Set(targets.map(t => t.id))
-      const updatedConts = new Set(targets.map(t => t.containerId))
+      const updatedIds = new Set(enrichedTargets.map(t => t.id))
+      const updatedConts = new Set(enrichedTargets.map(t => t.containerId))
+      const targetByContOrId = new Map()
+      for (const t of enrichedTargets) {
+        if (t.id) targetByContOrId.set(t.id, t)
+        if (t.containerId) targetByContOrId.set(String(t.containerId).trim().toUpperCase(), t)
+      }
 
       const updatedBooking = {
         ...selectedBooking,
@@ -2433,51 +2724,37 @@ export default function GateBookingRequests() {
         vehiclePlate: assignedPlate,
         vehicleStatus: 'Available',
         driverStatus: 'Available',
-        approvedAt: new Date().toLocaleString('vi-VN'),
+        approvedAt: approvedAtStr,
         approvedBy: 'Dispatcher',
       }
 
       setSelectedBooking(updatedBooking)
-      targets.forEach(t => {
-        const tPlate = (t.licensePlate && t.licensePlate !== 'Chưa gán xe' && t.licensePlate !== 'Chưa điều phối')
-          ? t.licensePlate
-          : assignedPlate
-        const tTrailer = t.trailerPlate || assignedTrailer
-        const tDriver = (t.driverName && t.driverName !== 'Chưa điều phối')
-          ? t.driverName
-          : assignedDriver
-        const tLicense = t.licenseNumber || assignedLicense
-        const tPhone = t.phone || assignedPhone
-
-        manifestPortSyncService.updateGeneratedGateBookingStatus(t.id, {
+      setManifestSyncVersion(v => v + 1)
+      setBookings(prev => prev.map(b => {
+        const matched = targetByContOrId.get(b.id) || targetByContOrId.get(String(b.containerId || '').trim().toUpperCase())
+        if (!matched && !updatedIds.has(b.id) && !updatedConts.has(b.containerId)) return b
+        return {
+          ...b,
           status: 'Approved',
           timelineStep: 4,
           transportSubmitted: true,
-          licensePlate: assignedPlate,
-          trailerPlate: assignedTrailer,
-          driverName: assignedDriver,
-          licenseNumber: assignedLicense,
-          phone: assignedPhone,
-          vehiclePlate: assignedPlate,
-          licensePlate: tPlate,
-          trailerPlate: tTrailer,
-          driverName: tDriver,
-          licenseNumber: tLicense,
-          phone: tPhone,
-          vehiclePlate: tPlate,
+          licensePlate: matched?.licensePlate ?? b.licensePlate,
+          trailerPlate: matched?.trailerPlate ?? b.trailerPlate,
+          driverName: matched?.driverName ?? b.driverName,
+          licenseNumber: matched?.licenseNumber ?? b.licenseNumber,
+          phone: matched?.phone ?? b.phone,
+          vehiclePlate: matched?.licensePlate ?? b.vehiclePlate,
           vehicleStatus: 'Available',
           driverStatus: 'Available',
-          approvedAt: new Date().toLocaleString('vi-VN'),
+          approvedAt: approvedAtStr,
           approvedBy: 'Dispatcher',
-        })
-      })
-      setManifestSyncVersion(v => v + 1)
-      setBookings(prev => prev.map(b => (updatedIds.has(b.id) || updatedConts.has(b.containerId)) ? { ...b, ...updatedBooking, id: b.id, containerId: b.containerId } : b))
+        }
+      }))
 
       showToast(
-        targets.length > 1
-          ? `🟢 Đã duyệt toàn bộ ${targets.length} container trong Booking & Gửi 1 Bill Tổng (${totalBillStr}) sang Đơn vị Vận tải!`
-          : `🟢 Đã duyệt Booking ${selectedBooking.id} và tự động gán xe ${assignedPlate} (${assignedDriver})!`
+        enrichedTargets.length > 1
+          ? `🟢 Đã duyệt toàn bộ ${enrichedTargets.length} container trong Booking & Gửi 1 Bill Tổng (${totalBillStr}) sang Đơn vị Vận tải!`
+          : `🟢 Đã duyệt Booking ${selectedBooking.id}${assignedPlate ? ` (${assignedPlate}${assignedDriver ? ` · ${assignedDriver}` : ''})` : ''}!`
       )
       setShowApproveModal(false)
       setBatchApproveList([])
@@ -2508,17 +2785,19 @@ export default function GateBookingRequests() {
       const targetList = (batchApproveList && batchApproveList.length > 0)
         ? batchApproveList
         : (eportComparison?.matchedGateBookings && eportComparison.matchedGateBookings.length > 0)
-        ? eportComparison.matchedGateBookings
-        : [selectedBooking]
+          ? eportComparison.matchedGateBookings
+          : [selectedBooking]
 
       // Bên Cổng (Gate Booking): GIỮ NGUYÊN trạng thái điều phối xe & tài xế.
       // Chỉ đổi trạng thái bên Cổng khi và chỉ khi bấm "Duyệt cả 3 Cont & Gửi 1 Bill Tổng"!
 
-      // Xử lý từ chối đơn Dịch Vụ ePort (DV-...) tương ứng
+      // Xử lý từ chối đơn Dịch Vụ ePort (DV-...) tương ứng và gỡ xe & tài xế nếu không còn đơn hợp lệ nào khác
       const eportOrderId = eportComparison?.order?.id || selectedEportOrderId || eportDetail?.id || (eportOrders?.length > 0 ? eportOrders[0].id : null)
       if (eportOrderId) {
+        let rejectedDetail = eportComparison?.order || eportDetail || eportOrders.find(o => o.id === eportOrderId) || { id: eportOrderId }
         try {
           const detail = eportComparison?.order || await serviceOrdersApi.get(eportOrderId)
+          rejectedDetail = detail || rejectedDetail
           const version = detail?.version ?? 1
           if (detail?.allowedActions?.includes('REJECT')) {
             await serviceOrdersApi.action(eportOrderId, {
@@ -2546,17 +2825,84 @@ export default function GateBookingRequests() {
           console.warn('Lỗi gọi API reject đơn ePort:', err)
         }
 
-        setEportValidationMap(prev => {
-          const updated = {
-            ...prev,
-            [eportOrderId]: { status: 'AUTO_REJECTED', reason: rejectionReason }
+        // Gỡ bỏ xe & tài xế khỏi Gate Booking (localStorage + PostgreSQL) cho các container chỉ gắn với đơn đã bị từ chối này
+        try {
+          const freshListRes = await serviceOrdersApi.list({ pageSize: 50 }).catch(() => null)
+          const freshItems = freshListRes?.items || eportListItems || []
+          const remainingCandidates = freshItems
+            .filter(o => o && o.id !== eportOrderId && !['REJECTED', 'CANCELLED', 'DRAFT'].includes(String(o.status || '').toUpperCase()))
+            .slice(0, 15)
+          const remainingActive = await Promise.all(
+            remainingCandidates.map(async (o) => {
+              if (!o?.content?.delivery?.trips && o?.id) {
+                return await serviceOrdersApi.get(o.id).catch(() => o)
+              }
+              return o
+            })
+          )
+          // Đảm bảo danh sách container trong targetList cũng được truyền kèm để gỡ triệt để kể cả khi detail chưa có mảng containers
+          const fallbackConts = (targetList || []).map(t => ({ containerNumber: t.containerId })).filter(x => x.containerNumber)
+          const orderToUnassign = {
+            ...rejectedDetail,
+            containers: (rejectedDetail.containers && rejectedDetail.containers.length > 0) ? rejectedDetail.containers : fallbackConts,
           }
-          try { localStorage.setItem('nexusport_eport_validation_map', JSON.stringify(updated)) } catch (e) {}
-          return updated
-        })
+          const didUnassign = await manifestPortSyncService.unassignRejectedOrderFromGateBookings(orderToUnassign, remainingActive)
+          if (didUnassign) {
+            const rejectedIds = new Set((targetList || []).map(t => t.id))
+            const rejectedConts = new Set((targetList || []).map(t => String(t.containerId || '').trim().toUpperCase()))
+            const activeContSet = new Set()
+            remainingActive.forEach(ao => {
+              ; (ao?.containers || []).forEach(c => {
+                const n = String(c?.containerNumber || c || '').trim().toUpperCase()
+                if (n) activeContSet.add(n)
+              })
+                ; (ao?.content?.lines || []).forEach(l => {
+                  const n = String(l?.declaration?.containerNumber || l?.containerNumber || '').trim().toUpperCase()
+                  if (n) activeContSet.add(n)
+                })
+            })
+            setBookings(prev => prev.map(b => {
+              const bCont = String(b.containerId || '').trim().toUpperCase()
+              if (!(rejectedIds.has(b.id) || (bCont && rejectedConts.has(bCont))) || (bCont && activeContSet.has(bCont))) {
+                return b
+              }
+              return {
+                ...b,
+                status: 'WaitingTransport',
+                transportSubmitted: false,
+                licensePlate: null,
+                vehiclePlate: null,
+                suggestedPlate: null,
+                trailerPlate: null,
+                driverName: null,
+                suggestedDriver: null,
+                licenseNumber: null,
+                phone: null,
+                driverSnapshot: null,
+                vehicleSnapshot: null,
+                eportOrderId: null,
+                eportOrderNumber: null,
+                portBill: null,
+                portBillPaid: false,
+                paymentStatus: 'Unpaid',
+              }
+            }))
+          }
+        } catch (unassignErr) {
+          console.warn('Lỗi gỡ xe/tài xế sau khi từ chối đơn:', unassignErr)
+        }
+
+        setEportValidationMap(prev => ({
+          ...prev,
+          [eportOrderId]: {
+            status: 'REJECTED',
+            reason: rejectionReason,
+            containerIds: (targetList || []).map(t => t.containerId).filter(Boolean),
+          }
+        }))
 
         setEportListItems(prev => prev.map(o => {
-          if (o.id === eportOrderId || (eportOrderId && String(o.id).includes(eportOrderId)) || (selectedBooking && o.sourceLabel && o.sourceLabel.includes(selectedBooking.containerId))) {
+          if (o.id === eportOrderId || (eportOrderId && String(o.id).includes(eportOrderId))) {
             return {
               ...o,
               status: 'REJECTED',
@@ -2571,7 +2917,7 @@ export default function GateBookingRequests() {
       setManifestSyncVersion(v => v + 1)
       fetchBookings()
 
-      showToast(`🔴 Đã từ chối đơn Dịch vụ ePort. Lý do: ${rejectionReason}`)
+      showToast(`🔴 Đã từ chối đơn Dịch vụ ePort & gỡ xe/tài xế khỏi container (nếu không còn đơn hợp lệ khác). Lý do: ${rejectionReason}`)
       setShowRejectModal(false)
       setShowEportSyncPopup(false)
       setShowContainerDetailModal(false)
@@ -2707,8 +3053,8 @@ export default function GateBookingRequests() {
     const activeVesselObj =
       selectedVesselFilter !== 'All'
         ? approvedVesselsList.find(
-            v => v.manifestNumber === selectedVesselFilter || v.manifestId === selectedVesselFilter || v.vesselName === selectedVesselFilter
-          )
+          v => v.manifestNumber === selectedVesselFilter || v.manifestId === selectedVesselFilter || v.vesselName === selectedVesselFilter
+        )
         : null
 
     const allCompaniesCollapsed =
@@ -2836,250 +3182,251 @@ export default function GateBookingRequests() {
         {/* Danh sách từng Bảng riêng cho mỗi Ngày & Chuyến Tàu */}
         {!isCompanySectionCollapsed && manifestBookingsByCompany.length > 0 && (
           <>
-          <div className="space-y-4">
-            {pagedCompanies.map((group, gIdx) => {
-              const globalIdx = (companyPage - 1) * companyPageSize + gIdx + 1
-              const waitingTransportCount = group.items.filter(x => !isBookingTransportSubmitted(x) && !isBookingApprovedOrBillSent(x)).length
-              const readyToReviewCount = group.items.filter(x => isBookingTransportSubmitted(x) && !isBookingApprovedOrBillSent(x)).length
-              const isGroupCollapsed = Boolean(collapsedCompanies[group.groupKey || group.companyName])
+            <div className="space-y-4">
+              {pagedCompanies.map((group, gIdx) => {
+                const globalIdx = (companyPage - 1) * companyPageSize + gIdx + 1
+                const waitingTransportCount = group.items.filter(x => !isBookingTransportSubmitted(x) && !isBookingApprovedOrBillSent(x)).length
+                const readyToReviewCount = group.items.filter(x => isBookingTransportSubmitted(x) && !isBookingApprovedOrBillSent(x)).length
+                const isGroupCollapsed = Boolean(collapsedCompanies[group.groupKey || group.companyName])
 
-              return (
-                <div
-                  key={group.groupKey || group.companyName}
-                  className="epo-worklist transition-all"
-                >
-                  {/* Header của từng Bảng Ngày & Chuyến Tàu (vibe ePort) */}
+                return (
                   <div
-                    onClick={() =>
-                      setCollapsedCompanies(prev => ({
-                        ...prev,
-                        [group.groupKey || group.companyName]: !prev[group.groupKey || group.companyName],
-                      }))
-                    }
-                    className="px-5 py-3.5 bg-[#fbfcfe] hover:bg-[#f5f8fc] border-b border-[#e9eef4] flex justify-between items-center gap-2 cursor-pointer transition select-none"
+                    key={group.groupKey || group.companyName}
+                    className="epo-worklist transition-all"
                   >
-                    <div className="flex items-center gap-3">
-                      <span className="w-7 h-7 rounded-[9px] bg-[#f5f8fc] border border-[#e2e9f1] text-[#3e5873] font-mono font-bold text-[11px] flex items-center justify-center shrink-0">
-                        {globalIdx}
-                      </span>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-[#eef4fb] text-[#1b4372] border border-[#d6e4f3] font-mono font-bold text-xs">
-                            <span className="material-symbols-outlined text-[13px]">calendar_today</span>
-                            <span>{group.date}</span>
-                          </span>
-                          <h4 className="text-[13px] font-bold text-[#29415a] flex items-center gap-1.5">
-                            <span className="material-symbols-outlined text-sm text-[#ea580c]">directions_boat</span>
-                            <span>{group.vesselName}</span>
-                            {group.voyageNumber && (
-                              <span className="font-mono text-xs font-semibold text-[#60768f]">
-                                ({group.voyageNumber})
-                              </span>
-                            )}
-                          </h4>
+                    {/* Header của từng Bảng Ngày & Chuyến Tàu (vibe ePort) */}
+                    <div
+                      onClick={() =>
+                        setCollapsedCompanies(prev => ({
+                          ...prev,
+                          [group.groupKey || group.companyName]: !prev[group.groupKey || group.companyName],
+                        }))
+                      }
+                      className="px-5 py-3.5 bg-[#fbfcfe] hover:bg-[#f5f8fc] border-b border-[#e9eef4] flex justify-between items-center gap-2 cursor-pointer transition select-none"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="w-7 h-7 rounded-[9px] bg-[#f5f8fc] border border-[#e2e9f1] text-[#3e5873] font-mono font-bold text-[11px] flex items-center justify-center shrink-0">
+                          {globalIdx}
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-[#eef4fb] text-[#1b4372] border border-[#d6e4f3] font-mono font-bold text-xs">
+                              <span className="material-symbols-outlined text-[13px]">calendar_today</span>
+                              <span>{group.date}</span>
+                            </span>
+                            <h4 className="text-[13px] font-bold text-[#29415a] flex items-center gap-1.5">
+                              <span className="material-symbols-outlined text-sm text-[#ea580c]">directions_boat</span>
+                              <span>{group.vesselName}</span>
+                              {group.voyageNumber && (
+                                <span className="font-mono text-xs font-semibold text-[#60768f]">
+                                  ({group.voyageNumber})
+                                </span>
+                              )}
+                            </h4>
+                          </div>
+                          <div className="text-[11px] text-[#8a9bb0] mt-0.5 flex items-center gap-2">
+                            <span>Hãng tàu: <strong className="text-[#3e5873]">{group.shippingLine || 'Hãng tàu'}</strong></span>
+                            <span>•</span>
+                            <span className={group.direction === 'IMPORT' ? 'text-sky-700 font-semibold' : 'text-purple-700 font-semibold'}>
+                              {group.direction === 'IMPORT' ? 'Hàng Nhập khẩu' : 'Hàng Xuất khẩu'}
+                            </span>
+                          </div>
                         </div>
-                        <div className="text-[11px] text-[#8a9bb0] mt-0.5 flex items-center gap-2">
-                          <span>Hãng tàu: <strong className="text-[#3e5873]">{group.shippingLine || 'Hãng tàu'}</strong></span>
-                          <span>•</span>
-                          <span className={group.direction === 'IMPORT' ? 'text-sky-700 font-semibold' : 'text-purple-700 font-semibold'}>
-                            {group.direction === 'IMPORT' ? 'Hàng Nhập khẩu' : 'Hàng Xuất khẩu'}
+                      </div>
+
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="epo-result-count font-mono">
+                          {group.items.length} Cont
+                        </span>
+
+                        {waitingTransportCount > 0 ? (
+                          <span className="epo-badge orange">
+                            <span />
+                            Chờ vận tải gửi booking ({waitingTransportCount})
                           </span>
-                        </div>
+                        ) : readyToReviewCount > 0 ? (
+                          <span className="epo-badge blue">
+                            <span />
+                            Vận tải đã gửi · Chờ duyệt ({readyToReviewCount})
+                          </span>
+                        ) : (
+                          <span className="epo-badge green">
+                            <span />
+                            Đã đủ xe &amp; duyệt
+                          </span>
+                        )}
+
+                        <span className="material-symbols-outlined text-[#8a9bb0] text-base">
+                          {isGroupCollapsed ? 'expand_more' : 'expand_less'}
+                        </span>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
-                      <span className="epo-result-count font-mono">
-                        {group.items.length} Cont
-                      </span>
+                    {/* Bảng các Container của Ngày & Chuyến Tàu này */}
+                    {!isGroupCollapsed && (
+                      <div className="w-full overflow-x-auto">
+                        <table className="w-full text-left border-collapse text-xs">
+                          <thead>
+                            <tr className="bg-[#f7f9fc] border-b border-[#e9eef4] text-[#8a9bb0] font-bold uppercase text-[10px] tracking-wider">
+                              <th className="py-2.5 px-3.5">Mã Đơn</th>
+                              <th className="py-2.5 px-3">Container</th>
+                              <th className="py-2.5 px-3">Phương Tiện &amp; Tài Xế</th>
+                              <th className="py-2.5 px-3">Vị Trí Bãi</th>
+                              <th className="py-2.5 px-3">Trạng Thái Hàng Hóa</th>
+                              <th className="py-2.5 px-3.5 text-right">Thao Tác</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 font-medium">
+                            {group.items.map((b, bIdx) => {
+                              const isSubmitted = isBookingTransportSubmitted(b)
+                              const isPickup = b.operation === 'Pickup'
+                              const slot = b.autoYardSlot || {}
+                              const isReefer = slot.isReefer || (b.containerType || '').includes('RF')
+                              const isDG = slot.isDG || (b.dgClass || '').includes('Class')
+                              const matchedEport = eportListItems.find(
+                                (o) =>
+                                  (b.eportOrderId && o.id === b.eportOrderId) ||
+                                  eportValidationMap[o.id]?.bookingId === b.id ||
+                                  (b.containerId && String(o.sourceLabel || '').toUpperCase().includes(String(b.containerId).toUpperCase())) ||
+                                  (b.containerId && (o.containers || []).some(c => (c.containerNumber || c).toUpperCase() === b.containerId.toUpperCase())) ||
+                                  (b.voyageNumber && String(o.sourceLabel || '').toUpperCase().includes(String(b.voyageNumber).replace(/[^A-Z0-9]/gi, '').toUpperCase())) ||
+                                  (b.id && (String(o.sourceLabel || '').toUpperCase().includes(String(b.id).toUpperCase()) || (o.bookingNumber && o.bookingNumber.toUpperCase() === b.id.toUpperCase())))
+                              )
+                              const isEportPaid = !!(
+                                matchedEport &&
+                                !['REJECTED', 'CANCELLED'].includes(String(matchedEport.status || '').toUpperCase()) &&
+                                ['PAID', 'SUCCEEDED', 'NOT_REQUIRED'].includes(String(matchedEport.paymentStatus || '').toUpperCase())
+                              )
+                              const isRejectedUnassigned = isBookingRejectedOrUnassigned(b)
+                              const isApprovedOrBilled = !isRejectedUnassigned && (isBookingApprovedOrBillSent(b) || isEportPaid)
+                              const isPaid = !isRejectedUnassigned && (isEportPaid || !!b.portBillPaid || b.paymentStatus === 'Paid' || b.status === 'Ready')
 
-                      {waitingTransportCount > 0 ? (
-                        <span className="epo-badge orange">
-                          <span />
-                          Chờ vận tải gửi booking ({waitingTransportCount})
-                        </span>
-                      ) : readyToReviewCount > 0 ? (
-                        <span className="epo-badge blue">
-                          <span />
-                          Vận tải đã gửi · Chờ duyệt ({readyToReviewCount})
-                        </span>
-                      ) : (
-                        <span className="epo-badge green">
-                          <span />
-                          Đã đủ xe &amp; duyệt
-                        </span>
-                      )}
+                              let completionBadge = { cls: 'orange', icon: 'local_shipping', text: 'Chờ vận tải gửi booking' }
+                              if (b.status === 'Cancelled' || b.status === 'Canceled') {
+                                completionBadge = { cls: 'slate', icon: 'block', text: 'Đã hủy' }
+                              } else if (isPaid) {
+                                completionBadge = { cls: 'green', icon: 'check_circle', text: '✓ Sẵn sàng vào cổng (Đã thanh toán)' }
+                              } else if (isApprovedOrBilled) {
+                                completionBadge = { cls: 'orange', icon: 'account_balance_wallet', text: 'Đã duyệt · Chờ thanh toán' }
+                              } else {
+                                // Khi chưa duyệt & gửi bill: Luôn giữ nguyên trạng thái Chờ vận tải gửi booking (không đổi sang Từ chối)
+                                completionBadge = { cls: 'orange', icon: 'local_shipping', text: 'Chờ vận tải gửi booking' }
+                              }
 
-                      <span className="material-symbols-outlined text-[#8a9bb0] text-base">
-                        {isGroupCollapsed ? 'expand_more' : 'expand_less'}
-                      </span>
-                    </div>
-                  </div>
+                              const bayNumOnly = String(slot.bay || slot.bayCode || slot.bayDisplay || '02').replace(/\D/g, '').padStart(2, '0')
+                              const cleanBay = `Bay ${bayNumOnly}`
 
-                  {/* Bảng các Container của Ngày & Chuyến Tàu này */}
-                  {!isGroupCollapsed && (
-                    <div className="w-full overflow-x-auto">
-                      <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                          <tr className="bg-[#f7f9fc] border-b border-[#e9eef4] text-[#8a9bb0] font-bold uppercase text-[10px] tracking-wider">
-                            <th className="py-2.5 px-3.5">Mã Đơn</th>
-                            <th className="py-2.5 px-3">Container</th>
-                            <th className="py-2.5 px-3">Phương Tiện &amp; Tài Xế</th>
-                            <th className="py-2.5 px-3">Vị Trí Bãi</th>
-                            <th className="py-2.5 px-3">Trạng Thái Hàng Hóa</th>
-                            <th className="py-2.5 px-3.5 text-right">Thao Tác</th>
-                          </tr>
-                        </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
-                      {group.items.map((b) => {
-                        const isSubmitted = isBookingTransportSubmitted(b)
-                        const isPickup = b.operation === 'Pickup'
-                        const slot = b.autoYardSlot || {}
-                        const isReefer = slot.isReefer || (b.containerType || '').includes('RF')
-                        const isDG = slot.isDG || (b.dgClass || '').includes('Class')
-                        const matchedEport = eportListItems.find(
-                          (o) =>
-                            (b.eportOrderId && o.id === b.eportOrderId) ||
-                            eportValidationMap[o.id]?.bookingId === b.id ||
-                            (b.containerId && String(o.sourceLabel || '').toUpperCase().includes(String(b.containerId).toUpperCase()))
-                        )
-                        const isEportPaid = !!(
-                          matchedEport &&
-                          ['PAID', 'SUCCEEDED', 'NOT_REQUIRED'].includes(String(matchedEport.paymentStatus || '').toUpperCase())
-                        )
-                        const isApprovedOrBilled = isBookingApprovedOrBillSent(b)
-                        const isPaid = isEportPaid || !!b.portBillPaid
+                              return (
+                                <tr
+                                  key={b.id ? `${b.id}-${bIdx}` : bIdx}
+                                  onClick={() => handleSelectBooking(b)}
+                                  className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
+                                >
+                                  {/* 1. Mã Đơn */}
+                                  <td className="py-2.5 px-3 whitespace-nowrap">
+                                    <span className="font-mono text-xs font-semibold text-slate-700 group-hover:text-orange-600 transition-colors">
+                                      {b.id}
+                                    </span>
+                                  </td>
 
-                        let completionBadge = { cls: 'orange', icon: 'local_shipping', text: 'Chờ vận tải gửi booking' }
-                        if (b.status === 'Cancelled' || b.status === 'Canceled') {
-                          completionBadge = { cls: 'slate', icon: 'block', text: 'Đã hủy' }
-                        } else if (isApprovedOrBilled) {
-                          if (isPaid) {
-                            completionBadge = { cls: 'green', icon: 'check_circle', text: '✓ Sẵn sàng vào cổng (Đã thanh toán)' }
-                          } else {
-                            completionBadge = { cls: 'orange', icon: 'account_balance_wallet', text: 'Đã duyệt · Chờ thanh toán' }
-                          }
-                        } else {
-                          // Khi chưa duyệt & gửi bill: Luôn giữ nguyên trạng thái Chờ vận tải gửi booking (không đổi sang Từ chối)
-                          completionBadge = { cls: 'orange', icon: 'local_shipping', text: 'Chờ vận tải gửi booking' }
-                        }
-
-                        const bayNumOnly = String(slot.bay || slot.bayCode || slot.bayDisplay || '02').replace(/\D/g, '').padStart(2, '0')
-                        const cleanBay = `Bay ${bayNumOnly}`
-
-                        return (
-                          <tr
-                            key={b.id}
-                            onClick={() => handleSelectBooking(b)}
-                            className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
-                          >
-                            {/* 1. Mã Đơn */}
-                            <td className="py-2.5 px-3 whitespace-nowrap">
-                              <span className="font-mono text-xs font-semibold text-slate-700 group-hover:text-orange-600 transition-colors">
-                                {b.id}
-                              </span>
-                            </td>
-
-                            {/* 2. Container */}
-                            <td className="py-2.5 px-3 whitespace-nowrap">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-mono text-xs font-bold text-slate-900">{b.containerId}</span>
-                                <span className={`px-1.5 py-0.2 rounded text-[10px] font-semibold border ${
-                                  isPickup
-                                    ? 'bg-sky-50 text-sky-700 border-sky-200'
-                                    : 'bg-purple-50 text-purple-700 border-purple-200'
-                                }`}>
-                                  {isPickup ? 'Lấy cont' : 'Hạ cont'}
-                                </span>
-                              </div>
-                            </td>
-
-                            {/* 3. Phương Tiện & Tài Xế */}
-                            <td className="py-2.5 px-3 whitespace-nowrap">
-                              {(() => {
-                                const vPlate = getGateBookingVehicle(b)
-                                const dName = getGateBookingDriver(b)
-                                if (vPlate) {
-                                  return (
-                                    <div className="flex flex-col gap-0.5">
-                                      <span className="font-mono text-xs font-bold text-slate-800 flex items-center gap-1">
-                                        <span>🚚</span>
-                                        <span>{vPlate}</span>
-                                      </span>
-                                      <span className="text-[11px] text-slate-500 truncate max-w-[150px]">
-                                        👤 {dName || 'Tài xế theo xe'}
+                                  {/* 2. Container */}
+                                  <td className="py-2.5 px-3 whitespace-nowrap">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-mono text-xs font-bold text-slate-900">{b.containerId}</span>
+                                      <span className={`px-1.5 py-0.2 rounded text-[10px] font-semibold border ${isPickup
+                                        ? 'bg-sky-50 text-sky-700 border-sky-200'
+                                        : 'bg-purple-50 text-purple-700 border-purple-200'
+                                        }`}>
+                                        {isPickup ? 'Lấy cont' : 'Hạ cont'}
                                       </span>
                                     </div>
-                                  )
-                                }
-                                return (
-                                  <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
-                                    Chờ gán xe &amp; tài xế
-                                  </span>
-                                )
-                              })()}
-                            </td>
+                                  </td>
 
-                            {/* 3. Vị Trí Bãi (Màu sắc nhẹ theo khu vực bãi, gọn gàng) */}
-                            <td className="py-2.5 px-3 whitespace-nowrap">
-                              {slot.blockCode ? (
-                                <span className={`px-2 py-0.5 rounded font-mono text-[11px] font-semibold border inline-flex items-center gap-1 ${
-                                  isReefer
-                                    ? 'bg-cyan-50/70 text-cyan-900 border-cyan-200'
-                                    : isDG
-                                    ? 'bg-rose-50/70 text-rose-900 border-rose-200'
-                                    : 'bg-emerald-50/70 text-emerald-900 border-emerald-200'
-                                }`}>
-                                  <span className="material-symbols-outlined text-[12px] opacity-70">location_on</span>
-                                  <span>Block {slot.blockCode} · {cleanBay} ({slot.row}-{slot.tier})</span>
-                                </span>
-                              ) : (
-                                <span className="text-xs text-slate-400 italic">Chờ xếp bãi</span>
-                              )}
-                            </td>
+                                  {/* 3. Phương Tiện & Tài Xế */}
+                                  <td className="py-2.5 px-3 whitespace-nowrap">
+                                    {(() => {
+                                      const vPlate = getGateBookingVehicle(b)
+                                      const dName = getGateBookingDriver(b)
+                                      if (vPlate) {
+                                        return (
+                                          <div className="flex flex-col gap-0.5">
+                                            <span className="font-mono text-xs font-bold text-slate-800 flex items-center gap-1">
+                                              <span>🚚</span>
+                                              <span>{vPlate}</span>
+                                            </span>
+                                            <span className="text-[11px] text-slate-500 truncate max-w-[150px]">
+                                              👤 {dName || 'Tài xế theo xe'}
+                                            </span>
+                                          </div>
+                                        )
+                                      }
+                                      return (
+                                        <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
+                                          Chờ gán xe &amp; tài xế
+                                        </span>
+                                      )
+                                    })()}
+                                  </td>
 
-                            {/* 4. Trạng thái hoàn thành đơn & thanh toán */}
-                            <td className="py-2.5 px-3 whitespace-nowrap">
-                              <span className={`epo-badge ${completionBadge.cls}`}>
-                                <span />
-                                {completionBadge.text}
-                              </span>
-                            </td>
+                                  {/* 3. Vị Trí Bãi (Màu sắc nhẹ theo khu vực bãi, gọn gàng) */}
+                                  <td className="py-2.5 px-3 whitespace-nowrap">
+                                    {slot.blockCode ? (
+                                      <span className={`px-2 py-0.5 rounded font-mono text-[11px] font-semibold border inline-flex items-center gap-1 ${isReefer
+                                        ? 'bg-cyan-50/70 text-cyan-900 border-cyan-200'
+                                        : isDG
+                                          ? 'bg-rose-50/70 text-rose-900 border-rose-200'
+                                          : 'bg-emerald-50/70 text-emerald-900 border-emerald-200'
+                                        }`}>
+                                        <span className="material-symbols-outlined text-[12px] opacity-70">location_on</span>
+                                        <span>Block {slot.blockCode} · {cleanBay} ({slot.row}-{slot.tier})</span>
+                                      </span>
+                                    ) : (
+                                      <span className="text-xs text-slate-400 italic">Chờ xếp bãi</span>
+                                    )}
+                                  </td>
 
-                            {/* 6. Thao Tác (Nút cam chuẩn Reefer TOS) */}
-                            <td className="py-2.5 px-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                              <button
-                                type="button"
-                                onClick={() => handleSelectBooking(b)}
-                                className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-                              >
-                                Chi tiết
-                              </button>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+                                  {/* 4. Trạng thái hoàn thành đơn & thanh toán */}
+                                  <td className="py-2.5 px-3 whitespace-nowrap">
+                                    <span className={`epo-badge ${completionBadge.cls}`}>
+                                      <span />
+                                      {completionBadge.text}
+                                    </span>
+                                  </td>
 
-          {/* Phân trang danh sách Container theo Ngày & Chuyến Tàu */}
-          <div className="bg-white rounded-2xl border border-chalk shadow-2xs overflow-hidden mt-2">
-            <ShippingPagination
-              currentPage={companyPage}
-              totalItems={manifestBookingsByCompany.length}
-              pageSize={companyPageSize}
-              onPageChange={setCompanyPage}
-              onPageSizeChange={setCompanyPageSize}
-              pageSizeOptions={[3, 5, 10]}
-              itemName="ngày & chuyến tàu"
-            />
-          </div>
+                                  {/* 6. Thao Tác (Nút cam chuẩn Reefer TOS) */}
+                                  <td className="py-2.5 px-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleSelectBooking(b)}
+                                      className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+                                    >
+                                      Chi tiết
+                                    </button>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Phân trang danh sách Container theo Ngày & Chuyến Tàu */}
+            <div className="bg-white rounded-2xl border border-chalk shadow-2xs overflow-hidden mt-2">
+              <ShippingPagination
+                currentPage={companyPage}
+                totalItems={manifestBookingsByCompany.length}
+                pageSize={companyPageSize}
+                onPageChange={setCompanyPage}
+                onPageSizeChange={setCompanyPageSize}
+                pageSizeOptions={[3, 5, 10]}
+                itemName="ngày & chuyến tàu"
+              />
+            </div>
           </>
         )}
       </div>
@@ -3088,7 +3435,7 @@ export default function GateBookingRequests() {
 
   return (
     <div className="epc epo-page flex flex-col gap-5 relative min-h-screen">
-      
+
       {/* Toast Alert */}
       {toastMessage && (
         <div className="fixed top-20 right-8 bg-carbon text-white px-5 py-3.5 rounded-2xl shadow-2xl text-xs font-extrabold flex items-center gap-3 z-[110] animate-in fade-in slide-in-from-top-3 border border-signal-orange/60">
@@ -3109,7 +3456,16 @@ export default function GateBookingRequests() {
           </p>
         </div>
 
-        <div className="epc-page-actions">
+        <div className="epc-page-actions flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleResetTestData}
+            className="epc-button secondary text-red-600 border-red-200 hover:bg-red-50 flex items-center gap-1.5"
+            title="Xóa toàn bộ bản khai tàu & booking để test lại từ đầu"
+          >
+            <span className="material-symbols-outlined text-base text-red-500">delete_sweep</span>
+            <span>Reset Dữ Liệu Test (Về 0)</span>
+          </button>
           <button
             type="button"
             onClick={handleRefresh}
@@ -3144,61 +3500,50 @@ export default function GateBookingRequests() {
         </div>
       </section>
 
-      {/* ── THÔNG BÁO HỒ SƠ MỚI TỪ BÊN VẬN TẢI (CARRIER) GỬI SANG ĐỂ KIỂM TRA KHỚP ── */}
-      {transportAlerts.length > 0 && (
-        <div className="bg-amber-50 border border-amber-300 rounded-xl p-3.5 shadow-2xs space-y-2">
+      {/* ── THÔNG BÁO HÓA ĐƠN & PHÍ CẢNG (CHỈ HIỂN THỊ KHI CÓ BILL TỚI) ── */}
+      {billAlerts.length > 0 && (
+        <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3.5 shadow-2xs space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-amber-900 font-bold text-xs">
-              <span className="material-symbols-outlined text-amber-600 text-lg animate-bounce">notifications_active</span>
-              <span>Thông báo mới từ Công Ty Vận Tải ({transportAlerts.length} hồ sơ chờ kiểm tra khớp &amp; duyệt gửi Bill)</span>
+            <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
+              <span className="material-symbols-outlined text-emerald-600 text-lg">receipt_long</span>
+              <span>Thông báo Hóa Đơn &amp; Phí Cảng ({billAlerts.length} hóa đơn mới)</span>
             </div>
             <button
               type="button"
-              onClick={() => {
-                manifestPortSyncService.dismissTransportSubmissionAlert(null)
-                setTransportAlerts([])
-              }}
-              className="text-[11px] font-semibold text-amber-700 hover:text-amber-900 cursor-pointer"
+              onClick={handleDismissAllBillAlerts}
+              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 cursor-pointer"
             >
               Ẩn tất cả
             </button>
           </div>
           <div className="space-y-1.5">
-            {transportAlerts.slice(0, 3).map((alert) => (
-              <div key={alert.id} className="bg-white/90 border border-amber-200 rounded-lg px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div className="min-w-0">
-                  <span className="font-bold text-slate-900">{alert.company}</span>{' '}
-                  <span className="text-slate-600">vừa gửi hồ sơ cho Container</span>{' '}
-                  <strong className="font-mono text-blue-700">{alert.containerId}</strong>{' '}
-                  <span className="text-slate-500">
-                    (Xe <strong className="font-mono text-slate-800">{alert.licensePlate}</strong> · Tài xế <strong>{alert.driverName}</strong>{alert.billOfLading ? ` · B/L: ${alert.billOfLading}` : ''})
-                    (Xe <strong className="font-mono text-slate-800">{alert.licensePlate}</strong> · Tài xế <strong>{alert.driverName}</strong>{alert.billOfLading && alert.billOfLading !== 'N/A' ? ` · B/L: ${alert.billOfLading}` : ''})
+            {billAlerts.slice(0, 3).map((bill) => (
+              <div key={bill.id} className="bg-white/95 border border-emerald-200 rounded-lg px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                <div className="min-w-0 flex items-center gap-2 flex-wrap">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${bill.isPaid ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-800 border border-amber-300'}`}>
+                    {bill.isPaid ? '✓ ĐÃ THANH TOÁN' : '⏳ CHỜ THANH TOÁN'}
                   </span>
+                  <span className="font-bold text-slate-900">{bill.company || 'Doanh nghiệp vận tải'}</span>
+                  <span className="text-slate-600">Hóa đơn:</span>
+                  <strong className="font-mono text-emerald-700">{bill.billNumber || bill.id}</strong>
+                  {bill.totalFormatted && (
+                    <span className="font-bold text-slate-800">({bill.totalFormatted})</span>
+                  )}
+                  {bill.containerCount > 0 && (
+                    <span className="text-slate-500">· {bill.containerCount} Container</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     type="button"
-                    onClick={() => {
-                      const found = manifestGeneratedBookings.find(b => b.id === alert.id || b.containerId === alert.containerId)
-                        || bookings.find(b => b.id === alert.id || b.containerId === alert.containerId)
-                      if (found) {
-                        setSelectedBooking(found)
-                        setShowContainerDetailModal(false)
-                        setShowEportSyncPopup(true)
-                      } else {
-                        showToast(`Không tìm thấy đơn ${alert.containerId} trong danh sách hiện tại.`)
-                      }
-                    }}
-                    className="px-2.5 py-1 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-[11px] font-bold cursor-pointer inline-flex items-center gap-1"
+                    onClick={() => handleViewBill(bill)}
+                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer inline-flex items-center gap-1"
                   >
-                    <span>Kiểm tra khớp &amp; Duyệt ➔</span>
+                    <span>Xem Hóa Đơn ➔</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => {
-                      manifestPortSyncService.dismissTransportSubmissionAlert(alert.id)
-                      setTransportAlerts(manifestPortSyncService.getTransportSubmissionAlerts())
-                    }}
+                    onClick={() => handleDismissBillAlert(bill.id)}
                     className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[11px] font-semibold cursor-pointer"
                   >
                     Ẩn
@@ -3215,17 +3560,15 @@ export default function GateBookingRequests() {
         <button
           type="button"
           onClick={() => setActiveListType('vessel')}
-          className={`px-4 py-2.5 rounded-[10px] text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-            activeListType === 'vessel'
-              ? 'bg-white text-[#b94717] border border-[#e2e5e9] shadow-xs'
-              : 'text-[#68798c] hover:text-[#172638] hover:bg-white/50'
-          }`}
+          className={`px-4 py-2.5 rounded-[10px] text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${activeListType === 'vessel'
+            ? 'bg-white text-[#b94717] border border-[#e2e5e9] shadow-xs'
+            : 'text-[#68798c] hover:text-[#172638] hover:bg-white/50'
+            }`}
         >
           <span className="material-symbols-outlined text-base">directions_boat</span>
           <span>Danh Sách Tàu (e-Manifest)</span>
-          <span className={`px-2 py-0.5 text-[11px] rounded-md font-mono ${
-            activeListType === 'vessel' ? 'bg-[#fff0e7] text-[#b94717]' : 'bg-[#dbe4ed]/90 text-[#6a7c8d]'
-          }`}>
+          <span className={`px-2 py-0.5 text-[11px] rounded-md font-mono ${activeListType === 'vessel' ? 'bg-[#fff0e7] text-[#b94717]' : 'bg-[#dbe4ed]/90 text-[#6a7c8d]'
+            }`}>
             {syncedManifestList.length}
           </span>
         </button>
@@ -3233,17 +3576,15 @@ export default function GateBookingRequests() {
         <button
           type="button"
           onClick={() => setActiveListType('truck')}
-          className={`px-4 py-2.5 rounded-[10px] text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-            activeListType === 'truck'
-              ? 'bg-white text-[#b94717] border border-[#e2e5e9] shadow-xs'
-              : 'text-[#68798c] hover:text-[#172638] hover:bg-white/50'
-          }`}
+          className={`px-4 py-2.5 rounded-[10px] text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${activeListType === 'truck'
+            ? 'bg-white text-[#b94717] border border-[#e2e5e9] shadow-xs'
+            : 'text-[#68798c] hover:text-[#172638] hover:bg-white/50'
+            }`}
         >
           <span className="material-symbols-outlined text-base">calendar_month</span>
           <span>Container Theo Ngày &amp; Chuyến Tàu</span>
-          <span className={`px-2 py-0.5 text-[11px] rounded-md font-mono ${
-            activeListType === 'truck' ? 'bg-[#fff0e7] text-[#b94717]' : 'bg-[#dbe4ed]/90 text-[#6a7c8d]'
-          }`}>
+          <span className={`px-2 py-0.5 text-[11px] rounded-md font-mono ${activeListType === 'truck' ? 'bg-[#fff0e7] text-[#b94717]' : 'bg-[#dbe4ed]/90 text-[#6a7c8d]'
+            }`}>
             {filteredBookings.length}
           </span>
         </button>
@@ -3251,17 +3592,15 @@ export default function GateBookingRequests() {
         <button
           type="button"
           onClick={() => setActiveListType('eport')}
-          className={`px-4 py-2.5 rounded-[10px] text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-            activeListType === 'eport'
-              ? 'bg-white text-[#b94717] border border-[#e2e5e9] shadow-xs'
-              : 'text-[#68798c] hover:text-[#172638] hover:bg-white/50'
-          }`}
+          className={`px-4 py-2.5 rounded-[10px] text-xs font-bold transition-all flex items-center gap-2 whitespace-nowrap cursor-pointer ${activeListType === 'eport'
+            ? 'bg-white text-[#b94717] border border-[#e2e5e9] shadow-xs'
+            : 'text-[#68798c] hover:text-[#172638] hover:bg-white/50'
+            }`}
         >
           <span className="material-symbols-outlined text-base">assignment_turned_in</span>
           <span>Danh Sách Đơn Dịch Vụ ePort</span>
-          <span className={`px-2 py-0.5 text-[11px] rounded-md font-mono ${
-            activeListType === 'eport' ? 'bg-[#fff0e7] text-[#b94717]' : 'bg-[#dbe4ed]/90 text-[#6a7c8d]'
-          }`}>
+          <span className={`px-2 py-0.5 text-[11px] rounded-md font-mono ${activeListType === 'eport' ? 'bg-[#fff0e7] text-[#b94717]' : 'bg-[#dbe4ed]/90 text-[#6a7c8d]'
+            }`}>
             {eportListTotal}
           </span>
         </button>
@@ -3276,9 +3615,8 @@ export default function GateBookingRequests() {
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
             <div
               onClick={() => setStatusFilter(statusFilter === 'Pending' ? 'All' : 'Pending')}
-              className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${
-                statusFilter === 'Pending' ? 'border-[#cc9469] ring-2 ring-[#fb9b70]/40' : 'border-[#e0e8f0] hover:border-[#becbd8]'
-              }`}
+              className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${statusFilter === 'Pending' ? 'border-[#cc9469] ring-2 ring-[#fb9b70]/40' : 'border-[#e0e8f0] hover:border-[#becbd8]'
+                }`}
             >
               <div className="text-[10px] font-bold text-[#a1845f] uppercase tracking-wider">Chờ kiểm duyệt</div>
               <div className="text-2xl font-bold text-[#29415a] mt-1 font-mono">{kpiStats.pending}</div>
@@ -3287,9 +3625,8 @@ export default function GateBookingRequests() {
 
             <div
               onClick={() => setStatusFilter(statusFilter === 'Under Review' ? 'All' : 'Under Review')}
-              className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${
-                statusFilter === 'Under Review' ? 'border-[#6b88a9] ring-2 ring-[#6b88a9]/30' : 'border-[#e0e8f0] hover:border-[#becbd8]'
-              }`}
+              className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${statusFilter === 'Under Review' ? 'border-[#6b88a9] ring-2 ring-[#6b88a9]/30' : 'border-[#e0e8f0] hover:border-[#becbd8]'
+                }`}
             >
               <div className="text-[10px] font-bold text-[#6b88a9] uppercase tracking-wider">Đang duyệt</div>
               <div className="text-2xl font-bold text-[#29415a] mt-1 font-mono">{kpiStats.underReview}</div>
@@ -3298,9 +3635,8 @@ export default function GateBookingRequests() {
 
             <div
               onClick={() => setStatusFilter(statusFilter === 'Approved' ? 'All' : 'Approved')}
-              className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${
-                statusFilter === 'Approved' ? 'border-[#5e8b74] ring-2 ring-[#5e8b74]/30' : 'border-[#e0e8f0] hover:border-[#becbd8]'
-              }`}
+              className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${statusFilter === 'Approved' ? 'border-[#5e8b74] ring-2 ring-[#5e8b74]/30' : 'border-[#e0e8f0] hover:border-[#becbd8]'
+                }`}
             >
               <div className="text-[10px] font-bold text-[#5e8b74] uppercase tracking-wider">Đã duyệt hôm nay</div>
               <div className="text-2xl font-bold text-[#29415a] mt-1 font-mono">{kpiStats.approvedToday}</div>
@@ -3309,9 +3645,8 @@ export default function GateBookingRequests() {
 
             <div
               onClick={() => setStatusFilter(statusFilter === 'Rejected' ? 'All' : 'Rejected')}
-              className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${
-                statusFilter === 'Rejected' ? 'border-[#ad7a73] ring-2 ring-[#ad7a73]/30' : 'border-[#e0e8f0] hover:border-[#becbd8]'
-              }`}
+              className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${statusFilter === 'Rejected' ? 'border-[#ad7a73] ring-2 ring-[#ad7a73]/30' : 'border-[#e0e8f0] hover:border-[#becbd8]'
+                }`}
             >
               <div className="text-[10px] font-bold text-[#ad7a73] uppercase tracking-wider">Từ chối hôm nay</div>
               <div className="text-2xl font-bold text-[#29415a] mt-1 font-mono">{kpiStats.rejectedToday}</div>
@@ -3344,16 +3679,14 @@ export default function GateBookingRequests() {
                   key={st.key}
                   type="button"
                   onClick={() => setStatusFilter(st.key)}
-                  className={`px-3 py-1.5 rounded-[9px] text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
-                    statusFilter === st.key
-                      ? 'bg-white text-[#b94717] border border-[#e2e5e9] shadow-2xs'
-                      : 'text-[#68798c] hover:text-[#172638] hover:bg-white/50'
-                  }`}
+                  className={`px-3 py-1.5 rounded-[9px] text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${statusFilter === st.key
+                    ? 'bg-white text-[#b94717] border border-[#e2e5e9] shadow-2xs'
+                    : 'text-[#68798c] hover:text-[#172638] hover:bg-white/50'
+                    }`}
                 >
                   <span>{st.label}</span>
-                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${
-                    statusFilter === st.key ? 'bg-[#fff0e7] text-[#b94717]' : 'bg-[#dbe4ed]/90 text-[#6a7c8d]'
-                  }`}>
+                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${statusFilter === st.key ? 'bg-[#fff0e7] text-[#b94717]' : 'bg-[#dbe4ed]/90 text-[#6a7c8d]'
+                    }`}>
                     {st.count}
                   </span>
                 </button>
@@ -3382,7 +3715,7 @@ export default function GateBookingRequests() {
                 )}
               </div>
 
-              
+
 
               <select
                 value={operationFilter}
@@ -3530,7 +3863,7 @@ export default function GateBookingRequests() {
                     </tr>
                   ) : (
                     pagedVessels.map(m => {
-                      const isApproved = m.portApprovalStatus === 'PORT_APPROVED'
+                      const isApproved = isManifestPermanentlyApproved(m) || m.portApprovalStatus === 'PORT_APPROVED' || m.status === 'PORT_APPROVED'
                       const vKey = m.manifestNumber || m.manifestId
                       const isSelectedFilter = selectedVesselFilter === vKey || selectedVesselFilter === m.vesselName
 
@@ -3583,9 +3916,8 @@ export default function GateBookingRequests() {
                                   showToast(`⚓ Đã cập nhật trạng thái tàu thành: ${VOYAGE_STATUS_LABELS[newStatus] || newStatus}`)
                                 }}
                                 title="Bấm để chọn chuyển đổi trạng thái chuyến tàu"
-                                className={`text-[11px] font-bold py-1 pl-3 pr-7 rounded-full border cursor-pointer appearance-none focus:outline-none transition-all shadow-2xs ${
-                                  VOYAGE_STATUS_STYLES[m.vesselStatus || 'BERTHED'] || 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                                } hover:brightness-95`}
+                                className={`text-[11px] font-bold py-1 pl-3 pr-7 rounded-full border cursor-pointer appearance-none focus:outline-none transition-all shadow-2xs ${VOYAGE_STATUS_STYLES[m.vesselStatus || 'BERTHED'] || 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                  } hover:brightness-95`}
                               >
                                 <option value="BERTHED">● Đã cập cảng</option>
                                 <option value="SCHEDULED">● Kế hoạch</option>
@@ -3603,7 +3935,20 @@ export default function GateBookingRequests() {
                           {/* 6. Thao tác: Lọc Cont + Xem Chi Tiết */}
                           <td className="py-2.5 px-3.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                             <div className="inline-flex items-center justify-end gap-1.5">
-                              {isApproved && (
+                              {!isApproved ? (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleApproveVesselManifest(m.manifestId || m.manifestNumber || vKey)
+                                  }}
+                                  title="Phê duyệt tàu và tự động xếp bãi cho các container"
+                                  className="h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer transition shadow-xs"
+                                >
+                                  <span className="material-symbols-outlined text-[13px]">check_circle</span>
+                                  <span>Duyệt Tàu</span>
+                                </button>
+                              ) : (
                                 <button
                                   type="button"
                                   onClick={(e) => {
@@ -3616,11 +3961,11 @@ export default function GateBookingRequests() {
                                       setVesselContainersPopup(null)
                                     }
                                   }}
-                                  title="Xem danh sách Container của tàu này"
-                                  className="h-7 px-2 bg-fog hover:bg-chalk/70 text-carbon border border-chalk rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer transition"
+                                  title="Tàu đã được duyệt tại Cảng. Bấm để lọc và xem danh sách Container của tàu này"
+                                  className="h-7 px-2.5 bg-fog hover:bg-chalk/70 text-carbon border border-chalk rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer transition shadow-2xs"
                                 >
-                                  <span className="material-symbols-outlined text-[13px]">filter_alt</span>
-                                  <span>Lọc Cont</span>
+                                  <span className="material-symbols-outlined text-[13px] text-emerald-600 font-bold">check_circle</span>
+                                  <span>Đã duyệt (Lọc Cont)</span>
                                 </button>
                               )}
 
@@ -3776,19 +4121,18 @@ export default function GateBookingRequests() {
                       const gateVal = 'Gate 1'
 
                       return (
-                        <tr key={item.id || item.containerId || idx} className="hover:bg-slate-50/80 transition">
+                        <tr key={`${item.id || item.containerId || 'pop'}-${idx}`} className="hover:bg-slate-50/80 transition">
                           <td className="py-2.5 px-3 font-mono text-slate-400">{globalIdx}</td>
                           <td className="py-2.5 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
                             {item.containerId || item.containerNumber}
                           </td>
                           <td className="py-2.5 px-3 whitespace-nowrap">
-                            <span className={`px-1.5 py-0.5 rounded font-mono font-bold text-[10px] ${
-                              isRf
-                                ? 'bg-cyan-50 text-cyan-800 border border-cyan-200'
-                                : isDg
+                            <span className={`px-1.5 py-0.5 rounded font-mono font-bold text-[10px] ${isRf
+                              ? 'bg-cyan-50 text-cyan-800 border border-cyan-200'
+                              : isDg
                                 ? 'bg-rose-50 text-rose-800 border border-rose-200'
                                 : 'bg-slate-100 text-slate-700'
-                            }`}>
+                              }`}>
                               {item.containerType || item.isoType || '40HC'}
                             </span>
                           </td>
@@ -3844,7 +4188,7 @@ export default function GateBookingRequests() {
       {selectedVesselManifest && (
         <div className="fixed inset-0 bg-carbon/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 print:p-0 print:bg-white">
           <div className="bg-white w-full max-w-[96vw] xl:max-w-7xl max-h-[95vh] rounded-3xl p-5 md:p-8 space-y-6 shadow-2xl overflow-y-auto animate-in zoom-in-95 duration-200 font-sans print:max-h-none print:shadow-none print:rounded-none">
-            
+
             {/* Modal Top Header - Đơn giản, thoáng mắt, dễ nhìn */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 pb-4 gap-3">
               <div className="flex items-center gap-3 min-w-0">
@@ -3927,11 +4271,10 @@ export default function GateBookingRequests() {
               <button
                 type="button"
                 onClick={() => setVesselDetailTab('containers')}
-                className={`flex items-center gap-2 px-5 py-3 border-b-2 font-extrabold text-xs transition-all cursor-pointer shrink-0 ${
-                  vesselDetailTab === 'containers'
-                    ? 'border-blue-600 text-blue-700 bg-blue-50/50'
-                    : 'border-transparent text-slate hover:text-carbon hover:bg-slate-100'
-                }`}
+                className={`flex items-center gap-2 px-5 py-3 border-b-2 font-extrabold text-xs transition-all cursor-pointer shrink-0 ${vesselDetailTab === 'containers'
+                  ? 'border-blue-600 text-blue-700 bg-blue-50/50'
+                  : 'border-transparent text-slate hover:text-carbon hover:bg-slate-100'
+                  }`}
               >
                 <span className="material-symbols-outlined text-base">inventory_2</span>
                 <span>1. Danh Sách Container Chi Tiết ({selectedVesselCargoStats.count})</span>
@@ -3940,11 +4283,10 @@ export default function GateBookingRequests() {
               <button
                 type="button"
                 onClick={() => setVesselDetailTab('bl')}
-                className={`flex items-center gap-2 px-5 py-3 border-b-2 font-extrabold text-xs transition-all cursor-pointer shrink-0 ${
-                  vesselDetailTab === 'bl'
-                    ? 'border-blue-600 text-blue-700 bg-blue-50/50'
-                    : 'border-transparent text-slate hover:text-carbon hover:bg-slate-100'
-                }`}
+                className={`flex items-center gap-2 px-5 py-3 border-b-2 font-extrabold text-xs transition-all cursor-pointer shrink-0 ${vesselDetailTab === 'bl'
+                  ? 'border-blue-600 text-blue-700 bg-blue-50/50'
+                  : 'border-transparent text-slate hover:text-carbon hover:bg-slate-100'
+                  }`}
               >
                 <span className="material-symbols-outlined text-base">receipt_long</span>
                 <span>2. Tổng Hợp Theo Vận Đơn B/L ({selectedVesselBlGroups.length})</span>
@@ -3953,17 +4295,16 @@ export default function GateBookingRequests() {
               <button
                 type="button"
                 onClick={() => setVesselDetailTab('vessel')}
-                className={`flex items-center gap-2 px-5 py-3 border-b-2 font-extrabold text-xs transition-all cursor-pointer shrink-0 ${
-                  vesselDetailTab === 'vessel'
-                    ? 'border-blue-600 text-blue-700 bg-blue-50/50'
-                    : 'border-transparent text-slate hover:text-carbon hover:bg-slate-100'
-                }`}
+                className={`flex items-center gap-2 px-5 py-3 border-b-2 font-extrabold text-xs transition-all cursor-pointer shrink-0 ${vesselDetailTab === 'vessel'
+                  ? 'border-blue-600 text-blue-700 bg-blue-50/50'
+                  : 'border-transparent text-slate hover:text-carbon hover:bg-slate-100'
+                  }`}
               >
                 <span className="material-symbols-outlined text-base">directions_boat</span>
                 <span>3. Hồ Sơ Kỹ Thuật Tàu &amp; Cầu Bến</span>
               </button>
 
-              
+
             </div>
 
             {/* ── NỘI DUNG TAB 1: DANH SÁCH CONTAINER CHI TIẾT (14 CỘT CHUẨN) ── */}
@@ -4301,6 +4642,18 @@ export default function GateBookingRequests() {
               </div>
 
               <div className="flex items-center gap-3">
+                {!isManifestPermanentlyApproved(selectedVesselManifest) && selectedVesselManifest.portApprovalStatus !== 'PORT_APPROVED' && selectedVesselManifest.status !== 'PORT_APPROVED' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleApproveVesselManifest(selectedVesselManifest.manifestId || selectedVesselManifest.manifestNumber)
+                    }}
+                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-xs shadow-xs transition-colors flex items-center gap-1.5"
+                  >
+                    <span className="material-symbols-outlined text-base">check_circle</span>
+                    Phê Duyệt Tàu &amp; Phân Bổ Bãi
+                  </button>
+                )}
 
                 <button
                   type="button"
@@ -4486,12 +4839,12 @@ export default function GateBookingRequests() {
                     const rejectReasonText = !rawRejectReason
                       ? ''
                       : rawRejectReason.toLowerCase().includes('không nằm trong danh sách')
-                      ? 'Cont không nằm trong danh sách'
-                      : rawRejectReason.toLowerCase().includes('sai mã vận đơn')
-                      ? 'Sai mã vận đơn / booking'
-                      : rawRejectReason.toLowerCase().includes('sai tên công ty')
-                      ? 'Sai tên công ty'
-                      : rawRejectReason.replace(/^Tự động Reject:\s*/i, '').trim()
+                        ? 'Cont không nằm trong danh sách'
+                        : rawRejectReason.toLowerCase().includes('sai mã vận đơn')
+                          ? 'Sai mã vận đơn / booking'
+                          : rawRejectReason.toLowerCase().includes('sai tên công ty')
+                            ? 'Sai tên công ty'
+                            : rawRejectReason.replace(/^Tự động Reject:\s*/i, '').trim()
 
                     return (
                       <tr
@@ -4582,7 +4935,7 @@ export default function GateBookingRequests() {
                                   let detail = order
                                   try {
                                     detail = await serviceOrdersApi.get(order.id)
-                                  } catch {}
+                                  } catch { }
                                   setEportDetail(detail)
                                   const allGates = [...manifestGeneratedBookings, ...bookings]
                                   const dConts = (detail.containers || []).map((x) => String(x.containerNumber || '').toUpperCase())
@@ -4616,19 +4969,18 @@ export default function GateBookingRequests() {
                                   setShowContainerDetailModal(false)
                                   setShowEportSyncPopup(true)
                                 }}
-                                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer whitespace-nowrap shadow-xs transition ${
-                                  isRejectedOrder
-                                    ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200'
-                                    : order.status === 'APPROVED'
+                                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer whitespace-nowrap shadow-xs transition ${isRejectedOrder
+                                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200'
+                                  : order.status === 'APPROVED'
                                     ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
                                     : 'bg-orange-600 hover:bg-orange-700 text-white'
-                                }`}
+                                  }`}
                               >
                                 {isRejectedOrder
                                   ? 'Xem đối chiếu ➔'
                                   : order.status === 'APPROVED'
-                                  ? 'Xem chi tiết ➔'
-                                  : 'Đối chiếu & Duyệt ➔'}
+                                    ? 'Xem chi tiết ➔'
+                                    : 'Đối chiếu & Duyệt ➔'}
                               </button>
                             )}
                             <button
@@ -4728,8 +5080,8 @@ export default function GateBookingRequests() {
                     {selectedBooking.status === 'Pending'
                       ? 'Chờ duyệt'
                       : selectedBooking.status === 'Under Review'
-                      ? 'Đang kiểm tra'
-                      : 'Vận tải đã gửi · Chờ duyệt'}
+                        ? 'Đang kiểm tra'
+                        : 'Vận tải đã gửi · Chờ duyệt'}
                   </span>
                 )}
                 <button
@@ -4861,15 +5213,15 @@ export default function GateBookingRequests() {
                             const vPlate = getGateBookingVehicle(selectedBooking)
                             const dName = getGateBookingDriver(selectedBooking)
                             const cId = String(selectedBooking.containerId || '').trim().toUpperCase()
-                            const fleetInfo = FLEET_ASSIGNMENTS[cId] || {}
-                            const phone = selectedBooking.phone || fleetInfo.phone || '0842 737 474'
+                            const orderFleetInfo = manifestPortSyncService.getOrderFleet(cId)
+                            const phone = selectedBooking.phone || orderFleetInfo?.phone || ''
                             if (vPlate) {
                               return (
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   <span className="font-mono font-bold text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">{vPlate}</span>
                                   <span className="text-slate-400">·</span>
                                   <span className="font-bold text-slate-800">{dName || 'Tài xế theo xe'}</span>
-                                  <span className="text-slate-500 text-[11px]">({phone})</span>
+                                  {phone && <span className="text-slate-500 text-[11px]">({phone})</span>}
                                 </div>
                               )
                             }
@@ -4896,13 +5248,22 @@ export default function GateBookingRequests() {
                       </div>
                       <div>
                         <div className="text-[11px] text-[#8a9bb0]">Chứng từ đính kèm</div>
-                        <button
-                          type="button"
-                          onClick={() => setShowDocumentsModal(true)}
-                          className="mt-0.5 text-[12px] font-semibold text-[#2e78a8] hover:underline cursor-pointer"
-                        >
-                          {getBookingRealDocuments(selectedBooking).length} chứng từ (eDO, B/L, HQ, VGM) ➔
-                        </button>
+                        {(() => {
+                          const realDocs = getBookingRealDocuments(selectedBooking)
+                          const orderDocsCount = realDocs.filter(d => !d.isDriverDoc).length
+                          const fleetDocsCount = realDocs.filter(d => d.isDriverDoc).length
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => setShowDocumentsModal(true)}
+                              className="mt-0.5 text-[12px] font-semibold text-[#2e78a8] hover:underline cursor-pointer text-left"
+                            >
+                              {realDocs.length > 0
+                                ? `${realDocs.length} tệp hồ sơ (${orderDocsCount} chứng từ ePort · ${fleetDocsCount} xe & tài xế) ➔`
+                                : 'Chưa có chứng từ (Chờ đơn ePort) ➔'}
+                            </button>
+                          )
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -4916,8 +5277,8 @@ export default function GateBookingRequests() {
                           eportComparison?.status === 'matched'
                             ? 'text-emerald-700'
                             : eportComparison?.status === 'mismatch'
-                            ? 'text-rose-700'
-                            : 'text-[#627891]'
+                              ? 'text-rose-700'
+                              : 'text-[#627891]'
                         }>
                           {eportLoading ? 'Đang kiểm tra...' : (eportComparison?.badgeText || 'Chưa có đơn ePort khớp')}
                         </span>
@@ -5122,7 +5483,7 @@ export default function GateBookingRequests() {
 
                 <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
                   {approveTargets.map((c, idx) => (
-                    <div key={c.containerId || idx} className="p-3 hover:bg-slate-50/70 transition-colors">
+                    <div key={`${c.containerId || 'c'}-${c.id || ''}-${idx}`} className="p-3 hover:bg-slate-50/70 transition-colors">
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-2">
                           <span className="font-mono font-extrabold text-slate-900 text-xs">
@@ -5270,9 +5631,8 @@ export default function GateBookingRequests() {
               <button
                 disabled={!rejectionReason}
                 onClick={handleConfirmRejection}
-                className={`px-6 py-2.5 rounded-xl font-extrabold text-xs shadow-md ${
-                  rejectionReason ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                }`}
+                className={`px-6 py-2.5 rounded-xl font-extrabold text-xs shadow-md ${rejectionReason ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
               >
                 Xác nhận Từ chối
               </button>
@@ -5281,7 +5641,7 @@ export default function GateBookingRequests() {
         </div>
       )}
 
-      
+
       {/* POP-UP CHỌN BAY & SLOT TRỰC QUAN (HỖ TRỢ 20FT & 40FT) */}
       <YardSlotReservationModal
         isOpen={!!pickerBlock}
@@ -5291,19 +5651,25 @@ export default function GateBookingRequests() {
         currentReservation={reservedSlot}
         onConfirm={async (slotInfo) => {
           try {
-            // 1. Lưu giữ chỗ vào shared yardReservationStore đồng bộ ngay sang Sơ đồ bãi Tiên Sa
-            yardReservationStore.addReservation({
-              ...slotInfo,
-              containerId: selectedBooking?.containerId,
-              containerNo: selectedBooking?.containerId,
+            const newTier = Number(slotInfo.tier) || 1
+            const bayStr = String(slotInfo.bay).padStart(2, '0')
+            const rowStr = String(slotInfo.row).padStart(2, '0')
+            const coordinate = `${slotInfo.blockCode}-${bayStr}-${rowStr}-${newTier}`
+
+            // Đồng bộ 4 bên: Smart Yard Pre-Allocation + Danh Sách Container Theo Ngày & Chuyến Tàu + Sơ Đồ Bãi + Lịch Tài Xế Đã Gửi Cho Transport
+            await manifestPortSyncService.syncYardSlotAcrossAll({
+              containerNumber: selectedBooking?.containerId,
               bookingCode: selectedBooking?.id,
-              booking: selectedBooking,
+              manifestId: selectedBooking?.sourceManifestId,
+              newSlotCoordinate: coordinate,
+              reason: 'Điều độ viên thay đổi vị trí bãi tại Gate Dispatching',
               vehiclePlate: selectedBooking?.licensePlate,
               driverName: selectedBooking?.driverName,
               company: selectedBooking?.company,
+              vesselName: selectedBooking?.vesselName,
+              voyageNumber: selectedBooking?.voyageNumber,
             })
 
-            const newTier = Number(slotInfo.tier) || 1
             const updatedSlot = {
               ...(reservedSlot || selectedBooking?.autoYardSlot || {}),
               ...slotInfo,
@@ -5317,24 +5683,17 @@ export default function GateBookingRequests() {
             setSelectedZone((slotInfo.blockCode || 'A')[0])
             setSelectedBlock(slotInfo.blockCode || 'A01')
             setYardResVersion(v => v + 1)
-
-            // Nếu là container thuộc bảng Công ty vận tải tách từ Tàu, cập nhật luôn vị trí bãi mới vào bảng
-            if (selectedBooking?.isFromVesselManifest) {
-              manifestPortSyncService.updateGeneratedGateBookingStatus(selectedBooking.id, {
-                autoYardSlot: updatedSlot,
-              })
-              setManifestSyncVersion(v => v + 1)
-            }
+            setManifestSyncVersion(v => v + 1)
 
             // 2. Gọi các API Backend
             if (slotInfo.slotId && slotInfo.slotId.length > 10) {
-              await apiClient.post(`/v1/Yard/Slots/${slotInfo.slotId}/Reserve`).catch(() => {})
+              await apiClient.post(`/v1/Yard/Slots/${slotInfo.slotId}/Reserve`).catch(() => { })
             } else {
-              await yardOperationService.reserveSlot({ posId: slotInfo.posId }).catch(() => {})
+              await yardOperationService.reserveSlot({ posId: slotInfo.posId }).catch(() => { })
             }
             handleReserveSlot(slotInfo.slotId, slotInfo.blockCode, slotInfo)
             fetchYardMap()
-            showToast(`🟢 Đã chuyển & đặt container ${selectedBooking?.containerId || ''} vào Block ${slotInfo.blockCode} (${slotInfo.bayDisplay || `Bay ${slotInfo.bay}`}, Tầng ${slotInfo.tier}, Hàng ${slotInfo.row})!`)
+            showToast(`🟢 Đã chuyển & đồng bộ container ${selectedBooking?.containerId || ''} sang Block ${slotInfo.blockCode} (${slotInfo.bayDisplay || `Bay ${slotInfo.bay}`}, Tầng ${slotInfo.tier}, Hàng ${slotInfo.row}) cho cả 3 bên và lịch tài xế!`)
           } catch (err) {
             showToast(`❌ Không thể giữ chỗ: ${err.message}`, 'error')
           }
@@ -5342,30 +5701,98 @@ export default function GateBookingRequests() {
       />
 
       {/* DETAIL MODALS */}
-      <CompanyDetailModal 
-        isOpen={modalState.type === 'company'} 
-        companyId={modalState.id} 
-        onClose={() => setModalState({ type: null, id: null })} 
+      <CompanyDetailModal
+        isOpen={modalState.type === 'company'}
+        companyId={modalState.id}
+        onClose={() => setModalState({ type: null, id: null })}
       />
-      <VehicleDetailModal 
-        isOpen={modalState.type === 'vehicle'} 
-        vehicleId={modalState.id} 
-        onClose={() => setModalState({ type: null, id: null })} 
+      <VehicleDetailModal
+        isOpen={modalState.type === 'vehicle'}
+        vehicleId={modalState.id}
+        onClose={() => setModalState({ type: null, id: null })}
       />
-      <DriverDetailModal 
-        isOpen={modalState.type === 'driver'} 
-        driverId={modalState.id} 
-        onClose={() => setModalState({ type: null, id: null })} 
+      <DriverDetailModal
+        isOpen={modalState.type === 'driver'}
+        driverId={modalState.id}
+        onClose={() => setModalState({ type: null, id: null })}
       />
 
-      {/* ── POPUP XEM DANH SÁCH BỘ CHỨNG TỪ CONTAINER (CHUẨN 100% NGUYÊN BẢN THEO ẢNH) ── */}
-      {/* ── POPUP XEM DANH SÁCH BỘ CHỨNG TỪ CONTAINER (ĐỒNG NHẤT 100% VỚI TERMINAL PORTAL > ĐẶT LỊCH CẢNG) ── */}
+      {/* ── POPUP XEM DANH SÁCH BỘ CHỨNG TỪ CONTAINER (ĐỒNG NHẤT 100% VỚI HỒ SƠ ĐƠN DỊCH VỤ ePORT) ── */}
       {showDocumentsModal && selectedBooking && (() => {
         const docList = getBookingRealDocuments(selectedBooking)
+        const orderDocs = docList.filter(d => !d.isDriverDoc)
+        const fleetDocs = docList.filter(d => d.isDriverDoc)
+        const renderDocRow = (doc) => {
+          const viewerIdx = docList.indexOf(doc)
+          const hasFileUrl = Boolean(doc.fileUrl || doc.fileReference)
+          return (
+            <div
+              key={doc.id || viewerIdx}
+              className="bg-white border border-blue-100 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-2xs hover:border-blue-300 transition"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <span className={`material-symbols-outlined text-2xl shrink-0 ${doc.isDriverDoc ? 'text-indigo-600' : 'text-blue-600'}`}>
+                  {doc.icon || 'description'}
+                </span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs font-bold text-slate-900">
+                      {doc.title || getDocTypeVi(doc.documentType || doc.type)}
+                    </span>
+                    {doc.isDriverDoc && (
+                      <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 font-bold">
+                        Hồ sơ Tài xế &amp; Xe
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                    {doc.scope && <span>{doc.scope}</span>}
+                    {doc.fileName && (
+                      <span className="text-slate-400 font-mono truncate max-w-[260px]" title={doc.fileName}>
+                        · {doc.fileName}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                <span className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border ${(doc.verificationStatus || doc.status) === 'Verified'
+                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                  : (doc.verificationStatus || doc.status) === 'Rejected'
+                    ? 'bg-rose-50 text-rose-800 border-rose-200'
+                    : 'bg-amber-50 text-amber-800 border-amber-200'
+                  }`}>
+                  <span>{(doc.verificationStatus || doc.status) === 'Verified' ? '✓' : '⏳'}</span>
+                  <span>{(doc.verificationStatus || doc.status) === 'Verified' ? 'Đã xác thực' : 'Chờ duyệt'}</span>
+                </span>
+
+                {hasFileUrl ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDocViewerIndex(viewerIdx >= 0 ? viewerIdx : 0)
+                      setShowDocViewer(true)
+                    }}
+                    className="px-3 py-1.5 bg-blue-50/80 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
+                  >
+                    <span className="material-symbols-outlined text-sm">open_in_new</span>
+                    <span>Xem tệp</span>
+                  </button>
+                ) : (
+                  <span className="px-2.5 py-1 bg-slate-100 text-slate-400 border border-slate-200 rounded-xl text-[11px] font-medium">
+                    Chưa có ảnh
+                  </span>
+                )}
+              </div>
+            </div>
+          )
+        }
+
         return (
           <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[95] flex items-center justify-center p-3 sm:p-5">
             <div className="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 text-xs font-sans max-h-[90vh] overflow-y-auto">
-              
+
               {/* Header Popup */}
               <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2.5">
@@ -5388,82 +5815,57 @@ export default function GateBookingRequests() {
                 </button>
               </div>
 
-              {/* Khung Chứng Từ Dùng Chung Đơn Hàng (Đồng nhất 100% với Đặt Lịch Cảng) */}
-              <div className="bg-blue-50/40 border border-blue-200 rounded-2xl p-4 sm:p-5 space-y-3">
-                {/* Header Box */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-blue-600 text-xl">folder_shared</span>
-                    <h4 className="text-xs font-black uppercase tracking-wide text-slate-800">
-                      CHỨNG TỪ DÙNG CHUNG ĐƠN HÀNG ({docList.length} TỆP)
-                    </h4>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 font-bold text-[11px] self-start sm:self-auto">
-                    Áp dụng chung toàn bộ container
-                  </span>
+              {docList.length === 0 ? (
+                <div className="p-5 rounded-2xl border border-dashed border-amber-300 bg-amber-50/70 text-center space-y-1.5">
+                  <span className="material-symbols-outlined text-2xl text-amber-600">folder_off</span>
+                  <div className="font-bold text-amber-900 text-xs">Chưa có chứng từ hồ sơ từ đơn Dịch vụ ePort</div>
+                  <p className="text-[11px] text-amber-800">
+                    Container này hiện chưa có đơn Dịch vụ ePort hợp lệ gửi đến Cảng (hoặc các đơn ePort liên quan đã bị từ chối).
+                  </p>
                 </div>
-
-                {/* Danh sách từng tệp theo đúng dữ liệu của đơn hàng */}
-                <div className="space-y-2.5">
-                  {docList.map((doc, dIdx) => (
-                    <div
-                      key={doc.id || dIdx}
-                      className="bg-white border border-blue-100 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-2xs hover:border-blue-300 transition"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="material-symbols-outlined text-blue-600 text-2xl shrink-0">
-                          {doc.icon || 'description'}
-                        </span>
-                        <div className="min-w-0">
-                          <span className="text-xs font-bold text-slate-900 block sm:inline">
-                            {doc.title || getDocTypeVi(doc.documentType || doc.type)}
-                          </span>
-                          {doc.fileName && (
-                            <span className="text-slate-400 text-xs ml-0 sm:ml-1.5 font-mono truncate">
-                              ({doc.fileName})
-                            </span>
-                          )}
-                          {doc.documentNumber && (
-                            <span className="text-[10px] text-slate-400 font-mono ml-2">
-                              #{doc.documentNumber}
-                            </span>
-                          )}
-                          {doc.isDriverDoc && (
-                            <span className="text-[10px] bg-purple-50 text-purple-700 px-2 py-0.5 rounded border border-purple-200 font-bold ml-1.5">
-                              Hồ sơ Tài xế &amp; Xe
-                            </span>
-                          )}
+              ) : (
+                <div className="space-y-4">
+                  {/* Khối 1: Bộ hồ sơ chứng từ nộp Dispatcher từ đơn ePort */}
+                  {orderDocs.length > 0 && (
+                    <div className="bg-blue-50/40 border border-blue-200 rounded-2xl p-4 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-blue-600 text-xl">folder_open</span>
+                          <h4 className="text-xs font-black uppercase tracking-wide text-slate-800">
+                            Bộ hồ sơ chứng từ nộp Dispatcher ({orderDocs.length} TỆP)
+                          </h4>
                         </div>
-                      </div>
-
-                      <div className="flex items-center gap-2.5 shrink-0 self-end sm:self-auto">
-                        <span className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border ${
-                          (doc.verificationStatus || doc.status) === 'Verified'
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            : (doc.verificationStatus || doc.status) === 'Rejected'
-                            ? 'bg-rose-50 text-rose-800 border-rose-200'
-                            : 'bg-amber-50 text-amber-800 border-amber-200'
-                        }`}>
-                          <span>{(doc.verificationStatus || doc.status) === 'Verified' ? '✓' : '⏳'}</span>
-                          <span>{(doc.verificationStatus || doc.status) === 'Verified' ? 'Đã thẩm định' : 'Chờ duyệt'}</span>
+                        <span className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 font-bold text-[11px] self-start sm:self-auto">
+                          Đồng bộ từ đơn Dịch vụ ePort
                         </span>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDocViewerIndex(dIdx)
-                            setShowDocViewer(true)
-                          }}
-                          className="px-3.5 py-1.5 bg-blue-50/80 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                        >
-                          <span className="material-symbols-outlined text-sm">open_in_new</span>
-                          <span>Xem tệp</span>
-                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        {orderDocs.map(renderDocRow)}
                       </div>
                     </div>
-                  ))}
+                  )}
+
+                  {/* Khối 2: Hồ sơ pháp lý & Hình ảnh Phương tiện - Tài xế */}
+                  {fleetDocs.length > 0 && (
+                    <div className="bg-indigo-50/40 border border-indigo-200 rounded-2xl p-4 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="material-symbols-outlined text-indigo-600 text-xl">badge</span>
+                          <h4 className="text-xs font-black uppercase tracking-wide text-slate-800">
+                            Hồ sơ pháp lý Xe &amp; Tài xế ({fleetDocs.length} GIẤY TỜ)
+                          </h4>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-800 font-bold text-[11px] self-start sm:self-auto">
+                          Cont {selectedBooking.containerId}
+                        </span>
+                      </div>
+                      <div className="space-y-2">
+                        {fleetDocs.map(renderDocRow)}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
+              )}
 
               {/* Footer */}
               <div className="flex justify-end pt-2">
@@ -5490,7 +5892,7 @@ export default function GateBookingRequests() {
       />
 
 
-  
+
       {/* ── POPUP XEM CHI TIẾT XE ĐẦU KÉO & TÀI XẾ ── */}
       {showVehiclePopup && selectedBooking && (() => {
         const activePlate = getGateBookingVehicle(selectedBooking)
@@ -5587,6 +5989,12 @@ export default function GateBookingRequests() {
                 <div className="flex justify-between py-1.5">
                   <span className="text-slate-500">Cổng đăng ký vào:</span>
                   <span className="font-bold text-slate-900">{selectedBooking.requestedGate || 'Gate 1 (Cổng Cảng Tiên Sa)'}</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-t border-slate-100">
+                  <span className="text-slate-500 font-bold">Vị trí bãi chỉ định cho tài xế:</span>
+                  <span className="font-mono font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                    {selectedBooking.yardSlot || (reservedSlot ? `Block ${reservedSlot.blockCode} · ${reservedSlot.bayDisplay || `Bay ${String(reservedSlot.bay || '02').padStart(2, '0')}`} (${reservedSlot.row}-${reservedSlot.tier})` : 'Block D01 · Bay 02 (1-1)')}
+                  </span>
                 </div>
               </div>
 
@@ -5846,11 +6254,10 @@ export default function GateBookingRequests() {
                   {bookingTariffSummary.totalFormatted}
                 </span>
               </div>
-              <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
-                selectedBooking.paymentStatus === 'Paid'
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                  : 'bg-amber-50 text-amber-800 border-amber-200'
-              }`}>
+              <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${selectedBooking.paymentStatus === 'Paid'
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                : 'bg-amber-50 text-amber-800 border-amber-200'
+                }`}>
                 {selectedBooking.paymentStatus === 'Paid' ? '● Đã thanh toán' : '○ Chờ thanh toán'}
               </span>
             </div>
@@ -5972,11 +6379,10 @@ export default function GateBookingRequests() {
                       key={zone.code}
                       type="button"
                       onClick={() => setSelectedZone(zone.code)}
-                      className={`p-3 sm:p-3.5 rounded-2xl border text-left transition flex flex-col justify-between min-h-[82px] cursor-pointer ${
-                        isSelected
-                          ? 'border-2 border-orange-500 bg-orange-50/70 shadow-xs ring-2 ring-orange-500/20'
-                          : 'border-slate-200 bg-slate-50/60 hover:bg-white hover:border-slate-300'
-                      }`}
+                      className={`p-3 sm:p-3.5 rounded-2xl border text-left transition flex flex-col justify-between min-h-[82px] cursor-pointer ${isSelected
+                        ? 'border-2 border-orange-500 bg-orange-50/70 shadow-xs ring-2 ring-orange-500/20'
+                        : 'border-slate-200 bg-slate-50/60 hover:bg-white hover:border-slate-300'
+                        }`}
                     >
                       <div className="flex justify-between items-start">
                         <span className={`text-sm font-black ${isSelected ? 'text-orange-700' : 'text-slate-900'}`}>
@@ -6026,11 +6432,10 @@ export default function GateBookingRequests() {
                             <span className="font-heading text-sm font-bold text-slate-900 font-mono">
                               Block {block.blockCode || block.code}
                             </span>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${
-                              isFull
-                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                            }`}>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${isFull
+                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                              : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                              }`}>
                               {isFull ? 'Hết chỗ' : `${empty} slot trống`}
                             </span>
                           </div>
@@ -6138,16 +6543,19 @@ export default function GateBookingRequests() {
                     onClick={async () => {
                       try {
                         const d = await serviceOrdersApi.get(o.id)
+                        manifestPortSyncService.saveAllOrderFleets(d)
                         setEportDetail(d)
+                        setManifestSyncVersion(v => v + 1)
                       } catch {
+                        manifestPortSyncService.saveAllOrderFleets(o)
                         setEportDetail(o)
+                        setManifestSyncVersion(v => v + 1)
                       }
                     }}
-                    className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono font-bold cursor-pointer transition ${
-                      eportComparison?.order?.id === o.id
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
+                    className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono font-bold cursor-pointer transition ${eportComparison?.order?.id === o.id
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
                   >
                     {o.number}
                   </button>
@@ -6159,13 +6567,12 @@ export default function GateBookingRequests() {
               {eportComparison?.order ? (
                 <>
                   {/* Tổng kết khớp hay lệch */}
-                  <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${
-                    eportComparison.status === 'matched'
-                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                      : eportComparison.status === 'partial'
+                  <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${eportComparison.status === 'matched'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                    : eportComparison.status === 'partial'
                       ? 'bg-amber-50 border-amber-200 text-amber-900'
                       : 'bg-rose-50 border-rose-200 text-rose-900'
-                  }`}>
+                    }`}>
                     <div className="flex items-center gap-2">
                       <span className="material-symbols-outlined text-xl">
                         {eportComparison.status === 'matched' ? 'check_circle' : eportComparison.status === 'partial' ? 'pending' : 'warning'}
@@ -6207,11 +6614,10 @@ export default function GateBookingRequests() {
                             </td>
                             <td className="py-2.5 px-3 font-medium text-slate-900 break-words">{row.eportVal}</td>
                             <td className="py-2.5 px-3 text-center">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${
-                                row.ok
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                  : 'bg-amber-50 text-amber-800 border-amber-200'
-                              }`}>
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${row.ok
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : 'bg-amber-50 text-amber-800 border-amber-200'
+                                }`}>
                                 {row.ok ? '✓ Khớp' : '⚠ Lệch'}
                               </span>
                             </td>
@@ -6229,11 +6635,10 @@ export default function GateBookingRequests() {
                           <span className="material-symbols-outlined text-base text-blue-600">inventory_2</span>
                           <span>Danh Sách Container Trong Lô ({eportComparison.containerBreakdown.length} Cont)</span>
                         </span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${
-                          eportComparison.containerBreakdown.every(c => c.isMatch)
-                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                            : 'bg-amber-50 text-amber-800 border-amber-200'
-                        }`}>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${eportComparison.containerBreakdown.every(c => c.isMatch)
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-amber-50 text-amber-800 border-amber-200'
+                          }`}>
                           {eportComparison.containerBreakdown.filter(c => c.isMatch).length}/{eportComparison.containerBreakdown.length} Cont Đã Khớp
                         </span>
                       </div>
@@ -6249,8 +6654,8 @@ export default function GateBookingRequests() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 text-xs">
-                          {eportComparison.containerBreakdown.map((item) => (
-                            <tr key={item.containerNumber} className="hover:bg-slate-50/50">
+                          {eportComparison.containerBreakdown.map((item, idx) => (
+                            <tr key={`${item.containerNumber || 'cont'}-${item.gateBl || ''}-${idx}`} className="hover:bg-slate-50/50">
                               <td className="py-2 px-3 font-mono font-bold text-slate-900">
                                 <div>{item.containerNumber}</div>
                                 <div className="text-[10px] text-slate-500 font-sans font-normal">
@@ -6396,13 +6801,20 @@ export default function GateBookingRequests() {
                 <span className="material-symbols-outlined text-sm">block</span>
                 <span>Từ chối</span>
               </button>
-              {selectedBooking.status !== 'Approved' && (() => {
+              {(() => {
                 const isOrderRejected =
                   eportComparison?.order?.status === 'REJECTED' ||
                   eportValidationMap[eportComparison?.order?.id]?.status === 'AUTO_REJECTED'
                 const targetList = (eportComparison?.matchedGateBookings && eportComparison.matchedGateBookings.length > 0)
                   ? eportComparison.matchedGateBookings
                   : (orderContainersList.length > 0 ? orderContainersList : [selectedBooking])
+                const orderStatusUpper = String(eportComparison?.order?.status || '').toUpperCase()
+                const hasUnapproved =
+                  selectedBooking.status !== 'Approved' ||
+                  targetList.some(b => b.status !== 'Approved') ||
+                  (orderContainersList || []).some(b => b.status !== 'Approved') ||
+                  (Boolean(eportComparison?.order) && !['APPROVED', 'REJECTED', 'CANCELLED'].includes(orderStatusUpper))
+                if (!hasUnapproved) return null
                 const canAccept = eportComparison?.status === 'matched' && !isOrderRejected && !selectedBooking._noGateBooking
                 return (
                   <button
@@ -6413,13 +6825,12 @@ export default function GateBookingRequests() {
                       if (!canAccept) return
                       setShowEportSyncPopup(false)
                       setBatchApproveList(targetList)
-                      handleConfirmApproval()
+                      handleConfirmApproval(targetList)
                     }}
-                    className={`px-4 py-2 rounded-lg text-xs font-bold transition inline-flex items-center gap-1 ${
-                      canAccept
-                        ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    }`}
+                    className={`px-4 py-2 rounded-lg text-xs font-bold transition inline-flex items-center gap-1 ${canAccept
+                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      }`}
                   >
                     <span className="material-symbols-outlined text-sm">check_circle</span>
                     <span>

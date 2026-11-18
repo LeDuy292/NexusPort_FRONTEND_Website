@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react'
 import { padPosition } from '../../features/yard-design/positions'
 import { yardReservationStore } from '../../services/yardReservationStore'
+import { manifestPortSyncService } from '../../services/manifestPortSyncService'
 
 export default function YardSlotReservationModal({
   isOpen,
@@ -44,7 +45,7 @@ export default function YardSlotReservationModal({
   // 1. TẬP HỢP TOÀN BỘ CÁC CONTAINER ĐANG CÓ MẶT TẠI BLOCK NÀY (ĐỂ HIỂN THỊ RÕ RÀNG VÀ TRÁNH VA CHẠM)
   const existingYardContainers = useMemo(() => {
     if (!isOpen) return []
-    const allStoreReservations = yardReservationStore.getReservations()
+    const allStoreReservations = yardReservationStore.getReservationsSync()
 
     // 1.1 Các container KHÁC đã được giữ chỗ trước tại Block này
     const otherReservations = allStoreReservations.filter((r) => {
@@ -72,7 +73,7 @@ export default function YardSlotReservationModal({
         moduleStart: Math.max(1, modStart),
         moduleSpan: rSize === 40 ? 2 : 1,
         containerLengthFt: rSize,
-        status: 'reserved',
+        status: r.status ? String(r.status).toLowerCase() : 'reserved',
         containerNumber: r.containerNo || r.containerId || 'CONT ĐÃ GIỮ',
         isOtherReserved: true,
       }
@@ -277,7 +278,7 @@ export default function YardSlotReservationModal({
   const handleConfirmReservation = () => {
     if (!selection || conflictContainer) return
 
-    onConfirm?.({
+    const reservation = {
       posId,
       posCode,
       slotId: posId,
@@ -290,8 +291,19 @@ export default function YardSlotReservationModal({
       size,
       containerNo: booking?.containerId,
       containerId: booking?.containerId,
-    })
-    onClose?.()
+    };
+    onConfirm?.(reservation);
+    // Sync with transport system
+    manifestPortSyncService.syncYardSlotAcrossAll({
+      containerNumber: reservation.containerNo || '',
+      manifestId: booking?.manifestId || null,
+      newSlotCoordinate: `${currentBlockCode}-${padPosition(primaryBay)}-${String(currentTier).padStart(2, '0')}-${padPosition(selection.row)}`,
+      reason: 'Điều độ viên đổi vị trí bãi',
+      status: 'reserved',
+      vesselName: booking?.vesselName || '',
+      voyageNumber: booking?.voyageNumber || ''
+    }).catch(err => console.warn('Sync error', err));
+    onClose?.();
   }
 
   const isReservedInOtherBlock = existingReservation && 
@@ -636,7 +648,9 @@ export default function YardSlotReservationModal({
                           skipUntil = moduleIdx + span - 1
                         }
 
-                        const isRes = existingCont.status === 'reserved'
+                        const contStatus = (existingCont.status || '').toLowerCase()
+                        const isInYard = contStatus === 'in_yard' || contStatus === 'inyard' || contStatus === 'in yard'
+                        const isRes = contStatus === 'reserved'
 
                         return (
                           <button
@@ -644,14 +658,16 @@ export default function YardSlotReservationModal({
                             type="button"
                             style={span > 1 ? { gridColumn: `span ${span}` } : {}}
                             onClick={() => {
-                              setWarningMessage(`⚠️ Vị trí đã có container ${existingCont.containerNumber} (${isRes ? 'Đã giữ chỗ trước' : 'Đang lưu bãi'}). Không thể xếp đè!`)
+                              setWarningMessage(`⚠️ Vị trí đã có container ${existingCont.containerNumber} (${isInYard ? 'Đang lưu bãi (IN YARD)' : isRes ? 'Đã giữ chỗ trước' : 'Đang lưu bãi'}). Không thể xếp đè!`)
                             }}
                             className={`h-9 border-2 rounded-xl z-10 px-1 flex items-center justify-center cursor-not-allowed opacity-90 transition ${
-                              isRes
+                              isInYard
+                                ? 'bg-emerald-100 border-emerald-500 text-emerald-800'
+                                : isRes
                                 ? 'bg-amber-100 border-amber-400 text-amber-900'
                                 : 'bg-sky-100 border-sky-400 text-sky-900'
                             }`}
-                            title={`ĐÃ BẬN: Cont ${existingCont.containerNumber} (${isRes ? 'Đã giữ chỗ' : 'Đang lưu bãi'})`}
+                            title={`ĐÃ BẬN: Cont ${existingCont.containerNumber} (${isInYard ? 'Đang lưu bãi (IN YARD)' : isRes ? 'Đã giữ chỗ' : 'Đang lưu bãi'})`}
                           >
                             <span className="font-mono font-black text-xs">CONT</span>
                           </button>
