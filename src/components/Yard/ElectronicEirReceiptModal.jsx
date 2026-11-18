@@ -70,7 +70,7 @@ export default function ElectronicEirReceiptModal({ isOpen, onClose, data }) {
       : Array.isArray(data.damage_photos) && data.damage_photos.length > 0
         ? data.damage_photos
         : (hasDamage ? ['https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80'] : [])
-  const damagePhotos = rawPhotos
+  const damagePhotos = (rawPhotos || []).map(p => (typeof p === 'string' ? p : p?.url || p?.preview || '')).filter(Boolean)
 
   const terminalSignatory = data.terminalSignatory || 'Trần Văn Hùng · Điều Độ Viên Cảng Tiên Sa'
   const transportationSignatory = data.transportationSignatory || `${driverName} · Tài Xế Vận Tải`
@@ -359,7 +359,7 @@ export default function ElectronicEirReceiptModal({ isOpen, onClose, data }) {
               )}
 
               {/* HÌNH ẢNH HIỆN TRƯỜNG GIÁM ĐỊNH VỎ CONTAINER */}
-              {hasDamage && damagePhotos.length > 0 && (
+              {damagePhotos.length > 0 && (
                 <div className="bg-rose-50/50 p-3 rounded-lg border border-rose-200 space-y-2">
                   <div className="text-[11px] font-bold text-rose-950 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">

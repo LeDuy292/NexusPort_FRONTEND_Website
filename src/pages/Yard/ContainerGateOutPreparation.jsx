@@ -1952,6 +1952,9 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast }) {
             hasDamage,
             damageDetails,
             damageSeverity,
+            damagePhotos: (damagePhotos && damagePhotos.length > 0)
+              ? damagePhotos
+              : (issuedEir?.damagePhotos || currentReq.damagePhotos || (hasDamage ? ['https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80'] : [])),
             truckPlate: currentReq.truck || currentReq.truckPlate,
             driverName: currentReq.driver || currentReq.driverName,
             terminalSignatory,
