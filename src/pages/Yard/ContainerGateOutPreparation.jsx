@@ -21,7 +21,7 @@ import ElectronicEirReceiptModal from '../../components/Yard/ElectronicEirReceip
 import { yardReservationStore } from '../../services/yardReservationStore'
 
 // ─── DANH MỤC THIẾT BỊ NÂNG HẠ BÃI TIÊN SA ────────────────────────────────────
-export const AVAILABLE_EQUIPMENTS = [
+const AVAILABLE_EQUIPMENTS = [
   { id: 'RS-01', code: 'RS-01', type: 'ReachStacker', typeLabel: 'Xe nâng chụp', name: 'Reach Stacker RS-01 (Kalmar 45T)', operator: 'Trần Văn Hùng', phone: '0905.112.334', radio: 'VHF-14', fuel: 84, status: 'Sẵn sàng' },
   { id: 'RS-02', code: 'RS-02', type: 'ReachStacker', typeLabel: 'Xe nâng chụp', name: 'Reach Stacker RS-02 (Konecranes 45T)', operator: 'Lê Văn Thành', phone: '0905.223.445', radio: 'VHF-14', fuel: 72, status: 'Sẵn sàng' },
   { id: 'RS-03', code: 'RS-03', type: 'ReachStacker', typeLabel: 'Xe nâng chụp', name: 'Reach Stacker RS-03 (Sany 45T)', operator: 'Nguyễn Văn B', phone: '0905.334.556', radio: 'VHF-14', fuel: 91, status: 'Sẵn sàng' },
