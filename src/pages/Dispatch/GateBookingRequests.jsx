@@ -1115,6 +1115,7 @@ export default function GateBookingRequests() {
 
   const fetchYardMap = async () => {
     try {
+      await yardReservationStore.getReservationsAsync().catch(() => {})
       const blocks = await expressApiClient.get('/yard/blocks')
       setBlocksData(blocks)
       if (blocks.length > 0) {
@@ -5243,7 +5244,23 @@ export default function GateBookingRequests() {
                       <div>
                         <div className="text-[11px] text-[#8a9bb0]">Vị trí bãi Tiên Sa</div>
                         <div className="font-mono font-semibold text-[#1e2d3d] mt-0.5">
-                          {selectedBooking.yardSlot || (reservedSlot ? `Block ${reservedSlot.blockCode} · ${reservedSlot.bayDisplay || `Bay ${String(reservedSlot.bay || '02').padStart(2, '0')}`}` : 'Block D01 · Bay 02')}
+                          {(() => {
+                            const slot = reservedSlot || selectedBooking?.autoYardSlot || selectedBooking?.reservedSlot
+                            if (slot?.blockCode && slot?.bay) {
+                              const bStr = String(slot.bay).padStart(2, '0')
+                              const rStr = slot.row ? String(slot.row).padStart(2, '0') : '01'
+                              const tStr = slot.tier || '1'
+                              return `Block ${slot.blockCode} · Bay ${bStr} · Tầng ${tStr} · Hàng ${rStr}`
+                            }
+                            if (selectedBooking?.yardSlot) {
+                              const parsed = manifestPortSyncService.parseSlotCoordinate(selectedBooking.yardSlot)
+                              if (parsed) {
+                                return `Block ${parsed.blockCode} · Bay ${String(parsed.bay).padStart(2, '0')} · Tầng ${parsed.tier} · Hàng ${String(parsed.row).padStart(2, '0')}`
+                              }
+                              return selectedBooking.yardSlot
+                            }
+                            return 'Block D01 · Bay 02 · Tầng 1 · Hàng 01'
+                          })()}
                         </div>
                       </div>
                       <div>
@@ -5660,7 +5677,7 @@ export default function GateBookingRequests() {
             await manifestPortSyncService.syncYardSlotAcrossAll({
               containerNumber: selectedBooking?.containerId,
               bookingCode: selectedBooking?.id,
-              manifestId: selectedBooking?.sourceManifestId,
+              manifestId: selectedBooking?.sourceManifestId || selectedBooking?.manifestId,
               newSlotCoordinate: coordinate,
               reason: 'Điều độ viên thay đổi vị trí bãi tại Gate Dispatching',
               vehiclePlate: selectedBooking?.licensePlate,
@@ -5673,15 +5690,37 @@ export default function GateBookingRequests() {
             const updatedSlot = {
               ...(reservedSlot || selectedBooking?.autoYardSlot || {}),
               ...slotInfo,
+              bay: bayStr,
+              row: rowStr,
               tier: newTier,
               tierCode: String(newTier),
               zoneCode: (slotInfo.blockCode || 'A')[0],
               zoneName: `Khu ${(slotInfo.blockCode || 'A')[0]} · Block ${slotInfo.blockCode}`,
               autoAssigned: false,
+              coordinate,
             }
             setReservedSlot(updatedSlot)
             setSelectedZone((slotInfo.blockCode || 'A')[0])
             setSelectedBlock(slotInfo.blockCode || 'A01')
+
+            const updatedBooking = {
+              ...selectedBooking,
+              yardSlot: coordinate,
+              autoYardSlot: updatedSlot,
+              reservedSlot: updatedSlot,
+              slotInfo: updatedSlot,
+              yardBlockCode: slotInfo.blockCode,
+              yardBay: Number(slotInfo.bay),
+              yardRow: Number(slotInfo.row),
+              yardTier: newTier,
+            }
+            setSelectedBooking(updatedBooking)
+            setBookings(prev => prev.map(b => {
+              const isMatch = (selectedBooking?.id && b.id === selectedBooking.id) ||
+                              (selectedBooking?.containerId && b.containerId === selectedBooking.containerId)
+              return isMatch ? { ...b, ...updatedBooking } : b
+            }))
+
             setYardResVersion(v => v + 1)
             setManifestSyncVersion(v => v + 1)
 
@@ -5693,7 +5732,7 @@ export default function GateBookingRequests() {
             }
             handleReserveSlot(slotInfo.slotId, slotInfo.blockCode, slotInfo)
             fetchYardMap()
-            showToast(`🟢 Đã chuyển & đồng bộ container ${selectedBooking?.containerId || ''} sang Block ${slotInfo.blockCode} (${slotInfo.bayDisplay || `Bay ${slotInfo.bay}`}, Tầng ${slotInfo.tier}, Hàng ${slotInfo.row}) cho cả 3 bên và lịch tài xế!`)
+            showToast(`🟢 Đã chuyển & đồng bộ container ${selectedBooking?.containerId || ''} sang Block ${slotInfo.blockCode} (${slotInfo.bayDisplay || `Bay ${slotInfo.bay}`}, Tầng ${newTier}, Hàng ${slotInfo.row}) cho cả 4 bên và lịch tài xế!`)
           } catch (err) {
             showToast(`❌ Không thể giữ chỗ: ${err.message}`, 'error')
           }

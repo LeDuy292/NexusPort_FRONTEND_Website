@@ -77,6 +77,24 @@ export function parseSlotCoordinate(slotStr) {
     }
   }
 
+  // Format 4: Block D01 · Bay 02 · Tầng 2 · Hàng 01 or Block D01 • Bay 02 • Tầng 2 • Hàng 01
+  m = clean.match(/BLOCK\s+([A-Z0-9]+).*?BAY\s*(\d+).*?TẦNG\s*(\d+).*?HÀNG\s*(\d+)/i)
+  if (m) {
+    const blockCode = m[1]
+    const bay = parseInt(m[2], 10)
+    const tier = parseInt(m[3], 10)
+    const row = parseInt(m[4], 10)
+    return {
+      blockCode,
+      bay,
+      row,
+      tier,
+      formattedSlot: `Block ${blockCode} · Bay ${String(bay).padStart(2, '0')} (${row}-${tier})`,
+      slotCode: `${blockCode}.${String(bay).padStart(2, '0')}.${String(row).padStart(2, '0')}.${tier}`,
+      coordinate: `${blockCode}-${String(bay).padStart(2, '0')}-${String(row).padStart(2, '0')}-${tier}`,
+    }
+  }
+
   return null
 }
 
@@ -2476,6 +2494,7 @@ export const manifestPortSyncService = {
     }
 
     // 3.5 CẬP NHẬT TRONG DANH SÁCH BẢN KHAI MANIFESTS (STORAGE_KEY)
+    let resolvedManifestId = manifestId || null
     try {
       const manifests = this.getSyncedManifests()
       if (Array.isArray(manifests) && manifests.length > 0) {
@@ -2488,6 +2507,9 @@ export const manifestPortSyncService = {
             if (contNo && cNo === contNo) {
               contChanged = true
               manifestChanged = true
+              if (!resolvedManifestId) {
+                resolvedManifestId = m.manifestId || m.id
+              }
               return {
                 ...c,
                 isPreAllocated: true,
@@ -2545,10 +2567,11 @@ export const manifestPortSyncService = {
     }
 
     // 5. CẬP NHẬT BÊN 1: SMART YARD PRE-ALLOCATION (Backend C# API)
-    if (manifestId) {
+    const targetManifestId = manifestId || resolvedManifestId
+    if (targetManifestId) {
       try {
         await yardDischargeService.overrideSlot({
-          manifestId,
+          manifestId: targetManifestId,
           containerNumber: contNo,
           newSlotCoordinate: coordinate,
           reason,

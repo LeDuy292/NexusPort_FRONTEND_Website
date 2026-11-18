@@ -48,43 +48,19 @@ function dedupAndValidate(list) {
     if (!isDuplicate) deduped.unshift(item);
   }
 
-  // ===== STACKING VALIDATION: Loại bỏ container "lơ lửng" (tầng N khi tầng N-1 trống) =====
-  deduped.sort((a, b) => Number(a.tier || 1) - Number(b.tier || 1));
-  const validSlots = new Set();
-  const result = [];
-
-  for (const item of deduped) {
-    const tier = Number(item.tier || 1);
-    const block = item.blockCode || item.block || '';
-    const slotId = `${block}-${item.bay}-${item.row}-${tier}`;
-
-    if (tier <= 1) {
-      validSlots.add(slotId);
-      result.push(item);
-    } else {
-      const lowerSlotId = `${block}-${item.bay}-${item.row}-${tier - 1}`;
-      if (validSlots.has(lowerSlotId)) {
-        validSlots.add(slotId);
-        result.push(item);
-      } else {
-        // Tầng dưới chưa có → reset xuống tầng 1 nếu tầng 1 còn trống
-        const tier1SlotId = `${block}-${item.bay}-${item.row}-1`;
-        if (!validSlots.has(tier1SlotId)) {
-          const fixedItem = { ...item, tier: 1, tierCode: '1' };
-          validSlots.add(tier1SlotId);
-          result.push(fixedItem);
-        }
-        // Nếu tầng 1 đã bị chiếm thì bỏ qua container này
-      }
-    }
-  }
-  return result;
+  return deduped;
 }
 
+let isSyncingFromApi = false;
+
 export const yardReservationStore = {
-  // Lấy danh sách lưu trữ từ localStorage và loại bỏ trùng lặp (trả về Array đồng bộ)
+  // Lấy danh sách lưu trữ từ localStorage và tự động kéo từ server nếu là máy khác
   getReservations: () => {
     try {
+      if (typeof window !== 'undefined' && !isSyncingFromApi && !window.__yard_res_synced_once) {
+        window.__yard_res_synced_once = true;
+        yardReservationStore.getReservationsAsync().catch(() => {});
+      }
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return [];
       const list = JSON.parse(raw);
@@ -99,16 +75,22 @@ export const yardReservationStore = {
     return yardReservationStore.getReservations();
   },
 
-  // Async accessor nếu cần đồng bộ với backend
+  // Async accessor đồng bộ trực tiếp từ Database PostgreSQL của hệ thống
   getReservationsAsync: async () => {
+    isSyncingFromApi = true;
     try {
       const data = await apiRequest('', 'GET');
       const list = Array.isArray(data) ? data : [];
       const validated = dedupAndValidate(list);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(validated));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('yard-reservation-updated', { detail: { syncFromApi: true } }));
+      }
       return validated;
     } catch {
       return yardReservationStore.getReservations();
+    } finally {
+      isSyncingFromApi = false;
     }
   },
 
@@ -208,3 +190,8 @@ export const yardReservationStore = {
     }
   },
 };
+
+// Khởi tạo: Tự động kéo toàn bộ vị trí bãi đã lưu trong Database PostgreSQL về máy
+if (typeof window !== 'undefined') {
+  yardReservationStore.getReservationsAsync().catch(() => {});
+}
