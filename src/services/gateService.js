@@ -149,18 +149,19 @@ export const gateService = {
     return `${AI_URL}/api/v1/gate/video-feed?lane=${lane}`
   },
 
-  async getHardwareStatus() {
+  async setCameraPreview(lane = 'IN', enabled = true) {
     try {
-      const res = await aiClient.get('/api/v1/gate/hardware-status')
+      const action = enabled ? 'start' : 'stop'
+      const res = await aiClient.post(`/api/v1/gate/camera/${action}?lane=${lane}`)
       return { success: true, data: res.data }
     } catch (err) {
       return { success: false, error: err.message }
     }
   },
 
-  async triggerHardwareScan(lane = 'IN') {
+  async getHardwareStatus() {
     try {
-      const res = await aiClient.post(`/api/v1/gate/trigger-scan?lane=${lane}`)
+      const res = await aiClient.get('/api/v1/gate/hardware-status')
       return { success: true, data: res.data }
     } catch (err) {
       return { success: false, error: err.message }
