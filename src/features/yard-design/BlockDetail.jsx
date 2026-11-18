@@ -23,7 +23,7 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
  return <section className="yard-block-detail" aria-label={`Chi tiết block ${area.code}`}>
   <header className="yard-detail-heading"><div><button type="button" onClick={onBack}>← Toàn cảng</button><h2>Block {area.code}</h2><span className={lengthBasis==='user-count'?'count-source':'count-estimate'}>{lengthBasis==='user-count'?'Chiều dài theo số bạn cung cấp':'Chiều dài ước tính theo tỷ lệ'}</span></div><strong>{bayModules} vị trí 20ft / row</strong></header>
   <div className="yard-detail-metrics"><span><strong>{bayModules}</strong> mô-đun dọc Bay</span><span><strong>{rows}</strong> row</span><span><strong>{tiers}</strong> tier tối đa</span><span><strong>{bayModules*rows*tiers}</strong> TEU hình học</span></div>
-  <p className="yard-detail-basis">{rows} row và {tiers} tier là giả định thiết kế. {live?'Xanh lá: Đã hạ bãi (IN YARD) · Vàng: đã giữ vị trí · Xanh dương: lưu bãi · Xám: bảo trì.':'Các ô dưới đây là ô quy hoạch, chưa có snapshot tồn kho.'}</p>
+  <p className="yard-detail-basis">{rows} row và {tiers} tier là giả định thiết kế. {live?'Vàng: đã giữ vị trí · Xám: Đang lưu bãi · Ô nét đứt: Ô trống.':'Các ô dưới đây là ô quy hoạch, chưa có snapshot tồn kho.'}</p>
   <div className="yard-detail-workspace">
    <div className="yard-detail-plan">
     <div className="yard-detail-plan-heading">
@@ -128,40 +128,16 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
                   boxShadow: selected ? '0 0 0 2px rgba(245, 158, 11, 0.45)' : undefined,
                   zIndex: selected ? 10 : 2,
                 };
-              } else if (status === 'maintenance') {
-                // Bảo trì: Màu xám
+              } else {
+                // Đang lưu bãi (In Yard / Occupied / Toàn bộ container trong bãi): Thống nhất 1 màu xám
                 gridStyle = {
                   ...gridStyle,
                   background: '#d9dde2',
-                  borderColor: selected ? '#475569' : '#84919c',
+                  borderColor: selected ? '#334155' : '#84919c',
                   borderWidth: selected ? '2.5px' : '1.5px',
                   borderStyle: 'solid',
                   borderRadius: span > 1 ? '8px' : '4px',
                   boxShadow: selected ? '0 0 0 2px rgba(71, 85, 105, 0.4)' : undefined,
-                  zIndex: selected ? 10 : 2,
-                };
-              } else if (status === 'in_yard' || status === 'inyard' || status === 'in yard') {
-                // Đang lưu bãi (IN YARD / ĐÃ HẠ BÃI): Màu xanh lá
-                gridStyle = {
-                  ...gridStyle,
-                  background: '#d1fae5', // light green
-                  borderColor: selected ? '#059669' : '#10b981',
-                  borderWidth: selected ? '2.5px' : '1.5px',
-                  borderStyle: 'solid',
-                  borderRadius: span > 1 ? '8px' : '4px',
-                  boxShadow: selected ? '0 0 0 2px rgba(16, 185, 129, 0.45)' : undefined,
-                  zIndex: selected ? 10 : 2,
-                };
-              } else {
-                // Đang lưu bãi: Màu xanh dương cảng biển
-                gridStyle = {
-                  ...gridStyle,
-                  background: '#c5e1ed',
-                  borderColor: selected ? '#0284c7' : '#4184a1',
-                  borderWidth: selected ? '2.5px' : '1.5px',
-                  borderStyle: 'solid',
-                  borderRadius: span > 1 ? '8px' : '4px',
-                  boxShadow: selected ? '0 0 0 2px rgba(2, 132, 199, 0.45)' : undefined,
                   zIndex: selected ? 10 : 2,
                 };
               }
@@ -260,7 +236,7 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
                   fontSize: span > 1 ? '11px' : '9.5px',
                   fontFamily: 'monospace',
                   color: hasContainer 
-                    ? ((stored?.status === 'in_yard' || stored?.status === 'IN_YARD') ? '#065f46' : isReserved ? '#92400e' : '#0369a1')
+                    ? (isReserved ? '#92400e' : '#1e293b')
                     : '#334155',
                   letterSpacing: '0.3px',
                   whiteSpace: 'nowrap',
