@@ -75,7 +75,7 @@ function validateIso6346(containerNumber) {
 const FALLBACK_REQUESTS = []
 const FALLBACK_OUTBOUND_REQUESTS = []
 
-// ─── ĐỘ ƯU TIÊN DỰA VÀO CUỘC HẸN VÀO CỔNG (ePORT) & XE ĐÃ ĐẾN CỔNG CHƯA ───────
+// ─── ĐỘ ƯU TIÊN DỰA VÀO LỊCH HẸN (ePORT) & XE ĐÃ ĐẾN BÃI CHƯA ───────
 export const isTruckAtGate = (r) => {
   if (!r) return false
   const isDone = r.status === 'HOÀN THÀNH' || r.status === 'COMPLETED' || (r.flowStep || 0) >= 5
@@ -125,7 +125,7 @@ export const getAppointmentPriority = (r) => {
       badge: 'bg-rose-50 text-rose-700 border-rose-300 ring-1 ring-rose-200 font-bold',
       dot: 'bg-rose-600 animate-pulse',
       icon: 'priority_high',
-      subText: atGate ? `Xe tại cổng · Hẹn vào cổng ${appointment}` : `Cuộc hẹn khẩn · Hẹn vào cổng ${appointment}`,
+      subText: atGate ? `Xe tại bãi · Giờ hẹn: ${appointment}` : `Cuộc hẹn khẩn · Giờ hẹn: ${appointment}`,
     }
   }
 
@@ -142,7 +142,7 @@ export const getAppointmentPriority = (r) => {
       badge: 'bg-amber-50 text-amber-800 border-amber-300 font-bold',
       dot: 'bg-amber-500',
       icon: 'north_east',
-      subText: `Hẹn vào cổng sớm: ${appointment}`,
+      subText: `Giờ hẹn sớm: ${appointment}`,
     }
   }
 
@@ -156,7 +156,7 @@ export const getAppointmentPriority = (r) => {
     badge: 'bg-slate-100 text-slate-700 border-slate-300 font-semibold',
     dot: 'bg-slate-400',
     icon: 'schedule',
-    subText: `Hẹn vào cổng: ${appointment}`,
+    subText: `Giờ hẹn: ${appointment}`,
   }
 }
 
@@ -246,6 +246,7 @@ function YardStackVisualizer({
   weight,
   isDone = false,
   onNavigateYardMap,
+  onOpenUnstack,
 }) {
   const tiers = [4, 3, 2, 1]
   const posParts = (position || '').split('-')
@@ -263,6 +264,8 @@ function YardStackVisualizer({
       (r.containerId && r.containerId === targetContainerId) ||
       (r.blockCode === displayBlock && Number(r.bay) === Number(displayBay) && Number(r.row) === Number(displayRow))
   )
+
+  const hasBlockingCont = !isDone && stackContainers.some(c => c.note?.includes('chắn') || (Number(c.tier) > parsedTargetTier && c.id !== targetContainerId))
 
   return (
     <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 text-slate-800 shadow-2xs space-y-3">
@@ -303,7 +306,7 @@ function YardStackVisualizer({
         </div>
       </div>
 
-      {/* RENDER 4 TẦNG CONTAINER */}
+      {/* RENDER 4 TẦNG CONTAINER CHÍNH XÁC THEO SƠ ĐỒ BÃI */}
       <div className="space-y-1.5 pt-1">
         {tiers.map(tierNum => {
           let item = stackContainers.find(c => Number(c.tier) === tierNum)
@@ -321,7 +324,7 @@ function YardStackVisualizer({
                     {tierNum}
                   </span>
                   <span className="font-mono font-bold text-xs text-emerald-900">{targetContainerId}</span>
-                  <span className="text-[10px] text-emerald-700 italic">Đã xuất cổng lúc {isDone ? '16:45' : ''}</span>
+                  <span className="text-[10px] text-emerald-700 italic">Đã xuất bãi</span>
                 </div>
                 <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                   Ô đã giải phóng (Khả dụng)
@@ -330,39 +333,15 @@ function YardStackVisualizer({
             )
           }
 
-          // Tầng chỉ định: Luôn hiển thị container mục tiêu cần lấy từ bãi
-          if (!item && tierNum === parsedTargetTier) {
+          // Tầng chỉ định: Luôn hiển thị container mục tiêu cần lấy từ bãi nếu chưa xuất xong
+          if (!item && tierNum === parsedTargetTier && !isDone) {
             item = {
-              id: targetContainerId || matchedReservation?.containerNo || 'HLBU7781920',
+              id: targetContainerId || matchedReservation?.containerNo,
               tier: parsedTargetTier,
               isTarget: true,
-              carrier: carrier || matchedReservation?.carrier || 'Hapag-Lloyd / Chủ hàng',
+              carrier: carrier || matchedReservation?.carrier || 'Chủ hàng / Hãng tàu',
               weight: weight || '24,000 KG',
               note: null,
-            }
-          }
-
-          // Tầng 1 chân đế (khi cont mục tiêu ở tầng 2 trở lên)
-          if (!item && tierNum === 1 && parsedTargetTier > 1) {
-            item = {
-              id: 'TGHU9921826',
-              tier: 1,
-              carrier: 'Yang Ming (Lưu bãi)',
-              weight: '28,100 KG',
-              isTarget: false,
-              note: null,
-            }
-          }
-
-          // Tầng 3 đè phía trên (khi cont mục tiêu ở tầng 2 và có cont chắn)
-          if (!item && parsedTargetTier < 4 && tierNum === parsedTargetTier + 1) {
-            item = {
-              id: 'TEMU4451923',
-              tier: parsedTargetTier + 1,
-              carrier: 'COSCO / TEMU',
-              weight: '26,500 KG',
-              isTarget: false,
-              note: 'Cont chắn (Cần đảo chuyển)',
             }
           }
 
@@ -380,22 +359,32 @@ function YardStackVisualizer({
             )
           }
 
+          const isUpperObstacle = Number(item.tier) > parsedTargetTier && !isDone
+
           return (
             <div
               key={tierNum}
               className={`h-11 rounded-xl px-3 flex items-center justify-between transition-all border ${isTarget
                 ? 'bg-orange-50 border-orange-300 shadow-2xs ring-2 ring-orange-400/20 text-slate-900'
-                : 'bg-white border-slate-200 text-slate-700 shadow-2xs'
+                : isUpperObstacle
+                  ? 'bg-amber-50/80 border-amber-300 text-amber-950 shadow-2xs'
+                  : 'bg-white border-slate-200 text-slate-700 shadow-2xs'
                 }`}
             >
               <div className="flex items-center gap-2.5 min-w-0">
-                <span className={`w-5 h-5 rounded-md flex items-center justify-center font-mono text-[10px] font-bold ${isTarget ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-700 border border-slate-200'
+                <span className={`w-5 h-5 rounded-md flex items-center justify-center font-mono text-[10px] font-bold ${isTarget
+                  ? 'bg-orange-500 text-white'
+                  : isUpperObstacle
+                    ? 'bg-amber-500 text-slate-950'
+                    : 'bg-slate-100 text-slate-700 border border-slate-200'
                   }`}>
                   {tierNum}
                 </span>
                 <div className="min-w-0">
                   <div className="font-mono font-bold text-xs truncate flex items-center gap-1.5">
-                    <span className={isTarget ? 'text-orange-950 font-extrabold' : 'text-slate-800'}>{item.id}</span>
+                    <span className={isTarget ? 'text-orange-950 font-extrabold' : isUpperObstacle ? 'text-amber-950 font-bold' : 'text-slate-800'}>
+                      {item.id}
+                    </span>
                     {isTarget && (
                       <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
                         CONT CẦN LẤY
@@ -408,8 +397,8 @@ function YardStackVisualizer({
                 </div>
               </div>
 
-              {item.note ? (
-                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 whitespace-nowrap">
+              {item.note || isUpperObstacle ? (
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap">
                   Cont chắn (Cần đảo)
                 </span>
               ) : (
@@ -422,9 +411,468 @@ function YardStackVisualizer({
         })}
       </div>
 
+      {hasBlockingCont && onOpenUnstack && (
+        <button
+          type="button"
+          onClick={onOpenUnstack}
+          className="w-full mt-2 py-2 px-3 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+        >
+          <span className="material-symbols-outlined text-sm">layers_clear</span>
+          <span>Khởi động quy trình đảo chuyển cont chắn tầng trên</span>
+        </button>
+      )}
+
       <div className="text-[10px] text-slate-500 pt-1 border-t border-slate-200/60 flex items-center justify-between">
         <span>Mặt đất bãi cảng</span>
         <span className="text-emerald-700 font-semibold">Xe nâng Reach Stacker tiếp cận từ rãnh bãi</span>
+      </div>
+    </div>
+  )
+}
+
+// ─── COMPONENT: MODAL QUY TRÌNH NGHIỆP VỤ ĐẢO CHUYỂN CONTAINER CHẮN CHUẨN TOS ────
+function StrictUnstackModal({
+  isOpen,
+  onClose,
+  targetReq,
+  stackContainers = [],
+  allRequests = [],
+  onSuccess,
+  showToast,
+}) {
+  const [step, setStep] = useState(1)
+  const [selectedEquipment, setSelectedEquipment] = useState('RS-01')
+  const [selectedOperator, setSelectedOperator] = useState('Trần Văn Hùng (Bậc 5/7)')
+  const [selectedBufferSlot, setSelectedBufferSlot] = useState('B04-02-05-1')
+  const [submitting, setSubmitting] = useState(false)
+
+  if (!isOpen || !targetReq) return null
+
+  const targetTier = parseInt(targetReq.tier || targetReq.yard_tier || targetReq.stackLevel?.replace(/\D/g, '') || 1, 10)
+
+  // 1. Xác định chính xác container đè tầng trên từ stack thực tế
+  const upperContainers = (stackContainers || [])
+    .filter(c => Number(c.tier) > targetTier && c.id !== targetReq.containerId)
+    .sort((a, b) => Number(b.tier) - Number(a.tier))
+
+  let blockingCont = upperContainers[0]
+  if (!blockingCont && Array.isArray(allRequests)) {
+    const targetBlock = targetReq.block || targetReq.yard_block || 'B'
+    const targetBay = Number(targetReq.bay || targetReq.yard_bay)
+    const targetRow = Number(targetReq.row || targetReq.yard_row)
+    const sameSlotUpper = allRequests.find(r => {
+      if (r.id === targetReq.id || r.containerId === targetReq.containerId) return false
+      const rBlk = r.block || r.yard_block || 'B'
+      const rBay = Number(r.bay || r.yard_bay)
+      const rRow = Number(r.row || r.yard_row)
+      const rTier = Number(r.tier || r.yard_tier || 1)
+      return (rBlk === targetBlock || rBlk.replace(/^B0?/, 'B') === targetBlock.replace(/^B0?/, 'B')) &&
+             rBay === targetBay &&
+             rRow === targetRow &&
+             rTier > targetTier
+    })
+    if (sameSlotUpper) {
+      blockingCont = {
+        id: sameSlotUpper.containerId,
+        tier: Number(sameSlotUpper.tier || sameSlotUpper.yard_tier || targetTier + 1),
+        carrier: sameSlotUpper.carrier || sameSlotUpper.carrier_name || 'Hãng tàu liên kết',
+        weight: sameSlotUpper.weight || sameSlotUpper.weight_kg || '26,500 KG',
+        note: 'Cont chắn tầng trên',
+      }
+    }
+  }
+
+  // Fallback nếu không phát hiện
+  if (!blockingCont) {
+    blockingCont = {
+      id: targetReq.blockingContainerNo || (targetTier === 1 ? 'CAIU5506483' : 'TEMU4451923'),
+      tier: targetTier + 1,
+      carrier: 'COSCO / Evergreen',
+      weight: '26,500 KG',
+      note: 'Cont chắn tầng trên',
+    }
+  }
+
+  const handleExecute = async () => {
+    try {
+      setSubmitting(true)
+      const res = await executeUnstackMove(targetReq.id, {
+        direction: targetReq.direction || 'inbound',
+        targetSlot: selectedBufferSlot,
+        equipmentCode: selectedEquipment,
+        operatorName: selectedOperator,
+        blockingContainerNo: blockingCont.id,
+      })
+
+      // Dispatch sự kiện đồng bộ toàn hệ thống
+      window.dispatchEvent(new CustomEvent('yard-reservation-updated', {
+        detail: {
+          containerId: blockingCont.id,
+          releasedSlot: targetReq.position,
+          newSlot: selectedBufferSlot,
+        }
+      }))
+
+      if (showToast) {
+        showToast(`Đã hoàn tất quy trình đảo chuyển cont chắn ${blockingCont.id} sang ${selectedBufferSlot}! Vị trí bãi đã sẵn sàng.`)
+      }
+
+      if (onSuccess) {
+        onSuccess(res)
+      }
+      onClose()
+    } catch (err) {
+      if (showToast) {
+        showToast(getFriendlyErrorMessage(err, 'Không thể thực hiện quy trình đảo chuyển container.'))
+      }
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-[300] animate-in fade-in duration-150">
+      <div className="bg-white rounded-3xl max-w-xl w-full p-6 shadow-2xl border border-slate-200/90 space-y-5 animate-in zoom-in-95 duration-150 text-slate-800">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5 text-amber-700">
+            <div className="w-10 h-10 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-700 shadow-2xs">
+              <span className="material-symbols-outlined text-2xl">layers_clear</span>
+            </div>
+            <div>
+              <h3 className="text-base font-extrabold text-slate-900">Quy Trình Nghiệp Vụ Đảo Chuyển Container Chắn</h3>
+              <p className="text-[11px] text-slate-500 font-medium">Tiêu chuẩn khai thác TOS · Kiểm soát 4 bước an toàn nghiêm ngặt</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="text-slate-400 hover:text-slate-600 p-1.5 rounded-xl hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        {/* 4-Step Stepper Indicator */}
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { num: 1, label: 'Chướng ngại vật', icon: 'warning' },
+            { num: 2, label: 'Thiết bị & Tài xế', icon: 'forklift' },
+            { num: 3, label: 'Khóa ô tạm', icon: 'lock' },
+            { num: 4, label: 'Phát lệnh TOS', icon: 'send' },
+          ].map(s => {
+            const isPassed = step > s.num
+            const isCurrent = step === s.num
+            return (
+              <button
+                key={s.num}
+                type="button"
+                onClick={() => !submitting && setStep(s.num)}
+                className={`flex flex-col items-center p-2 rounded-xl text-center border transition-all ${
+                  isCurrent
+                    ? 'bg-amber-50 border-amber-400 text-amber-950 font-bold shadow-2xs'
+                    : isPassed
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-semibold'
+                      : 'bg-slate-50 border-slate-200 text-slate-400'
+                }`}
+              >
+                <div className="flex items-center gap-1 text-[11px]">
+                  <span className="material-symbols-outlined text-sm">
+                    {isPassed ? 'check_circle' : s.icon}
+                  </span>
+                  <span>Bước {s.num}</span>
+                </div>
+                <div className="text-[10px] truncate max-w-full mt-0.5">{s.label}</div>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* Nội dung từng bước */}
+        {step === 1 && (
+          <div className="space-y-3.5 text-xs">
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-2.5">
+              <div className="text-[11px] font-bold text-slate-600 uppercase tracking-wider">1. Container mục tiêu (Cần lấy để xuất bãi)</div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Mã Container:</span>
+                <span className="font-mono font-black text-slate-900 text-sm">{targetReq.containerId}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Vị trí lưu bãi:</span>
+                <span className="font-mono font-bold text-slate-800">
+                  {targetReq.position || `${targetReq.block}-${targetReq.bay}-${targetReq.row}-${targetTier}`} (Tầng {targetTier})
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-slate-500">Trạng thái:</span>
+                <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-amber-100 text-amber-800 border border-amber-200">
+                  Bị chèn ép bởi tầng trên
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-amber-50/70 border border-amber-300/80 rounded-2xl p-4 space-y-2.5">
+              <div className="flex items-center justify-between text-[11px] font-bold text-amber-900 uppercase tracking-wider">
+                <span className="flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-base text-amber-700">layers</span>
+                  2. Container chắn thực tế (Cần bốc dời)
+                </span>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white text-amber-800 border border-amber-300">
+                  Đè tại Tầng {blockingCont.tier}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-amber-800">Mã Container chắn:</span>
+                <span className="font-mono font-black text-amber-950 text-sm">{blockingCont.id}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-amber-800">Hãng tàu / Trọng lượng:</span>
+                <span className="font-semibold text-amber-900">{blockingCont.carrier} · {blockingCont.weight}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-amber-800">Kiểm tra niêm phong / kẹp chì:</span>
+                <span className="font-semibold text-emerald-800 flex items-center gap-1">
+                  <span className="material-symbols-outlined text-xs">verified</span> Nguyên vẹn (Đạt chuẩn)
+                </span>
+              </div>
+            </div>
+
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-[11px] text-rose-800 flex items-start gap-2">
+              <span className="material-symbols-outlined text-rose-600 text-base shrink-0">warning</span>
+              <span>
+                <strong>Cảnh báo an toàn cảng biển:</strong> Nghiêm cấm gắp container tầng dưới khi còn container đè lên. Bắt buộc phải thực hiện quy trình dời dọn sang vị trí bãi đệm an toàn trước khi cẩu gắp lên xe.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && (
+          <div className="space-y-4 text-xs">
+            <div>
+              <label className="block text-slate-700 font-bold mb-1.5 text-xs">
+                1. Chọn thiết bị bốc dỡ phụ trách:
+              </label>
+              <div className="space-y-2">
+                {[
+                  { code: 'RS-01', name: 'Reach Stacker Kalmar Gloria 45T', loc: 'Rãnh bãi Block B (Sẵn sàng)', rec: true },
+                  { code: 'RS-02', name: 'Reach Stacker Konecranes 45T', loc: 'Bãi đệm Cổng B (Dự phòng)' },
+                  { code: 'RTG-01', name: 'Cẩu giàn bãi RTG Mitsui 16-wheel', loc: 'Ray Block B (Đang phục vụ tàu)' },
+                ].map(eq => (
+                  <label
+                    key={eq.code}
+                    className={`flex items-center justify-between p-3 rounded-2xl border cursor-pointer transition-all ${
+                      selectedEquipment === eq.code
+                        ? 'bg-amber-50 border-amber-400 ring-2 ring-amber-400/20 text-slate-900'
+                        : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <input
+                        type="radio"
+                        name="equipment"
+                        value={eq.code}
+                        checked={selectedEquipment === eq.code}
+                        onChange={() => setSelectedEquipment(eq.code)}
+                        className="text-amber-600 focus:ring-amber-500"
+                      />
+                      <div>
+                        <div className="font-bold flex items-center gap-1.5">
+                          <span>{eq.code}</span>
+                          <span className="text-slate-500 font-normal">· {eq.name}</span>
+                          {eq.rec && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              Khuyên dùng
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">{eq.loc}</div>
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-slate-700 font-bold mb-1.5 text-xs">
+                2. Chỉ định tài xế vận hành & Kênh điều độ:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                  <div className="text-[10px] text-slate-500">Tài xế vận hành:</div>
+                  <select
+                    value={selectedOperator}
+                    onChange={(e) => setSelectedOperator(e.target.value)}
+                    className="w-full text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded-lg p-1.5"
+                  >
+                    <option value="Trần Văn Hùng (Bậc 5/7)">Trần Văn Hùng (Bậc 5/7)</option>
+                    <option value="Lê Văn Nam (Bậc 6/7)">Lê Văn Nam (Bậc 6/7)</option>
+                    <option value="Nguyễn Văn Tú (Bậc 4/7)">Nguyễn Văn Tú (Bậc 4/7)</option>
+                  </select>
+                </div>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                  <div className="text-[10px] text-slate-500">Kênh bộ đàm điều độ:</div>
+                  <div className="font-bold text-slate-900 flex items-center gap-1 pt-1">
+                    <span className="material-symbols-outlined text-sm text-orange-600">podcasts</span>
+                    <span>Kênh CH-04 (446.006 MHz)</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {step === 3 && (
+          <div className="space-y-4 text-xs">
+            <div>
+              <label className="block text-slate-700 font-bold mb-1.5 text-xs">
+                Vị trí ô bãi đệm tạm thời an toàn (Được TOS đề xuất):
+              </label>
+              <div className="space-y-2">
+                {[
+                  { slot: 'B04-02-05-1', desc: 'Cùng Block B04 · Bay 02 · Row 05 · Tầng 1 (Mặt đất - Cự ly di chuyển 15m)', optimal: true },
+                  { slot: 'B04-06-05-1', desc: 'Cùng Block B04 · Bay 06 · Row 05 · Tầng 1 (Bãi đệm dự phòng lân cận)' },
+                  { slot: 'B02-02-05-1', desc: 'Block B02 · Bay 02 · Row 05 · Tầng 1 (Bãi container rỗng gần cổng)' },
+                ].map(opt => (
+                  <label
+                    key={opt.slot}
+                    className={`flex items-center justify-between p-3.5 rounded-2xl border cursor-pointer transition-all ${
+                      selectedBufferSlot === opt.slot
+                        ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-400/20 text-slate-900'
+                        : 'bg-white border-slate-200 hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <input
+                        type="radio"
+                        name="bufferSlot"
+                        value={opt.slot}
+                        checked={selectedBufferSlot === opt.slot}
+                        onChange={() => setSelectedBufferSlot(opt.slot)}
+                        className="text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <div>
+                        <div className="font-mono font-black text-sm flex items-center gap-1.5">
+                          <span>{opt.slot}</span>
+                          {opt.optimal && (
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
+                              TOS Khuyên Dùng
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-500 mt-0.5">{opt.desc}</div>
+                      </div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-4 text-indigo-950 space-y-2">
+              <div className="flex items-center gap-2 font-bold text-xs">
+                <span className="material-symbols-outlined text-base text-indigo-600">lock</span>
+                <span>Cơ chế khóa ô tạm độc quyền (SlotReservation Anti-Collision Lock)</span>
+              </div>
+              <p className="text-[11px] text-indigo-800 leading-relaxed">
+                Khi lệnh được kích hoạt, hệ thống TOS sẽ tự động áp trạng thái <strong>'reserved'</strong> cho ô <strong>{selectedBufferSlot}</strong>. Không có bất kỳ xe nâng hay cẩu bãi nào khác được phép hạ cont vào ô này cho đến khi kết thúc ca làm hàng.
+              </p>
+              <div className="text-[10px] text-indigo-700 font-medium flex items-center gap-1">
+                <span className="material-symbols-outlined text-xs">check</span>
+                <span>Đảm bảo không che khuất container nào có lịch hẹn xuất bãi trong ngày.</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
+          <div className="space-y-4 text-xs">
+            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between border-b border-slate-200/60 pb-2">
+                <span className="font-mono font-bold text-slate-900 text-xs">WORK ORDER #TASK-UNSTACK-{targetReq.id ? String(targetReq.id).slice(-6) : '330014'}</span>
+                <span className="px-2 py-0.5 rounded font-bold text-[10px] bg-amber-100 text-amber-800 border border-amber-300">
+                  Lệnh Điều Chuyển Bãi
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-[10px] text-slate-400">Container dời dọn:</div>
+                  <div className="font-mono font-bold text-amber-900 text-sm">{blockingCont.id}</div>
+                  <div className="text-[10px] text-slate-500">Từ tầng {blockingCont.tier} (Đè chướng ngại vật)</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-400">Vị trí đệm đích (Đã khóa):</div>
+                  <div className="font-mono font-bold text-indigo-900 text-sm">{selectedBufferSlot}</div>
+                  <div className="text-[10px] text-slate-500">Tầng 1 mặt đất cùng dãy</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-400">Thiết bị bốc dỡ:</div>
+                  <div className="font-bold text-slate-900">{selectedEquipment}</div>
+                  <div className="text-[10px] text-slate-500">{selectedOperator}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-400">Container giải phóng:</div>
+                  <div className="font-mono font-bold text-emerald-800 text-sm">{targetReq.containerId}</div>
+                  <div className="text-[10px] text-emerald-700 font-semibold">Sẵn sàng gắp lên phương tiện</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-900 flex items-center gap-2">
+              <span className="material-symbols-outlined text-emerald-600 text-base shrink-0">task_alt</span>
+              <span>
+                Toàn bộ dữ liệu tọa độ bãi mới sẽ được đồng bộ ngay lập tức sang Bản đồ 2D và thiết bị buồng lái xe nâng.
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* Footer Navigation Buttons */}
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+          {step > 1 ? (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => setStep(prev => prev - 1)}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <span className="material-symbols-outlined text-sm">arrow_back</span>
+              Quay lại
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              Hủy bỏ
+            </button>
+          )}
+
+          {step < 4 ? (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={() => setStep(prev => prev + 1)}
+              className="px-5 py-2 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 transition-colors shadow-2xs cursor-pointer flex items-center gap-1"
+            >
+              <span>Tiếp tục</span>
+              <span className="material-symbols-outlined text-sm">arrow_forward</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={submitting}
+              onClick={handleExecute}
+              className="px-5 py-2.5 rounded-xl text-xs font-extrabold bg-amber-600 hover:bg-amber-700 text-white transition-colors shadow-xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <span className="material-symbols-outlined text-sm">forklift</span>
+              <span>{submitting ? 'Đang phát lệnh TOS...' : 'Xác Nhận Phát Lệnh Đảo Chuyển'}</span>
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -581,10 +1029,75 @@ const computeInitialFlowStep = (req) => {
   return 0
 }
 
-function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast }) {
+function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allRequests = [] }) {
   const [currentReq, setCurrentReq] = useState(request)
   const [submitting, setSubmitting] = useState(false)
   const [flowStep, setFlowStep] = useState(() => computeInitialFlowStep(request))
+  const [showUnstackWorkflowModal, setShowUnstackWorkflowModal] = useState(false)
+
+  // Tính toán mặt cắt stack thực tế đồng bộ 100% với Sơ đồ bãi 2D
+  const computedStackContainers = useMemo(() => {
+    const backendStack = Array.isArray(currentReq.stackContainers) ? currentReq.stackContainers : []
+    const targetBlock = currentReq.block || currentReq.yard_block || 'B'
+    const targetBay = Number(currentReq.bay || currentReq.yard_bay)
+    const targetRow = Number(currentReq.row || currentReq.yard_row)
+    const targetTier = Number(currentReq.tier || currentReq.yard_tier || 1)
+
+    const sameStackReqs = (allRequests || []).filter(r => {
+      if (!r.containerId) return false
+      if (r.status === 'COMPLETED' || r.status === 'HOÀN THÀNH' || (r.flowStep || 0) >= 5) return false
+      const rBlk = r.block || r.yard_block || 'B'
+      const rBay = Number(r.bay || r.yard_bay)
+      const rRow = Number(r.row || r.yard_row)
+      return (rBlk === targetBlock || rBlk.replace(/^B0?/, 'B') === targetBlock.replace(/^B0?/, 'B')) &&
+             rBay === targetBay &&
+             rRow === targetRow
+    })
+
+    const mapByTier = new Map()
+    for (const r of sameStackReqs) {
+      const tier = Number(r.tier || r.yard_tier || 1)
+      const isTarget = r.containerId === currentReq.containerId
+      const isUpper = tier > targetTier
+      mapByTier.set(tier, {
+        id: r.containerId,
+        tier,
+        carrier: r.carrier || r.carrier_name || 'Chủ hàng / Hãng tàu',
+        weight: r.weight || r.weight_kg || '24,000 KG',
+        isTarget,
+        status: 'occupied',
+        note: isUpper ? 'Cont chắn (Cần đảo chuyển)' : null,
+      })
+    }
+
+    for (const c of backendStack) {
+      if (c && c.tier) {
+        const tier = Number(c.tier)
+        const isUpper = tier > targetTier
+        mapByTier.set(tier, {
+          ...c,
+          tier,
+          isTarget: c.id === currentReq.containerId,
+          note: isUpper ? 'Cont chắn (Cần đảo chuyển)' : null,
+        })
+      }
+    }
+
+    const isDone = currentReq.status === 'COMPLETED' || currentReq.status === 'HOÀN THÀNH' || flowStep >= 5
+    if (!isDone && !mapByTier.has(targetTier)) {
+      mapByTier.set(targetTier, {
+        id: currentReq.containerId,
+        tier: targetTier,
+        carrier: currentReq.carrier || 'Chủ hàng / Hãng tàu',
+        weight: currentReq.weight || '24,000 KG',
+        isTarget: true,
+        status: 'occupied',
+        note: null,
+      })
+    }
+
+    return Array.from(mapByTier.values()).sort((a, b) => a.tier - b.tier)
+  }, [currentReq, allRequests, flowStep])
 
   // 1. Kiểm tra 5 điều kiện
   const [eligibility, setEligibility] = useState(null)
@@ -825,28 +1338,19 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast }) {
     return () => clearInterval(timer)
   }, [currentReq?.id, flowStep])
 
-  // Thao tác đảo chuyển container đè trực tiếp (Unstack)
-  const handleQuickUnstack = async () => {
-    try {
-      setSubmitting(true)
-      await executeUnstackMove(currentReq.id, { targetSlot: 'B04-02-05-1' })
-      showToast('Đã đảo chuyển container đè sang ô tạm thành công! Vị trí bãi đã sẵn sàng.')
-      const updatedStack = (currentReq.stackContainers || []).filter(c => !c.note?.includes('Cont chắn') && !c.note?.includes('chắn'))
-      const updatedReq = {
-        ...currentReq,
-        blockingContainers: 0,
-        blocking_containers: 0,
-        stackContainers: updatedStack,
-        slotStatus: 'Available',
-      }
-      setCurrentReq(updatedReq)
-      if (onUpdateSuccess) onUpdateSuccess(updatedReq)
-      await runEligibilityCheck()
-    } catch (err) {
-      showToast(getFriendlyErrorMessage(err, 'Không thể thực hiện đảo chuyển container.'))
-    } finally {
-      setSubmitting(false)
+  // Hoàn tất quy trình đảo chuyển container đè (Strict Unstack Workflow)
+  const handleUnstackSuccess = async () => {
+    const updatedStack = (computedStackContainers || []).filter(c => !c.note?.includes('chắn') && Number(c.tier) <= (currentReq.tier || currentReq.yard_tier || 1))
+    const updatedReq = {
+      ...currentReq,
+      blockingContainers: 0,
+      blocking_containers: 0,
+      stackContainers: updatedStack,
+      slotStatus: 'Available',
     }
+    setCurrentReq(updatedReq)
+    if (onUpdateSuccess) onUpdateSuccess(updatedReq)
+    await runEligibilityCheck()
   }
 
   const toggleFace = (faceId) => {
@@ -1331,16 +1835,16 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast }) {
             <div className="mt-4 pt-3 border-t border-rose-200/60 flex items-center justify-between flex-wrap gap-2">
               <span className="text-xs text-rose-700 font-medium flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-sm">warning</span>
-                Container đang bị chướng ngại vật ở tầng trên. Cần đảo chuyển giải phóng trước khi cẩu gắp lên xe.
+                Container đang bị chướng ngại vật ở tầng trên. Cần thực hiện quy trình đảo chuyển an toàn trước khi cẩu gắp lên xe.
               </span>
               <button
                 type="button"
-                onClick={handleQuickUnstack}
+                onClick={() => setShowUnstackWorkflowModal(true)}
                 disabled={submitting}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
               >
-                <span className="material-symbols-outlined text-sm">forklift</span>
-                {submitting ? 'Đang thực hiện đảo chuyển...' : 'Thực hiện đảo chuyển ô đè ngay (Unstack)'}
+                <span className="material-symbols-outlined text-sm">layers_clear</span>
+                <span>Quy trình đảo chuyển cont chắn (Unstack)</span>
               </button>
             </div>
           )}
@@ -1438,11 +1942,12 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast }) {
               position={currentReq.position}
               targetTier={currentReq.tier}
               targetContainerId={currentReq.containerId}
-              stackContainers={currentReq.stackContainers || []}
+              stackContainers={computedStackContainers}
               carrier={currentReq.carrier}
               weight={currentReq.weight}
               isDone={currentReq.status === 'COMPLETED' || currentReq.status === 'HOÀN THÀNH' || (currentReq.flowStep || 0) >= 5}
               onNavigateYardMap={() => setActiveTab('yard_map')}
+              onOpenUnstack={() => setShowUnstackWorkflowModal(true)}
             />
 
             {/* THÔNG TIN THIẾT BỊ NÂNG HẠ */}
@@ -1995,6 +2500,19 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast }) {
         submitting={submitting}
         defaultType={exceptionModalType}
       />
+
+      {/* ── MODAL QUY TRÌNH ĐẢO CHUYỂN CONTAINER CHẮN CHUẨN TOS ── */}
+      {showUnstackWorkflowModal && (
+        <StrictUnstackModal
+          isOpen={true}
+          onClose={() => setShowUnstackWorkflowModal(false)}
+          targetReq={currentReq}
+          stackContainers={computedStackContainers}
+          allRequests={allRequests}
+          onSuccess={handleUnstackSuccess}
+          showToast={showToast}
+        />
+      )}
     </div>
   )
 }
@@ -2629,7 +3147,7 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
 
   // Xuất file CSV danh sách ca trực
   const handleExportCsv = () => {
-    const headers = ['Mã Lệnh', 'Container ID', 'Loại Cont', 'Hãng Tàu', 'Biển Số Xe', 'Tài Xế', 'Vị Trí Bãi', 'Hẹn Vào Cổng', 'Trạng Thái']
+    const headers = ['Mã Lệnh', 'Container ID', 'Loại Cont', 'Hãng Tàu', 'Biển Số Xe', 'Tài Xế', 'Vị Trí Bãi', 'Giờ Hẹn / Giờ Xuất Bãi', 'Trạng Thái']
     const rows = filtered.map(r => [
       r.code || r.id.slice(0, 8),
       r.containerId,
@@ -2731,7 +3249,7 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
           </div>
 
           <div className="flex justify-between items-center">
-            <span className="text-slate-500 font-medium">{isDone ? 'Giờ xuất cổng:' : 'Hẹn vào cổng:'}</span>
+            <span className="text-slate-500 font-medium">{isDone ? 'Giờ xuất bãi:' : 'Giờ hẹn:'}</span>
             <span className="font-semibold text-slate-800 flex items-center gap-1.5 font-mono">
               <span className="material-symbols-outlined text-xs text-orange-600">{isDone ? 'done_all' : 'event'}</span>
               <span>{r.requestedTime || '16:30'}</span>
@@ -2789,6 +3307,21 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
           )}
 
           <div className="flex items-center gap-1.5">
+            {!isDone && r.blockingContainers > 0 && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setUnstackTargetItem(r)
+                }}
+                className="px-2 py-1 rounded-lg text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 transition-colors flex items-center gap-1"
+                title="Có container đè phía trên - Quy trình đảo chuyển dọn bãi"
+              >
+                <span className="material-symbols-outlined text-xs text-amber-700">layers_clear</span>
+                <span>Đảo cont ({r.blockingContainers})</span>
+              </button>
+            )}
+
             {!isDone && (
               <button
                 type="button"
@@ -3522,7 +4055,7 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
                             <th className="p-3.5">Hãng Tàu & Loại</th>
                             <th className="p-3.5">Phương Tiện & Tài Xế</th>
                             <th className="p-3.5">Vị Trí Ô Bãi</th>
-                            <th className="p-3.5">Hẹn Vào Cổng / Giờ Ra</th>
+                            <th className="p-3.5">Giờ Hẹn / Giờ Xuất Bãi</th>
                             <th className="p-3.5">Độ Ưu Tiên</th>
                             <th className="p-3.5">Trạng Thái</th>
                             <th className="p-3.5 pr-5 text-right">Thao Tác</th>
@@ -3568,7 +4101,7 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
                                 <td className="p-3.5 font-mono font-bold text-slate-800">{r.position}</td>
                                 <td className="p-3.5">
                                   <div className="font-mono font-bold text-slate-800">{r.requestedTime || r.requested_time || '16:30'}</div>
-                                  <div className="text-[10px] text-slate-400">{isCompletedSide ? 'Giờ xuất cổng' : 'Hẹn vào cổng'}</div>
+                                  <div className="text-[10px] text-slate-400">{isCompletedSide ? 'Giờ xuất bãi' : 'Giờ hẹn'}</div>
                                 </td>
                                 <td className="p-3.5">
                                   {isCompletedSide ? (
@@ -3797,108 +4330,19 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
         </>
       )}
 
-      {/* ── MODAL 1: ĐIỀU PHỐI ĐẢO CONT CHẮN SANG Ô TẠM ── */}
+      {/* ── MODAL 1: ĐIỀU PHỐI ĐẢO CONT CHẮN SANG Ô TẠM (QUY TRÌNH CHUẨN TOS) ── */}
       {unstackTargetItem && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2 text-amber-700">
-                <span className="material-symbols-outlined text-2xl">layers_clear</span>
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">Phát Lệnh Đảo Chuyển Container Chắn</h3>
-                  <div className="text-[11px] text-slate-500 font-medium">Quy tắc 1: Tối thiểu đảo chuyển & Khóa ô tạm</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setUnstackTargetItem(null)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
-
-            {/* Thông tin cont mục tiêu */}
-            <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 text-xs space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-medium">Container mục tiêu cần lấy:</span>
-                <span className="font-mono font-black text-slate-900 text-sm">{unstackTargetItem.containerId}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-medium">Vị trí hiện tại:</span>
-                <span className="font-mono font-bold text-slate-800">{unstackTargetItem.position} · Tầng {unstackTargetItem.stackLevel || 1}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-medium">Chuyến tàu làm hàng:</span>
-                <span className="font-semibold text-slate-800">{unstackTargetItem.vessel || 'AEGEAN EXPRESS'} · {unstackTargetItem.voyage || '366S'}</span>
-              </div>
-            </div>
-
-            {/* Danh sách container đè phía trên cần dọn */}
-            <div className="space-y-1.5 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">
-                  Danh sách container đè phía trên · {unstackTargetItem.blockingContainers || 1} cont:
-                </span>
-                <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                  Thứ tự nhấc: Từ trên xuống dưới
-                </span>
-              </div>
-              <div className="space-y-2 max-h-36 overflow-y-auto">
-                <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-2.5 flex items-center justify-between">
-                  <div>
-                    <div className="font-mono font-bold text-amber-950">MSKU-7291048 · 20FT DRY</div>
-                    <div className="text-[10px] text-amber-800">Tầng 3 · Mặt trên cùng ➔ Di chuyển sang ô tạm: <strong>B-02-02-1</strong></div>
-                  </div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white text-amber-700 border border-amber-300">
-                    Lượt nhấc 1
-                  </span>
-                </div>
-                {unstackTargetItem.blockingContainers > 1 && (
-                  <div className="bg-amber-50/60 border border-amber-200/80 rounded-xl p-2.5 flex items-center justify-between">
-                    <div>
-                      <div className="font-mono font-bold text-amber-950">CMAU-5521940 · 40FT HC</div>
-                      <div className="text-[10px] text-amber-800">Tầng 2 · Đè trực tiếp ➔ Di chuyển sang ô tạm: <strong>B-02-02-2</strong></div>
-                    </div>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-white text-amber-700 border border-amber-300">
-                      Lượt nhấc 2
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Ô tạm được thuật toán TOS đề xuất và khóa */}
-            <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3 text-xs text-indigo-900 space-y-1">
-              <div className="flex items-center gap-1.5 font-bold">
-                <span className="material-symbols-outlined text-base text-indigo-600">lock</span>
-                Khóa giữ chỗ ô tạm tự động (SlotReservation):
-              </div>
-              <p className="text-[11px] text-indigo-700">
-                Ô <strong>B-02-02-1</strong> (Tầng 1 - Mặt đất cùng dãy) đã được chọn tối ưu, không che chắn cont khác có lịch làm hàng trong ngày.
-              </p>
-            </div>
-
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setUnstackTargetItem(null)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                type="button"
-                disabled={actionLoading}
-                onClick={handleConfirmUnstackModal}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition-colors shadow-2xs cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
-              >
-                <span className="material-symbols-outlined text-sm">forklift</span>
-                {actionLoading ? 'Đang phát lệnh...' : 'Xác Nhận Phát Lệnh Đảo Chuyển'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <StrictUnstackModal
+          isOpen={true}
+          onClose={() => setUnstackTargetItem(null)}
+          targetReq={unstackTargetItem}
+          stackContainers={unstackTargetItem.stackContainers || []}
+          allRequests={requests}
+          onSuccess={() => {
+            if (onRefresh) onRefresh()
+          }}
+          showToast={showToast}
+        />
       )}
 
       {/* ── MODAL 2: ĐỐI SOÁT & CHỐT SẴN SÀNG XẾP TÀU ── */}
@@ -4357,6 +4801,7 @@ export default function ContainerGateOutPreparation() {
       {selectedRequest ? (
         <GateOutDetailView
           request={selectedRequest}
+          allRequests={requests}
           onBack={() => setSelectedRequest(null)}
           onUpdateSuccess={handleUpdateSuccess}
           showToast={showToast}
