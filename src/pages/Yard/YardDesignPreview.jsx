@@ -78,8 +78,26 @@ export default function YardDesignPreview({ previewOnly = false }) {
   }, [])
 
   useEffect(() => {
+    let pending = false
+    const refreshInventory = async () => {
+      if (pending || previewOnly) return
+      pending = true
+      try {
+        const snapshot = await expressApiClient.get('/yard/layout')
+        if (snapshot.terminalPlan?.version === operationalPlan.version) {
+          setInventory(snapshot)
+          setInventoryError('')
+        }
+      } catch (err) {
+        // silent fallback
+      } finally {
+        pending = false
+      }
+    }
+
     const handleUpdate = () => {
       setLocalReservations(yardReservationStore.getReservations())
+      void refreshInventory()
     }
     window.addEventListener('yard-reservation-updated', handleUpdate)
     window.addEventListener('storage', handleUpdate)
@@ -87,7 +105,7 @@ export default function YardDesignPreview({ previewOnly = false }) {
       window.removeEventListener('yard-reservation-updated', handleUpdate)
       window.removeEventListener('storage', handleUpdate)
     }
-  }, [])
+  }, [previewOnly])
 
   useEffect(() => {
     if (previewOnly) return

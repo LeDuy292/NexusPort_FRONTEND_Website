@@ -1082,6 +1082,19 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast }) {
         }
         setCurrentReq(updated)
         setFlowStep(5)
+
+        // Xóa hoàn toàn vị trí container khỏi Bản Đồ Bãi 2D (đồng bộ local store)
+        if (currentReq.containerId) {
+          try {
+            yardReservationStore.clearContainerReservation(currentReq.containerId)
+            window.dispatchEvent(
+              new CustomEvent('yard-reservation-updated', { detail: { clearedContainer: currentReq.containerId } })
+            )
+          } catch (e) {
+            console.warn('[GateOut] clearContainerReservation error:', e)
+          }
+        }
+
         if (onUpdateSuccess) onUpdateSuccess(updated)
       }
       showToast('Container đã hoàn tất thủ tục xuất cổng.')
