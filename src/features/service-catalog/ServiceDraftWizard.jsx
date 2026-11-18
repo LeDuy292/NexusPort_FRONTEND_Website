@@ -666,7 +666,11 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         )
         if (targetManifest) {
           const validBls = Array.from(new Set(
-            [targetManifest.blNumber, ...(targetManifest.containers || []).map(c => c.blNumber)]
+            [
+              targetManifest.blNumber,
+              ...(targetManifest.bills || []).map(b => b.blNumber),
+              ...(targetManifest.containers || []).map(c => c.blNumber),
+            ]
               .map(x => String(x || '').trim().toUpperCase())
               .filter(Boolean)
           ))
@@ -679,7 +683,11 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       } else {
         for (const m of allExportManifests) {
           const validBls = Array.from(new Set(
-            [m.blNumber, ...(m.containers || []).map(c => c.blNumber)]
+            [
+              m.blNumber,
+              ...(m.bills || []).map(b => b.blNumber),
+              ...(m.containers || []).map(c => c.blNumber),
+            ]
               .map(x => String(x || '').trim().toUpperCase())
               .filter(Boolean)
           ))
@@ -712,6 +720,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           vesselName: m.vesselName,
           voyageNumber: m.voyageNumber,
           dischargePort: m.pod || 'VNDAD (Cảng Tiên Sa)',
+          bills: m.bills || [],
           containers: m.records || m.containers || [],
         })),
         ...allGbForBl.map(gb => ({
@@ -719,7 +728,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           vesselName: gb.vesselName,
           voyageNumber: gb.voyageNumber,
           dischargePort: gb.pod || 'VNDAD (Cảng Tiên Sa)',
-          containers: [{ blNumber: gb.cargoDeclarationId || gb.blNumber || gb.billOfLading || '' }],
+          bills: [],
+          containers: [{ blNumber: gb.cargoDeclarationId || gb.blNumber || gb.billOfLading || '', containerNumber: gb.containerId }],
         })),
         ...KNOWN_IMPORT_DATABASE,
         ...KNOWN_BL_DATABASE.filter(b => !b.direction || b.direction === 'IMPORT'),
@@ -727,7 +737,11 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
       for (const b of searchPool) {
         const validBls = Array.from(new Set(
-          [b.blNumber, ...(b.containers || []).map(c => c.blNumber)]
+          [
+            b.blNumber,
+            ...(b.bills || []).map(bi => bi.blNumber),
+            ...(b.containers || []).map(c => c.blNumber)
+          ]
             .map(x => String(x || '').trim().toUpperCase())
             .filter(Boolean)
         ))
@@ -1138,6 +1152,25 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           (r.blNumber && r.blNumber.toUpperCase() === blNum.toUpperCase()) ||
           (r.voyageNumber && r.voyageNumber.toUpperCase() === rawVoy.toUpperCase())
         )
+        let sourceConts = (m.containers && m.containers.length > 0) ? m.containers : (m.records && m.records.length > 0 ? m.records : [])
+        if (sourceConts.length === 0 && Array.isArray(m.bills)) {
+          sourceConts = m.bills.flatMap(b => (b.containers || []).map(c => ({
+            ...c,
+            blNumber: c.blNumber || b.blNumber || blNum,
+          })))
+        }
+
+        const findBlForCont = (cNo) => {
+          if (Array.isArray(m.bills)) {
+            for (const b of m.bills) {
+              if (b.containers?.some(c => (c.containerNumber || c.containerId || '').trim().toUpperCase() === cNo)) {
+                return b.blNumber
+              }
+            }
+          }
+          return m.blNumber || m.bills?.[0]?.blNumber || blNum
+        }
+
         const itemObj = {
           bookingNumber: (existingIdx >= 0 && result[existingIdx].bookingNumber) ? result[existingIdx].bookingNumber : bNum,
           bookingId: m.manifestId || m.id || bNum,
@@ -1151,26 +1184,33 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           dischargePort: m.pod || m.portOfDischarge || 'Tokyo, Japan (JPTYO)',
           sentToPortAt: m.sentToPortAt,
           portApprovalStatus: m.portApprovalStatus,
-          containers: (m.containers || m.records || []).map(c => ({
-            containerNumber: c.containerNumber,
-            typeCode: c.isoType || c.typeCode || '40HC',
-            sealNumber: c.sealNumber || 'SL-88412',
-            grossWeightKg: c.grossWeightKg || 25400,
-            commodity: c.cargoDescription || c.commodity || 'Hàng hóa xuất khẩu',
-            isReefer: Boolean(c.isReefer || /RF|RH/.test(c.isoType || c.typeCode || '')),
-            tempRequired: c.tempRequired || null,
-            dgClass: c.dgClass || null,
-            dischargePort: c.dischargePort || m.pod || m.portOfDischarge || 'VNHPH',
-            blNumber: c.blNumber || blNum,
-          }))
+          bills: m.bills || [],
+          containers: sourceConts.map(c => {
+            const cNo = (c.containerNumber || c.containerId || '').trim().toUpperCase()
+            return {
+              containerNumber: cNo,
+              typeCode: c.isoType || c.typeCode || '40HC',
+              sealNumber: c.sealNumber || 'SL-88412',
+              grossWeightKg: c.grossWeightKg || 25400,
+              commodity: c.cargoDescription || c.commodity || 'Hàng hóa xuất khẩu',
+              isReefer: Boolean(c.isReefer || /RF|RH/.test(c.isoType || c.typeCode || '')),
+              tempRequired: c.tempRequired || null,
+              dgClass: c.dgClass || null,
+              dischargePort: c.dischargePort || m.pod || m.portOfDischarge || 'VNHPH',
+              blNumber: c.blNumber || findBlForCont(cNo) || blNum,
+            }
+          })
         }
         if (existingIdx >= 0) {
           const oldAliases = result[existingIdx].bookingAliases || []
           const existingConts = result[existingIdx].containers || []
+          const contMap = new Map()
+          existingConts.forEach(c => contMap.set((c.containerNumber || '').toUpperCase(), c))
+          itemObj.containers.forEach(c => contMap.set((c.containerNumber || '').toUpperCase(), c))
           result[existingIdx] = {
             ...result[existingIdx],
             ...itemObj,
-            containers: (itemObj.containers && itemObj.containers.length > 0) ? itemObj.containers : existingConts,
+            containers: Array.from(contMap.values()),
             bookingAliases: Array.from(new Set([...oldAliases, ...aliases, result[existingIdx].bookingNumber])),
           }
         } else {
@@ -1202,7 +1242,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         }
         if (existingIdx >= 0) {
           const currConts = result[existingIdx].containers || []
-          if (!currConts.some(c => c.containerNumber === contObj.containerNumber)) {
+          if (!currConts.some(c => (c.containerNumber || '').toUpperCase() === (contObj.containerNumber || '').toUpperCase())) {
             result[existingIdx].containers = [...currConts, contObj]
           }
           if (!result[existingIdx].bookingAliases) result[existingIdx].bookingAliases = []
@@ -1212,6 +1252,20 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           if (gb.cargoDeclarationId && !result[existingIdx].bookingAliases.includes(gb.cargoDeclarationId)) {
             result[existingIdx].bookingAliases.push(gb.cargoDeclarationId)
           }
+        } else {
+          result.unshift({
+            bookingNumber: gb.bookingNumber || gb.id || `BK-${gb.voyageNumber || 'EXP'}`,
+            bookingId: gb.id || gb.bookingCode,
+            bookingAliases: [gb.id, gb.bookingCode, gb.cargoDeclarationId].filter(Boolean),
+            blNumber: gb.cargoDeclarationId || gb.blNumber || '',
+            vesselName: gb.vesselName || 'Tàu xuất Hãng tàu',
+            voyageNumber: gb.voyageNumber || 'Chuyến xuất',
+            shippingLine: gb.shippingLine || 'Hãng tàu',
+            eta: gb.vesselEta || '2026-11-25T08:00:00Z',
+            cyCutoff: gb.cyCutoff || gb.vesselEta || '2026-11-25T18:00:00Z',
+            dischargePort: gb.pod || 'VNHPH',
+            containers: [contObj],
+          })
         }
       }
 
@@ -1288,91 +1342,173 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
     if (!step2BlConfirmed || !currentBl || !blNorm) return []
 
-    if (form.flow === 'EXPORT') {
-      const matched = allExportManifests.find(b => {
-        const bBlNorm = norm(b.blNumber)
-        const bBkNorm = norm(b.bookingNumber)
-        const bIdNorm = norm(b.bookingId)
-        const aliases = (b.bookingAliases || []).map(a => norm(a))
-        const hasMatchingContBl = (b.containers || []).some(c => norm(c.blNumber || '') === blNorm)
+    const resultConts = []
+    const seenConts = new Set()
 
-        if (bkNorm) {
-          const bkMatches =
-            bBkNorm === bkNorm ||
-            bIdNorm === bkNorm ||
-            aliases.includes(bkNorm)
-          if (!bkMatches) return false
-        }
-        return bBlNorm === blNorm || hasMatchingContBl
+    const addCont = (c, defaultBl = '', extraMeta = {}) => {
+      const cNum = String(c.containerNumber || c.containerId || c.containerNo || '').trim().toUpperCase()
+      if (!cNum || seenConts.has(cNum)) return
+      seenConts.add(cNum)
+      resultConts.push({
+        containerNumber: cNum,
+        typeCode: c.typeCode || c.isoType || '40HC',
+        sealNumber: c.sealNumber || 'SL-88412',
+        grossWeightKg: Number(c.grossWeightKg) || (form.flow === 'EXPORT' ? 25400 : 24500),
+        commodity: c.commodity || c.cargoDescription || (form.flow === 'EXPORT' ? 'Hàng hóa xuất khẩu' : 'Hàng hóa nhập khẩu'),
+        isReefer: Boolean(c.isReefer || /RF|RH/.test(c.typeCode || c.isoType || '')),
+        tempRequired: c.tempRequired || null,
+        dgClass: c.dgClass || null,
+        dischargePort: c.dischargePort || extraMeta.dischargePort || (form.flow === 'EXPORT' ? 'VNHPH' : 'VNDAD'),
+        blNumber: c.blNumber || defaultBl || currentBl,
       })
-      if (matched && Array.isArray(matched.containers) && matched.containers.length > 0) {
-        return matched.containers.filter(c => {
-          const cBl = norm(c.blNumber || matched.blNumber || '')
-          return cBl === blNorm
-        })
+    }
+
+    if (form.flow === 'EXPORT') {
+      // 1. Quét allExportManifests
+      for (const m of allExportManifests) {
+        const mBlNorm = norm(m.blNumber || '')
+        const mBkNorm = norm(m.bookingNumber || '')
+        const mIdNorm = norm(m.bookingId || '')
+        const aliases = (m.bookingAliases || []).map(a => norm(a))
+        const matchesBk = bkNorm && (mBkNorm === bkNorm || mIdNorm === bkNorm || aliases.includes(bkNorm))
+        const matchesBl = mBlNorm === blNorm
+
+        // Kiểm tra trong bills nếu có
+        if (Array.isArray(m.bills)) {
+          m.bills.forEach(b => {
+            const bBlNorm = norm(b.blNumber || '')
+            if (bBlNorm === blNorm || (matchesBk && !bBlNorm)) {
+              (b.containers || []).forEach(c => addCont(c, b.blNumber || m.blNumber, m))
+            }
+          })
+        }
+
+        // Kiểm tra trong containers / records của m
+        const contList = m.containers || m.records || []
+        const hasMatchingCont = contList.some(c => norm(c.blNumber || '') === blNorm)
+        if (matchesBl || hasMatchingCont || matchesBk) {
+          contList.forEach(c => {
+            const cBlNorm = norm(c.blNumber || '')
+            if (cBlNorm === blNorm || (matchesBl && !cBlNorm) || (matchesBk && (!cBlNorm || cBlNorm === blNorm))) {
+              addCont(c, c.blNumber || m.blNumber, m)
+            }
+          })
+        }
       }
-      return []
+
+      // 2. Quét qua toàn bộ synced manifests trong manifestPortSyncService
+      const allSynced = manifestPortSyncService.getSyncedManifests() || []
+      allSynced.forEach(m => {
+        const isExp = String(m.direction || m.flow || '').toUpperCase() !== 'IMPORT' && m.direction !== 'Nhập khẩu'
+        if (!isExp) return
+        const mBlNorm = norm(m.blNumber || '')
+        const mBkNorm = norm(m.bookingNumber || '')
+        const matchesBk = bkNorm && mBkNorm === bkNorm
+        const matchesBl = mBlNorm === blNorm
+
+        if (Array.isArray(m.bills)) {
+          m.bills.forEach(b => {
+            const bBlNorm = norm(b.blNumber || '')
+            if (bBlNorm === blNorm || matchesBl || (matchesBk && !bBlNorm)) {
+              (b.containers || []).forEach(c => addCont(c, b.blNumber || m.blNumber, m))
+            }
+          })
+        }
+
+        const contList = m.records || m.containers || []
+        contList.forEach(c => {
+          const cBlNorm = norm(c.blNumber || '')
+          if (cBlNorm === blNorm || matchesBl || (matchesBk && (!cBlNorm || cBlNorm === blNorm))) {
+            addCont(c, c.blNumber || m.blNumber, m)
+          }
+        })
+      })
+
+      // 3. Quét qua gate bookings xuất khẩu (Gate Booking / Port sync)
+      const gateBookings = manifestPortSyncService.getGeneratedGateBookings() || []
+      gateBookings.forEach(gb => {
+        const isExp = gb.direction === 'EXPORT' || gb.operation === 'Dropoff'
+        if (!isExp) return
+        const gbBl = norm(gb.cargoDeclarationId || gb.blNumber || gb.billOfLading || '')
+        const gbBk = norm(gb.id || gb.bookingCode || gb.sourceManifestNumber || gb.bookingNumber || '')
+        if (gbBl === blNorm || (bkNorm && gbBk === bkNorm)) {
+          addCont({
+            containerNumber: gb.containerId,
+            typeCode: gb.containerType || '40HC',
+            sealNumber: gb.sealNumber || 'SL-88412',
+            grossWeightKg: gb.grossWeightKg || 25400,
+            commodity: gb.cargoDescription || 'Hàng hóa xuất khẩu',
+            isReefer: Boolean(gb.cargoType?.includes('Reefer') || gb.isReefer),
+            blNumber: gb.cargoDeclarationId || gb.blNumber || currentBl,
+            dischargePort: gb.pod || 'VNHPH',
+          }, gb.cargoDeclarationId || gb.blNumber)
+        }
+      })
+
+      return resultConts
     }
 
     if (form.flow === 'IMPORT') {
-      const allSynced = (manifestPortSyncService.getSyncedManifests() || []).filter(m =>
-        (String(m.direction || m.flow || '').toUpperCase() === 'IMPORT' || m.direction === 'Nhập khẩu') &&
-        (m.portApprovalStatus === 'PORT_APPROVED' || m.status === 'PORT_APPROVED')
-      )
-      const syncedManifestItems = allSynced.map(m => ({
-        blNumber: m.blNumber || m.containers?.[0]?.blNumber,
-        bookingNumber: m.bookingNumber,
-        vesselName: m.vesselName,
-        voyageNumber: m.voyageNumber,
-        containers: (m.records || m.containers || []).map(r => ({
-          containerNumber: r.containerNumber,
-          typeCode: r.isoType || r.typeCode || '40HC',
-          sealNumber: r.sealNumber || 'SL-88412',
-          grossWeightKg: r.grossWeightKg || 24500,
-          commodity: r.cargoDescription || r.commodity || 'Hàng hóa nhập khẩu',
-          blNumber: r.blNumber || m.blNumber || '',
-          isReefer: Boolean(r.isReefer || /RF|RH/.test(r.isoType || r.typeCode || '')),
-        }))
-      }))
+      // 1. Quét qua toàn bộ synced manifests
+      const allSynced = manifestPortSyncService.getSyncedManifests() || []
+      allSynced.forEach(m => {
+        const mBlNorm = norm(m.blNumber || '')
+        const isManifestMatch = mBlNorm === blNorm
 
-      const gateBookings = (manifestPortSyncService.getGeneratedGateBookings() || []).filter(gb =>
-        gb.direction === 'IMPORT' || gb.operation === 'Pickup'
-      )
-      const gbByBl = {}
+        // Quét bills
+        if (Array.isArray(m.bills)) {
+          m.bills.forEach(b => {
+            const bBlNorm = norm(b.blNumber || '')
+            if (bBlNorm === blNorm || isManifestMatch) {
+              (b.containers || []).forEach(c => addCont(c, b.blNumber || m.blNumber, m))
+            }
+          })
+        }
+
+        // Quét records hoặc containers
+        const contList = m.records || m.containers || []
+        const hasMatchingCont = contList.some(c => norm(c.blNumber || '') === blNorm)
+        if (isManifestMatch || hasMatchingCont) {
+          contList.forEach(c => {
+            const cBlNorm = norm(c.blNumber || '')
+            if (cBlNorm === blNorm || isManifestMatch || (!cBlNorm && hasMatchingCont)) {
+              addCont(c, c.blNumber || m.blNumber, m)
+            }
+          })
+        }
+      })
+
+      // 2. Quét qua toàn bộ gate bookings hàng nhập
+      const gateBookings = manifestPortSyncService.getGeneratedGateBookings() || []
       gateBookings.forEach(gb => {
-        const bl = gb.cargoDeclarationId || gb.blNumber || gb.billOfLading
-        if (!bl) return
-        if (!gbByBl[bl]) {
-          gbByBl[bl] = {
-            blNumber: bl,
-            vesselName: gb.vesselName,
-            voyageNumber: gb.voyageNumber,
-            containers: []
+        const gbBl = norm(gb.cargoDeclarationId || gb.blNumber || gb.billOfLading || '')
+        if (gbBl === blNorm) {
+          addCont({
+            containerNumber: gb.containerId,
+            typeCode: gb.containerType || '40HC',
+            sealNumber: gb.sealNumber || 'SL-88412',
+            grossWeightKg: gb.grossWeightKg || 24500,
+            commodity: gb.cargoDescription || 'Hàng hóa nhập khẩu',
+            blNumber: gb.cargoDeclarationId || gb.blNumber || currentBl,
+            isReefer: Boolean(gb.cargoType?.includes('Reefer') || gb.isReefer),
+            dischargePort: gb.pod || 'VNDAD',
+          }, gb.cargoDeclarationId || gb.blNumber)
+        }
+      })
+
+      // 3. Quét qua databases fallback nếu chưa thấy
+      const fallbackPool = [...KNOWN_IMPORT_DATABASE, ...KNOWN_BL_DATABASE, ...fallbackImportContainers]
+      fallbackPool.forEach(item => {
+        if (norm(item.blNumber) === blNorm) {
+          if (Array.isArray(item.containers)) {
+            item.containers.forEach(c => addCont(c, item.blNumber))
+          } else if (item.containerNumber) {
+            addCont(item, item.blNumber)
           }
         }
-        gbByBl[bl].containers.push({
-          containerNumber: gb.containerId,
-          typeCode: gb.containerType || '40HC',
-          sealNumber: gb.sealNumber || 'SL-88412',
-          grossWeightKg: gb.grossWeightKg || 24500,
-          commodity: gb.cargoDescription || 'Hàng hóa',
-          blNumber: bl,
-          isReefer: Boolean(gb.cargoType?.includes('Reefer')),
-        })
       })
 
-      const matched = [...syncedManifestItems, ...Object.values(gbByBl), ...KNOWN_IMPORT_DATABASE, ...KNOWN_BL_DATABASE].find(b => {
-        const bNorm = norm(b.blNumber || '')
-        const hasMatchingContBl = (b.containers || []).some(c => norm(c.blNumber || '') === blNorm)
-        return bNorm === blNorm || hasMatchingContBl
-      })
-      if (matched?.containers) {
-        return matched.containers.filter(c => {
-          const cBl = norm(c.blNumber || matched.blNumber || '')
-          return cBl === blNorm
-        })
-      }
-      return fallbackImportContainers.filter(c => norm(c.blNumber) === blNorm)
+      return resultConts
     }
 
     return []
