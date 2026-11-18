@@ -46,6 +46,88 @@ export const gateService = {
   async recordPassageIn(payload) {
     return (await apiClient.post('/v1/Gate/passage-in',{...payload,passageConfirmed:true})).data;
   },
+
+  // ── AI CONTAINER ONNX & OCR INSPECTION (C# Core container.onnx + OCR + ISO 6346) ──
+
+  /**
+   * Kiểm tra tình trạng mô hình AI ONNX nhận diện container (container.onnx)
+   */
+  async getContainerModelStatus() {
+    try {
+      const res = await apiClient.get('/v1/Gate/containers/model-status')
+      return { success: true, isLive: true, data: res.data }
+    } catch (err) {
+      return {
+        success: false,
+        isLive: false,
+        error: err.response?.data?.message || err.message,
+      }
+    }
+  },
+
+  /**
+   * Tải ảnh chụp/khung hình container lên C# Backend để:
+   * 1. YOLO ONNX container.onnx nhận diện vùng ID & Type
+   * 2. OCR đọc ký tự và kiểm tra chuẩn ISO 6346
+   * 3. Đối chiếu tự động với Booking & Đăng ký tại Cảng
+   */
+  async inspectContainerImage(file, query = {}) {
+    const formData = new FormData()
+    if (file instanceof Blob && !(file instanceof File)) {
+      formData.append('file', file, 'container_capture.jpg')
+    } else {
+      formData.append('file', file)
+    }
+    if (query.bookingNumber) formData.append('bookingNumber', query.bookingNumber)
+    if (query.vehiclePlate) formData.append('vehiclePlate', query.vehiclePlate)
+    if (query.gateCode) formData.append('gateCode', query.gateCode)
+    if (query.laneCode) formData.append('laneCode', query.laneCode)
+    if (query.gateType) formData.append('gateType', query.gateType)
+    if (query.autoVerify !== undefined) formData.append('autoVerify', String(query.autoVerify))
+
+    try {
+      const res = await apiClient.post('/v1/Gate/containers/inspect', formData)
+      return { success: true, isLive: true, data: res.data }
+    } catch (err) {
+      return {
+        success: false,
+        isLive: false,
+        error: err.response?.data?.message || err.message,
+      }
+    }
+  },
+
+  /**
+   * Gửi chuỗi ảnh Base64 kiểm duyệt container qua container.onnx
+   */
+  async inspectContainerBase64(payload) {
+    try {
+      const res = await apiClient.post('/v1/Gate/containers/inspect-base64', payload)
+      return { success: true, isLive: true, data: res.data }
+    } catch (err) {
+      return {
+        success: false,
+        isLive: false,
+        error: err.response?.data?.message || err.message,
+      }
+    }
+  },
+
+  /**
+   * Gate Officer xác nhận Đạt (Approved) hoặc Từ chối (Rejected) container, lưu log nghiệp vụ
+   */
+  async recordContainerDecision(payload) {
+    try {
+      const res = await apiClient.post('/v1/Gate/containers/verify-decision', payload)
+      return { success: true, isLive: true, data: res.data }
+    } catch (err) {
+      return {
+        success: false,
+        isLive: false,
+        error: err.response?.data?.message || err.message,
+      }
+    }
+  },
   // ── AI CAMERA & RECOGNITION (Python FastAPI microservice) ───────────────
 
   /**

@@ -621,7 +621,7 @@ export default function Login() {
                 alt="NexusPort Logo"
                 className="w-11 h-11 object-contain rounded-xl shadow-lg border border-white/10 bg-white/5 p-1"
               />
-              <h1 className="text-[26px] font-bold tracking-tight text-white font-[#Space_Grotesk]">
+              <h1 className="text-[26px] font-bold tracking-tight text-white font-sans">
                 NexusPort<span className="text-[#ff682c]">.</span>
               </h1>
             </div>
