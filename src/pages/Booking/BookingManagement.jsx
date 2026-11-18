@@ -1,8 +1,6 @@
-import ContainerBookingForm from '../../components/Containers/ContainerBookingForm'
-import BookingBatchWorkspace from '../../components/Containers/BookingBatchWorkspace'
 import BookingFleetDetails from '../../components/Containers/BookingFleetDetails'
 import ContainerJourneySearch from '../Containers/ContainerJourneySearch'
-import { useLocation, useSearchParams, useNavigate } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import React, { useState, useEffect, useMemo } from 'react'
 import { bookingService } from '../../services/bookingService'
 import driverService from '../../services/driverService'
@@ -14,11 +12,10 @@ import { calculatePortServiceTariff, computeAutoBookingTariff } from '../../util
 import { serviceOrdersApi } from '../../features/service-catalog/serviceOrdersApi'
 
 export default function BookingManagement() {
-  const location = useLocation()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const detailBookingId = searchParams.get('bookingId')
-  const [activeTab, setActiveTab] = useState(!detailBookingId && location.state?.containerNumber ? 'create' : 'my_bookings')
+  const [activeTab, setActiveTab] = useState('my_bookings')
 
   // Data States for My Bookings
   const [bookings, setBookings] = useState([])
@@ -27,7 +24,7 @@ export default function BookingManagement() {
   const [pageNumber, setPageNumber] = useState(1)
   const [pageSize] = useState(10)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('All')
+  const [statusFilter, setStatusFilter] = useState('Ready')
   const [typeFilter, setTypeFilter] = useState('All')
 
   // Available Fleet & Yard Resources (Loaded 100% from Database)
@@ -665,18 +662,20 @@ export default function BookingManagement() {
       })
 
       // Xử lý bộ lọc trạng thái: tab "Tất cả" hiển thị toàn bộ hồ sơ; tab "Sẵn sàng" hiển thị đơn đã thanh toán/sẵn sàng
-      if (statusFilter === 'All') {
-        setBookings(enriched)
-        setTotalCount(enriched.length)
-      } else if (statusFilter === 'Ready') {
-        const readyItems = enriched.filter(b => b.paymentStatus === 'Paid' || b.status === 'Ready' || b.status === 'CheckedIn' || b.status === 'Completed')
-        setBookings(readyItems)
-        setTotalCount(readyItems.length)
-      } else {
-        const statusItems = enriched.filter(b => b.status === statusFilter)
-        setBookings(statusItems)
-        setTotalCount(statusItems.length)
-      }
+      const isReady = b => b.paymentStatus === 'Paid' || ['Ready', 'CheckedIn', 'Completed'].includes(b.status)
+      const isCanceled = b => ['Canceled', 'Cancelled'].includes(String(b.status || '').toLowerCase().replace(/^./, c => c.toUpperCase()))
+      const selected = statusFilter === 'Ready' ? enriched.filter(isReady)
+        : statusFilter === 'Canceled' ? enriched.filter(isCanceled)
+          : enriched
+      selected.sort((a, b) => {
+        if (statusFilter === 'All' && isReady(a) !== isReady(b)) return isReady(a) ? -1 : 1
+        const timeA = Date.parse(a.appointmentStart || a.createdAt || '')
+        const timeB = Date.parse(b.appointmentStart || b.createdAt || '')
+        return (Number.isFinite(timeA) ? timeA : Number.MAX_SAFE_INTEGER)
+          - (Number.isFinite(timeB) ? timeB : Number.MAX_SAFE_INTEGER)
+      })
+      setBookings(selected)
+      setTotalCount(selected.length)
     } catch (err) {
       console.error('Lỗi tải danh sách booking:', err)
     } finally {
@@ -1412,17 +1411,6 @@ export default function BookingManagement() {
             </h1>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            <button
-              onClick={() => {
-                setActiveTab('create')
-              }}
-              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 group cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-base group-hover:rotate-90 transition-transform">add_circle</span>
-              Tạo Lịch Hẹn Mới
-            </button>
-          </div>
         </div>
 
         {/* METRICS / STATS RIBBON - SÁNG, TRONG TRẺO, TINH TẾ */}
@@ -1486,8 +1474,6 @@ export default function BookingManagement() {
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none w-full sm:w-auto">
           {[
             { key: 'my_bookings', label: 'Danh Sách Lịch Hẹn', icon: 'format_list_bulleted', badge: totalCount },
-            { key: 'create', label: 'Tạo Lịch Hẹn Mới', icon: 'add_circle' },
-            { key: 'batch', label: 'Booking Theo Lô', icon: 'view_list' },
             { key: 'container_status', label: 'Lộ Trình Container', icon: 'timeline' },
           ].map((tab) => (
             <button
@@ -1598,12 +1584,8 @@ export default function BookingManagement() {
                   Trạng thái:
                 </span>
                 {[
-                  { id: 'All', label: 'Tất cả' },
                   { id: 'Ready', label: '✨ Sẵn sàng' },
-                  { id: 'Pending', label: 'Chờ điều phối' },
-                  { id: 'Approved', label: 'Đã duyệt' },
-                  { id: 'CheckedIn', label: 'Đã vào cổng' },
-                  { id: 'Completed', label: 'Hoàn tất' },
+                  { id: 'All', label: 'Tất cả' },
                   { id: 'Canceled', label: 'Đã hủy' },
                 ].map((s) => (
                   <button
@@ -1646,18 +1628,9 @@ export default function BookingManagement() {
                 <div className="space-y-1">
                   <h4 className="font-bold text-carbon text-base">Không tìm thấy hồ sơ Đặt chỗ phù hợp</h4>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                    Thử thay đổi bộ lọc tìm kiếm hoặc nhấn nút Tạo Đặt chỗ Mới bên trên để bắt đầu.
+                    Thử thay đổi bộ lọc tìm kiếm để xem các lịch hẹn phù hợp.
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setActiveTab('create')
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-signal-orange text-white font-bold text-xs hover:bg-orange-600 transition-all inline-flex items-center gap-2 cursor-pointer shadow-sm"
-                >
-                  <span className="material-symbols-outlined text-sm">add_circle</span>
-                  Tạo Đặt chỗ Ngay
-                </button>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -1864,14 +1837,6 @@ export default function BookingManagement() {
                                     <span className="material-symbols-outlined text-sm text-white group-hover:scale-110 transition-transform">qr_code_2</span>
                                     <span>Vé QR</span>
                                   </button>
-                                  <button
-                                    onClick={() => navigate(`/dispatch?bookingCode=${encodeURIComponent(bk.bookingCode || bk.id)}`)}
-                                    className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] transition-all flex items-center gap-1 shadow-sm hover:shadow cursor-pointer whitespace-nowrap"
-                                    title="Chuyển sang bước Theo dõi & điều phối xe"
-                                  >
-                                    <span className="material-symbols-outlined text-sm">alt_route</span>
-                                    <span>Điều phối xe ➔</span>
-                                  </button>
                                 </>
                               )}
 
@@ -1959,8 +1924,6 @@ export default function BookingManagement() {
       {/* ========================================================================= */}
       {/* TAB 2: CREATE BOOKING WIZARD */}
       {/* ========================================================================= */}
-      {activeTab === 'create' && <ContainerBookingForm onClose={() => setActiveTab('my_bookings')} onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
-      {activeTab === 'batch' && <BookingBatchWorkspace onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
 
       {/* ========================================================================= */}
       {/* TAB 3: CONTAINER JOURNEY TRACKING */}

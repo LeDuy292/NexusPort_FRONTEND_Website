@@ -272,7 +272,7 @@ export default function ServiceCatalogPage({ management = false }) {
 
   return (
     <div className={`epc ${motionPaused ? 'epc-motion-paused' : ''}`}>
-      <div className="epc-page-header">
+      {management && <div className="epc-page-header">
         <div>
           <div className="epc-breadcrumb">
             {management ? 'Quản trị' : 'Cổng doanh nghiệp'}
@@ -299,7 +299,7 @@ export default function ServiceCatalogPage({ management = false }) {
             <ShieldCheck size={16} />Thông tin dịch vụ & đơn giá
           </span>
         )}
-      </div>
+      </div>}
 
       <section className="epc-hero" aria-labelledby="epc-hero-title">
         <div className="epc-hero-grid" aria-hidden="true" />

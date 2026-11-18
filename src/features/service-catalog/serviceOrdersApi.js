@@ -11,7 +11,6 @@ export const serviceOrdersApi = {
   action: async (id, body) => (await apiClient.post(`${root}/${id}/actions`, body)).data,
   payments: async id => (await apiClient.get(`${root}/${id}/payments`)).data,
   createPayment: async (id, body) => (await apiClient.post(`${root}/${id}/payments`, body)).data,
-  simulateSuccess: async id => (await apiClient.post(`${root}/${id}/payments/simulate-success`)).data,
   syncPayment: async (id, paymentId, body) => (await apiClient.post(`${root}/${id}/payments/${paymentId}/sync`, body)).data,
   cancelPayment: async (id, paymentId, body) => (await apiClient.post(`${root}/${id}/payments/${paymentId}/cancel`, body)).data,
 }
