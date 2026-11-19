@@ -61,7 +61,6 @@ import GateBookingRequests from './pages/Dispatch/GateBookingRequests'
 // Import các trang Admin Portal
 import CarrierManagement from './pages/Admin/CarrierManagement'
 import TransportCompanyManagement from './pages/Admin/TransportCompanyManagement'
-import BerthManagement from './pages/Admin/BerthManagement'
 import GateManagement from './pages/Admin/GateManagement'
 import EquipmentManagement from './pages/Admin/EquipmentManagement'
 import BillingChargesManagement from './pages/Admin/BillingChargesManagement'
@@ -241,7 +240,6 @@ function App() {
             <Route path="/admin/carriers" element={<CarrierManagement />} />
             <Route path="/admin/shipping-lines" element={<ShippingLineDirectory />} />
             <Route path="/admin/transport-companies" element={<TransportCompanyManagement />} />
-            <Route path="/admin/berths" element={<BerthManagement />} />
             <Route path="/admin/gates" element={<GateManagement />} />
             <Route path="/admin/equipment" element={<EquipmentManagement />} />
             <Route path="/admin/billing" element={<BillingChargesManagement />} />
