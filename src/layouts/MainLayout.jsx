@@ -3,6 +3,8 @@ import { Link, useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { ROLES, YARD_VISIT_READERS } from '../routes/routeConfig'
 import NotificationCenter from '../components/NotificationCenter'
 
+const OVERVIEW_PATHS = new Set(['/carrier-portal', '/dashboard', '/yard-staff/dashboard', '/gate/dashboard', '/shipping-line/dashboard'])
+
 // Danh sách các mục trong Sidebar tương ứng với các route
 const sidebarItems = [
   {
@@ -350,9 +352,11 @@ export default function MainLayout({ previewUser = null }) {
   }
 
   // Lọc các sidebar items được phép hiển thị với vai trò người dùng hiện tại (Administrator thấy tất cả để kiểm thử)
-  const allowedItems = sidebarItems.filter(item => previewUser
+  const visibleItems = sidebarItems.filter(item => previewUser
     ? item.path === '/yard'
     : item.roles.includes(user.role) || (user.role === ROLES.ADMINISTRATOR && item.showForAdmin !== false))
+  // Các trang tổng quan luôn nằm đầu menu; thứ tự còn lại giữ nguyên
+  const allowedItems = [...visibleItems.filter(item => OVERVIEW_PATHS.has(item.path)), ...visibleItems.filter(item => !OVERVIEW_PATHS.has(item.path))]
 
   // Xác định mục menu đang được chọn: ưu tiên khớp chính xác URL, nếu không có thì lấy mục cha có tiền tố dài nhất
   const activeItem = allowedItems.find(item => item.path === location.pathname) ||
