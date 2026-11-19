@@ -36,29 +36,25 @@ function storageFor(visit) {
 
 function getStatusStyle(visit) {
   if (visit.visitStatus === 'planned') return 'bg-amber-100 text-amber-800 border-amber-300'
-  if (visit.visitStatus === 'completed') return 'bg-green-100 text-green-800 border-green-300'
+  if (visit.visitStatus === 'completed') return 'bg-slate-100 text-slate-700 border-slate-300'
   const storage = storageFor(visit)
-  if (storage?.day >= 30) return 'bg-red-100 text-red-800 border-red-300'
-  if (storage?.day >= 15) return 'bg-orange-100 text-orange-800 border-orange-300'
-  if (storage?.day >= 5) return 'bg-red-100 text-red-700 border-red-300'
-  if (storage?.day === 4) return 'bg-amber-100 text-amber-800 border-amber-300'
+  if (storage?.day >= 5) return 'bg-rose-100 text-rose-800 border-rose-300'
   return 'bg-blue-100 text-blue-800 border-blue-300'
 }
 
 function getVisitLabel(visit) {
   if (visit.visitStatus === 'planned') return 'Chưa vào bãi'
   if (visit.visitStatus === 'completed') return 'Đã rời bãi'
+  const storage = storageFor(visit)
+  if (storage?.day >= 5) return 'Quá hạn lưu bãi'
   return 'Đang trong bãi'
 }
 
 function getStorageLabel(visit) {
   const storage = storageFor(visit)
   if (!storage) return ''
-  if (storage.day >= 30) return 'Tồn trên 30 ngày'
-  if (storage.day >= 15) return 'Tồn trên 15 ngày'
-  if (storage.day >= 5) return `Quá booking ${storage.day - 4} ngày`
-  if (storage.day === 4) return 'Ngày cuối booking'
-  return 'Trong 5 ngày booking'
+  if (storage.day >= 5) return `Quá hạn ${storage.day - 4} ngày`
+  return `Lưu bãi ngày ${storage.day + 1}/5`
 }
 
 export default function ContainerFlow() {
@@ -145,16 +141,12 @@ export default function ContainerFlow() {
   }), [locationByContainer, relocations, tasks, visits])
 
   const filteredRows = useMemo(() => rows.filter(row => {
-    const overdue = row.storage?.day >= 5
+    const overdue = (row.storage?.day ?? -1) >= 5
     const filterMatches = filterStatus === 'Tất cả'
-      || (filterStatus === 'Đang trong bãi' && row.visitStatus === 'active')
       || (filterStatus === 'Chưa vào bãi' && row.visitStatus === 'planned')
+      || (filterStatus === 'Đang trong bãi' && row.visitStatus === 'active' && !overdue)
+      || (filterStatus === 'Quá hạn lưu bãi' && row.visitStatus === 'active' && overdue)
       || (filterStatus === 'Đã rời bãi' && row.visitStatus === 'completed')
-      || (filterStatus === 'Sắp quá hạn' && row.storage?.day === 4)
-      || (filterStatus === 'Quá hạn' && overdue)
-      || (filterStatus === 'Tồn trên 15 ngày' && row.storage?.day >= 15)
-      || (filterStatus === 'Tồn trên 30 ngày' && row.storage?.day >= 30)
-      || (filterStatus === 'Có lệnh' && !!row.task && !['completed', 'cancelled', 'canceled', 'failed'].includes(String(row.task.status || '').toLowerCase()))
     const query = searchQuery.trim().toLowerCase()
     const matchesSearch = !query || [row.containerNumber, row.visitReference, row.customerName, row.booking?.bookingCode, row.yardLocation]
       .some(value => String(value || '').toLowerCase().includes(query))
@@ -168,14 +160,7 @@ export default function ContainerFlow() {
     receipt.checkOutAt && { id: `${receipt.referenceNo}-out-${visit.id}`, containerNumber: visit.containerNumber, at: receipt.checkOutAt, label: 'Rời cổng', location: receipt.locationCode },
   ].filter(Boolean))).sort((a, b) => new Date(b.at) - new Date(a.at)).slice(0, 8), [visits])
 
-  const filters = ['Tất cả', 'Đang trong bãi', 'Chưa vào bãi', 'Sắp quá hạn', 'Quá hạn', 'Tồn trên 15 ngày', 'Tồn trên 30 ngày', 'Có lệnh', 'Đã rời bãi']
-  const stages = [
-    { label: 'DỰ KIẾN VÀO HÔM NAY', count: Number(overview?.expectedInboundToday || 0), description: 'Booking Dropoff có lịch trong hôm nay', style: 'bg-amber-50/70 border-amber-400 text-amber-900' },
-    { label: 'TỒN KHO HIỆN TẠI', count: Number(overview?.yardInventory || 0), description: 'Container đang được ghi nhận trong bãi', style: 'bg-blue-50/70 border-blue-400 text-blue-900' },
-    { label: 'DỰ KIẾN RA HÔM NAY', count: Number(overview?.expectedOutboundToday || 0), description: 'Booking Pickup có lịch trong hôm nay', style: 'bg-purple-50/70 border-purple-400 text-purple-900' },
-    { label: 'QUÁ HẠN', count: Number(overview?.overdue || 0), description: 'Đã hết 5 ngày giữ vị trí theo booking', style: 'bg-rose-50/70 border-rose-400 text-rose-900' },
-  ]
-
+  const filters = ['Tất cả', 'Chưa vào bãi', 'Đang trong bãi', 'Quá hạn lưu bãi', 'Đã rời bãi']
   return <div className="p-6 w-full font-sans flex flex-col gap-6 relative">
     <div className="flex flex-col gap-4 bg-white border border-chalk rounded-2xl p-5 shadow-sm lg:flex-row lg:justify-between lg:items-center">
       <div>
@@ -186,7 +171,7 @@ export default function ContainerFlow() {
           </span>
         </div>
         <h1 className="font-heading text-3xl text-carbon font-extrabold mt-1">Luồng Container Trong Bãi</h1>
-        <p className="text-xs text-slate mt-0.5">Theo dõi lượt bãi, booking lưu vị trí, tình trạng quá hạn và công việc đang xử lý.</p>
+        <p className="text-xs text-slate mt-0.5">Theo dõi vị trí ô bãi, lượt vào/ra thực tế và thời hạn lưu bãi.</p>
       </div>
       <div className="flex flex-wrap gap-2">
         <button onClick={() => reload(page)} disabled={loading} className="h-10 px-4 bg-white border border-chalk text-carbon rounded-xl font-bold text-xs hover:bg-fog disabled:opacity-50">{loading ? 'ĐANG TẢI…' : 'LÀM MỚI DỮ LIỆU'}</button>
@@ -196,52 +181,28 @@ export default function ContainerFlow() {
 
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
 
-      <div className="text-[11px] font-semibold text-slate">Bảng lấy tối đa 10 lượt có hoạt động gần nhất mỗi trang · {totalVisits} lượt trong danh sách · Trang {page}/{totalPages}. Tổng quan bãi không thay đổi khi phân trang.</div>
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-      {[
-        ['Dự kiến vào hôm nay', overview?.expectedInboundToday, 'text-amber-600'],
-        ['Dự kiến ra hôm nay', overview?.expectedOutboundToday, 'text-purple-600'],
-        ['Tồn kho hiện tại', overview?.yardInventory, 'text-blue-600'],
-        ['Booking quá hạn', overview?.overdue, 'text-red-600'],
-        ['Công việc bãi chưa xong', openTasks.length, 'text-green-600'],
-      ].map(([label, value, color]) => <div key={label} className="bg-white border border-chalk rounded-xl p-4 shadow-sm space-y-1">
-        <span className="text-slate text-[10px] uppercase font-bold tracking-wider">{label}</span>
-        <div className={`text-3xl font-extrabold font-mono ${color}`}>{value === undefined ? '—' : Number(value || 0)}</div>
-        {label === 'Công việc bãi chưa xong' && <p className="text-[10px] leading-4 text-slate">Lệnh đã giao hoặc đang làm như hạ bãi, nâng giao, chuyển ô; không phải booking chờ vào.</p>}
-      </div>)}
-    </div>
-
-    <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-4">
-      <div className="flex flex-wrap justify-between items-center border-b border-chalk pb-3 gap-2">
-        <div><span className="text-[10px] font-bold text-signal-orange uppercase tracking-wider">TÌNH HÌNH TÁC NGHIỆP</span><h2 className="font-heading text-lg font-extrabold text-carbon">Tổng quan luồng bãi</h2></div>
-        <span className="text-xs text-slate font-mono">Ngày thống kê: {overview?.today ? formatDateTime(`${overview.today}T12:00:00Z`).split(' ')[0] : '—'}</span>
+    <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="bg-white border border-chalk rounded-2xl p-4 shadow-sm space-y-1">
+        <span className="text-slate text-[11px] uppercase font-bold tracking-wider">Dự kiến vào hôm nay</span>
+        <div className="text-3xl font-extrabold font-mono text-amber-600">{overview?.expectedInboundToday === undefined ? '—' : Number(overview?.expectedInboundToday || 0)}</div>
+        <p className="text-[11px] text-slate">Lịch xe hạ cont theo booking</p>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3 text-xs">
-        {stages.map((stage, index) => <div key={stage.label} className={`text-left border-2 p-4 rounded-xl space-y-2 ${stage.style}`}>
-          <div className="flex justify-between items-center font-bold"><span>{index + 1}. {stage.label}</span><span className="text-lg font-extrabold">{overview ? stage.count : '—'}</span></div>
-          <p className="text-[11px] text-slate font-sans">{stage.description}</p>
-        </div>)}
+      <div className="bg-white border border-chalk rounded-2xl p-4 shadow-sm space-y-1">
+        <span className="text-slate text-[11px] uppercase font-bold tracking-wider">Đang trong bãi</span>
+        <div className="text-3xl font-extrabold font-mono text-blue-600">{overview?.yardInventory === undefined ? '—' : Number(overview?.yardInventory || 0)}</div>
+        <p className="text-[11px] text-slate">Thực tế đang lưu tại bãi CY</p>
+      </div>
+      <div className="bg-white border border-chalk rounded-2xl p-4 shadow-sm space-y-1">
+        <span className="text-slate text-[11px] uppercase font-bold tracking-wider">Dự kiến ra hôm nay</span>
+        <div className="text-3xl font-extrabold font-mono text-purple-600">{overview?.expectedOutboundToday === undefined ? '—' : Number(overview?.expectedOutboundToday || 0)}</div>
+        <p className="text-[11px] text-slate">Lịch xe nhận cont & xếp tàu</p>
+      </div>
+      <div className="bg-white border border-chalk rounded-2xl p-4 shadow-sm space-y-1">
+        <span className="text-slate text-[11px] uppercase font-bold tracking-wider">Quá hạn lưu bãi</span>
+        <div className="text-3xl font-extrabold font-mono text-rose-600">{overview?.overdue === undefined ? '—' : Number(overview?.overdue || 0)}</div>
+        <p className="text-[11px] text-slate">Đang ở bãi & quá 5 ngày booking</p>
       </div>
     </div>
-
-    {Number(overview?.overdue || 0) > 0 && <section className="bg-red-50 border-2 border-red-200 rounded-2xl p-5 space-y-3">
-      <div className="flex flex-wrap justify-between items-center gap-2">
-        <strong className="text-red-900 font-extrabold text-sm uppercase flex items-center gap-2"><span className="material-symbols-outlined text-red-600">notifications_active</span>BOOKING QUÁ HẠN CẦN THEO DÕI</strong>
-        <span className="text-xs font-bold text-red-700">{overview?.overdue || 0} lượt booking quá hạn</span>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        {overdueVisits.slice(0, 3).map(visit => {
-          const storage = storageFor(visit)
-          return <article key={visit.id} className="bg-white p-4 rounded-xl border border-red-200 shadow-sm space-y-2 text-xs">
-            <div className="flex justify-between gap-2 font-bold"><span className="font-mono text-red-700">{visit.containerNumber}</span><span className="text-slate">Ngày {storage.day + 1}/5</span></div>
-            <p className="text-[11px] text-graphite">Booking {storage.booking.bookingCode || '—'} · {visit.customerName || 'Chưa có tên khách hàng'}</p>
-            <p className="text-[11px] font-semibold text-red-800">Quá hạn {storage.day - 4} ngày theo booking.</p>
-          </article>
-        })}
-      </div>
-      {overdueVisits.length === 0 && <p className="text-[11px] text-red-800">Không có container quá hạn trong 10 lượt đang xem. Có thể chuyển trang để xem các lượt cũ hơn.</p>}
-      <p className="text-[11px] text-red-800">Tổng quá hạn lấy từ toàn bãi; danh sách minh họa chỉ lấy trong 10 lượt đang xem. Phí lưu bãi chưa được tính tại đây.</p>
-    </section>}
 
     <div className="bg-white border border-chalk rounded-2xl p-4 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
       <div className="flex flex-wrap gap-1.5 text-xs font-bold">
@@ -273,11 +234,11 @@ export default function ContainerFlow() {
           </table>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-chalk pt-4">
-          <span className="text-[11px] text-slate">Mỗi lần tải chỉ lấy 10 lượt; backend sắp theo hoạt động mới nhất.</span>
+          <span className="text-xs text-slate">Hiển thị 10 lượt / trang · Tổng cộng <strong className="font-mono text-carbon">{totalVisits}</strong> lượt</span>
           <div className="flex items-center gap-2">
-            <button onClick={() => reload(page - 1)} disabled={loading || page <= 1} className="rounded-lg border border-chalk px-3 py-2 text-xs font-bold text-carbon hover:bg-fog disabled:cursor-not-allowed disabled:opacity-40">Trước</button>
-            <span className="min-w-20 text-center text-xs font-mono text-slate">{page} / {totalPages}</span>
-            <button onClick={() => reload(page + 1)} disabled={loading || page >= totalPages} className="rounded-lg border border-chalk px-3 py-2 text-xs font-bold text-carbon hover:bg-fog disabled:cursor-not-allowed disabled:opacity-40">Tiếp</button>
+            <button onClick={() => reload(page - 1)} disabled={loading || page <= 1} className="rounded-lg border border-chalk px-3 py-1.5 text-xs font-bold text-carbon hover:bg-fog disabled:cursor-not-allowed disabled:opacity-40">Trước</button>
+            <span className="min-w-20 text-center text-xs font-mono text-slate">Trang {page} / {totalPages}</span>
+            <button onClick={() => reload(page + 1)} disabled={loading || page >= totalPages} className="rounded-lg border border-chalk px-3 py-1.5 text-xs font-bold text-carbon hover:bg-fog disabled:cursor-not-allowed disabled:opacity-40">Sau</button>
           </div>
         </div>
       </section>
