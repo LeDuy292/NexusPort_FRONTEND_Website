@@ -224,7 +224,7 @@ export default function GateControl() {
       }
 
       const result=await gateService.commandBarrier({requestId:barrierRequestRef.current.requestId,gateCode:mappedGateCode,
-        action,source,verificationRecordId:verificationRecordId||null,reason:source==='manual'?reason:undefined})
+        lane:targetLane,skipHardware:true,action,source,verificationRecordId:verificationRecordId||null,reason:source==='manual'?reason:undefined})
       if(result.status!=='simulated'&&result.status!=='acknowledged')throw new Error('Lệnh chưa được bộ điều khiển xác nhận.')
       setBarrierState(action==='open'?'opened':'closed')
       barrierRequestRef.current=null
@@ -268,6 +268,8 @@ export default function GateControl() {
       await gateService.commandBarrier({
         requestId,
         gateCode: mappedGateCode,
+        lane: targetLane,
+        skipHardware: true,
         action,
         source: 'manual',
         verificationRecordId: passageEvidence?.verificationRecordId || null,
