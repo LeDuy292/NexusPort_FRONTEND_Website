@@ -178,7 +178,7 @@ export default function DispatchBoard() {
           {!selected.coordination.canCall && <p className="arrival-muted">{selectedState === 'acknowledged'
             ? 'Xe đã có lệnh vào cổng. Khi lệnh hết hạn, hệ thống trả xe về sẵn sàng để gọi lại.'
             : selectedState === 'called' ? 'Đã gửi lệnh gọi, đang chờ tài xế nhận trên app trong 10 phút.'
-            : 'Chỉ gọi khi tài xế sẵn sàng, từ 12 giờ trước giờ hẹn và không còn thời gian chờ thêm.'}</p>}
+            : 'Chỉ gọi khi tài xế sẵn sàng, từ 3 ngày trước giờ hẹn và không còn thời gian chờ thêm.'}</p>}
           <div className="arrival-delay"><label>Chờ thêm (phút)<input type="number" min="1" max="120" value={minutes} onChange={e => setMinutes(e.target.value)} /></label>
             <button type="button" disabled={busy || !canDelay || !note.trim() || Boolean(detailError)} onClick={() => void act('delay')}>Báo chờ thêm</button></div>
           {(['called','acknowledged'].includes(selectedState) || selected.dispatch?.holdUntil) && <button type="button" disabled={busy || Boolean(detailError)} onClick={() => void act('release')}>Thu hồi lệnh / bỏ thời gian chờ</button>}

@@ -233,7 +233,7 @@ export default function GateControl() {
       if (action === 'open' && physical && !outbound) {
         setBarrierState('opening')
         try {
-          await gateService.openVerifiedInboundBarrier(result.commandId)
+          await gateService.openAuthorizedInboundBarrier(result.commandId)
         } catch (error) {
           setBarrierState('closed')
           throw error
@@ -250,7 +250,12 @@ export default function GateControl() {
 
   const manualBarrier = async (action) => {
     if (action === 'open' && mode === 'checkin') {
-      showToast('Xác minh xe để mở barie cổng vào.')
+      try {
+        await commandBarrier('open', 'manual', null, 'Kiểm tra mở barie thủ công', selectedGate, true)
+        showToast('Đã gửi lệnh mở barie cổng vào tới ESP32.')
+      } catch (error) {
+        showToast(error.message)
+      }
       return
     }
     // 1. Luôn ưu tiên cập nhật trạng thái Barie ngay lập tức trên UI (không bị chặn)
@@ -1104,6 +1109,8 @@ export default function GateControl() {
               <span className="tracking-wide">
                 {barrierState === 'opened'
                   ? 'Cổng đang mở — Cho phép phương tiện qua cổng'
+                  : barrierState === 'opening'
+                  ? 'Đang chờ ESP32 báo mở barie'
                   : processingStatus === 'rejected'
                   ? 'Cổng đang khóa — Xe không đủ điều kiện'
                   : 'Cổng đang đóng'}
@@ -1119,7 +1126,7 @@ export default function GateControl() {
                 <button
                   type="button"
                   onClick={() => void manualBarrier('open')}
-                  disabled={barrierState === 'opened' || mode === 'checkin'}
+                  disabled={barrierState !== 'closed' || barrierBusy || verificationBusy || gateOutBusy || physicalPassagePending}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
                   title="Mở barie cho xe qua"
                 >

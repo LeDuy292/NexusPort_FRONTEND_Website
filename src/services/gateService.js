@@ -61,7 +61,7 @@ export const gateService = {
   async commandBarrier(payload) {
     return (await apiClient.post('/v1/Gate/barrier-commands', payload)).data
   },
-  async openVerifiedInboundBarrier(commandId) {
+  async openAuthorizedInboundBarrier(commandId) {
     const { data } = await aiClient.post('/api/v1/gate/barrier/open/in', { commandId })
     if (!data.success) throw new Error(data.message || 'Chưa gửi được lệnh mở barie tới ESP32.')
     return data
