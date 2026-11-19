@@ -457,6 +457,16 @@ export default function GateControl() {
       const plate = eventData?.detectedPlate ? eventData.detectedPlate.trim().toUpperCase() : ''
       if (!plate) return
 
+      const isOutbound = eventData?.laneCode === 'LANE_02' || eventData?.gateCode === 'GATE_OUT' || eventData?.gateCode === 'GATE_OUT_A' || String(eventData?.lane).toUpperCase() === 'OUT'
+      const targetMode = isOutbound ? 'checkout' : 'checkin'
+
+      // Đồng bộ đúng tab làn xe tương ứng với cảm biến kích hoạt
+      setMode(targetMode)
+      const matchingGate = gateLocations.find(g => g.gateType === (isOutbound ? 'gate_out' : 'gate_in'))
+      if (matchingGate) {
+        setSelectedGateId(matchingGate.id)
+      }
+
       const conf = eventData.plateConfidence ? eventData.plateConfidence * 100 : 98
       const overview = eventData.overviewImageUrl || null
       const crop = eventData.vehiclePlateImageUrl || null
@@ -466,7 +476,7 @@ export default function GateControl() {
       if (overview) setCapturedImage(overview)
       if (crop) setAiCropImage(crop)
 
-      showToast(`📡 [IoT Camera] Nhận diện xe: "${plate}" (${conf.toFixed(1)}%)`)
+      showToast(`🚗 [${isOutbound ? 'CỔNG RA' : 'CỔNG VÀO'}] Nhận diện biển số: "${plate}" (${conf.toFixed(1)}%)`)
       setIsAiScanning(true)
       try {
         await evaluateVerification(plate, conf, overview, crop)
