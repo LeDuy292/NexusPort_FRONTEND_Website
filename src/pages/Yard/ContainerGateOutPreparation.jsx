@@ -1242,7 +1242,7 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
             ? request.photos
             : (Array.isArray(request.damageDetails?.[0]?.photos) && request.damageDetails[0].photos.length > 0)
               ? request.damageDetails[0].photos
-              : ['https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80']
+              : []
         setDamagePhotos(photos)
       }
       if (request.terminalSignatory) setTerminalSignatory(request.terminalSignatory)
@@ -1396,12 +1396,6 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
     reader.readAsDataURL(file)
   }
 
-  const handleSimulateSamplePhoto = () => {
-    const sample = 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80'
-    setDamagePhotos(prev => [...prev, sample])
-    showToast('Đã chụp ảnh hiện trường từ camera thiết bị.')
-  }
-
   const handleStartPickup = async () => {
     try {
       setSubmitting(true)
@@ -1468,6 +1462,16 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
     }
   }
 
+  // Danh sách mục còn thiếu: phải hoàn tất toàn bộ mới được phát hành e-EIR
+  const eirMissingItems = [
+    !checklist.correctContainer && 'Xác nhận đúng số container',
+    !checklist.correctSeal && 'Xác nhận chì niêm phong',
+    hasDamage && selectedFaces.length === 0 && 'Chọn mặt vỏ hư hại',
+    damagePhotos.length === 0 && 'Chụp/tải ảnh hiện trường',
+    !eirSignConfirmed && 'Hai bên xác nhận chữ ký',
+  ].filter(Boolean)
+  const canIssueEir = eirMissingItems.length === 0
+
   const handleIssueEirAndConfirm = async () => {
     if (isEirLocked) {
       showToast('Phiếu giao nhận e-EIR đã được phát hành và khóa bất biến. Không được phép chỉnh sửa hoặc cấp lại!')
@@ -1487,6 +1491,10 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
     }
     if (!eirSignConfirmed) {
       showToast('Vui lòng tích chọn cam kết xác nhận chữ ký biên bản giao nhận.')
+      return
+    }
+    if (damagePhotos.length === 0) {
+      showToast('Vui lòng chụp hoặc tải ít nhất một ảnh hiện trường trước khi phát hành e-EIR.')
       return
     }
 
@@ -1517,7 +1525,7 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
       const res = await issueGateOutEir(payload)
       const finalPhotos = (damagePhotos && damagePhotos.length > 0)
         ? damagePhotos
-        : res.eir?.damagePhotos || (hasDamage ? ['https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80'] : [])
+        : res.eir?.damagePhotos || []
 
       if (res && res.eir) {
         setIssuedEir({
@@ -2212,11 +2220,12 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
                       />
                     </div>
                   </div>
-
+                </div>
+              )}
                   {/* Ảnh chụp hiện trường */}
-                  <div className="pt-2">
+                  <div className={`rounded-xl border p-4 ${hasDamage ? 'bg-rose-50/50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-[11px] font-semibold text-slate-700">Ảnh hiện trường đính kèm:</span>
+                      <span className="text-[11px] font-semibold text-slate-700">Ảnh hiện trường đính kèm (bắt buộc):</span>
                       {!isEirLocked && (
                         <div className="flex gap-2">
                           <button
@@ -2226,14 +2235,6 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
                           >
                             <span className="material-symbols-outlined text-sm">upload_file</span>
                             Tải ảnh từ máy
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleSimulateSamplePhoto}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-slate-300 text-orange-700 rounded-lg text-xs font-medium hover:bg-slate-50 cursor-pointer transition-colors shadow-2xs"
-                          >
-                            <span className="material-symbols-outlined text-sm">photo_camera</span>
-                            Chụp từ thiết bị
                           </button>
                           <input
                             ref={fileInputRef}
@@ -2265,12 +2266,10 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
                       </div>
                     ) : (
                       <p className="text-[11px] text-slate-500 italic">
-                        {isEirLocked ? 'Không có ảnh chụp hư hại đính kèm theo phiếu e-EIR.' : 'Khuyến nghị đính kèm hình ảnh hiện trường vị trí hư hại để làm cơ sở đối chiếu.'}
+                        {isEirLocked ? 'Không có ảnh chụp hư hại đính kèm theo phiếu e-EIR.' : (hasDamage ? 'Bắt buộc chụp/tải ảnh vị trí hư hại để làm cơ sở đối chiếu.' : 'Bắt buộc chụp/tải ảnh hiện trạng vỏ container nguyên vẹn trước khi phát hành e-EIR.')}
                       </p>
                     )}
                   </div>
-                </div>
-              )}
             </div>
 
             {/* Checklist đối soát & Ký bàn giao */}
@@ -2368,15 +2367,22 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
 
               {/* Nút hoàn tất phát hành / xuất cổng */}
               {!isEirLocked ? (
+                <>
                 <button
                   type="button"
                   onClick={handleIssueEirAndConfirm}
-                  disabled={submitting}
-                  className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all disabled:opacity-50"
+                  disabled={submitting || !canIssueEir}
+                  className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 shadow-xs cursor-pointer transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <span className="material-symbols-outlined text-lg">receipt_long</span>
                   {submitting ? 'Đang phát hành e-EIR...' : 'Xác nhận nâng lên xe và ký phát hành e-EIR'}
                 </button>
+                {!canIssueEir && (
+                  <p className="text-[11px] text-rose-600 font-medium">
+                    Còn thiếu: {eirMissingItems.join(' · ')}
+                  </p>
+                )}
+                </>
               ) : (
                 <div className="flex gap-2">
                   <button
@@ -2465,7 +2471,7 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
             damageSeverity,
             damagePhotos: (damagePhotos && damagePhotos.length > 0)
               ? damagePhotos
-              : (issuedEir?.damagePhotos || currentReq.damagePhotos || (hasDamage ? ['https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80'] : [])),
+              : (issuedEir?.damagePhotos || currentReq.damagePhotos || []),
             truckPlate: currentReq.truck || currentReq.truckPlate,
             driverName: currentReq.driver || currentReq.driverName,
             terminalSignatory,
@@ -2789,7 +2795,7 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
       damageSeverity: item.damageSeverity || 'Vừa',
       damagePhotos: Array.isArray(item.damagePhotos) && item.damagePhotos.length > 0
         ? item.damagePhotos
-        : (item.hasDamage ? ['https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80'] : []),
+        : [],
       truckPlate: item.truck || item.truckPlate || '50H-630.74',
       driverName: item.driver || item.driverName || 'Trần Văn Hùng',
       grossWeight: item.grossWeight || 28100,
@@ -4617,8 +4623,11 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
 
 
 // ─── ROOT CONTAINER: ĐIỀU HÀNH XUẤT CỔNG ─────────────────────────────────────
+// Cache theo phiên: lần vào lại trang hiện ngay dữ liệu cũ, rồi làm mới ngầm (stale-while-revalidate)
+let inboundRequestsCache = []
+
 export default function ContainerGateOutPreparation() {
-  const [requests, setRequests] = useState([])
+  const [requests, setRequests] = useState(inboundRequestsCache)
   const [loading, setLoading] = useState(false)
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [toastMessage, setToastMessage] = useState('')
@@ -4632,9 +4641,10 @@ export default function ContainerGateOutPreparation() {
     try {
       setLoading(true)
       const data = await getGateOutRequests({ direction: 'inbound', limit: 100 })
-      setRequests(Array.isArray(data) ? data : [])
+      inboundRequestsCache = Array.isArray(data) ? data : []
+      setRequests(inboundRequestsCache)
     } catch (err) {
-      setRequests([])
+      // Giữ dữ liệu đang hiển thị khi tải lỗi/timeout thay vì xóa trắng danh sách
       showToast(getFriendlyErrorMessage(err, 'Không thể tải danh sách container từ máy chủ.'))
     } finally {
       setLoading(false)

@@ -1,6 +1,10 @@
 import apiClient from './apiClient'
 
 export const yardRestackService = {
+  getRisks: async () => {
+    const res = await apiClient.get('/v1/YardRestack/risks')
+    return res.data || []
+  },
   /**
    * NXP-126: Phân tích Stack, phát hiện container bị chặn và tìm slot đệm
    * @param {Object} payload - { containerNo, location, blockCode, targetDestination, restackBackToOriginal }

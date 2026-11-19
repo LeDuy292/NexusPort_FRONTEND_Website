@@ -48,7 +48,7 @@ const STATUS_CONFIG = {
 
 export default function ShippingBadge({ status, text }) {
   const config = STATUS_CONFIG[status] || {
-    label: text || status || 'Chưa xác định',
+    label: text || 'Đang cập nhật', // không hiển thị mã trạng thái nội bộ
     bg: 'bg-slate-100',
     text: 'text-slate-700',
     border: 'border-slate-300',

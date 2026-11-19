@@ -302,15 +302,6 @@ export default function NotificationCenter() {
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
               Realtime Sync
             </span>
-            <button
-              onClick={() => {
-                setIsOpen(false)
-                navigate('/cargo/tracking')
-              }}
-              className="text-xs font-bold text-orange-600 hover:text-orange-700 cursor-pointer"
-            >
-              Mở Trung tâm chứng từ & Việc cần làm →
-            </button>
           </div>
 
         </div>

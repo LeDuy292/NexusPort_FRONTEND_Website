@@ -1,4 +1,5 @@
 import React, { useRef } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
@@ -49,14 +50,35 @@ export default function ElectronicEirReceiptModal({ isOpen, onClose, data }) {
   const driverName = data.driverName || data.driver || 'Trần Văn Hùng'
   const driverPhone = data.driverPhone || '0905.112.334'
   const driverLicense = data.driverLicense || 'GPLX: 480129841829'
+  const driverIdNo = data.driverIdNo || data.driverCccd || '—'
+
+  // Nghiệp vụ & pháp lý
+  const jobType = data.jobType || (isFull ? 'Giao hàng nhập (Delivery - lấy hàng nguyên ra khỏi bãi)' : 'Cấp rỗng (Empty Release)')
+  const customsDeclarationNo = data.customsDeclarationNo || data.customs_declaration_no || '—'
+  const customsStatus = data.customsStatus || data.customs_status || (data.customsCleared ? 'Đã thông quan' : '—')
+  const eDoNo = data.eDoNo || data.edoNo || data.edo_no || '—'
+  const eDoValidUntil = data.eDoValidUntil || data.edoValidUntil || data.edo_valid_until
+  const eDoValidText = eDoValidUntil ? new Date(eDoValidUntil).toLocaleDateString('vi-VN') : '—'
+  const paymentRef = data.paymentReceiptNo || data.receiptNo || data.liftOrderNo || data.lift_order_no || '—'
+
+  // Hàng đặc biệt: hiển thị N/A với container khô
+  const cargoText = String(data.cargoType || data.cargo_type || '')
+  const isReefer = /reefer|lạnh|RF/i.test(cargoText) || /RF/i.test(String(containerType))
+  const imdgClass = data.imdgClass || data.imdg_class
+  const unNo = data.unNo || data.un_no
+  const setTemp = data.setTemp ?? data.set_temp
+  const ventilation = data.ventilation
 
   const yardSlot = data.yardSlot || data.position || data.location_code || 'C-02-06-1'
   const gateName = data.gateName || data.gate || data.gate_label || 'OUT GATE 1 / LÀN 02'
   const emptyReturnDepot = data.emptyReturnDepot || data.empty_return_place || 'Depot ITL Hòa Cầm (Đà Nẵng)'
   const detentionFreeDays = data.detentionFreeDays || 3
 
-  const checkInTime = data.checkInAt ? new Date(data.checkInAt).toLocaleString('vi-VN') : '28/02/2026 16:24:26'
-  const checkOutTime = data.checkOutAt ? new Date(data.checkOutAt).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN')
+  const fmtTime = (v) => (v ? new Date(v).toLocaleString('vi-VN') : '—')
+  // Mốc xe vào/ra cổng chỉ chênh nhau vài chục phút; ngày container nhập bãi là mốc riêng (có thể cách nhiều ngày)
+  const yardInTime = fmtTime(data.yardInAt || data.gateInAt || data.dischargedAt)
+  const checkInTime = fmtTime(data.checkInAt)
+  const checkOutTime = data.checkOutAt ? fmtTime(data.checkOutAt) : new Date().toLocaleString('vi-VN')
   const issuedTime = data.issuedAt ? new Date(data.issuedAt).toLocaleString('vi-VN') : new Date().toLocaleString('vi-VN')
 
   const hasDamage = Boolean(data.hasDamage)
@@ -69,11 +91,13 @@ export default function ElectronicEirReceiptModal({ isOpen, onClose, data }) {
       ? data.photos
       : Array.isArray(data.damage_photos) && data.damage_photos.length > 0
         ? data.damage_photos
-        : (hasDamage ? ['https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80'] : [])
+        : []
   const damagePhotos = (rawPhotos || []).map(p => (typeof p === 'string' ? p : p?.url || p?.preview || '')).filter(Boolean)
 
   const terminalSignatory = data.terminalSignatory || 'Trần Văn Hùng · Điều Độ Viên Cảng Tiên Sa'
   const transportationSignatory = data.transportationSignatory || `${driverName} · Tài Xế Vận Tải`
+  // QR chứa đường dẫn tra cứu để quét tại barie / hải quan kiểm tra tính hợp lệ
+  const qrValue = `https://nexusport.vn/eir?code=${encodeURIComponent(eirNo)}&cont=${encodeURIComponent(containerId)}`
   const verificationHash = data.qrData || `NXP-EIR|${eirNo}|${containerId}|${truckPlate}|${new Date().toISOString()}`
 
   const handlePrint = () => {
@@ -229,6 +253,39 @@ export default function ElectronicEirReceiptModal({ isOpen, onClose, data }) {
                   Xe: <span className="text-orange-900">{truckPlate}</span> · Moóc: {chassisNo}
                 </div>
               </div>
+              <div>
+                <span className="text-slate-500 text-[10px] block">Tài xế nhận container:</span>
+                <strong className="text-slate-900">{driverName}</strong>
+                <div className="text-[10px] text-slate-500 font-mono">SĐT: {driverPhone}</div>
+              </div>
+              <div>
+                <span className="text-slate-500 text-[10px] block">CCCD / GPLX:</span>
+                <strong className="text-slate-900 font-mono">{driverIdNo !== '—' ? driverIdNo : driverLicense}</strong>
+              </div>
+              <div>
+                <span className="text-slate-500 text-[10px] block">Phương án tác nghiệp (Job Type):</span>
+                <strong className="text-slate-900">{jobType}</strong>
+              </div>
+            </div>
+
+            {/* Hải quan & lệnh giao hàng */}
+            <div className="px-3.5 pb-3.5 pt-3 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white border-t border-slate-200">
+              <div>
+                <span className="text-slate-500 text-[10px] block">Số tờ khai hải quan:</span>
+                <strong className="text-slate-900 font-mono">{isFull ? customsDeclarationNo : 'N/A (vỏ rỗng)'}</strong>
+              </div>
+              <div>
+                <span className="text-slate-500 text-[10px] block">Trạng thái thông quan:</span>
+                <strong className={customsStatus === '—' ? 'text-slate-500' : 'text-emerald-700'}>{isFull ? customsStatus : 'N/A'}</strong>
+              </div>
+              <div>
+                <span className="text-slate-500 text-[10px] block">Số lệnh giao hàng (e-D/O):</span>
+                <strong className="text-slate-900 font-mono">{eDoNo}</strong>
+              </div>
+              <div>
+                <span className="text-slate-500 text-[10px] block">Hạn lệnh (Valid until):</span>
+                <strong className="text-slate-900 font-mono">{eDoValidText}</strong>
+              </div>
             </div>
           </div>
 
@@ -270,6 +327,25 @@ export default function ElectronicEirReceiptModal({ isOpen, onClose, data }) {
               </table>
             </div>
 
+            <div className="p-3 bg-white border-t border-slate-200 grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px]">
+              <div>
+                <span className="text-slate-500">Nhiệt độ cài đặt (Set Temp): </span>
+                <span className="font-mono font-semibold">{isReefer ? (setTemp !== undefined && setTemp !== null ? `${setTemp}°C` : '—') : 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500">Thông gió (Vent): </span>
+                <span className="font-mono font-semibold">{isReefer ? (ventilation ?? '—') : 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500">IMDG Class: </span>
+                <span className="font-mono font-semibold">{imdgClass || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-slate-500">UN No.: </span>
+                <span className="font-mono font-semibold">{unNo || 'N/A'}</span>
+              </div>
+            </div>
+
             <div className="p-3 bg-slate-50/60 border-t border-slate-200 grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
               <div>
                 <span className="text-slate-500">Tình trạng niêm chì: </span>
@@ -291,7 +367,7 @@ export default function ElectronicEirReceiptModal({ isOpen, onClose, data }) {
             <div className="bg-slate-100 px-3.5 py-1.5 font-bold text-slate-800 uppercase tracking-wider text-[11px] border-b border-slate-300">
               III. Vị Trí Bãi & Hoạt Động Khai Thác Cảng (Yard & Terminal Operations)
             </div>
-            <div className="p-3.5 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-white">
+            <div className="p-3.5 grid grid-cols-2 sm:grid-cols-5 gap-3 bg-white">
               <div>
                 <span className="text-slate-500 text-[10px] block">Vị trí ô bãi lưu trữ:</span>
                 <strong className="text-orange-950 font-mono text-sm block">{yardSlot}</strong>
@@ -303,14 +379,22 @@ export default function ElectronicEirReceiptModal({ isOpen, onClose, data }) {
                 <span className="text-[10px] text-slate-500">Đầu đọc Barie tự động</span>
               </div>
               <div>
-                <span className="text-slate-500 text-[10px] block">Giờ vào cổng (Check-in):</span>
+                <span className="text-slate-500 text-[10px] block">Ngày nhập bãi (Yard-in):</span>
+                <strong className="text-slate-800 font-mono text-[11px] block">{yardInTime}</strong>
+              </div>
+              <div>
+                <span className="text-slate-500 text-[10px] block">Giờ xe vào cổng (Check-in):</span>
                 <strong className="text-slate-800 font-mono text-[11px] block">{checkInTime}</strong>
               </div>
               <div>
-                <span className="text-slate-500 text-[10px] block">Giờ ra cổng (Check-out):</span>
+                <span className="text-slate-500 text-[10px] block">Giờ xe ra cổng (Check-out):</span>
                 <strong className="text-slate-800 font-mono text-[11px] block">{checkOutTime}</strong>
               </div>
-              <div className="col-span-2 sm:col-span-4 pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
+              <div className="col-span-2 sm:col-span-5 pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
+                <div>
+                  <span className="text-slate-500">Số phiếu thu / Lệnh nâng hạ: </span>
+                  <strong className="text-slate-900 font-mono">{paymentRef}</strong>
+                </div>
                 <div>
                   <span className="text-slate-500">Nơi chỉ định hạ trả vỏ rỗng: </span>
                   <strong className="text-slate-900">{emptyReturnDepot}</strong>
@@ -338,7 +422,7 @@ export default function ElectronicEirReceiptModal({ isOpen, onClose, data }) {
             
             <div className="p-3.5 bg-white space-y-2">
               <div className="text-slate-800">
-                <strong>Kết luận kiểm tra ngoại quan: </strong>
+                <strong>Ghi chú tình trạng vỏ (Condition / Remarks): </strong>
                 <span>{conditionDesc}</span>
               </div>
 
@@ -360,11 +444,11 @@ export default function ElectronicEirReceiptModal({ isOpen, onClose, data }) {
 
               {/* HÌNH ẢNH HIỆN TRƯỜNG GIÁM ĐỊNH VỎ CONTAINER */}
               {damagePhotos.length > 0 && (
-                <div className="bg-rose-50/50 p-3 rounded-lg border border-rose-200 space-y-2">
-                  <div className="text-[11px] font-bold text-rose-950 flex items-center justify-between">
+                <div className={`p-3 rounded-lg border space-y-2 ${hasDamage ? 'bg-rose-50/50 border-rose-200' : 'bg-slate-50 border-slate-200'}`}>
+                  <div className="text-[11px] font-bold text-slate-900 flex items-center justify-between">
                     <span className="flex items-center gap-1.5">
-                      <span className="material-symbols-outlined text-sm text-rose-600">photo_library</span>
-                      Ảnh bằng chứng hư hỏng ghi nhận tại hiện trường ({damagePhotos.length} ảnh):
+                      <span className={`material-symbols-outlined text-sm ${hasDamage ? 'text-rose-600' : 'text-emerald-600'}`}>photo_library</span>
+                      {hasDamage ? 'Ảnh bằng chứng hư hỏng' : 'Ảnh hiện trạng vỏ container'} ghi nhận tại hiện trường ({damagePhotos.length} ảnh):
                     </span>
                     <span className="text-[10px] text-slate-500 font-mono">Độ phân giải thực địa / GPS Cảng Tiên Sa</span>
                   </div>
@@ -376,12 +460,8 @@ export default function ElectronicEirReceiptModal({ isOpen, onClose, data }) {
                       >
                         <img
                           src={imgSrc}
-                          alt={`Bằng chứng hư hỏng #${idx + 1}`}
+                          alt={`Ảnh hiện trường #${idx + 1}`}
                           className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                          onError={(e) => {
-                            e.target.onerror = null
-                            e.target.src = 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80'
-                          }}
                         />
                         <div className="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] px-1.5 py-0.2 rounded font-mono font-bold">
                           Ảnh #{idx + 1}
@@ -405,15 +485,12 @@ export default function ElectronicEirReceiptModal({ isOpen, onClose, data }) {
               {/* Cột QR Code điện tử */}
               <div className="flex items-center gap-3">
                 <div className="w-20 h-20 bg-white border-2 border-slate-800 rounded-xl p-1.5 flex flex-col items-center justify-center shrink-0 shadow-2xs">
-                  {/* SVG QR Code minh họa thực tế */}
-                  <svg className="w-full h-full text-slate-900" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M2 2h8v8H2V2zm2 2v4h4V4H4zm8-2h8v8h-8V2zm2 2v4h4V4h-4zM2 14h8v8H2v-8zm2 2v4h4v-4H4zm14 0h2v2h-2v-2zm-4 0h2v2h-2v-2zm2 4h4v2h-4v-2zm2-2h2v2h-2v-2zm-6-2h2v2h-2v-2zm0 4h2v2h-2v-2zm4-8h2v2h-2V8zm-2 2h2v2h-2v-2zm2 2h2v2h-2v-2zm-4-2h2v2h-2v-2z" />
-                  </svg>
+                  <QRCodeSVG value={qrValue} size={128} level="M" className="w-full h-full" />
                 </div>
                 <div>
                   <div className="text-[10px] uppercase font-bold text-slate-500">Xác thực chứng từ số</div>
                   <div className="text-xs font-mono font-bold text-slate-900 break-all">{eirNo}</div>
-                  <div className="text-[9px] text-slate-500 mt-0.5">Quét để tra cứu trực tuyến trên cổng Hải quan cảng Tiên Sa</div>
+                  <div className="text-[9px] text-slate-500 mt-0.5">Quét tại làn barie tự động hoặc để Hải quan / đối tác tra cứu tính hợp lệ</div>
                 </div>
               </div>
 

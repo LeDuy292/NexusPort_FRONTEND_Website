@@ -25,8 +25,10 @@ export const exportBookingService = {
   getBooking: id => get(`/${id}`),
   createBooking: data => post('', data),
   declareContainers: (id, data) => post(`/${id}/containers`, data),
-  submitSi: (id, data) => post(`/${id}/si`, data),
-  confirmDraft: (id, data) => post(`/${id}/confirm-draft`, data),
+  // Thao tác của Hãng tàu
+  approveBooking: (id, data) => post(`/${id}/approve`, data),
+  rejectBooking: (id, data) => post(`/${id}/reject`, data),
+  issueBl: (id, data) => post(`/${id}/issue-bl`, data),
   cancelBooking: (id, data) => post(`/${id}/cancel`, data),
   getVoyages: () => get('/voyages'),
 }

@@ -1,15 +1,21 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { ROLES } from '../routes/routeConfig'
+import { ROLES, YARD_VISIT_READERS } from '../routes/routeConfig'
 import NotificationCenter from '../components/NotificationCenter'
 
 // Danh sách các mục trong Sidebar tương ứng với các route
 const sidebarItems = [
   {
+    path: '/carrier-portal',
+    label: 'Cổng Doanh Nghiệp',
+    icon: 'corporate_fare',
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
+  },
+  {
     path: '/services',
     label: 'Dịch Vụ ePort',
     icon: 'assignment_turned_in',
-    roles: [ROLES.TRANSPORT_COMPANY, 'Carrier', ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
   },
   {
     path: '/admin/service-catalog',
@@ -21,7 +27,7 @@ const sidebarItems = [
     path: '/containers',
     label: 'Tra cứu lượt bãi',
     icon: 'search',
-    roles: Object.values(ROLES).filter(role => role !== ROLES.GATE_OFFICER),
+    roles: YARD_VISIT_READERS,
   },
   // ── DISPATCHER ────────────────────────────────────────────────
   // 1. Tổng quan trước
@@ -191,6 +197,13 @@ const sidebarItems = [
     roles: [ROLES.SHIPPING_LINE],
   },
   {
+    path: '/shipping-line/import-documents',
+    label: 'Hồ Sơ Hàng Nhập',
+    icon: 'move_to_inbox',
+    roles: [ROLES.SHIPPING_LINE],
+    showForAdmin: false,
+  },
+  {
     path: '/shipping-line/manifest',
     label: 'Bản Khai Hàng Hóa (Manifest)',
     icon: 'description',
@@ -226,12 +239,6 @@ const sidebarItems = [
     roles: [ROLES.ADMINISTRATOR],
   },
   {
-    path: '/admin/berths',
-    label: 'Quản Lý Cầu Bến',
-    icon: 'anchor',
-    roles: [ROLES.ADMINISTRATOR],
-  },
-  {
     path: '/admin/gates',
     label: 'Quản Lý Cổng Bãi',
     icon: 'sensor_door',
@@ -254,46 +261,40 @@ const sidebarItems = [
 
   // ── TRANSPORT COMPANY (Doanh Nghiệp Vận Tải) ───────────────────
   {
-    path: '/carrier-portal',
-    label: 'Cổng Doanh Nghiệp',
-    icon: 'corporate_fare',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
-  },
-  {
-    path: '/cargo/tracking',
-    label: 'Theo Dõi Chứng Từ',
-    icon: 'notifications_active',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
-  },
-  {
     path: '/booking',
-    label: 'Đặt Lịch Cảng',
+    label: 'Danh Sách Lịch Hẹn',
     icon: 'calendar_month',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+  },
+  {
+    path: '/my-bills',
+    label: 'Vận Đơn Của Tôi',
+    icon: 'receipt_long',
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+  },
+  {
+    path: '/import-documents',
+    label: 'Chứng Từ Hàng Nhập',
+    icon: 'inventory',
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/drivers',
     label: 'Tài Xế & Phương Tiện',
     icon: 'local_shipping',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/carrier-staff',
     label: 'Quản Lý Nhân Viên',
     icon: 'manage_accounts',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER],
+    roles: [ROLES.TRANSPORT_COMPANY],
   },
   {
     path: '/carrier-profile',
     label: 'Hồ Sơ Doanh Nghiệp',
     icon: 'business',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
-  },
-  {
-    path: '/billing',
-    label: 'Thanh Toán & Cước Phí',
-    icon: 'payments',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF],
+    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/users',
