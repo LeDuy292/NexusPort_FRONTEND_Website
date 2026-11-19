@@ -16,6 +16,7 @@ export const containerService = {
   lookup: (containerNumber) => nodeApiClient.get('/containers/lookup', { containerNumber }),
   listOwnIdentities: (params) => nodeApiClient.get('/containers/identities/mine', params),
   searchYardVisits: (params) => nodeApiClient.get('/containers/yard-visits', params),
+  getYardOverview: () => nodeApiClient.get('/containers/yard-overview'),
   getOwnVisits: (id) => nodeApiClient.get(`/containers/own-visits/${id}`),
   getContainers: (params) => nodeApiClient.get('/containers', params),
   getCargoTypes: () => nodeApiClient.get('/containers/cargo-types'),
