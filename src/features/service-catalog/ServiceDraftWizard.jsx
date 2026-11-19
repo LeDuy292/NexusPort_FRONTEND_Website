@@ -220,7 +220,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     return (services || []).find(s => s.code === 'REEFER_POWER' || s.id === 'REEFER_POWER' || s.name?.toLowerCase().includes('cắm điện'))
   }, [services])
 
-  // Cấu hình các bước theo đúng chuẩn Hải Phòng ePort
+  // Cấu hình các bước: Giấy tờ thông quan hải quan sẽ được tải lên ở bước Hồ sơ & Chứng từ để Dispatcher xem và duyệt
   const stages = form.flow === 'IMPORT'
     ? [
       ['Lệnh eDO & Email', FileText],
@@ -900,7 +900,10 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   const profile = useQuery({
     queryKey: [...serviceDraftKey, session, 'delivery-profile'],
     queryFn: serviceDraftsApi.deliveryProfile,
-    retry: false,
+    retry: 2,
+    retryDelay: 800,
+    staleTime: 30000,
+    refetchOnWindowFocus: false,
   })
 
   useEffect(() => {
@@ -1036,7 +1039,10 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     queryKey: [...serviceDraftKey, session, 'sources', 'eligible-v2', form.flow, sourceTerm],
     queryFn: () => serviceDraftsApi.sources({ flow: form.flow, search: sourceTerm || undefined }),
     enabled: !sampleMode && (!draftId || loaded.current),
-    retry: false,
+    retry: 2,
+    retryDelay: 800,
+    staleTime: 15000,
+    refetchOnWindowFocus: false,
   })
 
   const sampleSources = useMemo(
@@ -1300,7 +1306,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
   const ordersListQuery = useQuery({
     queryKey: ['service-orders', 'paid-wizard-check'],
-    queryFn: () => serviceOrdersApi.list({ pageSize: 100 }),
+    queryFn: () => serviceOrdersApi.list({ pageSize: 50 }),
     retry: false,
     staleTime: 15000,
   })
@@ -2110,7 +2116,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       )
       : null
 
-  const next = () => {
+  const next = async () => {
     // BƯỚC 1 VALIDATION
     if (step === 0 && !main) {
       return setFeedback('Vui lòng chọn dịch vụ tác nghiệp để tiếp tục.')
@@ -2243,7 +2249,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       if (!form.plannedAt || !form.contactName.trim() || form.contactPhone.replace(/\D/g, '').length < 7) {
         return setFeedback('Vui lòng nhập thời gian dự kiến thực hiện, người liên hệ và số điện thoại hợp lệ ở các ô có dấu (*)!')
       }
-
     }
 
     // BƯỚC 4 VALIDATION: KHAI BÁO GIAO NHẬN (XE)

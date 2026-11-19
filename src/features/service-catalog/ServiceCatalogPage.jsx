@@ -188,7 +188,7 @@ export default function ServiceCatalogPage({ management = false }) {
   const client = useQueryClient()
   let account = {}
   try { account = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || '{}') } catch { /* ProtectedRoute handles an invalid session. */ }
-  const query = useQuery({ queryKey: [...key, account?.id || account?.username, account?.role], queryFn: catalogApi.list })
+  const query = useQuery({ queryKey: [...key, account?.id || account?.username, account?.role], queryFn: catalogApi.list, retry: 2, retryDelay: 800, staleTime: 60000, refetchOnWindowFocus: false })
   const [search, setSearch] = useState('')
   const [direction, setDirection] = useState('ALL')
   const [status, setStatus] = useState('ALL')
@@ -243,7 +243,7 @@ export default function ServiceCatalogPage({ management = false }) {
   const [orderReviewing, setOrderReviewing] = useState(null)
   useEffect(() => { const timer = setTimeout(() => { setOrderTerm(orderSearch.trim()); setOrderPage(1) }, 280); return () => clearTimeout(timer) }, [orderSearch])
   const orderFilters = { search: orderTerm || undefined, status: orderStatus || undefined, paymentStatus: orderPaymentStatus || undefined, flow: orderFlow || undefined, page: orderPage, pageSize: 10 }
-  const ordersQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'list', orderFilters], queryFn: () => serviceOrdersApi.list(orderFilters), retry: false, enabled: canDraft, refetchInterval: activeSection === 'orders' ? 10000 : false })
+  const ordersQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'list', orderFilters], queryFn: () => serviceOrdersApi.list(orderFilters), retry: 1, retryDelay: 1000, staleTime: 30000, enabled: canDraft, refetchOnWindowFocus: false, refetchInterval: false })
   const ordersTotal = ordersQuery.data?.total || 0
   const ordersPages = Math.max(1, Math.ceil(ordersTotal / 10))
   const orderItems = ordersQuery.data?.items || []
@@ -377,7 +377,10 @@ export default function ServiceCatalogPage({ management = false }) {
             role="tab"
             aria-selected={activeSection === 'orders'}
             className={`epc-section-tab ${activeSection === 'orders' ? 'active' : ''}`}
-            onClick={() => setActiveSection('orders')}
+            onClick={() => {
+              setActiveSection('orders')
+              ordersQuery.refetch()
+            }}
           >
             <ClipboardList size={16} aria-hidden="true" />
             Đơn dịch vụ

@@ -123,8 +123,11 @@ export default function BookingManagement() {
     }
   })
 
+  const isRefreshingManifestRef = React.useRef(false)
   useEffect(() => {
     const refreshManifestTransport = (e) => {
+      if (isRefreshingManifestRef.current) return
+      isRefreshingManifestRef.current = true
       try {
         setManifestTransportBookings(manifestPortSyncService.getGeneratedGateBookings())
         if (e?.detail?.type === 'REMOTE_FETCH_SYNC' || e?.detail?.type === 'REJECTED_FLEET_UNASSIGNED') {
@@ -143,17 +146,18 @@ export default function BookingManagement() {
           setTimeout(() => setToast(null), 5000)
         }
       } catch { }
+      finally {
+        isRefreshingManifestRef.current = false
+      }
     }
     window.addEventListener('storage', refreshManifestTransport)
     window.addEventListener('nexusport:manifest_synced', refreshManifestTransport)
     window.addEventListener('nexusport_manifest_synced', refreshManifestTransport)
-    window.addEventListener('yard-reservation-updated', refreshManifestTransport)
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
       window.removeEventListener('storage', refreshManifestTransport)
       window.removeEventListener('nexusport:manifest_synced', refreshManifestTransport)
       window.removeEventListener('nexusport_manifest_synced', refreshManifestTransport)
-      window.removeEventListener('yard-reservation-updated', refreshManifestTransport)
     }
   }, [])
 
