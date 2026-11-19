@@ -11,15 +11,98 @@ import { yardReservationStore } from '../../services/yardReservationStore'
 import { calculatePortServiceTariff, computeAutoBookingTariff } from '../../utils/portStorageFee'
 import { serviceOrdersApi } from '../../features/service-catalog/serviceOrdersApi'
 
+const mapLocalPortBookings = (generated = [], activePaymentCache = {}) => {
+  return (generated || []).map((p, idx) => {
+    const voyClean = (p.voyageNumber || '').replace(/[^A-Z0-9]/gi, '').toUpperCase()
+    const isPaid = (p.bookingCode && activePaymentCache[p.bookingCode]?.status === 'Paid') ||
+      (p.id && activePaymentCache[p.id]?.status === 'Paid') ||
+      (p.containerId && activePaymentCache[p.containerId]?.status === 'Paid') ||
+      (voyClean && activePaymentCache[voyClean]?.status === 'Paid') ||
+      Boolean(p.portBillPaid) ||
+      p.status === 'Ready' ||
+      (p.portBill && (p.portBill.status === 'PAID' || p.portBill.status === 'Paid'))
+
+    const opName = p.operation || (p.direction === 'IMPORT' ? 'Lấy container nhập' : 'Hạ container xuất')
+    const defaultStart = new Date(Date.now() + (idx * 3600000)).toISOString()
+
+    const orderFleet = manifestPortSyncService.getOrderFleet(p.containerId) ||
+      manifestPortSyncService.getOrderFleet(p.bookingCode) ||
+      manifestPortSyncService.getOrderFleet(p.id)
+
+    const vPlate = orderFleet?.plate ||
+      (p.licensePlate && !['Chưa gán xe', 'Chưa điều phối', '47AB-294.69', '43C-567.89'].includes(p.licensePlate)
+        ? p.licensePlate
+        : null)
+
+    const vDriver = orderFleet?.driver ||
+      (p.driverName && !['Chưa điều phối', 'TRẦN VĂN TÙNG', 'Nguyễn Văn Minh'].includes(p.driverName)
+        ? p.driverName
+        : null)
+
+    const resolvedStartRaw = p.appointmentStart || p.eta || defaultStart
+    const resolvedStartMs = Date.parse(resolvedStartRaw)
+    const appointmentStartIso = Number.isFinite(resolvedStartMs) ? new Date(resolvedStartMs).toISOString() : defaultStart
+    const appointmentEndIso = p.appointmentEnd || new Date((Number.isFinite(resolvedStartMs) ? resolvedStartMs : Date.now()) + 90 * 60000).toISOString()
+
+    return {
+      id: p.id,
+      bookingCode: p.bookingCode || p.id,
+      bookingType: p.bookingType || (p.direction === 'IMPORT' ? 'Pickup' : 'Dropoff'),
+      operation: opName,
+      containerNumbers: [p.containerId],
+      containerIds: [p.containerId],
+      containerType: p.containerType || '40HC',
+      vehiclePlate: vPlate,
+      driverName: vDriver,
+      appointmentStart: appointmentStartIso,
+      appointmentEnd: appointmentEndIso,
+      status: isPaid ? 'Ready' : (p.status || 'Pending'),
+      paymentStatus: isPaid ? 'Paid' : 'Unpaid',
+      yardSlot: p.yardSlot || p.autoYardSlot?.fullLocation || p.autoYardSlot?.slotName || p.autoYardSlot?.posId,
+      autoYardSlot: p.autoYardSlot,
+      portBill: p.portBill,
+      company: p.company,
+      vesselName: p.vesselName,
+      billOfLading: p.billOfLading,
+      documents: (() => {
+        const rawDocs = orderFleet?.documents || p.eportDocuments || p.documents || []
+        return (Array.isArray(rawDocs) ? rawDocs : []).filter(
+          d => d && !String(d.fileUrl || '').includes('pdfobject.com/pdf/sample.pdf')
+        )
+      })(),
+      isFromPortSync: true,
+      createdAt: p.createdAt || new Date().toISOString()
+    }
+  })
+}
+
 export default function BookingManagement() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const detailBookingId = searchParams.get('bookingId')
   const [activeTab, setActiveTab] = useState('my_bookings')
 
-  // Data States for My Bookings
-  const [bookings, setBookings] = useState([])
-  const [totalCount, setTotalCount] = useState(0)
+  const isFetchingRef = React.useRef(false)
+  const debounceTimerRef = React.useRef(null)
+
+  // Data States for My Bookings - khởi tạo dữ liệu ngay từ local/sync để hiển thị lập tức
+  const [bookings, setBookings] = useState(() => {
+    try {
+      const generated = manifestPortSyncService.getGeneratedGateBookings() || []
+      const initial = mapLocalPortBookings(generated)
+      return initial.filter(b => b.paymentStatus === 'Paid' || ['Ready', 'CheckedIn', 'Completed'].includes(b.status))
+    } catch {
+      return []
+    }
+  })
+  const [totalCount, setTotalCount] = useState(() => {
+    try {
+      const generated = manifestPortSyncService.getGeneratedGateBookings() || []
+      return generated.length
+    } catch {
+      return 0
+    }
+  })
   const [loading, setLoading] = useState(false)
   const [pageNumber, setPageNumber] = useState(1)
   const [pageSize] = useState(10)
@@ -47,7 +130,10 @@ export default function BookingManagement() {
         if (e?.detail?.type === 'REMOTE_FETCH_SYNC' || e?.detail?.type === 'REJECTED_FLEET_UNASSIGNED') {
           return
         }
-        fetchBookings()
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+        debounceTimerRef.current = setTimeout(() => {
+          fetchBookings(true)
+        }, 1500)
         if (e?.detail?.type === 'PORT_BILL_SENT' && e?.detail?.bill) {
           const bill = e.detail.bill
           setToast({
@@ -63,6 +149,7 @@ export default function BookingManagement() {
     window.addEventListener('nexusport_manifest_synced', refreshManifestTransport)
     window.addEventListener('yard-reservation-updated', refreshManifestTransport)
     return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
       window.removeEventListener('storage', refreshManifestTransport)
       window.removeEventListener('nexusport:manifest_synced', refreshManifestTransport)
       window.removeEventListener('nexusport_manifest_synced', refreshManifestTransport)
@@ -488,8 +575,12 @@ export default function BookingManagement() {
   }
 
   // 🤖 GỌI BACKEND XỬ LÝ AI TỰ ĐỘNG PHỐI XE & TÀI XẾ TỐI ƯU TỪ CSDL VÀ ĐỒNG BỘ TỪ CẢNG
-  const fetchBookings = async () => {
-    setLoading(true)
+  const fetchBookings = async (isBackground = false) => {
+    if (isFetchingRef.current) return
+    isFetchingRef.current = true
+    if (!isBackground && bookings.length === 0) {
+      setLoading(true)
+    }
     try {
       const params = {
         pageNumber,
@@ -511,52 +602,11 @@ export default function BookingManagement() {
         })
       } catch { }
 
-      // Kéo danh sách mới nhất từ PostgreSQL server về để đồng bộ giữa các máy khác nhau
+      // Đọc các đơn dịch vụ ePort từ Database API nhẹ nhàng (chỉ 1 request list, không gọi chi tiết lặp lại)
       try {
-        await manifestPortSyncService.fetchRemoteSyncedManifests().catch(() => {})
-      } catch {}
-
-      // Đọc các đơn dịch vụ ePort từ Database API (PostgreSQL qua C#) để cập nhật tức thời trên mọi máy
-      try {
-        const eportRes = await serviceOrdersApi.list({ pageSize: 50 }).catch(() => ({ items: [] }))
+        const eportRes = await serviceOrdersApi.list({ pageSize: 20 }).catch(() => ({ items: [] }))
         const allEportItems = eportRes?.items || []
-        const ordersToSync = allEportItems
-          .filter(ord => !['REJECTED', 'CANCELLED', 'DRAFT'].includes(String(ord?.status || '').toUpperCase()))
-          .slice(0, 15)
-        const rejectedOrders = allEportItems
-          .filter(ord => ['REJECTED', 'CANCELLED'].includes(String(ord?.status || '').toUpperCase()))
-          .slice(0, 15)
-        const detailedOrders = await Promise.all(
-          ordersToSync.map(async (ord) => {
-            try {
-              if (!ord?.content?.delivery?.trips && ord?.id) {
-                return await serviceOrdersApi.get(ord.id).catch(() => ord)
-              }
-              return ord
-            } catch {
-              return ord
-            }
-          })
-        )
-        const detailedRejected = await Promise.all(
-          rejectedOrders.map(async (ord) => {
-            try {
-              if (!ord?.containers?.length && !ord?.content?.lines?.length && ord?.id) {
-                return await serviceOrdersApi.get(ord.id).catch(() => ord)
-              }
-              return ord
-            } catch {
-              return ord
-            }
-          })
-        )
-        for (const rejOrd of detailedRejected) {
-          try {
-            await manifestPortSyncService.unassignRejectedOrderFromGateBookings(rejOrd, detailedOrders, { silent: true })
-          } catch {}
-        }
-        // Duyệt từ đơn cũ nhất đến đơn mới nhất để thông tin đội xe của đơn mới nhất luôn được ưu tiên
-        for (const orderToSync of [...detailedOrders].reverse()) {
+        for (const orderToSync of allEportItems) {
           try {
             manifestPortSyncService.saveAllOrderFleets(orderToSync)
           } catch {}
@@ -583,68 +633,7 @@ export default function BookingManagement() {
       let portItems = []
       try {
         const generated = manifestPortSyncService.getGeneratedGateBookings() || []
-        portItems = generated.map((p, idx) => {
-          const voyClean = (p.voyageNumber || '').replace(/[^A-Z0-9]/gi, '').toUpperCase()
-          const isPaid = (p.bookingCode && activePaymentCache[p.bookingCode]?.status === 'Paid') ||
-            (p.id && activePaymentCache[p.id]?.status === 'Paid') ||
-            (p.containerId && activePaymentCache[p.containerId]?.status === 'Paid') ||
-            (voyClean && activePaymentCache[voyClean]?.status === 'Paid') ||
-            Boolean(p.portBillPaid) ||
-            p.status === 'Ready' ||
-            (p.portBill && (p.portBill.status === 'PAID' || p.portBill.status === 'Paid'))
-
-          const opName = p.operation || (p.direction === 'IMPORT' ? 'Lấy container nhập' : 'Hạ container xuất')
-          const defaultStart = new Date(Date.now() + (idx * 3600000)).toISOString()
-
-          const orderFleet = manifestPortSyncService.getOrderFleet(p.containerId) ||
-            manifestPortSyncService.getOrderFleet(p.bookingCode) ||
-            manifestPortSyncService.getOrderFleet(p.id)
-
-          const vPlate = orderFleet?.plate ||
-            (p.licensePlate && !['Chưa gán xe', 'Chưa điều phối', '47AB-294.69', '43C-567.89'].includes(p.licensePlate)
-              ? p.licensePlate
-              : null)
-
-          const vDriver = orderFleet?.driver ||
-            (p.driverName && !['Chưa điều phối', 'TRẦN VĂN TÙNG', 'Nguyễn Văn Minh'].includes(p.driverName)
-              ? p.driverName
-              : null)
-
-          const resolvedStartRaw = p.appointmentStart || p.eta || defaultStart
-          const resolvedStartMs = Date.parse(resolvedStartRaw)
-          const appointmentStartIso = Number.isFinite(resolvedStartMs) ? new Date(resolvedStartMs).toISOString() : defaultStart
-          const appointmentEndIso = p.appointmentEnd || new Date((Number.isFinite(resolvedStartMs) ? resolvedStartMs : Date.now()) + 90 * 60000).toISOString()
-
-          return {
-            id: p.id,
-            bookingCode: p.bookingCode || p.id,
-            bookingType: p.bookingType || (p.direction === 'IMPORT' ? 'Pickup' : 'Dropoff'),
-            operation: opName,
-            containerNumbers: [p.containerId],
-            containerIds: [p.containerId],
-            containerType: p.containerType || '40HC',
-            vehiclePlate: vPlate,
-            driverName: vDriver,
-            appointmentStart: appointmentStartIso,
-            appointmentEnd: appointmentEndIso,
-            status: isPaid ? 'Ready' : (p.status || 'Pending'),
-            paymentStatus: isPaid ? 'Paid' : 'Unpaid',
-            yardSlot: p.yardSlot || p.autoYardSlot?.fullLocation || p.autoYardSlot?.slotName || p.autoYardSlot?.posId,
-            autoYardSlot: p.autoYardSlot,
-            portBill: p.portBill,
-            company: p.company,
-            vesselName: p.vesselName,
-            billOfLading: p.billOfLading,
-            documents: (() => {
-              const rawDocs = orderFleet?.documents || p.eportDocuments || p.documents || []
-              return (Array.isArray(rawDocs) ? rawDocs : []).filter(
-                d => d && !String(d.fileUrl || '').includes('pdfobject.com/pdf/sample.pdf')
-              )
-            })(),
-            isFromPortSync: true,
-            createdAt: p.createdAt || new Date().toISOString()
-          }
-        })
+        portItems = mapLocalPortBookings(generated, activePaymentCache)
       } catch (err) {
         console.warn('Lỗi đồng bộ danh sách booking từ cảng:', err)
       }
@@ -710,6 +699,7 @@ export default function BookingManagement() {
       console.error('Lỗi tải danh sách booking:', err)
     } finally {
       setLoading(false)
+      isFetchingRef.current = false
     }
   }
 
@@ -1642,7 +1632,7 @@ export default function BookingManagement() {
 
           {/* BOOKINGS TABLE CONTAINER */}
           <div className="bg-paper border border-chalk rounded-2xl shadow-xs overflow-hidden">
-            {loading ? (
+            {loading && bookings.length === 0 ? (
               <div className="p-16 text-center space-y-4">
                 <div className="w-12 h-12 rounded-full border-4 border-signal-orange/20 border-t-signal-orange animate-spin mx-auto"></div>
                 <div className="space-y-1">

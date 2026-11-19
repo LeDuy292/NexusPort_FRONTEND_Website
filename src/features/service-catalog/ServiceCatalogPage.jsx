@@ -211,8 +211,28 @@ export default function ServiceCatalogPage({ management = false }) {
 
   // Orders list state (merged from ServiceOrdersPage)
   const [params, setParams] = useSearchParams()
+  const [returnPaymentOrder, setReturnPaymentOrder] = useState(null)
   const session = draftSession()
-  const selectedOrderId = params.get('order') || params.get('orderId')
+  const returningPaymentCode = params.get('orderCode')
+  const selectedOrderId = returningPaymentCode ? null : params.get('orderId') || params.get('order')
+  useEffect(() => {
+    if (!returningPaymentCode || !canDraft) return
+    let cancelled = false
+    serviceOrdersApi.resolvePaymentReturn(returningPaymentCode).then(({ orderId }) => {
+      if (cancelled) return
+      if (params.get('payment') === 'success') setReturnPaymentOrder(orderId)
+      setParams(previous => {
+        const next = new URLSearchParams(previous)
+        next.set('order', orderId)
+        next.set('tab', 'payments')
+        next.delete('orderId')
+        next.delete('orderCode')
+        next.delete('payment')
+        return next
+      }, { replace: true })
+    }).catch(() => { if (!cancelled) setNotice('Chưa xác định được đơn của giao dịch PayOS. Vui lòng tải lại trang hoặc mở đơn từ danh sách.') })
+    return () => { cancelled = true }
+  }, [returningPaymentCode, canDraft, setParams])
   const [orderSearch, setOrderSearch] = useState('')
   const [orderTerm, setOrderTerm] = useState('')
   const [orderStatus, setOrderStatus] = useState('')
@@ -585,7 +605,7 @@ export default function ServiceCatalogPage({ management = false }) {
       )}
 
       {/* ORDER DIALOGS */}
-      {selectedOrderId && <ServiceOrderDetail key={`${session}:${selectedOrderId}`} orderId={selectedOrderId} initialTab={params.has('orderId') || params.get('tab') === 'payments' ? 'payments' : 'information'} onClose={() => chooseOrder(null)} onEdit={orderEditDraft} onReview={orderReviewDraft} />}
+      {selectedOrderId && <ServiceOrderDetail key={`${session}:${selectedOrderId}`} orderId={selectedOrderId} initialTab={params.has('orderId') || params.get('tab') === 'payments' ? 'payments' : 'information'} showPaymentSuccess={returnPaymentOrder === selectedOrderId} onPaymentSuccessShown={() => setReturnPaymentOrder(null)} onClose={() => chooseOrder(null)} onEdit={orderEditDraft} onReview={orderReviewDraft} />}
       {orderEditing && (
         catalogForOrders.isPending
           ? <div className="epo-loading-overlay" role="status"><Loader2 className="epc-spin" size={22} />Đang tải danh mục…<button type="button" onClick={() => setOrderEditing(null)}>Đóng</button></div>

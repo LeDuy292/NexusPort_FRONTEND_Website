@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { containerService } from '../../services/containerService'
+import ShippingPagination from '../ShippingLine/components/ShippingPagination'
 
 const emptyFilters = {
   containerNumber: '', prefix: '', containerTypeId: '', isoSizeType: '',
   size: '', category: '', manufacturer: '', minPayloadKg: '',
 }
-const ownFirstPage = { filters: {}, page: 1 }
+const ownFirstPage = { filters: {}, page: 1, limit: 5 }
 const sizes = { ft20: '20 feet', ft40: '40 feet', ft45: '45 feet' }
 const categories = { dry: 'Khô', reefer: 'Lạnh', tank: 'Bồn', open_top: 'Hở nóc', flat_rack: 'Flat rack' }
 const inputClass = 'w-full rounded-xl border border-chalk bg-fog px-3.5 py-2.5 text-sm outline-none focus:border-signal-orange focus:bg-white focus:ring-0'
@@ -47,7 +48,7 @@ export default function ContainerEquipmentSearch() {
 
   useEffect(() => {
     let active = true
-    containerService.listOwnIdentities({ ...request.filters, page: request.page }).then(result => {
+    containerService.listOwnIdentities({ ...request.filters, page: request.page, limit: request.limit || 5 }).then(result => {
       if (active) setResponse({ request, result })
     }).catch(error => {
       if (active) setResponse({
@@ -71,12 +72,12 @@ export default function ContainerEquipmentSearch() {
       isoSizeType: filters.isoSizeType.trim().toUpperCase(),
       manufacturer: filters.manufacturer.trim(),
     }
-    setRequest({ filters: Object.fromEntries(Object.entries(query).filter(([, value]) => value !== '')), page: 1 })
+    setRequest(prev => ({ filters: Object.fromEntries(Object.entries(query).filter(([, value]) => value !== '')), page: 1, limit: prev.limit || 5 }))
   }
 
   function reset() {
     setFilters(emptyFilters)
-    setRequest({ ...ownFirstPage })
+    setRequest(prev => ({ ...ownFirstPage, limit: prev.limit || 5 }))
   }
 
   const input = (key, label, props) => (
@@ -159,13 +160,17 @@ export default function ContainerEquipmentSearch() {
         <span className="material-symbols-outlined mb-3 block text-4xl" aria-hidden="true">search</span>
         {currentResponse?.error ? 'Không tải được dữ liệu container.' : emptyMessage}
       </div>}
-      {result && <div className="flex items-center justify-between border-t border-chalk p-4 text-xs text-slate">
-        <span>{result.total} kết quả · Trang {result.page}/{Math.max(1, result.totalPages)}</span>
-        <div className="flex gap-2">
-          <button disabled={result.page <= 1} onClick={() => setRequest({ ...request, page: result.page - 1 })} className="rounded-lg border border-chalk px-3 py-2 disabled:opacity-40">Trước</button>
-          <button disabled={result.page >= result.totalPages} onClick={() => setRequest({ ...request, page: result.page + 1 })} className="rounded-lg border border-chalk px-3 py-2 disabled:opacity-40">Sau</button>
-        </div>
-      </div>}
+      {result && (
+        <ShippingPagination
+          currentPage={result.page}
+          totalItems={result.total}
+          pageSize={request.limit || 5}
+          pageSizeOptions={[5, 10, 15, 20]}
+          onPageChange={(page) => setRequest(prev => ({ ...prev, page }))}
+          onPageSizeChange={(limit) => setRequest(prev => ({ ...prev, limit, page: 1 }))}
+          itemName="container"
+        />
+      )}
     </div>
   </section>
 }
