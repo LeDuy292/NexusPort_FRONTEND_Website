@@ -23,11 +23,9 @@ import Unauthorized from './pages/Auth/Unauthorized'
 import OperatorDashboard from './pages/Dashboard/OperatorDashboard'
 import BookingManagement from './pages/Booking/BookingManagement'
 import YardDesignPreview from './pages/Yard/YardDesignPreview'
-import BillingPayment from './pages/Billing/BillingPayment'
 import UserRoleManagement from './pages/Users/UserRoleManagement'
 import CarrierPortal from './pages/Carrier/CarrierPortal'
 import CarrierStaffManagement from './pages/Carrier/CarrierStaffManagement'
-import CargoDocumentTracking from './pages/Cargo/CargoDocumentTracking'
 import DashboardIndex from './pages/Dashboard/DashboardIndex'
 import GateControl from './pages/Gate/GateControl'
 import GateDashboard from './pages/Gate/GateDashboard'
@@ -70,6 +68,9 @@ import ShippingDashboard from './pages/ShippingLine/ShippingDashboard'
 import VesselVoyagePage from './pages/ShippingLine/VesselVoyagePage'
 import ManifestManagementPage from './pages/ShippingLine/ManifestManagementPage'
 import DeliveryOrderPage from './pages/ShippingLine/DeliveryOrderPage'
+import ImportDocumentsPage from './pages/ShippingLine/ImportDocumentsPage'
+import ImportDocumentsCompanyPage from './pages/Booking/ImportDocumentsCompanyPage'
+import MyBillsPage from './pages/Booking/MyBillsPage'
 import ServiceCatalogPage from './features/service-catalog/ServiceCatalogPage'
 
 // Component chuyển hướng trang chủ dựa trên vai trò (Role-based Home Redirect)
@@ -132,7 +133,7 @@ function App() {
         {/* Toàn bộ các trang quản trị dùng chung cấu trúc Sidebar thông qua MainLayout */}
         <Route element={<MainLayout />}>
           <Route path="/service-orders" element={<Navigate to="/services" replace />} />
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, 'Carrier', ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
             <Route path="/services" element={<ServiceCatalogPage />} />
           </Route>
           <Route element={<RoleRoute allowedRoles={[ROLES.ADMINISTRATOR]} />}>
@@ -149,21 +150,17 @@ function App() {
           </Route>
           
           {/* 1. Nhóm Doanh nghiệp vận tải (Transport Company) */}
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
             <Route path="/carrier-profile" element={<CarrierProfile />} />
             <Route path="/carrier-portal" element={<CarrierPortal />} />
-            <Route path="/cargo/tracking" element={<CargoDocumentTracking />} />
-            <Route path="/cargo/notifications" element={<CargoDocumentTracking />} />
-            <Route path="/cargo/documents" element={<CargoDocumentTracking />} />
             <Route path="/booking" element={<BookingManagement />} />
-            <Route path="/billing" element={<BillingPayment />} />
             <Route path="/fleet" element={<VehicleManagement />} />
             <Route path="/drivers" element={<DriverManagement />} />
             <Route path="/carrier-staff" element={<CarrierStaffManagement />} />
           </Route>
 
           {/* 2. Nhóm Điều độ (Dispatcher) */}
-          <Route element={<RoleRoute allowedRoles={[ROLES.DISPATCHER, ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
+          <Route element={<RoleRoute allowedRoles={[ROLES.DISPATCHER, ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
             <Route path="/dispatch" element={<VehicleDispatch />} />
           </Route>
           <Route element={<RoleRoute allowedRoles={[ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
@@ -181,6 +178,11 @@ function App() {
           <Route element={<RoleRoute allowedRoles={[ROLES.SHIPPING_LINE]} />}>
             <Route path="/shipping-line/containers" element={<ContainerRegistration />} />
             <Route path="/shipping-line/manifest" element={<ManifestManagementPage />} />
+            <Route path="/shipping-line/import-documents" element={<ImportDocumentsPage />} />
+          </Route>
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF]} />}>
+            <Route path="/import-documents" element={<ImportDocumentsCompanyPage />} />
+            <Route path="/my-bills" element={<MyBillsPage />} />
           </Route>
           <Route element={<RoleRoute allowedRoles={[ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR]} />}>
             <Route path="/shipping-line" element={<Navigate to="/shipping-line/dashboard" replace />} />

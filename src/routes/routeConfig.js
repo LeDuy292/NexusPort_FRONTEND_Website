@@ -3,7 +3,6 @@
  */
 export const ROLES = {
   TRANSPORT_COMPANY: 'Transport Company',
-  CARRIER: 'Carrier',
   DRIVER: 'Driver',
   GATE_OFFICER: 'Gate Officer',
   DISPATCHER: 'Dispatcher',
@@ -13,11 +12,11 @@ export const ROLES = {
   SHIPPING_LINE: 'Shipping Line'
 }
 
-export const CONTAINER_TRANSPORT_ROLES = [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF]
+export const CONTAINER_TRANSPORT_ROLES = [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF]
 export const YARD_VISIT_OPERATORS = [ROLES.ADMINISTRATOR, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER]
 
 export const routeConfig = [
-  { path: '/services', allowedRoles: [ROLES.TRANSPORT_COMPANY, 'Carrier', ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR] },
+  { path: '/services', allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR] },
   { path: '/admin/service-catalog', allowedRoles: [ROLES.ADMINISTRATOR] },
   // Phân hệ Hãng tàu (Shipping Line)
   {
@@ -35,6 +34,18 @@ export const routeConfig = [
   {
     path: '/shipping-line/containers',
     allowedRoles: [ROLES.SHIPPING_LINE],
+  },
+  {
+    path: '/shipping-line/import-documents',
+    allowedRoles: [ROLES.SHIPPING_LINE],
+  },
+  {
+    path: '/my-bills',
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
+  },
+  {
+    path: '/import-documents',
+    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/shipping-line/bills-of-lading',
@@ -181,10 +192,6 @@ export const routeConfig = [
     allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
-    path: '/billing',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
-  },
-  {
     path: '/users',
     allowedRoles: [ROLES.ADMINISTRATOR],
   },
@@ -203,7 +210,7 @@ export const routeConfig = [
   {
     path: '/dispatch',
     title: 'Lệnh điều phối xe',
-    allowedRoles: [ROLES.DISPATCHER, ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.DISPATCHER, ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR],
   },
   {
     path: '/fleet',

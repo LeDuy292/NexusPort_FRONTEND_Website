@@ -9,6 +9,7 @@ export const shippingLineApi = {
 
   // 2. Tàu & Chuyến tàu (Vessel & Voyage)
   getVessels: (search = '') => expressApiClient.get(`/shipping-line/vessels?search=${encodeURIComponent(search)}`),
+  createVessel: (payload) => expressApiClient.post('/shipping-line/vessels', payload),
   getVoyages: (params = {}) => {
     const query = new URLSearchParams(params).toString();
     return expressApiClient.get(`/shipping-line/voyages${query ? `?${query}` : ''}`);
