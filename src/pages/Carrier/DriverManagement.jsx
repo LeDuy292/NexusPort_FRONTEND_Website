@@ -977,13 +977,25 @@ export default function DriverManagement() {
       }
 
       if (!editForm.userId && editForm.email && editForm.username) {
-        await driverService.createAccount(accountProfile(editForm, editForm.id));
+        try {
+          const res = await driverService.createAccount(accountProfile(editForm, editForm.id));
+          if (res?.userId) {
+            editForm.userId = res.userId;
+          }
+        } catch (accErr) {
+          if (accErr?.response?.status !== 409) {
+            throw accErr;
+          }
+        }
       }
       setEditMode(false);
       showToast(
         "Đã lưu hồ sơ. Nếu tạo tài khoản mới, tài xế sẽ nhận email xác nhận để tự đặt mật khẩu.",
       );
-      loadDrivers();
+      await loadDrivers();
+      if (editForm.id) {
+        openDriverDetails({ id: editForm.id });
+      }
     } catch (err) {
       showToast(
         "❌ Lỗi cập nhật: " + (err.response?.data?.message || err.message),
@@ -998,7 +1010,7 @@ export default function DriverManagement() {
     try {
       const details = await driverService.getDriverById(drv.id, { signal: controller.signal });
       if (detailRequest.current !== controller) return;
-      const profile = { ...drv, ...details, ...pick(drv, DRIVER_ACCOUNT) };
+      const profile = { ...drv, ...details, ...pick(drv, DRIVER_ACCOUNT), ...pick(details, DRIVER_ACCOUNT) };
       setSelectedDriver(profile);
       setEditMode(false);
       setEditForm({ ...profile, email: profile.email || "", username: profile.username || "" });

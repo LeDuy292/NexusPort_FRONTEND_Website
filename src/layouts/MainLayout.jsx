@@ -54,7 +54,7 @@ const sidebarItems = [
   },
   {
     path: '/dispatcher/gate-bookings',
-    label: 'Yêu Cầu Booking Cổng',
+    label: 'Yêu Cầu Lịch Hẹn Cổng',
     icon: 'calendar_month',
     roles: [ROLES.DISPATCHER],
   },
@@ -143,7 +143,7 @@ const sidebarItems = [
   },
   {
     path: '/gate/bookings',
-    label: 'Lịch Booking Cổng',
+    label: 'Lịch Hẹn Cổng',
     icon: 'calendar_month',
     roles: [ROLES.GATE_OFFICER],
   },

@@ -277,7 +277,7 @@ export default function GateBookings() {
             <span className="text-xs text-slate-500 font-medium">Cảng Quốc Tế Tiên Sa · Đà Nẵng</span>
           </div>
           <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
-            Lịch Booking Cổng
+            Lịch Lịch Hẹn Cổng
           </h1>
           <p className="text-xs md:text-sm text-slate-500 mt-1">
             Lịch hẹn theo ngày Việt Nam. Quyền vào cổng được cấp riêng khi điều độ gọi xe.

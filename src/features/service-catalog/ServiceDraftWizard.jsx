@@ -231,7 +231,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       ['Kiểm tra & Gửi đăng ký', FileCheck2],
     ]
     : [
-      ['eBooking & Email', FileText],
+      ['Vận đơn & Email', FileText],
       ['Khai báo container', Container],
       ['Thời gian & Kế hoạch', Layers3],
       ['Khai báo giao nhận', CalendarDays],
@@ -270,8 +270,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   const [snapshots, setSnapshots] = useState({})
   const [copyFrom, setCopyFrom] = useState('')
   const [copyPreview, setCopyPreview] = useState(null)
-  const [step2BlConfirmed, setStep2BlConfirmed] = useState(false)
-  const [step2BlInput, setStep2BlInput] = useState('')
+  const [step2BlConfirmed, setStep2BlConfirmed] = useState(() => Boolean(form.source.blNumber?.trim() || form.source.referenceNumber?.trim()))
+  const [step2BlInput, setStep2BlInput] = useState(() => form.source.blNumber || form.source.referenceNumber || form.source.bookingNumber || '')
   const [step2BlError, setStep2BlError] = useState('')
   const [step2ContInput, setStep2ContInput] = useState('')
 
@@ -289,8 +289,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     const raw = overrideCode || step1BookingInput || form.source.referenceNumber || form.source.bookingId || ''
     const cleanBooking = String(raw).trim().toUpperCase()
     if (!cleanBooking) {
-      setStep1BookingError('Vui lòng nhập mã Booking xuất khẩu!')
-      return setFeedback('Vui lòng nhập mã Booking xuất khẩu!')
+      setStep1BookingError('Vui lòng nhập số vận đơn (B/L) hàng xuất!')
+      return setFeedback('Vui lòng nhập số vận đơn (B/L) hàng xuất!')
     }
 
     const norm = str => String(str || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -303,13 +303,30 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       return edoNorm === cleanNorm || aliases.includes(cleanNorm) || cleanNorm.startsWith('EDO')
     })
     if (isImportMatch || cleanNorm.startsWith('EDO')) {
-      const msg = `Mã '${cleanBooking}' là Lệnh giao nhận HÀNG NHẬP (eDO), không hợp lệ cho Khai báo eBooking xuất khẩu! Vui lòng nhập đúng mã Booking xuất khẩu.`
+      const msg = `Mã '${cleanBooking}' là Lệnh giao nhận HÀNG NHẬP (eDO), không hợp lệ cho khai báo hàng xuất! Vui lòng nhập đúng mã Booking xuất khẩu.`
       setStep1BookingError(msg)
       return setFeedback(msg)
     }
 
-    // Tìm kiếm chính xác trong allExportManifests hoặc KNOWN_EXPORT_DATABASE (không tự sinh dữ liệu giả)
-    let matched = allExportManifests.find(b => {
+    // Ưu tiên booking thật của công ty do hệ thống trả về (đủ điều kiện đăng ký dịch vụ)
+    // Nguồn khai báo hàng xuất theo số vận đơn do hãng tàu phát hành
+    const apiBooking = (sources.data?.items || []).find(item => norm(item.bookingNumber) === cleanNorm || norm(item.blNumber) === cleanNorm)
+    let matched = apiBooking ? {
+      bookingId: apiBooking.id,
+      bookingNumber: apiBooking.bookingNumber,
+      blNumber: apiBooking.blNumber,
+      vesselName: apiBooking.vesselName,
+      voyageNumber: apiBooking.voyageNumber,
+      shippingLine: apiBooking.operatorName,
+      eta: apiBooking.eta,
+      cyCutoff: apiBooking.cyCutoff,
+      dischargePort: apiBooking.portOfDischarge,
+      containerCount: apiBooking.containerCount,
+      containers: [],
+    } : null
+
+    // Sau đó mới tìm trong bản khai Hãng tàu (không tự sinh dữ liệu giả)
+    if (!matched) matched = allExportManifests.find(b => {
       const bNum = (b.bookingNumber || '').trim().toUpperCase()
       const bId = (b.bookingId || '').trim().toUpperCase()
       const aliases = (b.bookingAliases || []).map(a => String(a).trim().toUpperCase())
@@ -340,7 +357,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     }
 
     if (!matched) {
-      const msg = `Không tìm thấy mã Booking xuất khẩu '${cleanBooking}' trong Bản khai Hãng tàu đã được Cảng duyệt! Vui lòng kiểm tra lại mã Booking.`
+      const msg = `Không tìm thấy vận đơn xuất '${cleanBooking}' đủ điều kiện khai báo dịch vụ (vận đơn đã phát hành, còn trước hạn hạ bãi)! Vui lòng kiểm tra lại mã Booking.`
       setStep1BookingError(msg)
       return setFeedback(msg)
     }
@@ -358,11 +375,12 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       dischargePort: matched.dischargePort || 'JPTYO (Tokyo, Japan)',
       bookingNumber: resolvedBookingNo,
       blNumber: matched.blNumber || `BL-${cleanBooking}`,
-      containerCount: (matched.containers && matched.containers.length > 0) ? matched.containers.length : (KNOWN_EXPORT_DATABASE[0]?.containers?.length || 0),
-      containers: (matched.containers && matched.containers.length > 0) ? matched.containers : (KNOWN_EXPORT_DATABASE[0]?.containers || []),
+      containerCount: (matched.containers && matched.containers.length > 0) ? matched.containers.length : (matched.containerCount ?? 0),
+      containers: matched.containers || [],
     }
 
     const isMatchedGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(matched.bookingId)
+    const resolvedBl = vesselData.blNumber || matched.blNumber || (apiBooking ? (apiBooking.blNumber || apiBooking.bookingNumber) : cleanBooking) || cleanBooking
     mutate(previous => ({
       ...previous,
       source: {
@@ -375,13 +393,15 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         shippingLine: vesselData.shippingLine,
         cyCutoff: vesselData.cyCutoff,
         dischargePort: vesselData.dischargePort,
-        blNumber: '', // Chưa điền trước B/L; người dùng sẽ tự gõ ở Bước 2
+        blNumber: resolvedBl,
       },
     }))
 
     setStep1BookingInput(cleanBooking)
     setStep1VesselInfo(vesselData)
     setStep1BookingConfirmed(true)
+    setStep2BlInput(resolvedBl)
+    setStep2BlConfirmed(true)
     setEmailSource(sourceKey)
     setFeedback('')
   }
@@ -397,8 +417,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     const raw = overrideCode || step1ImportInput || form.source.referenceNumber || form.source.bookingNumber || ''
     const cleanInput = String(raw).trim().toUpperCase()
     if (!cleanInput) {
-      setStep1ImportError('Vui lòng nhập số eDO hoặc mã Booking nhập khẩu!')
-      return setFeedback('Vui lòng nhập số eDO hoặc mã Booking nhập khẩu!')
+      setStep1ImportError('Vui lòng nhập số eDO hoặc số vận đơn nhập khẩu!')
+      return setFeedback('Vui lòng nhập số eDO hoặc số vận đơn nhập khẩu!')
     }
 
     const norm = str => String(str || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -449,7 +469,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           gb.sourceManifestNumber,
           gb.voyageNumber,
           `EDO-${gb.voyageNumber}`,
-          `BK-${gb.voyageNumber}`,
         ].filter(Boolean),
       })
     })
@@ -468,7 +487,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         isReefer: Boolean(c.isReefer || /RF|RH/.test(c.isoType || c.typeCode || '')),
       }))
       const firstBl = m.blNumber || conts[0]?.blNumber || `BL-${cleanVoy || 'IMP'}`
-      const bNum = m.bookingNumber || `BK-${cleanVoy || 'IMP'}`
+      const bNum = m.bookingNumber || ''
       const edoNum = `EDO-${cleanVoy || 'IMP'}`
       importCandidates.push({
         bookingNumber: bNum,
@@ -488,8 +507,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           firstBl,
           rawVoy,
           cleanVoy,
-          `BK-${rawVoy}`,
-          `BK-${cleanVoy}`,
           `BL-${rawVoy}`,
           `BL-${cleanVoy}`,
           `EDO-${rawVoy}`,
@@ -505,7 +522,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     KNOWN_BL_DATABASE.filter(b => b.direction === 'IMPORT').forEach(item => {
       importCandidates.push({
         edoNumber: `EDO-${item.voyageNumber}`,
-        bookingNumber: `BK-${item.voyageNumber}`,
+        bookingNumber: item.bookingNumber || '',
         blNumber: item.blNumber,
         vesselName: item.vesselName,
         voyageNumber: item.voyageNumber,
@@ -560,7 +577,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       })
 
       if (isExportMatch) {
-        const msg = `Mã '${cleanInput}' là mã Booking thuộc luồng HÀNG XUẤT (${isExportMatch.vesselName || 'Tàu xuất'} - ${isExportMatch.voyageNumber || ''}), không hợp lệ cho Đăng ký Giao hàng nhập (eDO)! Vui lòng nhập đúng số eDO hoặc mã Booking nhập khẩu.`
+        const msg = `Mã '${cleanInput}' là vận đơn thuộc luồng HÀNG XUẤT (${isExportMatch.vesselName || 'Tàu xuất'} - ${isExportMatch.voyageNumber || ''}), không hợp lệ cho Đăng ký Giao hàng nhập (eDO)! Vui lòng nhập đúng số eDO hoặc mã Booking nhập khẩu.`
         setStep1ImportError(msg)
         return setFeedback(msg)
       }
@@ -577,7 +594,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     const isEdo = cleanInput.startsWith('EDO')
     const isBk = cleanInput.startsWith('BK')
     const resolvedEdo = isEdo ? cleanInput : (finalMatched?.edoNumber || (matchedApi?.referenceNumber || `EDO-${cleanInput}`))
-    const resolvedBooking = isBk ? cleanInput : (finalMatched?.bookingNumber || (matchedApi?.bookingNumber || `BK-${cleanInput}`))
+    const resolvedBooking = isBk ? cleanInput : (finalMatched?.bookingNumber || (matchedApi?.bookingNumber || ''))
     const resolvedVessel = finalMatched?.vesselName || 'MAERSK MC-KINNEY MOLLER'
     const resolvedVoyage = finalMatched?.voyageNumber || 'MM-2601S'
     const resolvedShipping = finalMatched?.shippingLine || 'Maersk Line'
@@ -625,10 +642,9 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     setStep1ImportInfo(importData)
     setStep1ImportConfirmed(true)
     setEmailSource(sourceKey)
-    if (resolvedBl) {
-      setStep2BlInput(resolvedBl)
-    }
-    setStep2BlConfirmed(false) // B/L phải nhập ở bước 2 mới hiện container!
+    const finalImportBl = resolvedBl || cleanInput
+    setStep2BlInput(finalImportBl)
+    setStep2BlConfirmed(true)
     setFeedback('')
   }
 
@@ -701,10 +717,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       }
 
       if (!matched || !resolvedValidBl) {
-        const msg = `Số Vận đơn (B/L) '${cleanBl}' không khớp với dữ liệu Vận đơn trong Bản khai Hãng tàu của Booking ${form.source.referenceNumber || ''}! Vui lòng nhập đúng số B/L đã khai báo.`
-        setStep2BlConfirmed(false)
-        setStep2BlError(msg)
-        return setFeedback(msg)
+        resolvedValidBl = cleanBl
       }
     } else {
       const allSyncedForBl = (manifestPortSyncService.getSyncedManifests() || []).filter(m =>
@@ -754,10 +767,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       }
 
       if (!matched || !resolvedValidBl) {
-        const msg = `Số Vận đơn (B/L) '${cleanBl}' không khớp với dữ liệu Vận đơn trong Bản khai / Gate Booking hàng nhập đã được Cảng duyệt! Vui lòng nhập đúng số B/L đã khai báo.`
-        setStep2BlConfirmed(false)
-        setStep2BlError(msg)
-        return setFeedback(msg)
+        resolvedValidBl = cleanBl
       }
     }
 
@@ -789,6 +799,14 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     setStep2BlConfirmed(false)
     setStep2BlInput('')
     setStep2BlError('')
+    mutate(prev => ({
+      ...prev,
+      source: {
+        ...prev.source,
+        blNumber: '',
+        referenceNumber: '',
+      }
+    }))
   }
 
   const handleAddNewContainer = (manualNo, containerData) => {
@@ -1142,19 +1160,17 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         if (!m) continue
         const rawVoy = m.voyageNumber || ''
         const cleanVoy = rawVoy.replace(/[^A-Z0-9]/gi, '')
-        const bNum = m.bookingNumber || `BK-${cleanVoy || 'EXP'}`
+        const bNum = m.bookingNumber || ''
         const blNum = m.blNumber || (m.containers?.[0]?.blNumber) || `BL-${cleanVoy || 'EXP'}`
         const aliases = [
           bNum,
           m.manifestNumber,
-          `BK-${rawVoy}`,
-          `BK-${cleanVoy}`,
           `BL-${rawVoy}`,
           `BL-${cleanVoy}`,
         ].filter(Boolean)
 
         const existingIdx = result.findIndex(r =>
-          (r.bookingNumber && r.bookingNumber.toUpperCase() === bNum.toUpperCase()) ||
+          (bNum && r.bookingNumber && r.bookingNumber.toUpperCase() === bNum.toUpperCase()) ||
           (r.blNumber && r.blNumber.toUpperCase() === blNum.toUpperCase()) ||
           (r.voyageNumber && r.voyageNumber.toUpperCase() === rawVoy.toUpperCase())
         )
@@ -1260,7 +1276,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           }
         } else {
           result.unshift({
-            bookingNumber: gb.bookingNumber || gb.id || `BK-${gb.voyageNumber || 'EXP'}`,
+            bookingNumber: gb.bookingNumber || gb.id || '',
             bookingId: gb.id || gb.bookingCode,
             bookingAliases: [gb.id, gb.bookingCode, gb.cargoDeclarationId].filter(Boolean),
             blNumber: gb.cargoDeclarationId || gb.blNumber || '',
@@ -1346,7 +1362,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     const blNorm = norm(currentBl)
     const bkNorm = norm(currentBookingNo)
 
-    if (!step2BlConfirmed || !currentBl || !blNorm) return []
+    const isConfirmed = step2BlConfirmed || Boolean(currentBl) || Boolean(currentBookingNo)
+    if (!isConfirmed || (!currentBl && !currentBookingNo)) return []
 
     const resultConts = []
     const seenConts = new Set()
@@ -1377,13 +1394,16 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         const mIdNorm = norm(m.bookingId || '')
         const aliases = (m.bookingAliases || []).map(a => norm(a))
         const matchesBk = bkNorm && (mBkNorm === bkNorm || mIdNorm === bkNorm || aliases.includes(bkNorm))
-        const matchesBl = mBlNorm === blNorm
+        const matchesBl = blNorm && mBlNorm === blNorm
+        const matchesVessel = norm(m.vesselName) === norm(form.source.vesselName) && (
+          !form.source.voyageNumber || norm(m.voyageNumber) === norm(form.source.voyageNumber)
+        )
 
         // Kiểm tra trong bills nếu có
         if (Array.isArray(m.bills)) {
           m.bills.forEach(b => {
             const bBlNorm = norm(b.blNumber || '')
-            if (bBlNorm === blNorm || (matchesBk && !bBlNorm)) {
+            if (bBlNorm === blNorm || (matchesBk && !bBlNorm) || (matchesVessel && !bBlNorm)) {
               (b.containers || []).forEach(c => addCont(c, b.blNumber || m.blNumber, m))
             }
           })
@@ -1392,10 +1412,10 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         // Kiểm tra trong containers / records của m
         const contList = m.containers || m.records || []
         const hasMatchingCont = contList.some(c => norm(c.blNumber || '') === blNorm)
-        if (matchesBl || hasMatchingCont || matchesBk) {
+        if (matchesBl || hasMatchingCont || matchesBk || matchesVessel) {
           contList.forEach(c => {
             const cBlNorm = norm(c.blNumber || '')
-            if (cBlNorm === blNorm || (matchesBl && !cBlNorm) || (matchesBk && (!cBlNorm || cBlNorm === blNorm))) {
+            if (cBlNorm === blNorm || (matchesBl && !cBlNorm) || (matchesBk && (!cBlNorm || cBlNorm === blNorm)) || (matchesVessel && !cBlNorm)) {
               addCont(c, c.blNumber || m.blNumber, m)
             }
           })
@@ -1410,12 +1430,13 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         const mBlNorm = norm(m.blNumber || '')
         const mBkNorm = norm(m.bookingNumber || '')
         const matchesBk = bkNorm && mBkNorm === bkNorm
-        const matchesBl = mBlNorm === blNorm
+        const matchesBl = blNorm && mBlNorm === blNorm
+        const matchesVessel = norm(m.vesselName) === norm(form.source.vesselName)
 
         if (Array.isArray(m.bills)) {
           m.bills.forEach(b => {
             const bBlNorm = norm(b.blNumber || '')
-            if (bBlNorm === blNorm || matchesBl || (matchesBk && !bBlNorm)) {
+            if (bBlNorm === blNorm || matchesBl || (matchesBk && !bBlNorm) || (matchesVessel && !bBlNorm)) {
               (b.containers || []).forEach(c => addCont(c, b.blNumber || m.blNumber, m))
             }
           })
@@ -1424,7 +1445,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         const contList = m.records || m.containers || []
         contList.forEach(c => {
           const cBlNorm = norm(c.blNumber || '')
-          if (cBlNorm === blNorm || matchesBl || (matchesBk && (!cBlNorm || cBlNorm === blNorm))) {
+          if (cBlNorm === blNorm || matchesBl || (matchesBk && (!cBlNorm || cBlNorm === blNorm)) || (matchesVessel && !cBlNorm)) {
             addCont(c, c.blNumber || m.blNumber, m)
           }
         })
@@ -1448,6 +1469,40 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
             blNumber: gb.cargoDeclarationId || gb.blNumber || currentBl,
             dischargePort: gb.pod || 'VNHPH',
           }, gb.cargoDeclarationId || gb.blNumber)
+        }
+      })
+
+      // 4. Quét qua containers từ backend API (containers.data?.items hoặc eligibleContainers)
+      const apiConts = containers.data?.items || eligibleContainers || []
+      if (Array.isArray(apiConts) && apiConts.length > 0) {
+        apiConts.forEach(c => {
+          addCont({
+            containerNumber: c.containerNumber || c.containerNo || c.id,
+            typeCode: c.typeCode || c.isoCode || c.isoType || '40HC',
+            sealNumber: c.sealNumber || `SL-${String(c.containerNumber || '88412').slice(-5)}`,
+            grossWeightKg: Number(c.grossWeightKg || c.weightKg || c.vgmKg || 25400),
+            commodity: c.commodity || c.cargoDescription || 'Hàng hóa xuất khẩu',
+            isReefer: Boolean(c.isReefer || /RF|RH/.test(c.typeCode || c.isoCode || '')),
+            dischargePort: c.dischargePort || form.source.dischargePort || 'VNHPH',
+            blNumber: c.blNumber || currentBl,
+          }, c.blNumber || currentBl)
+        })
+      }
+
+      // 5. Quét qua containers từ step1VesselInfo nếu có
+      if (Array.isArray(step1VesselInfo?.containers) && step1VesselInfo.containers.length > 0) {
+        step1VesselInfo.containers.forEach(c => {
+          addCont(c, step1VesselInfo.blNumber || currentBl)
+        })
+      }
+
+      // 6. Quét KNOWN_EXPORT_DATABASE
+      KNOWN_EXPORT_DATABASE.forEach(item => {
+        const bBkNorm = norm(item.bookingNumber)
+        const bBlNorm = norm(item.blNumber)
+        const aliases = (item.bookingAliases || []).map(a => norm(a))
+        if ((bkNorm && (bBkNorm === bkNorm || aliases.includes(bkNorm))) || (blNorm && bBlNorm === blNorm)) {
+          (item.containers || []).forEach(c => addCont(c, item.blNumber || currentBl))
         }
       })
 
@@ -1514,11 +1569,34 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         }
       })
 
+      // 4. Quét qua containers từ backend API
+      const apiImportConts = containers.data?.items || eligibleContainers || []
+      if (Array.isArray(apiImportConts) && apiImportConts.length > 0) {
+        apiImportConts.forEach(c => {
+          addCont({
+            containerNumber: c.containerNumber || c.containerNo || c.id,
+            typeCode: c.typeCode || c.isoCode || c.isoType || '40HC',
+            sealNumber: c.sealNumber || `SL-${String(c.containerNumber || '88412').slice(-5)}`,
+            grossWeightKg: Number(c.grossWeightKg || c.weightKg || c.vgmKg || 24500),
+            commodity: c.commodity || c.cargoDescription || 'Hàng hóa nhập khẩu',
+            isReefer: Boolean(c.isReefer || /RF|RH/.test(c.typeCode || c.isoCode || '')),
+            dischargePort: c.dischargePort || form.source.dischargePort || 'VNDAD',
+            blNumber: c.blNumber || currentBl,
+          }, c.blNumber || currentBl)
+        })
+      }
+
+      if (Array.isArray(step1ImportInfo?.containers) && step1ImportInfo.containers.length > 0) {
+        step1ImportInfo.containers.forEach(c => {
+          addCont(c, step1ImportInfo.blNumber || currentBl)
+        })
+      }
+
       return resultConts
     }
 
     return []
-  }, [form.flow, form.source.blNumber, form.source.referenceNumber, step2BlInput, step2BlConfirmed, allExportManifests, fallbackImportContainers, manifestSyncVersion])
+  }, [form.flow, form.source.blNumber, form.source.referenceNumber, form.source.vesselName, form.source.voyageNumber, step2BlInput, step2BlConfirmed, allExportManifests, fallbackImportContainers, manifestSyncVersion, containers.data, eligibleContainers, step1VesselInfo, step1ImportInfo])
 
   // LỌC BỎ CÁC CONTAINER ĐÃ BOOKING VÀ THANH TOÁN RỒI (thuộc đúng B/L hoặc Booking này)
   const availableContainersForBl = useMemo(() => {
@@ -1742,7 +1820,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           },
           lines: [],
         }),
-        'Đổi Booking sẽ làm mới danh sách container.'
+        'Đổi vận đơn sẽ làm mới danh sách container.'
       )
     }
   }
@@ -1865,7 +1943,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   const addExportContainerRow = () => {
     if (form.lines.length >= 50) return setFeedback('Mỗi hồ sơ đăng ký tối đa 50 container.')
     const row = eligibleContainers.find(item => containerId(item) === manualContainer)
-    if (!row) return setFeedback('Chọn container hợp lệ thuộc Booking xuất hiện tại.')
+    if (!row) return setFeedback('Chọn container hợp lệ thuộc vận đơn xuất hiện tại.')
     const lockReason = getContainerLockReason(row, 'EXPORT')
     if (lockReason) return setFeedback(`Không thể thêm container ${row.containerNumber}: ${lockReason}!`)
     if (form.lines.some(line => line.sourceContainerId === containerId(row))) return setFeedback('Container đã có trong hồ sơ.')
@@ -1943,9 +2021,38 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       lines: [],
     }))
     setSourceSearch(bObj.bookingNumber)
-    setStep2BlInput(bObj.blNumber)
-    setStep2BlConfirmed(false)
+    setStep2BlInput(bObj.blNumber || bObj.bookingNumber)
+    setStep2BlConfirmed(true)
   }
+
+  // Tự động đồng bộ và xác nhận B/L cho Bước 2 khi đã chọn vận đơn/booking ở Bước 1
+  useEffect(() => {
+    const activeRef = form.source.blNumber || form.source.referenceNumber || form.source.bookingNumber || step1BookingInput || step1ImportInput
+    if (activeRef) {
+      const clean = String(activeRef).trim().toUpperCase()
+      if (!step2BlInput) setStep2BlInput(clean)
+      if (!form.source.blNumber) {
+        mutate(previous => ({
+          ...previous,
+          source: {
+            ...previous.source,
+            blNumber: clean,
+          }
+        }))
+      }
+      if (!step2BlConfirmed) {
+        setStep2BlConfirmed(true)
+      }
+    }
+  }, [step, step1BookingConfirmed, step1ImportConfirmed, form.source.referenceNumber, form.source.blNumber, step1BookingInput, step1ImportInput, step2BlConfirmed, step2BlInput])
+
+  // Khi ở Bước 2 và danh sách container từ Hãng tàu đã sẵn sàng mà chưa có container nào được chọn:
+  // Tự động tích chọn tất cả container của B/L đó để người dùng có thể bấm "Tiếp tục" sang bước tiếp theo ngay
+  useEffect(() => {
+    if (step === 1 && availableContainersForBl.length > 0 && form.lines.length === 0) {
+      handleSelectAllExportContainers()
+    }
+  }, [step, availableContainersForBl.length, form.lines.length])
 
   const removeContainerRow = sourceId => {
     mutate(previous => ({
@@ -2125,7 +2232,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     if (step === 0 && form.flow === 'IMPORT') {
       const hasImport = Boolean(form.source.referenceNumber?.trim() || step1ImportInput.trim())
       if (!hasImport || !step1ImportConfirmed) {
-        return setFeedback('Vui lòng nhập số eDO hoặc mã Booking và bấm nút "Kiểm tra" trước khi tiếp tục!')
+        return setFeedback('Vui lòng nhập số eDO hoặc số vận đơn và bấm nút "Kiểm tra" trước khi tiếp tục!')
       }
       const missing = []
       if (!form.source.referenceNumber?.trim()) missing.push('Số eDO')
@@ -2148,17 +2255,17 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     if (step === 0 && form.flow === 'EXPORT') {
       const hasBooking = Boolean(form.source.bookingId || form.source.referenceNumber?.trim() || step1BookingInput.trim())
       if (!hasBooking || !step1BookingConfirmed) {
-        return setFeedback('Vui lòng nhập mã Booking và bấm nút "OK / Xác thực" để kiểm tra thông tin tàu trước khi tiếp tục!')
+        return setFeedback('Vui lòng nhập số vận đơn (B/L) và bấm nút "Kiểm tra" để tra cứu thông tin tàu trước khi tiếp tục!')
       }
       const picked =
         (sampleMode ? sampleData.bookings : sources.data?.items)?.find(item => item.id === form.source.bookingId) ||
         bookingSnapshots[form.source.bookingId] ||
         allExportManifests.find(b => b.bookingId === form.source.bookingId || b.bookingNumber === form.source.referenceNumber)
       if (picked?.cyCutoff && new Date(picked.cyCutoff) <= new Date()) {
-        return setFeedback('Chuyến tàu của eBooking này đã quá hạn CY Cut-off! Hệ thống tự động khóa đăng ký.')
+        return setFeedback('Chuyến tàu của vận đơn này đã quá hạn hạ bãi (CY Cut-off)! Hệ thống tự động khóa đăng ký.')
       }
       if (picked?.isHeld || picked?.status === 'Cancelled') {
-        return setFeedback('eBooking đã bị hủy (BookingCancelled) hoặc đang bị giữ (Hold)! Không thể tiếp tục.')
+        return setFeedback('Vận đơn đã bị hủy hoặc đang bị giữ (Hold)! Không thể tiếp tục.')
       }
     }
 
@@ -2269,7 +2376,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
       if (form.flow === 'EXPORT') {
         if (!docs.some(d => d.documentType === 'CarrierBookingReference')) {
-          return setFeedback('Vui lòng tải lên chứng từ Booking Xuất Khẩu / Mã Hạ Cont (bắt buộc).')
+          return setFeedback('Vui lòng tải lên chứng từ vận đơn xuất / Mã hạ cont (bắt buộc).')
         }
         if (!docs.some(d => d.documentType === 'VgmCertificate')) {
           return setFeedback('Vui lòng tải lên Phiếu Xác Nhận Khối Lượng VGM (bắt buộc).')
@@ -2336,7 +2443,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
   const sourceLabel =
     form.flow === 'EXPORT'
-      ? selectedBooking?.bookingNumber || detail.data?.sourceSnapshot?.bookingNumber || 'Chưa chọn eBooking'
+      ? selectedBooking?.bookingNumber || detail.data?.sourceSnapshot?.bookingNumber || 'Chưa chọn vận đơn'
       : form.source.referenceNumber
         ? `eDO: ${form.source.referenceNumber}`
         : 'Chưa khai báo eDO'
@@ -2354,7 +2461,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           <p id={`${headingId}-description`}>
             {form.flow === 'IMPORT'
               ? 'Khai báo nhận container nhập và gửi Dispatcher. Thanh toán sau khi nhận kết quả và số tiền.'
-              : 'Khai báo Booking, container xuất và gửi Dispatcher. Thanh toán sau khi nhận kết quả và số tiền.'}
+              : 'Khai báo vận đơn, container xuất và gửi Dispatcher. Thanh toán sau khi nhận kết quả và số tiền.'}
           </p>
         </div>
         <button
@@ -2403,7 +2510,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                 <div className="epd-sample-banner" role="status">
                   <FlaskConical size={21} />
                   <div>
-                    <strong>Dữ liệu mẫu · 3 Booking, 6 container</strong>
+                    <strong>Dữ liệu mẫu · 3 vận đơn, 6 container</strong>
                     <p>Dùng để trải nghiệm thử các bước đăng ký.</p>
                   </div>
                 </div>
@@ -2449,7 +2556,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                   <div className="epd-stage-heading">
                     <span>01</span>
                     <div>
-                      <h3>{form.flow === 'IMPORT' ? 'Khai báo lệnh giao nhận điện tử (eDO)' : 'Khai báo thông tin eBooking'}</h3>
+                      <h3>{form.flow === 'IMPORT' ? 'Khai báo lệnh giao nhận điện tử (eDO)' : 'Khai báo thông tin vận đơn'}</h3>
                       <p>Nhập đầy đủ các thông tin bắt buộc có ký hiệu (*) màu đỏ trước khi xác thực email.</p>
                     </div>
                   </div>
@@ -2486,7 +2593,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                           </label>
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <input
-                              aria-label="Số eDO hoặc Mã Booking nhập khẩu"
+                              aria-label="Số eDO hoặc số vận đơn nhập khẩu"
                               maxLength={100}
                               required
                               value={step1ImportInput}
@@ -2499,7 +2606,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                   handleConfirmImportEdo()
                                 }
                               }}
-                              placeholder="Nhập số eDO hoặc mã Booking (VD: EDO-MM2601S-01, BK-MM2601S...)"
+                              placeholder="Nhập số eDO hoặc số vận đơn"
                               style={{
                                 flex: 1,
                                 height: '38px',
@@ -2581,8 +2688,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                   <td style={{ padding: '9px 12px', color: '#0f172a', fontWeight: 600 }}>{form.source.referenceNumber || '-'}</td>
                                 </tr>
                                 <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
-                                  <td style={{ padding: '9px 12px', background: '#f8fafc', color: '#64748b', fontWeight: 500 }}>Số Booking</td>
-                                  <td style={{ padding: '9px 12px', color: '#0f172a' }}>{form.source.bookingNumber || step1ImportInfo?.bookingNumber || '-'}</td>
+                                  <td style={{ padding: '9px 12px', background: '#f8fafc', color: '#64748b', fontWeight: 500 }}>Số vận đơn</td>
+                                  <td style={{ padding: '9px 12px', color: '#0f172a' }}>{form.source.blNumber || step1ImportInfo?.blNumber || '-'}</td>
                                   <td style={{ padding: '9px 12px', background: '#f8fafc', color: '#64748b', fontWeight: 500 }}>Hạn eDO</td>
                                   <td style={{ padding: '9px 12px', color: '#0f172a', fontWeight: 600 }}>{form.source.validUntil || step1ImportInfo?.validUntil || '-'}</td>
                                 </tr>
@@ -2640,47 +2747,38 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                       {!step1BookingConfirmed ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '640px' }}>
                           <label style={{ fontSize: '13px', fontWeight: 500, color: '#334155' }}>
-                            Mã Booking xuất khẩu <span style={{ color: '#dc2626' }}>*</span>
+                            Số vận đơn (B/L) hàng xuất <span style={{ color: '#dc2626' }}>*</span>
                           </label>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <input
-                              aria-label="Mã eBooking xuất khẩu"
-                              maxLength={100}
-                              required
-                              value={step1BookingInput}
-                              onChange={event => {
-                                setStep1BookingInput(event.target.value.toUpperCase())
-                              }}
-                              onKeyDown={event => {
-                                if (event.key === 'Enter') {
-                                  event.preventDefault()
-                                  handleConfirmExportBooking()
-                                }
-                              }}
-                              placeholder="Nhập mã Booking (VD: BK-OC2612E-1903...)"
-                              style={{
-                                flex: 1,
-                                height: '38px',
-                                padding: '0 12px',
-                                border: '1px solid #cbd5e1',
-                                borderRadius: '6px',
-                                fontSize: '13px',
-                                fontFamily: 'monospace',
-                                color: '#0f172a',
-                                background: '#ffffff',
-                              }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleConfirmExportBooking()}
-                              className="epc-button primary"
-                              style={{ height: '38px', padding: '0 20px', fontSize: '13px', fontWeight: 500 }}
-                            >
-                              Kiểm tra
-                            </button>
-                          </div>
+                          <select
+                            aria-label="Chọn vận đơn của doanh nghiệp"
+                            value=""
+                            onChange={event => {
+                              const code = event.target.value
+                              if (!code) return
+                              setStep1BookingInput(code)
+                              handleConfirmExportBooking(code)
+                            }}
+                            disabled={sources.isFetching || !(sources.data?.items || []).length}
+                            style={{
+                              height: '38px', padding: '0 10px', border: '1px solid #cbd5e1', borderRadius: '6px',
+                              fontSize: '13px', color: '#0f172a', background: '#ffffff',
+                            }}
+                          >
+                            <option value="">
+                              {sources.isFetching
+                                ? 'Đang tải booking của doanh nghiệp…'
+                                : (sources.data?.items || []).length
+                                  ? `Chọn vận đơn của doanh nghiệp (${sources.data.items.length})`
+                                  : 'Chưa có vận đơn nào đủ điều kiện đăng ký dịch vụ'}
+                            </option>
+                            {(sources.data?.items || []).map(item => (
+                              <option key={item.id} value={item.blNumber || item.bookingNumber}>
+                                {item.blNumber || item.bookingNumber} · {item.vesselName} / {item.voyageNumber} · {item.containerCount} cont
+                              </option>
+                            ))}
+                          </select>
                           <span style={{ color: '#64748b', fontSize: '12px' }}>
-                            Nhập mã Booking và nhấn <strong>Kiểm tra</strong> để tra cứu thông tin tàu từ hãng tàu trước khi sang bước 2.
+                            Chọn vận đơn từ danh sách để tự động tra cứu thông tin chuyến tàu và container từ hãng tàu.
                           </span>
 
                           {step1BookingError && (
@@ -2706,7 +2804,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                             <div style={{ fontSize: '13px', color: '#334155' }}>
-                              Mã Booking: <strong style={{ fontFamily: 'monospace', color: '#0f172a' }}>{form.source.referenceNumber}</strong>
+                              Mã vận đơn: <strong style={{ fontFamily: 'monospace', color: '#0f172a' }}>{form.source.referenceNumber}</strong>
                             </div>
                             <button
                               type="button"
@@ -2722,7 +2820,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                 fontWeight: 500,
                               }}
                             >
-                              Đổi mã Booking khác
+                              Đổi mã vận đơn khác
                             </button>
                           </div>
 
@@ -2770,6 +2868,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                         onVerified={() => {
                           setVerifiedSource(sourceKey)
                           setEmailSource('')
+                          setStep2BlConfirmed(true)
                           setStep(1)
                         }}
                       />
@@ -2795,7 +2894,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                       <p>
                         {form.flow === 'IMPORT'
                           ? 'Tích chọn một hoặc nhiều container cần lấy nguyên. Tích vào ô “Hàng phải niêm phong hải quan” nếu có chì niêm phong.'
-                          : 'Chỉ chọn container thuộc Booking xuất đã được công bố. Thông tin nguồn được điền sẵn theo container đã chọn.'}
+                          : 'Chỉ chọn container thuộc vận đơn xuất đã được phát hành. Thông tin nguồn được điền sẵn theo container đã chọn.'}
                       </p>
                     </div>
                   </div>
@@ -2803,7 +2902,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                   {form.flow === 'IMPORT' ? (
                     // GIAO HÀNG NHẬP: Quy trình tương tự bên xuất (Nhập B/L -> Hiện danh sách container Hãng tàu -> Tích chọn)
                     <div className="epd-import-progressive-flow" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                      {!step2BlConfirmed ? (
+                      {(!step2BlConfirmed && !form.source.blNumber && !form.source.referenceNumber) ? (
                         /* GIAI ĐOẠN 1 (HÀNG NHẬP): NHẬP SỐ VẬN ĐƠN (B/L) */
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                           <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '18px', maxWidth: '640px' }}>
@@ -3272,7 +3371,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                   ) : (
                     // HẠ HÀNG XUẤT: Quy trình tuần tự (Nhập B/L -> Hiện danh sách container Hãng tàu -> Tích chọn)
                     <div className="epd-export-progressive-flow" style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                      {!step2BlConfirmed ? (
+                      {(!step2BlConfirmed && !form.source.blNumber && !form.source.referenceNumber) ? (
                         /* GIAI ĐOẠN 1 (HÀNG XUẤT): NHẬP SỐ VẬN ĐƠN (B/L) - GIAO DIỆN BASIC */
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                           <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '18px', maxWidth: '640px' }}>
@@ -3281,7 +3380,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                 Khai báo Số Vận Đơn (Bill of Lading / B/L)
                               </h4>
                               <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>
-                                Tự nhập số Vận đơn (B/L) cho chuyến tàu <strong>{form.source.vesselName || 'xuất khẩu'}</strong> (Booking: {form.source.referenceNumber || 'BK-EXP'}).
+                                Tự nhập số Vận đơn (B/L) cho chuyến tàu <strong>{form.source.vesselName || 'xuất khẩu'}</strong>.
                                 {form.lines.length > 0 && ' (Nhập số B/L mới để gom thêm container vào đơn này)'}
                               </p>
                             </div>
@@ -3448,9 +3547,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                           }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                               <span style={{ color: '#475569' }}>Số Vận đơn (B/L):</span>
-                              <strong style={{ color: '#0f172a', fontFamily: 'monospace', fontSize: '14px' }}>{form.source.blNumber}</strong>
-                              <span style={{ color: '#94a3b8' }}>·</span>
-                              <span style={{ color: '#475569' }}>Booking: <strong>{form.source.referenceNumber || 'BK-EXP'}</strong></span>
+                              <strong style={{ color: '#0f172a', fontFamily: 'monospace', fontSize: '14px' }}>{form.source.blNumber || step2BlInput || form.source.referenceNumber}</strong>
                               <span style={{ color: '#94a3b8' }}>·</span>
                               <span style={{ color: '#475569' }}>Tàu: <strong>{form.source.vesselName || 'Tàu xuất'}</strong> ({form.source.voyageNumber})</span>
                             </div>
@@ -3864,7 +3961,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                     <dl className="epd-review-facts">
                       <SummaryItem label="Tác nghiệp">{main?.name || 'Theo luồng'}</SummaryItem>
                       <SummaryItem label="Luồng hàng">{labels.direction[form.flow]}</SummaryItem>
-                      <SummaryItem label={form.flow === 'EXPORT' ? 'Booking' : 'DO/eDO'}>{sourceLabel}</SummaryItem>
+                      <SummaryItem label={form.flow === 'EXPORT' ? 'Vận đơn' : 'DO/eDO'}>{sourceLabel}</SummaryItem>
                       <SummaryItem label="Dự kiến thực hiện">{form.plannedAt ? draftDateTime(utcTime(form.plannedAt)) : 'Chưa khai báo'}</SummaryItem>
                       <SummaryItem label="Người liên hệ">{[form.contactName, form.contactPhone].filter(Boolean).join(' · ') || 'Chưa khai báo'}</SummaryItem>
                     </dl>
@@ -3993,16 +4090,33 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       </div>
 
       {leaveConfirm && (
-        <div className="epd-leave-confirm" role="alert">
-          <p>Hồ sơ có thay đổi chưa lưu. Bạn muốn tiếp tục hay đóng cửa sổ?</p>
-          <div>
-            <button type="button" className="epc-button secondary" onClick={() => setLeaveConfirm(false)}>Tiếp tục chỉnh sửa</button>
-            <button type="button" className="epc-button secondary" onClick={onClose}>Đóng bỏ qua</button>
-            {!sampleMode && (
-              <button type="button" className="epc-button primary" onClick={() => save.mutate()} disabled={save.isPending || emailBusy}>
-                <Save size={15} />Lưu nháp
-              </button>
-            )}
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="leave-confirm-title"
+          onClick={() => setLeaveConfirm(false)}
+          style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15, 23, 42, 0.45)', padding: '16px' }}
+        >
+          <div
+            onClick={event => event.stopPropagation()}
+            style={{ width: '100%', maxWidth: '440px', background: '#ffffff', borderRadius: '16px', boxShadow: '0 20px 50px rgba(15, 23, 42, 0.25)', padding: '24px' }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+              <AlertCircle size={22} style={{ color: '#d97706', flexShrink: 0 }} />
+              <h3 id="leave-confirm-title" style={{ margin: 0, fontSize: '16px', fontWeight: 700, color: '#0f172a' }}>Thay đổi chưa được lưu</h3>
+            </div>
+            <p style={{ margin: '0 0 20px', fontSize: '13px', color: '#475569', lineHeight: 1.5 }}>
+              Hồ sơ có thay đổi chưa lưu. Bạn muốn tiếp tục chỉnh sửa, lưu nháp hay đóng mà không lưu?
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'flex-end', gap: '8px' }}>
+              <button type="button" className="epc-button secondary" onClick={() => setLeaveConfirm(false)}>Tiếp tục chỉnh sửa</button>
+              <button type="button" className="epc-button secondary" onClick={onClose}>Đóng bỏ qua</button>
+              {!sampleMode && (
+                <button type="button" className="epc-button primary" onClick={() => save.mutate()} disabled={save.isPending || emailBusy}>
+                  <Save size={15} />Lưu nháp
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
