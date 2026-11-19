@@ -18,6 +18,10 @@ export default function GateControl() {
   const [currentTime, setCurrentTime] = useState('')
   const [toastMessage, setToastMessage] = useState('')
   const [mode, setMode] = useState('checkin') // 'checkin' | 'checkout'
+  const modeRef = useRef(mode)
+  useEffect(() => {
+    modeRef.current = mode
+  }, [mode])
   const [gateLocations, setGateLocations] = useState(DEFAULT_GATES)
   const [selectedGateId, setSelectedGateId] = useState('')
   const [gateError, setGateError] = useState('')
@@ -104,6 +108,12 @@ export default function GateControl() {
       const res = await gateService.getHardwareStatus()
       if (active && res.success) {
         setHwStatus(res.data)
+        // Tự động đồng bộ trạng thái Barie từ phần cứng nếu có thay đổi (ví dụ ESP32 tự hạ sau 30s)
+        const currentTarget = modeRef.current === 'checkout' ? 'out' : 'in'
+        const hwBarrierState = res.data?.barrier?.[currentTarget]
+        if (hwBarrierState && (hwBarrierState === 'opened' || hwBarrierState === 'closed')) {
+          setBarrierState(prev => (prev !== hwBarrierState ? hwBarrierState : prev))
+        }
       }
     }
     checkHw()
@@ -487,8 +497,22 @@ export default function GateControl() {
       }
     })
 
+    socket.on('gate:barrier_state_changed', (data) => {
+      console.log('📡 [Barrier State Event Received]', data)
+      const currentTargetLane = modeRef.current === 'checkout' ? 'OUT' : 'IN'
+      if (data?.lane === currentTargetLane) {
+        setBarrierState(data.state)
+        if (data.state === 'closed') {
+          showToast(`🔒 Barie ${data.lane === 'OUT' ? 'Cổng Ra' : 'Cổng Vào'} đã hạ (đóng cổng).`)
+        } else if (data.state === 'opened') {
+          showToast(`🔓 Barie ${data.lane === 'OUT' ? 'Cổng Ra' : 'Cổng Vào'} đã mở.`)
+        }
+      }
+    })
+
     return () => {
       socket.off('gate:iot_scan')
+      socket.off('gate:barrier_state_changed')
       socket.disconnect()
     }
   }, [selectedGateId, mode, verificationBusy, gateOutBusy])
