@@ -21,19 +21,6 @@ export default function CarrierPortal() {
           </p>
         </div>
 
-        {/* Alert Banner */}
-        <div className="bg-fog rounded-xl p-4 border-l-4 border-signal-orange border border-chalk flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-          <div className="flex items-center gap-3">
-            <span className="material-symbols-outlined text-signal-orange">warning</span>
-            <span className="text-sm font-bold text-carbon">Hóa đơn cước phí cảng đến hạn trong 2 ngày</span>
-          </div>
-          <button
-            onClick={() => navigate('/billing')}
-            className="bg-carbon text-white text-xs font-bold px-5 py-2.5 rounded-full hover:bg-black transition-colors shadow"
-          >
-            Thanh toán ngay ➔
-          </button>
-        </div>
       </div>
 
       {/* Main Grid: Left 8 cols / Right 4 cols */}
@@ -195,13 +182,6 @@ export default function CarrierPortal() {
               <span className="font-bold text-carbon text-xs">Tài xế & phương tiện</span>
             </button>
 
-            <button
-              onClick={() => navigate('/billing')}
-              className="bg-white border border-chalk rounded-xl h-24 flex flex-col items-center justify-center gap-2 hover:bg-fog hover:shadow-md transition-all shadow-sm group"
-            >
-              <span className="material-symbols-outlined text-signal-orange group-hover:scale-110 transition-transform">payments</span>
-              <span className="font-bold text-carbon text-xs">Thanh toán cước</span>
-            </button>
 
             <button
               onClick={() => navigate('/carrier-profile')}

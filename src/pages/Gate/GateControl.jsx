@@ -426,6 +426,11 @@ export default function GateControl() {
     }
   }
 
+  const evaluateVerificationRef = useRef(evaluateVerification)
+  useEffect(() => {
+    evaluateVerificationRef.current = evaluateVerification
+  })
+
   // ── LẮNG NGHE SỰ KIỆN QUÉT XE TỪ THIẾT BỊ IOT QUA REALTIME SOCKET.IO ──
   useEffect(() => {
     const realtimeUrl = import.meta.env.VITE_REALTIME_URL || 'http://localhost:3001'
@@ -469,7 +474,7 @@ export default function GateControl() {
       showToast(`📡 [IoT Camera] Nhận diện xe: "${plate}" (${conf.toFixed(1)}%)`)
       setIsAiScanning(true)
       try {
-        await evaluateVerification(plate, conf, overview, crop)
+        await evaluateVerificationRef.current?.(plate, conf, overview, crop)
       } finally {
         setIsAiScanning(false)
       }
@@ -477,9 +482,13 @@ export default function GateControl() {
 
     return () => {
       socket.off('gate:iot_scan')
-      socket.disconnect()
+      if (socket.connected) {
+        socket.disconnect()
+      } else {
+        socket.once('connect', () => socket.disconnect())
+      }
     }
-  }, [selectedGateId, mode, verificationBusy, gateOutBusy])
+  }, [])
 
 
   // Danh sách checklist kiểm tra

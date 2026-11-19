@@ -13,7 +13,6 @@ const primary = 'rounded-xl bg-orange-600 px-4 py-2.5 text-sm font-bold text-whi
 const secondary = 'rounded-xl border border-chalk bg-white px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
 const statusLabels = { Pending: 'Chờ hãng tàu duyệt', Approved: 'Đã duyệt đặt chỗ', ContainersDeclared: 'Đã khai container', GateIn: 'Đã có container vào cảng', Loaded: 'Đã xếp tàu', BlIssued: 'Đã phát hành B/L', Rejected: 'Hãng tàu từ chối', Cancelled: 'Đã hủy' }
 const containerLabels = { Expected: 'Dự kiến', Declared: 'Đã khai', GateIn: 'Đã qua cổng', Loaded: 'Đã xếp tàu', Excluded: 'Bị loại khỏi chuyến', Rolled: 'Chuyển chuyến', Cancelled: 'Đã hủy' }
-const siLabels = { None: 'Chưa nộp', Submitted: 'Đã nộp SI', Draft: 'Có draft B/L cần xác nhận', Confirmed: 'Đã xác nhận draft B/L', RevisionRequested: 'Hãng tàu yêu cầu sửa/nộp SI' }
 const portLabels = { Pending: 'Chờ hãng tàu duyệt hồ sơ', WaitingContainers: 'Chờ bổ sung container', WaitingContainerReview: 'Hãng tàu kiểm tra danh sách', ContainerRevisionRequested: 'Cần sửa danh sách container', Accepted: 'Cảng đã nhận hồ sơ', Cancelled: 'Đã hủy' }
 const cargoLabels = { general: 'Hàng bách hóa', reefer: 'Hàng lạnh', dangerous: 'Hàng nguy hiểm', dangerous_goods: 'Hàng nguy hiểm', oversized: 'Hàng quá khổ', perishable: 'Hàng dễ hư hỏng', overweight: 'Hàng quá tải' }
 const time = value => value ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : 'Chưa có'
@@ -32,7 +31,7 @@ const statusTones = {
   Approved: 'border-sky-200 bg-sky-50 text-sky-800', Submitted: 'border-sky-200 bg-sky-50 text-sky-800', GateIn: 'border-sky-200 bg-sky-50 text-sky-800',
   ContainersDeclared: 'border-teal-200 bg-teal-50 text-teal-800', Accepted: 'border-teal-200 bg-teal-50 text-teal-800',
   Loaded: 'border-indigo-200 bg-indigo-50 text-indigo-800', BlIssued: 'border-emerald-200 bg-emerald-50 text-emerald-800', Confirmed: 'border-emerald-200 bg-emerald-50 text-emerald-800',
-  Rejected: 'border-rose-200 bg-rose-50 text-rose-800', RevisionRequested: 'border-rose-200 bg-rose-50 text-rose-800',
+  Rejected: 'border-rose-200 bg-rose-50 text-rose-800', RevisionRequested: 'border-rose-200 bg-rose-50 text-rose-800', AmendmentRequested: 'border-sky-200 bg-sky-50 text-sky-800',
 }
 const documentNames = { CarrierBookingReference: 'Booking Note', VgmCertificate: 'Xác nhận khối lượng VGM', CustomsDeclaration: 'Tờ khai hải quan', BillOfLading: 'Vận đơn B/L', DeliveryOrder: 'Lệnh giao hàng D/O', ReeferTemperatureInstructions: 'Chỉ dẫn bảo quản hàng lạnh', DangerousGoodsDeclaration: 'Khai báo hàng nguy hiểm' }
 const equipment = code => code === 'MIXED' ? 'Nhiều kích cỡ' : code || 'Chưa có loại container'
@@ -63,7 +62,6 @@ function bookingMessage(booking) {
   if (booking.status === 'Rejected') return ['Hãng tàu đã trả hồ sơ', [...(booking.history || [])].reverse().find(event => event.event === 'BookingRejected')?.description || 'Xem lý do trong Lịch sử, chỉnh sửa hồ sơ rồi gửi lại hãng tàu.']
   if (booking.status === 'Pending') return ['Đang chờ hãng tàu duyệt', booking.submission ? 'Container, chứng từ và lịch xe đề xuất đã được gửi. Bạn có thể chỉnh sửa hồ sơ trong khi chờ duyệt.' : 'Hãng tàu kiểm tra yêu cầu đặt chỗ trước khi tiếp nhận danh sách container.']
   if (booking.status === 'BlIssued') return ['Đã phát hành vận đơn', booking.blNumber ? `Số B/L: ${booking.blNumber}` : 'Hãng tàu đã phát hành B/L cho hồ sơ này.']
-  if (booking.siStatus === 'Draft') return ['Draft B/L cần xác nhận', 'Mở mục SI & draft B/L để kiểm tra bản nháp và xác nhận thông tin.']
   if (booking.status === 'Loaded') return ['Đã ghi nhận xếp tàu', 'Theo dõi bước phát hành B/L và các yêu cầu bổ sung từ hãng tàu.']
   if (booking.status === 'GateIn') return ['Đã có container vào cảng', 'Mở từng container để theo dõi lịch xe và trạng thái tiếp nhận.']
   if (booking.portStatus === 'WaitingContainerReview') return ['Hãng tàu đang kiểm tra danh sách container', 'Phiên bản container, VGM và chứng từ đã gửi. Sau khi hãng tàu chấp nhận và chuyển cảng, bạn có thể đặt lịch xe.']
@@ -140,10 +138,8 @@ export default function ExportBookingWorkspace({ initialBookingId, initialSource
   const [showDrafts, setShowDrafts] = useState(false)
   const [activeDraft, setActiveDraft] = useState(null)
   const [preparationIntent, setPreparationIntent] = useState('request')
-  const [siSuggestions, setSiSuggestions] = useState(null)
   const [rows, setRows] = useState([])
   const [sourceId, setSourceId] = useState('')
-  const [si, setSi] = useState({})
   const [draftConfirmed, setDraftConfirmed] = useState(false)
   const [cancellationReason, setCancellationReason] = useState('')
   const [gateContext, setGateContext] = useState(null)
@@ -198,8 +194,6 @@ export default function ExportBookingWorkspace({ initialBookingId, initialSource
   const applyDetail = value => {
     setDetail(value)
     setRows((value.containers || []).map(row => ({ ...row, vgmKg: row.vgmKg ?? '', targetTemperature: row.targetTemperature ?? '', customsDocumentUrl: row.customsDocumentUrl || '' })))
-    setSi(value.si ? { ...value.si } : { shipper: '', consignee: '', notifyParty: '', cargoDescription: value.commodityDescription || '', packagesCount: '', grossWeightKg: '', freightTerms: 'Prepaid', blType: 'Original', destinationPort: value.voyage?.portOfDischarge || '' })
-    setSiSuggestions(null)
     setSourceId(''); setDraftConfirmed(false); setCancellationReason('')
   }
   const reloadDetail = useCallback(async id => {
@@ -297,10 +291,6 @@ export default function ExportBookingWorkspace({ initialBookingId, initialSource
     event.preventDefault()
     mutate(() => exportBookingService.declareContainers(detail.id, { expectedVersion: detail.version, containers: rows.map(declaredRow) }), 'Đã lưu danh sách container và kết quả tiếp nhận của cảng.')
   }
-  const submitSi = event => {
-    event.preventDefault()
-    mutate(() => exportBookingService.submitSi(detail.id, { ...si, expectedVersion: detail.version, packagesCount: Number(si.packagesCount), grossWeightKg: Number(si.grossWeightKg) }), 'Đã gửi Shipping Instruction đến hãng tàu.')
-  }
   const gateSaved = async result => {
     onGateSaved?.(result)
     await Promise.all([reloadList(), reloadOptions(), ...(selectedId ? [reloadDetail(selectedId)] : [])]).catch(err => { if (alive.current) setError(errorText(err)) })
@@ -324,9 +314,8 @@ export default function ExportBookingWorkspace({ initialBookingId, initialSource
 
   const voyage = detail?.voyage
   const availableSources = options.sources.filter(source => source.containerTypeCode === detail?.containerTypeCode && !rows.some(row => row.containerId === source.containerId))
-  const editableContainers = detail && !detail.submission && !detail.preparation && ['Approved', 'ContainersDeclared', 'GateIn'].includes(detail.status) && detail.siStatus !== 'Confirmed' && !expired(voyage?.vgmCutoff) && !expired(voyage?.cyCutoff)
-  const canPrepareContainers = detail?.preparation && ['Approved', 'ContainersDeclared'].includes(detail.status) && !detail.containers?.some(row => row.hasGateHistory) && detail.siStatus !== 'Confirmed' && !expired(voyage?.vgmCutoff) && !expired(voyage?.cyCutoff)
-  const editableSi = detail && ['Approved', 'ContainersDeclared', 'GateIn', 'Loaded'].includes(detail.status) && detail.siStatus !== 'Confirmed' && (!expired(voyage?.siCutoff) || detail.siStatus === 'RevisionRequested')
+  const editableContainers = detail && !detail.submission && !detail.preparation && ['Approved', 'ContainersDeclared', 'GateIn'].includes(detail.status) && !expired(voyage?.vgmCutoff) && !expired(voyage?.cyCutoff)
+  const canPrepareContainers = detail?.preparation && ['Approved', 'ContainersDeclared'].includes(detail.status) && !detail.containers?.some(row => row.hasGateHistory) && !expired(voyage?.vgmCutoff) && !expired(voyage?.cyCutoff)
   const canCancel = detail && !['Cancelled', 'Rejected', 'Loaded', 'BlIssued', 'GateIn'].includes(detail.status) && !detail.containers?.some(lockedContainer)
   const containersDirty = detail && JSON.stringify(rows.map(declaredRow)) !== JSON.stringify((detail.containers || []).map(declaredRow))
   const gateContainers = (detail?.containers || []).filter(row => !lockedContainer(row) && !row.gateBookingId)
@@ -336,7 +325,7 @@ export default function ExportBookingWorkspace({ initialBookingId, initialSource
   const documents = evidenceGroups(detail)
   const documentCount = documents.reduce((count, group) => count + group.documents.length, 0)
   const [messageTitle, messageDescription] = detail ? bookingMessage(detail) : []
-  const detailTabs = [['containers', 'Container & lịch xe', Package, rows.length], ['documents', 'Chứng từ', FileText, documentCount], ['si', 'SI & draft B/L', Ship], ['history', 'Lịch sử', Clock]]
+  const detailTabs = [['containers', 'Container & lịch xe', Package, rows.length], ['documents', 'Chứng từ', FileText, documentCount], ['history', 'Lịch sử', Clock]]
   const allContainersExpanded = rows.length > 0 && rows.every(row => expandedContainers.has(sourceKey(row)))
   const pickupModeSelector = <fieldset className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5" disabled={busy}>
     <legend className="px-2 text-sm font-extrabold text-slate-800">Hình thức Booking</legend>
@@ -433,7 +422,7 @@ export default function ExportBookingWorkspace({ initialBookingId, initialSource
                 {canPrepareContainers && <button type="button" className={`${primary} mt-3`} disabled={busy} onClick={() => openPreparation('containers')}>{detail.portStatus === 'WaitingContainerReview' ? 'Chỉnh danh sách đang chờ kiểm tra' : 'Hoàn thiện container & chứng từ'}<ChevronRight className="h-4 w-4" /></button>}
               </div>
               <details key={detail.id} className="group border-t border-slate-100 pt-3"><summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-600 [&::-webkit-details-marker]:hidden"><span className="inline-flex items-center gap-1.5"><Calendar aria-hidden="true" className="h-4 w-4 text-slate-400" />Lịch tàu & hạn chứng từ</span><ChevronDown aria-hidden="true" className="h-4 w-4 transition-transform group-open:rotate-180" /></summary>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">{[['VGM', voyage?.vgmCutoff], ['CY', voyage?.cyCutoff], ['SI', voyage?.siCutoff]].map(([label, value]) => <div key={label} className={`rounded-xl border p-3 text-xs ${expired(value) ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-slate-100 bg-slate-50 text-slate-600'}`}><p className="font-bold">{label} cut-off {expired(value) && '· Đã hết hạn'}</p><p className="mt-1 leading-relaxed">{time(value)}</p></div>)}</div><p className="mt-3 text-xs leading-relaxed text-slate-500">Giờ Việt Nam · Nhận từ {time(voyage?.receiveFrom)} · ETD {time(voyage?.etd)}</p><div className="mt-3 flex flex-wrap gap-2"><Status value={detail.portStatus} labels={portLabels} /><Status value={detail.siStatus} labels={siLabels} />{detail.blNumber && <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">B/L: {detail.blNumber}</span>}</div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">{[['VGM', voyage?.vgmCutoff], ['CY', voyage?.cyCutoff]].map(([label, value]) => <div key={label} className={`rounded-xl border p-3 text-xs ${expired(value) ? 'border-rose-200 bg-rose-50 text-rose-800' : 'border-slate-100 bg-slate-50 text-slate-600'}`}><p className="font-bold">{label} cut-off {expired(value) && '· Đã hết hạn'}</p><p className="mt-1 leading-relaxed">{time(value)}</p></div>)}</div><p className="mt-3 text-xs leading-relaxed text-slate-500">Giờ Việt Nam · Nhận từ {time(voyage?.receiveFrom)} · ETD {time(voyage?.etd)}</p><div className="mt-3 flex flex-wrap gap-2"><Status value={detail.portStatus} labels={portLabels} /><Status value={detail.siStatus} labels={siLabels} />{detail.blNumber && <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-bold text-emerald-800">B/L: {detail.blNumber}</span>}</div>
               </details>
             </div>
           </div>
@@ -452,7 +441,7 @@ export default function ExportBookingWorkspace({ initialBookingId, initialSource
             {batchAvailable && <button type="button" className={primary} disabled={busy || containersDirty} onClick={() => setGateContext({ booking: detail, containers: gateContainers, batch: true })}>Đặt lịch xe theo lô</button>}
             {containersDirty && detail.portStatus === 'Accepted' && <p className="text-xs text-amber-800">Lưu danh sách container đã sửa trước khi đặt lịch xe.</p>}
             {detail.status === 'Pending' && !detail.submission && <p className="text-sm text-amber-800">Chờ hãng tàu duyệt đặt chỗ trước khi khai số container.</p>}
-            {!detail.submission && ['Approved', 'ContainersDeclared', 'GateIn'].includes(detail.status) && (detail.siStatus === 'Confirmed' || expired(voyage?.vgmCutoff) || expired(voyage?.cyCutoff)) && <p role="status" className="text-sm text-amber-800">{detail.siStatus === 'Confirmed' ? 'Draft B/L đã xác nhận. Cần hãng tàu yêu cầu sửa trước khi thay đổi hồ sơ container.' : 'Đã quá hạn khai VGM hoặc CY cut-off. Liên hệ hãng tàu để xử lý ngoại lệ hoặc chuyển chuyến.'}</p>}
+            {!detail.submission && ['Approved', 'ContainersDeclared', 'GateIn'].includes(detail.status) && (expired(voyage?.vgmCutoff) || expired(voyage?.cyCutoff)) && <p role="status" className="text-sm text-amber-800">Đã quá hạn khai VGM hoặc CY cut-off. Liên hệ hãng tàu để xử lý ngoại lệ hoặc chuyển chuyến.</p>}
             {editableContainers && <div className="flex flex-wrap items-end gap-2"><Field label="Container từ bản khai"><select aria-label="Container từ bản khai" className={input} value={sourceId} disabled={busy || rows.length >= detail.quantity} onChange={e => setSourceId(e.target.value)}><option value="">Chọn container {detail.containerTypeCode}</option>{availableSources.map(source => <option key={sourceKey(source)} value={sourceKey(source)}>{source.containerNumber} · {source.containerTypeCode} · {cargoLabels[source.cargoType] || source.cargoType}</option>)}</select></Field><button type="button" className={secondary} disabled={busy || !sourceId || rows.length >= detail.quantity} onClick={addSource}>Thêm container</button></div>}
             {editableContainers && !availableSources.length && <p className="text-xs text-slate-500">Chưa có bản khai khác phù hợp loại {detail.containerTypeCode}. <Link to="/transport/cargo-declarations" className="font-semibold underline">Tra cứu bản khai hàng</Link></p>}
             {rows.map(row => {
@@ -483,20 +472,6 @@ export default function ExportBookingWorkspace({ initialBookingId, initialSource
           </form>}
 
           {section === 'documents' && <EvidenceList groups={documents} />}
-
-          {section === 'si' && <div className="space-y-4 rounded-2xl border border-chalk bg-white p-5">
-            <div><h4 className="font-bold">Shipping Instruction (SI)</h4><p className="mt-1 text-sm text-slate-500">SI có hạn riêng. Có thể nộp trước khi container vào cảng; không dùng tổng VGM thay cho khối lượng hàng.</p></div>
-            {editableSi && <div className="space-y-3 rounded-xl bg-teal-50 p-4"><button type="button" className={secondary} disabled={busy} onClick={async () => { try { setSiSuggestions(await exportBookingService.getSiSuggestions(detail.id)) } catch (cause) { setError(errorText(cause)) } }}>Lấy gợi ý từ hồ sơ đã xác nhận</button>{siSuggestions && <><p className="text-xs text-teal-900">Kiểm tra đúng đối tác trước khi áp dụng. Số kiện được lấy từ Packing List của lô hiện tại.</p>{siSuggestions.grossWeightKg != null && <button type="button" className={secondary} onClick={() => setSi(current => ({ ...current, grossWeightKg: siSuggestions.grossWeightKg }))}>Dùng khối lượng hàng từ bản khai: {siSuggestions.grossWeightKg.toLocaleString('vi-VN')} kg</button>}{siSuggestions.templates.map(template => <button type="button" key={template.bookingNumber} className={`${secondary} mr-2 text-left`} onClick={() => setSi(current => ({ ...current, shipper: template.shipper || '', consignee: template.consignee || '', notifyParty: template.notifyParty || '', freightTerms: template.freightTerms || current.freightTerms, blType: template.blType || current.blType }))}>Đối tác từ {template.bookingNumber}</button>)}{!siSuggestions.templates.length && <p className="text-xs text-slate-500">Chưa có SI được xác nhận trước đây để gợi ý đối tác.</p>}</>}</div>}
-            {editableSi ? <form onSubmit={submitSi} className="space-y-4"><div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              {[['shipper', 'Người gửi hàng (Shipper) *'], ['consignee', 'Người nhận hàng (Consignee) *'], ['notifyParty', 'Bên được thông báo (Notify party)']].map(([key, label]) => <Field key={key} label={label}><textarea className={input} required={key !== 'notifyParty'} maxLength={2000} value={si[key] || ''} disabled={busy} onChange={e => setSi(current => ({ ...current, [key]: e.target.value }))} /></Field>)}
-              <Field label="Cảng đến"><input className={input} readOnly value={voyage?.portOfDischarge || ''} /></Field>
-              <div className="sm:col-span-2"><Field label="Mô tả hàng hóa *"><textarea className={input} required maxLength={4000} value={si.cargoDescription || ''} disabled={busy} onChange={e => setSi(current => ({ ...current, cargoDescription: e.target.value }))} /></Field></div>
-              <Field label="Số kiện *"><input className={input} type="number" required min="1" step="1" value={si.packagesCount ?? ''} disabled={busy} onChange={e => setSi(current => ({ ...current, packagesCount: e.target.value }))} /></Field><Field label="Tổng khối lượng hàng (kg) *"><input className={input} type="number" required min="0.001" step="0.001" value={si.grossWeightKg ?? ''} disabled={busy} onChange={e => setSi(current => ({ ...current, grossWeightKg: e.target.value }))} /></Field>
-              <Field label="Điều khoản cước"><select className={input} value={si.freightTerms || 'Prepaid'} disabled={busy} onChange={e => setSi(current => ({ ...current, freightTerms: e.target.value }))}><option value="Prepaid">Trả trước (Prepaid)</option><option value="Collect">Trả sau (Collect)</option></select></Field><Field label="Yêu cầu phát hành B/L"><select className={input} value={si.blType || 'Original'} disabled={busy} onChange={e => setSi(current => ({ ...current, blType: e.target.value }))}><option value="Original">Bản gốc</option><option value="TelexRelease">Telex release</option></select></Field>
-            </div><button type="submit" className={primary} disabled={busy}>{busy ? 'Đang gửi…' : detail.si ? 'Gửi SI cập nhật' : 'Nộp SI'}</button></form> : <><SiPreview value={detail.si} /><p className="text-sm text-slate-600">{detail.siStatus === 'Confirmed' ? 'SI và draft B/L đã xác nhận được khóa. Liên hệ hãng tàu nếu cần yêu cầu sửa.' : expired(voyage?.siCutoff) ? 'Đã hết SI cut-off. Liên hệ hãng tàu để xử lý ngoại lệ.' : 'Hãng tàu cần duyệt đặt chỗ trước khi tiếp nhận SI.'}</p></>}
-            {detail.siStatus === 'Draft' && detail.draft && <div className="space-y-4 border-t border-slate-200 pt-5"><h4 className="font-bold">Kiểm tra draft B/L · phiên bản {detail.draftVersion}</h4><SiPreview value={detail.draft.si} /><p className="text-sm">Container trên draft: {(detail.draft.containers || []).map(row => `${row.containerNumber} (Seal ${row.sealNumber})`).join(', ') || 'Chưa có'}</p><label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={draftConfirmed} disabled={busy} onChange={e => setDraftConfirmed(e.target.checked)} /><span>Tôi đã kiểm tra người gửi, người nhận, hàng hóa và danh sách container trên draft B/L.</span></label><button type="button" className={primary} disabled={busy || !draftConfirmed || !detail.draftVersion} onClick={() => mutate(() => exportBookingService.confirmDraft(detail.id, { expectedVersion: detail.version, draftVersion: detail.draftVersion }), 'Đã xác nhận draft B/L. Hãng tàu sẽ phát hành khi đủ điều kiện.')}>Xác nhận draft B/L</button></div>}
-            {detail.si?.freightTerms === 'Prepaid' && <p className="text-sm text-slate-600">Cước hãng tàu trả trước: {detail.freightPaid ? 'Đã ghi nhận thanh toán' : 'Chưa ghi nhận thanh toán'}. Phí dịch vụ cảng của lịch xe được theo dõi riêng.</p>}
-          </div>}
 
           {section === 'history' && <div className="rounded-2xl border border-slate-200 bg-white p-5"><h4 className="mb-5 text-sm font-bold">Lịch sử xử lý</h4>{!(detail.history || []).length && <p className="text-sm text-slate-500">Chưa có sự kiện.</p>}<ol className="space-y-5">{[...(detail.history || [])].reverse().map(event => <li key={event.id} className="relative pl-9"><span className="absolute left-0 top-0 flex h-6 w-6 items-center justify-center rounded-full bg-orange-50 text-orange-600"><Clock aria-hidden="true" className="h-3.5 w-3.5" /></span><p className="mb-1 text-[11px] text-slate-400">{time(event.createdAt)}</p><p className="text-sm leading-relaxed text-slate-700">{event.description || event.event}</p></li>)}</ol></div>}
           </div>
