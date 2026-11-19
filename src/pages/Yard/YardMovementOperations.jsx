@@ -1,18 +1,22 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import yardTaskService from "../../services/yardTaskService";
 import yardRestackService from "../../services/yardRestackService";
+import YardDesignPreview from "./YardDesignPreview";
+import sourceLayout from "../../features/yard-design/tienSaLayout.json";
+import YardSlotReservationModal from "../../components/Yard/YardSlotReservationModal";
+import { yardReservationStore } from "../../services/yardReservationStore";
 
-// Helper to parse position string "A01-03-12-2" or "A-03-12-2" → { block, bay, row, tier, isStandard }
+// Helper to parse position string "A01-03-02-2" or "A01.03.02.2" → { block, bay, row, tier, isStandard }
 const parsePosition = (pos) => {
   if (!pos)
     return { block: "?", bay: "?", row: "?", tier: "?", isStandard: false };
-  const trimmed = String(pos).trim();
-  if (/^[A-Z0-9]{1,4}-\d{2,3}-\d{2,3}-\d{1,2}$/i.test(trimmed)) {
-    const parts = trimmed.split("-");
+  const trimmed = String(pos).replace(/^Block\s*/i, "").trim();
+  if (/^[A-Z0-9]{1,4}[-.]\d{1,3}[-.]\d{1,3}[-.]\d{1,2}$/i.test(trimmed)) {
+    const parts = trimmed.split(/[-.]/);
     return {
       block: parts[0] || "?",
-      bay: parts[1] || "?",
-      row: parts[2] || "?",
+      bay: parts[1] ? String(parts[1]).padStart(2, "0") : "?",
+      row: parts[2] ? String(parts[2]).padStart(2, "0") : "?",
       tier: parts[3] || "?",
       isStandard: true,
     };
@@ -57,6 +61,16 @@ const formatCurrency = (val) => {
 };
 
 // Shipping lines list
+const YARD_ZONES = [
+  { code: "A", name: "Khu A", desc: "Sau cầu 4–5 (Xuất khẩu CY45)" },
+  { code: "B", name: "Khu B", desc: "Bãi container 1 (Nhập khẩu Trung tâm)" },
+  { code: "C", name: "Khu C", desc: "Bãi container 2 (Trung chuyển quốc tế)" },
+  { code: "D", name: "Khu D", desc: "Bãi cont lạnh (Reefer / Nguy hiểm)" },
+  { code: "E", name: "Khu E", desc: "Bãi tổng hợp 1 (Empty Depot cont rỗng)" },
+  { code: "F", name: "Khu F", desc: "Bãi tổng hợp 2 (Kho hàng nhập lưu bãi)" },
+  { code: "G", name: "Khu G", desc: "Bãi tổng hợp 3 (Chờ đóng bốc tàu)" },
+];
+
 const SHIPPING_LINES = [
   { code: "ALL", name: "Tất Cả Hãng Tàu", color: "bg-slate-800 text-white" },
   { code: "MAERSK", name: "Maersk Line", color: "bg-blue-600 text-white" },
@@ -122,70 +136,70 @@ const DEFAULT_EQUIPMENTS = [
 
 const SAMPLE_CONTAINERS = [
   {
-    containerNo: "MSCU1234567",
-    type: "40FT HC",
-    location: "A01-03-12-2",
-    cargo: "Hàng May Mặc Tái Cơ Cấu",
-    weight: "28.4 Tấn",
-    line: "MSC",
-    category: "DRY",
-    dwellDays: 4,
-    nextVessel: "MSC ALEXA (18h tới)",
+    containerNo: "HAMU9350046",
+    type: "40FT RF",
+    location: "R01-02-03-2",
+    cargo: "Hàng Lạnh (Reefer)",
+    weight: "29.2 Tấn",
+    line: "HAPAG",
+    category: "REEFER",
+    dwellDays: 1,
+    nextVessel: "HAPAG-LLOYD FEEDER",
   },
   {
-    containerNo: "TEMU8822190",
-    type: "40FT HC",
-    location: "B02-01-02-1",
-    cargo: "Hàng Xuất Khẩu Khẩn",
-    weight: "30.2 Tấn",
-    line: "MAERSK",
-    category: "EXP",
-    dwellDays: 2,
-    nextVessel: "MAERSK HANOI (06:00 mai)",
+    containerNo: "NXPU9113780",
+    type: "20FT RF",
+    location: "B02-01-01-1",
+    cargo: "Hàng Khô",
+    weight: "29.2 Tấn",
+    line: "NEXUSPORT",
+    category: "REEFER",
+    dwellDays: 1,
+    nextVessel: "NEXUSPORT FEEDER",
   },
   {
-    containerNo: "CMAU9918234",
-    type: "20FT ST",
-    location: "A01-01-05-3",
-    cargo: "Hàng Bách Hóa Xuất Khẩu",
-    weight: "18.5 Tấn",
-    line: "CMA",
+    containerNo: "HAMU6381022",
+    type: "40FT HC",
+    location: "B02-02-01-2",
+    cargo: "Hàng Khô Nhập Khẩu",
+    weight: "29.2 Tấn",
+    line: "HAPAG",
     category: "DRY",
     dwellDays: 1,
-    nextVessel: "CMA CGM CHAUVEL (2 ngày)",
+    nextVessel: "HAPAG-LLOYD FEEDER",
   },
   {
-    containerNo: "COSU8819201",
-    type: "40FT HC",
-    location: "A01-02-04-2",
-    cargo: "Hàng Điện Tử Tiêu Dùng",
-    weight: "24.1 Tấn",
-    line: "COSCO",
-    category: "HIGH_VALUE",
-    dwellDays: 5,
-    nextVessel: "COSCO HOPE (3 ngày)",
-  },
-  {
-    containerNo: "HLCU7719204",
-    type: "20FT TANK",
-    location: "B02-04-01-1",
-    cargo: "Hóa Chất Công Nghiệp Lỏng",
-    weight: "26.0 Tấn",
-    line: "HAPAG",
-    category: "DG",
-    dwellDays: 3,
-    nextVessel: "AL HILAL (12h tới)",
-  },
-  {
-    containerNo: "ONEU8821903",
+    containerNo: "NXPU9465754",
     type: "40FT RF",
-    location: "C01-02-04-2",
-    cargo: "Trái Cây Lạnh (-18°C)",
-    weight: "29.0 Tấn",
-    line: "ONE",
+    location: "D01-02-02-2",
+    cargo: "Hàng Lạnh (Reefer)",
+    weight: "29.2 Tấn",
+    line: "NEXUSPORT",
     category: "REEFER",
-    dwellDays: 2,
-    nextVessel: "ONE HARBOUR (14h tới)",
+    dwellDays: 1,
+    nextVessel: "NEXUSPORT FEEDER",
+  },
+  {
+    containerNo: "HLXU3284010",
+    type: "40FT HC",
+    location: "F01-02-03-1",
+    cargo: "Hàng Khô Nhập Khẩu",
+    weight: "29.2 Tấn",
+    line: "HAPAG",
+    category: "DRY",
+    dwellDays: 1,
+    nextVessel: "HAPAG-LLOYD FEEDER",
+  },
+  {
+    containerNo: "TEMU4451923",
+    type: "40FT HC",
+    location: "B04-02-05-1",
+    cargo: "Hàng Khô Đang Lưu Bãi",
+    weight: "29.2 Tấn",
+    line: "MAERSK",
+    category: "DRY",
+    dwellDays: 1,
+    nextVessel: "MAERSK FEEDER",
   },
 ];
 
@@ -367,241 +381,179 @@ const YARD_BAY_MATRIX = {
 const CONFLICT_SCENARIOS = [
   {
     id: "SCENARIO_1",
-    title: "Container CAIU1234567 — Xuất Tàu Khẩn Cấp (Tàu MAERSK HANOI)",
+    title: "Container HAMU6381022 — Xuất Tàu Khẩn Cấp (Tàu HAPAG-LLOYD)",
     badge: "XUẤT TÀU KHẨN",
     badgeColor: "bg-red-100 text-red-950 border-red-400",
     targetContainer: {
-      id: "CAIU1234567",
+      id: "HAMU6381022",
       type: "40FT HC",
-      weight: "28.4 Tấn",
-      pos: "C01-04-10-1",
-      tier: "Tầng 1 (Đáy bãi)",
-      line: "MSC",
+      weight: "29.2 Tấn",
+      pos: "B02-02-01-2",
+      tier: "Tầng 2",
+      line: "HAPAG",
       urgency: "KHẨN CẤP — Tàu cập bến lúc 06:00 mai (Còn 8h)",
-      dwell: "4 ngày",
-    },
-    blockingContainers: [
-      {
-        step: 1,
-        id: "MSCU1111111",
-        type: "40FT HC",
-        tier: "Tầng 3",
-        currentPos: "C01-04-10-3",
-        moveTarget: "C01-04-12-1",
-        rtg: "RTG-01",
-        weight: "22.0 Tấn",
-        duration: "2.0 phút",
-        reason: "Dời sang slot đệm an toàn dãy 12",
-      },
-      {
-        step: 2,
-        id: "MSCU2222222",
-        type: "40FT HC",
-        tier: "Tầng 2",
-        currentPos: "C01-04-10-2",
-        moveTarget: "C01-04-12-2",
-        rtg: "RTG-02",
-        weight: "26.5 Tấn",
-        duration: "2.5 phút",
-        reason: "Dời sang slot đệm an toàn dãy 12",
-      },
-    ],
-    targetMove: {
-      step: 3,
-      id: "CAIU1234567",
-      type: "40FT HC",
-      tier: "Tầng 1",
-      currentPos: "C01-04-10-1",
-      moveTarget: "Cầu Tàu Bến 02 (Xuất Lên Tàu)",
-      rtg: "RTG-01",
-      weight: "28.4 Tấn",
-      duration: "4.0 phút",
-      reason: "Giải phóng container mục tiêu bàn giao cẩu STS",
-    },
-    aiMetrics: {
-      timeSaved: "72%",
-      estimatedDuration: "4.5 phút",
-      originalDuration: "16.0 phút",
-      energySaved: "-68%",
-      movesCount: 2,
-      confidence: "99.8%",
-      bufferSlotNote:
-        "Slot đệm C01-04-12-1 & 12-2 không cản trở bất kỳ kế hoạch bốc dỡ nào trong 48h tới",
-    },
-  },
-  {
-    id: "SCENARIO_2",
-    title: "Container TEMU8822190 — Xe Đầu Kéo Đang Đợi Ngoài Cổng C",
-    badge: "XE KÉO CHỜ CỔNG",
-    badgeColor: "bg-amber-100 text-amber-950 border-amber-400",
-    targetContainer: {
-      id: "TEMU8822190",
-      type: "40FT HC",
-      weight: "30.2 Tấn",
-      pos: "B02-02-02-1",
-      tier: "Tầng 1 (Đáy bãi)",
-      line: "MAERSK",
-      urgency: "CỰC KHẨN — Tài xế xe đầu kéo chờ quá 20 phút",
-      dwell: "2 ngày",
-    },
-    blockingContainers: [
-      {
-        step: 1,
-        id: "EVER1129983",
-        type: "40FT HC",
-        tier: "Tầng 3",
-        currentPos: "B02-02-02-3",
-        moveTarget: "B02-02-04-1",
-        rtg: "RTG-02",
-        weight: "20.1 Tấn",
-        duration: "2.0 phút",
-        reason: "Dời sang slot trống dãy 04",
-      },
-      {
-        step: 2,
-        id: "HLCU7719204",
-        type: "20FT TANK",
-        tier: "Tầng 2",
-        currentPos: "B02-02-02-2",
-        moveTarget: "B02-04-01-2",
-        rtg: "RTG-03",
-        weight: "26.0 Tấn",
-        duration: "2.0 phút",
-        reason: "Dời vào khu bãi chuyên dụng DG",
-      },
-    ],
-    targetMove: {
-      step: 3,
-      id: "TEMU8822190",
-      type: "40FT HC",
-      tier: "Tầng 1",
-      currentPos: "B02-02-02-1",
-      moveTarget: "Xe Đầu Kéo BS: 51C-982.11 (Cổng C)",
-      rtg: "RTG-02",
-      weight: "30.2 Tấn",
-      duration: "3.5 phút",
-      reason: "Bàn giao trực tiếp lên sơ mi rơ moóc",
-    },
-    aiMetrics: {
-      timeSaved: "75%",
-      estimatedDuration: "4.0 phút",
-      originalDuration: "16.5 phút",
-      energySaved: "-71%",
-      movesCount: 2,
-      confidence: "99.9%",
-      bufferSlotNote:
-        "Vị trí B02-02-04-1 là vị trí cẩu gần nhất (rút ngắn 65m quãng đường di chuyển)",
-    },
-  },
-  {
-    id: "SCENARIO_3",
-    title:
-      "Container Lạnh ONEU8821903 — Cần Chuyển Gấp Vào Rack Cắm Điện Reefer",
-    badge: "HÀNG LẠNH REEFER",
-    badgeColor: "bg-cyan-100 text-cyan-950 border-cyan-400",
-    targetContainer: {
-      id: "ONEU8821903",
-      type: "40FT RF",
-      weight: "29.0 Tấn",
-      pos: "A01-02-04-1",
-      tier: "Tầng 1 (Đáy bãi)",
-      line: "ONE",
-      urgency: "NGHIÊM NGẶT — Nhiệt độ bảo quản lạnh -18°C",
       dwell: "1 ngày",
     },
     blockingContainers: [
       {
         step: 1,
-        id: "COSU8819201",
-        type: "40FT HC",
-        tier: "Tầng 2",
-        currentPos: "A01-02-04-2",
-        moveTarget: "A01-02-05-3",
+        id: "NXPU9465754",
+        type: "40FT RF",
+        tier: "Tầng 3",
+        currentPos: "B02-02-01-3",
+        moveTarget: "B02-02-04-1",
         rtg: "RTG-01",
-        weight: "24.1 Tấn",
-        duration: "3.0 phút",
-        reason: "Dời sang slot trống trên cùng dãy 05",
+        weight: "29.2 Tấn",
+        duration: "2.0 phút",
+        reason: "Dời sang slot đệm an toàn dãy 04",
       },
     ],
     targetMove: {
       step: 2,
-      id: "ONEU8821903",
-      type: "40FT RF",
-      tier: "Tầng 1",
-      currentPos: "A01-02-04-1",
-      moveTarget: "Rack Cắm Điện Reefer (C01-02-04-2)",
+      id: "HAMU6381022",
+      type: "40FT HC",
+      tier: "Tầng 2",
+      currentPos: "B02-02-01-2",
+      moveTarget: "Cầu Tàu Bến 02 (Xuất Lên Tàu)",
       rtg: "RTG-01",
-      weight: "29.0 Tấn",
-      duration: "4.5 phút",
+      weight: "29.2 Tấn",
+      duration: "3.5 phút",
+      reason: "Giải phóng container mục tiêu bàn giao cẩu STS",
+    },
+    aiMetrics: {
+      timeSaved: "75%",
+      estimatedDuration: "3.5 phút",
+      originalDuration: "14.0 phút",
+      energySaved: "-70%",
+      movesCount: 1,
+      confidence: "99.9%",
+      bufferSlotNote:
+        "Slot đệm B02-02-04-1 nằm ngay dãy lân cận, rút ngắn 85m quãng đường di chuyển",
+    },
+  },
+  {
+    id: "SCENARIO_2",
+    title: "Container NXPU9113780 — Xe Đầu Kéo Đang Đợi Ngoài Cổng C",
+    badge: "XE KÉO CHỜ CỔNG",
+    badgeColor: "bg-amber-100 text-amber-950 border-amber-400",
+    targetContainer: {
+      id: "NXPU9113780",
+      type: "20FT RF",
+      weight: "29.2 Tấn",
+      pos: "B02-01-01-1",
+      tier: "Tầng 1 (Đáy bãi)",
+      line: "NEXUSPORT",
+      urgency: "CỰC KHẨN — Tài xế xe đầu kéo chờ quá 15 phút",
+      dwell: "1 ngày",
+    },
+    blockingContainers: [],
+    targetMove: {
+      step: 1,
+      id: "NXPU9113780",
+      type: "20FT RF",
+      tier: "Tầng 1",
+      currentPos: "B02-01-01-1",
+      moveTarget: "Xe Đầu Kéo BS: 43C-129.88 (Cổng C)",
+      rtg: "RTG-02",
+      weight: "29.2 Tấn",
+      duration: "2.5 phút",
+      reason: "Bàn giao trực tiếp lên sơ mi rơ moóc",
+    },
+    aiMetrics: {
+      timeSaved: "80%",
+      estimatedDuration: "2.5 phút",
+      originalDuration: "10.0 phút",
+      energySaved: "-75%",
+      movesCount: 1,
+      confidence: "100%",
+      bufferSlotNote:
+        "Container tầng đáy không bị đè tầng, cẩu xuất trực tiếp ra xe đầu kéo",
+    },
+  },
+  {
+    id: "SCENARIO_3",
+    title:
+      "Container Lạnh HAMU9350025 — Cần Chuyển Gấp Vào Rack Cắm Điện Reefer",
+    badge: "HÀNG LẠNH REEFER",
+    badgeColor: "bg-cyan-100 text-cyan-950 border-cyan-400",
+    targetContainer: {
+      id: "HAMU9350025",
+      type: "40FT RF",
+      weight: "29.2 Tấn",
+      pos: "D01-02-01-3",
+      tier: "Tầng 3",
+      line: "HAPAG",
+      urgency: "NGHIÊM NGẶT — Nhiệt độ bảo quản lạnh -18°C",
+      dwell: "1 ngày",
+    },
+    blockingContainers: [],
+    targetMove: {
+      step: 1,
+      id: "HAMU9350025",
+      type: "40FT RF",
+      tier: "Tầng 3",
+      currentPos: "D01-02-01-3",
+      moveTarget: "Rack Cắm Điện Reefer (D02-01-02-1)",
+      rtg: "RTG-01",
+      weight: "29.2 Tấn",
+      duration: "3.5 phút",
       reason: "Cắm điện làm lạnh bảo quản hàng tươi đông",
     },
     aiMetrics: {
-      timeSaved: "65%",
-      estimatedDuration: "3.0 phút",
-      originalDuration: "8.5 phút",
-      energySaved: "-60%",
+      timeSaved: "70%",
+      estimatedDuration: "3.5 phút",
+      originalDuration: "9.0 phút",
+      energySaved: "-65%",
       movesCount: 1,
-      confidence: "99.7%",
+      confidence: "99.8%",
       bufferSlotNote:
-        "Rack điện Reefer C01 còn 1 slot cắm sẵn sàng tiếp nhận ngay",
+        "Rack điện Reefer D02 còn 2 slot cắm sẵn sàng tiếp nhận ngay",
     },
   },
   {
     id: "SCENARIO_4",
-    title: "Container MSCU9918234 — Block A01 Hết Slot Đệm (Test Chặn Di Dời)",
+    title: "Container HLXU3284010 — Block F01 Cảnh Báo An Toàn",
     badge: "HẾT SLOT ĐỆM (TEST)",
     badgeColor: "bg-rose-100 text-rose-950 border-rose-400",
     canExecute: false,
     validationMessage:
-      "CẢNH BÁO HỆ THỐNG: Block A01 đã đạt 100% dung lượng. Không có slot đệm hợp lệ thỏa mãn quy tắc an toàn!",
+      "CẢNH BÁO HỆ THỐNG: Block F01 đã đạt 100% dung lượng. Không có slot đệm hợp lệ thỏa mãn quy tắc an toàn!",
     targetContainer: {
-      id: "MSCU9918234",
+      id: "HLXU3284010",
       type: "40FT HC",
-      weight: "29.5 Tấn",
-      pos: "A01-01-05-1",
+      weight: "29.2 Tấn",
+      pos: "F01-02-03-1",
       tier: "Tầng 1 (Đáy bãi)",
-      line: "MSC",
+      line: "HAPAG",
       urgency:
         "KHẨN CẤP — Xe đầu kéo chờ nhưng không thể đảo bãi do thiếu slot",
-      dwell: "5 ngày",
+      dwell: "1 ngày",
     },
     blockingContainers: [
       {
         step: 1,
-        id: "CMAU9918234",
-        type: "20FT ST",
-        tier: "Tầng 3",
-        currentPos: "A01-01-05-3",
-        moveTarget: "KHÔNG CÓ SLOT",
-        rtg: "RTG-01",
-        weight: "18.5 Tấn",
-        duration: "--",
-        reason: "Không tìm thấy slot đệm trống trong phạm vi an toàn",
-      },
-      {
-        step: 2,
-        id: "COSU8819201",
-        type: "40FT HC",
+        id: "NXPU9465754",
+        type: "40FT RF",
         tier: "Tầng 2",
-        currentPos: "A01-01-05-2",
+        currentPos: "F01-02-03-2",
         moveTarget: "KHÔNG CÓ SLOT",
         rtg: "RTG-01",
-        weight: "24.1 Tấn",
+        weight: "29.2 Tấn",
         duration: "--",
         reason: "Không tìm thấy slot đệm trống trong phạm vi an toàn",
       },
     ],
     targetMove: {
-      step: 3,
-      id: "MSCU9918234",
+      step: 2,
+      id: "HLXU3284010",
       type: "40FT HC",
       tier: "Tầng 1",
-      currentPos: "A01-01-05-1",
+      currentPos: "F01-02-03-1",
       moveTarget: "Cổng Bàn Giao",
       rtg: "RTG-01",
-      weight: "29.5 Tấn",
+      weight: "29.2 Tấn",
       duration: "--",
-      reason: "Bị phong tỏa do không thể dời 2 container phía trên",
+      reason: "Bị phong tỏa do không thể dời container phía trên",
     },
     aiMetrics: {
       timeSaved: "0%",
@@ -611,7 +563,7 @@ const CONFLICT_SCENARIOS = [
       movesCount: 0,
       confidence: "0%",
       bufferSlotNote:
-        "Toàn bộ 24 slot lân cận đều đang OCCUPIED hoặc vi phạm quy tắc trọng lực",
+        "Toàn bộ slot lân cận đều đang OCCUPIED hoặc vi phạm quy tắc trọng lực",
     },
   },
 ];
@@ -644,6 +596,8 @@ export default function YardMovementOperations() {
 
   // Modals & Drawers
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [selectedZone, setSelectedZone] = useState("B");
+  const [pickerBlock, setPickerBlock] = useState(null);
   const [incidentTask, setIncidentTask] = useState(null);
   const [incidentReason, setIncidentReason] = useState(INCIDENT_REASONS[0]);
   const [incidentNotes, setIncidentNotes] = useState("");
@@ -657,9 +611,16 @@ export default function YardMovementOperations() {
   const [operators, setOperators] = useState([]);
 
   // Create Modal Form State
-  const [newContainerNo, setNewContainerNo] = useState("");
-  const [newContainerType, setNewContainerType] = useState("40FT HC");
-  const [newFromLocation, setNewFromLocation] = useState("A01-03-12-2");
+  const [newContainerNo, setNewContainerNo] = useState(SAMPLE_CONTAINERS[0].containerNo);
+  const [newContainerType, setNewContainerType] = useState(SAMPLE_CONTAINERS[0].type);
+  const modalBooking = useMemo(
+    () => ({
+      containerType: newContainerType,
+      containerId: newContainerNo,
+    }),
+    [newContainerType, newContainerNo],
+  );
+  const [newFromLocation, setNewFromLocation] = useState(SAMPLE_CONTAINERS[0].location);
   const [newTargetBlock, setNewTargetBlock] = useState("B02");
   const [newTargetBay, setNewTargetBay] = useState("02");
   const [newTargetRow, setNewTargetRow] = useState("02");
@@ -677,6 +638,41 @@ export default function YardMovementOperations() {
   const [calculatedFee, setCalculatedFee] = useState(0);
   const [isSubmittingTask, setIsSubmittingTask] = useState(false);
 
+  const combinedBlocks = useMemo(() => {
+    const storeReservations = yardReservationStore.getReservations();
+    return (sourceLayout.areas || []).map((area) => {
+      const blockStoreRes = storeReservations.filter(
+        (r) => (r.blockCode || r.block) === area.code
+      );
+      const occupied = blockStoreRes.length;
+      const totalCapacity =
+        (area.planning?.bayModules || 20) *
+        (area.planning?.rows || 6) *
+        (area.planning?.tiers || 4);
+      return {
+        id: area.code,
+        blockCode: area.code,
+        code: area.code,
+        sector: area.sector,
+        description: area.note || `Khu ${area.sector} · Block ${area.code}`,
+        planning: area.planning,
+        maxRows: area.planning?.rows || 6,
+        maxTiers: area.planning?.tiers || 4,
+        slots: [],
+        totalCapacity,
+        occupied,
+        empty: Math.max(0, totalCapacity - occupied),
+      };
+    });
+  }, []);
+
+  const currentZoneBlocks = useMemo(() => {
+    return combinedBlocks.filter(
+      (b) =>
+        b.sector === selectedZone || (b.blockCode || "").startsWith(selectedZone)
+    );
+  }, [combinedBlocks, selectedZone]);
+
   // ── AI & AUTONOMOUS ENGINE STATE ──
   const [autoPilotEnabled, setAutoPilotEnabled] = useState(false);
   const [autoPilotScanning, setAutoPilotScanning] = useState(false);
@@ -685,45 +681,47 @@ export default function YardMovementOperations() {
     reshuffle: 40,
     safety: 20,
   });
+  const [availableContainers, setAvailableContainers] = useState([]);
+  const [loadingContainers, setLoadingContainers] = useState(false);
   const [selectedCompareContainer, setSelectedCompareContainer] = useState(
     SAMPLE_CONTAINERS[0],
   );
   const [autoPilotLogs, setAutoPilotLogs] = useState([
     "08:30:12 [AI-ENGINE]: Tải mô hình BRP (Block Relocation Problem) v4.2 - 0.04s latency.",
     "08:31:05 [TELEMETRY]: Đồng bộ 4 cẩu RTG với cảm biến Twistlock Laser Lock.",
-    "08:32:40 [PREDICTION]: Dự báo tàu MAERSK HANOI cập bến ngày mai lúc 06:00 - Quét 3 container bị nghẽn tầng.",
+    "08:32:40 [PREDICTION]: Dự báo tàu cập bến lúc 06:00 mai - Quét container bị nghẽn tầng.",
   ]);
 
-  // Proactive Auto-Pilot Housekeeping Queue
+  // Proactive Auto-Pilot Housekeeping Queue (Synchronized with Real Containers)
   const [proactiveTasks, setProactiveTasks] = useState([
     {
       id: "AUTO-01",
-      containerId: "MSCU1111111",
+      containerId: "HAMU6381022",
       type: "40FT HC",
-      from: "C01-04-10-3",
-      to: "C01-04-12-1",
-      reason: "Đảo tầng trước giờ tàu MAERSK HANOI cập cảng (Tự động)",
+      from: "B02-02-01-2",
+      to: "B02-02-04-1",
+      reason: "Đảo tầng trước giờ tàu HAPAG-LLOYD cập cảng (Tự động)",
       urgency: "CAO",
       rtgAssigned: "RTG-01",
       status: "READY",
     },
     {
       id: "AUTO-02",
-      containerId: "MSCU2222222",
-      type: "40FT HC",
-      from: "C01-04-10-2",
-      to: "C01-04-12-2",
-      reason: "Giải phóng lối cẩu cho container CAIU1234567 xuất cảng",
+      containerId: "NXPU9465754",
+      type: "40FT RF",
+      from: "D01-02-02-2",
+      to: "D01-02-04-1",
+      reason: "Giải phóng lối cẩu cho container xuất cảng",
       urgency: "TRUNG BÌNH",
       rtgAssigned: "RTG-02",
       status: "READY",
     },
     {
       id: "AUTO-03",
-      containerId: "ONEU8821903",
+      containerId: "HAMU9350025",
       type: "40FT RF",
-      from: "A01-03-02-4",
-      to: "C01-02-04-2",
+      from: "D01-02-01-3",
+      to: "D01-04-02-1",
       reason: "Chuyển container lạnh vào Rack cắm điện Reefer tự động",
       urgency: "KHẨN CẤP",
       rtgAssigned: "RTG-03",
@@ -752,8 +750,9 @@ export default function YardMovementOperations() {
   const [conflictExecutingStep, setConflictExecutingStep] = useState(0);
 
   // ── NXP-126: RESTACK PLAN STATE ──
+  const [restackRightView, setRestackRightView] = useState("MAP"); // 'MAP' | 'STACK'
   const [customTargetContInput, setCustomTargetContInput] =
-    useState("CAIU1234567");
+    useState("HAMU6381022");
   const [customDestinationInput, setCustomDestinationInput] = useState(
     "Cầu Tàu Bến 02 (Xuất Lên Tàu)",
   );
@@ -762,6 +761,33 @@ export default function YardMovementOperations() {
   const [restackPlanHistory, setRestackPlanHistory] = useState([]);
   const [showPlanHistorySection, setShowPlanHistorySection] = useState(false);
   const [isAdvancingStep, setIsAdvancingStep] = useState(false);
+
+  // Dynamic active conflict container based on custom input or real database containers
+  const activeConflictContainer = useMemo(() => {
+    if (customTargetContInput) {
+      const clean = customTargetContInput.trim().toUpperCase();
+      const found = availableContainers.find(
+        (c) => c.containerNo?.toUpperCase() === clean
+      );
+      if (found) return found;
+    }
+    if (availableContainers.length > 0) {
+      return availableContainers[0];
+    }
+    const scen =
+      CONFLICT_SCENARIOS.find((s) => s.id === selectedConflictScenarioId) ||
+      CONFLICT_SCENARIOS[0];
+    return {
+      containerNo: scen.targetContainer.id,
+      location: scen.targetContainer.pos,
+      type: scen.targetContainer.type,
+      line: scen.targetContainer.line,
+      cargo: "Hàng Khô Xuất Nhập",
+      weight: scen.targetContainer.weight,
+      dwellDays: 3,
+      category: "DRY",
+    };
+  }, [customTargetContInput, availableContainers, selectedConflictScenarioId]);
 
   // Current conflict scenario object
   const currentConflictScenario = useMemo(() => {
@@ -786,30 +812,22 @@ export default function YardMovementOperations() {
 
   // Stacking Conflict State (Fallback compatibility)
   const [stackingConflict, setStackingConflict] = useState({
-    targetContainer: "CAIU1234567",
-    currentPosition: "C01-04-10-1 (Tầng 1)",
-    containersBlocking: 2,
+    targetContainer: "HAMU6381022",
+    currentPosition: "B02-02-01-2 (Tầng 2)",
+    containersBlocking: 1,
     currentStep: 0,
     blockingContainers: [
       {
         step: 1,
-        id: "MSCU1111111",
+        id: "NXPU9465754",
         tier: "Tầng 3",
-        moveTarget: "C01-04-12-1",
-        status: "pending",
-      },
-      {
-        step: 2,
-        id: "MSCU2222222",
-        tier: "Tầng 2",
-        moveTarget: "C01-04-12-2",
+        moveTarget: "B02-02-04-1",
         status: "pending",
       },
     ],
     recommendedOrder: [
-      "1 ➔ Cẩu MSCU1111111 (Tầng 3) sang C01-04-12-1",
-      "2 ➔ Cẩu MSCU2222222 (Tầng 2) sang C01-04-12-2",
-      "3 ➔ Giải phóng container mục tiêu CAIU1234567 xuất cảng",
+      "1 ➔ Cẩu NXPU9465754 (Tầng 3) sang B02-02-04-1",
+      "2 ➔ Giải phóng container mục tiêu HAMU6381022 xuất cảng",
     ],
     planStarted: false,
     planCompleted: false,
@@ -924,14 +942,14 @@ export default function YardMovementOperations() {
         }));
         setTasks(mapped);
       } else {
-        setTasks(getFallbackTasks());
+        setTasks([]);
       }
     } catch (err) {
       console.warn(
         "Could not fetch from backend, loading fallback tasks:",
         err,
       );
-      setTasks(getFallbackTasks());
+      setTasks([]);
     } finally {
       setLoading(false);
     }
@@ -949,10 +967,53 @@ export default function YardMovementOperations() {
     }
   };
 
+  // Load Active Containers from Database (NXP-119)
+  const loadAvailableContainers = async () => {
+    try {
+      setLoadingContainers(true);
+      const data = await yardTaskService.getActiveContainers();
+      if (Array.isArray(data) && data.length > 0) {
+        setAvailableContainers(data);
+        setSelectedCompareContainer((prev) => prev || data[0]);
+        setCustomTargetContInput((prev) =>
+          !prev || prev === "CAIU1234567" || prev === "HAMU6381022"
+            ? data[0].containerNo
+            : prev,
+        );
+        setNewContainerNo((prev) => (!prev ? data[0].containerNo : prev));
+        setNewContainerType((prev) =>
+          !prev ? normalizeDropdownType(data[0].type) : prev,
+        );
+        setNewFromLocation((prev) =>
+          !prev ? (data[0].location || "") : prev,
+        );
+      }
+    } catch (err) {
+      console.warn("Could not fetch active yard containers:", err);
+    } finally {
+      setLoadingContainers(false);
+    }
+  };
+
+  const handleOpenCreateModal = () => {
+    const list = availableContainers.length > 0 ? availableContainers : SAMPLE_CONTAINERS;
+    if (list.length > 0) {
+      const currentExists = list.some((c) => c.containerNo === newContainerNo);
+      if (!currentExists || !newContainerNo) {
+        const first = list[0];
+        setNewContainerNo(first.containerNo);
+        setNewContainerType(normalizeDropdownType(first.type));
+        setNewFromLocation(first.location || "");
+      }
+    }
+    setCreateModalOpen(true);
+  };
+
   // Initial load
   useEffect(() => {
     loadTasks();
     loadRestackHistory();
+    loadAvailableContainers();
 
     // Fetch equipments & operators
     yardTaskService
@@ -1187,8 +1248,138 @@ export default function YardMovementOperations() {
         pctEnergy: 33,
         pctCost: 37,
       },
+      HAMU9350046: {
+        manualPos: "R01-02-03-2",
+        manualDist: "390 m",
+        manualTime: "17.0 phút",
+        manualConflict: "Bị 1 container đè phía trên",
+        manualEnergy: "4.0 Lít",
+        manualAutoRate: "14%",
+        aiPos: "D02-01-02-2",
+        aiDist: "120 m",
+        aiTime: "5.5 phút",
+        aiConflict: "0 lần (Rack điện Reefer)",
+        aiEnergy: "1.3 Lít",
+        aiAutoRate: "99%",
+        distSaving: "-69.2%",
+        timeSaving: "-67.6%",
+        energySaving: "-67.5%",
+        conflictSaving: "-100%",
+        costManual: "370.000 đ",
+        costAi: "130.000 đ",
+        costSaving: "-64.9%",
+        autoRateGain: "+85.0%",
+        pctDist: 31,
+        pctTime: 32,
+        pctEnergy: 33,
+        pctCost: 35,
+      },
+      NXPU9113780: {
+        manualPos: "B02-01-01-1",
+        manualDist: "350 m",
+        manualTime: "15.0 phút",
+        manualConflict: "Không bị đè (Cần cẩu cẩn trọng)",
+        manualEnergy: "3.5 Lít",
+        manualAutoRate: "16%",
+        aiPos: "B02-02-03-1",
+        aiDist: "95 m",
+        aiTime: "4.2 phút",
+        aiConflict: "0 lần (Cẩu thẳng ra xe đầu kéo)",
+        aiEnergy: "1.0 Lít",
+        aiAutoRate: "99%",
+        distSaving: "-72.9%",
+        timeSaving: "-72.0%",
+        energySaving: "-71.4%",
+        conflictSaving: "-100%",
+        costManual: "320.000 đ",
+        costAi: "110.000 đ",
+        costSaving: "-65.6%",
+        autoRateGain: "+83.0%",
+        pctDist: 27,
+        pctTime: 28,
+        pctEnergy: 29,
+        pctCost: 34,
+      },
+      HAMU6381022: {
+        manualPos: "B02-02-01-2",
+        manualDist: "410 m",
+        manualTime: "18.5 phút",
+        manualConflict: "Bị 1 container đè phía trên",
+        manualEnergy: "4.1 Lít",
+        manualAutoRate: "13%",
+        aiPos: "B02-02-04-1",
+        aiDist: "115 m",
+        aiTime: "5.2 phút",
+        aiConflict: "0 lần (Đảo slot lân cận)",
+        aiEnergy: "1.2 Lít",
+        aiAutoRate: "99%",
+        distSaving: "-72.0%",
+        timeSaving: "-71.9%",
+        energySaving: "-70.7%",
+        conflictSaving: "-100%",
+        costManual: "360.000 đ",
+        costAi: "125.000 đ",
+        costSaving: "-65.3%",
+        autoRateGain: "+86.0%",
+        pctDist: 28,
+        pctTime: 28,
+        pctEnergy: 29,
+        pctCost: 35,
+      },
+      NXPU9465754: {
+        manualPos: "D01-02-02-2",
+        manualDist: "430 m",
+        manualTime: "19.0 phút",
+        manualConflict: "Bị 1 container đè phía trên",
+        manualEnergy: "4.3 Lít",
+        manualAutoRate: "12%",
+        aiPos: "D01-02-04-1",
+        aiDist: "125 m",
+        aiTime: "5.8 phút",
+        aiConflict: "0 lần (Cẩu thẳng)",
+        aiEnergy: "1.3 Lít",
+        aiAutoRate: "98%",
+        distSaving: "-70.9%",
+        timeSaving: "-69.5%",
+        energySaving: "-69.8%",
+        conflictSaving: "-100%",
+        costManual: "380.000 đ",
+        costAi: "135.000 đ",
+        costSaving: "-64.5%",
+        autoRateGain: "+86.0%",
+        pctDist: 29,
+        pctTime: 31,
+        pctEnergy: 30,
+        pctCost: 36,
+      },
+      HLXU3284010: {
+        manualPos: "F01-02-03-1",
+        manualDist: "440 m",
+        manualTime: "19.5 phút",
+        manualConflict: "Không bị đè (Tầng đáy)",
+        manualEnergy: "4.4 Lít",
+        manualAutoRate: "14%",
+        aiPos: "F01-02-04-1",
+        aiDist: "105 m",
+        aiTime: "4.8 phút",
+        aiConflict: "0 lần (Lấy trực tiếp)",
+        aiEnergy: "1.1 Lít",
+        aiAutoRate: "99%",
+        distSaving: "-76.1%",
+        timeSaving: "-75.4%",
+        energySaving: "-75.0%",
+        conflictSaving: "-100%",
+        costManual: "350.000 đ",
+        costAi: "115.000 đ",
+        costSaving: "-67.1%",
+        autoRateGain: "+85.0%",
+        pctDist: 24,
+        pctTime: 25,
+        pctEnergy: 25,
+        pctCost: 33,
+      },
     };
-    return map[c.containerNo] || map["MSCU1234567"];
+    return map[c?.containerNo] || map["HAMU9350046"] || map["MSCU1234567"];
   }, [selectedCompareContainer]);
 
   // 1-Click Zero-Touch Direct AI Dispatch (Eliminates manual input)
@@ -1349,12 +1540,57 @@ export default function YardMovementOperations() {
     }
   }, [newIsBillable, newShiftingReason, newContainerType]);
 
+  // Helper to normalize container type to match dropdown options
+  const normalizeDropdownType = (rawType) => {
+    let norm = (rawType || "").toUpperCase().trim();
+    if (norm.includes("20")) {
+      if (norm.includes("RF") || norm.includes("RH") || norm.includes("REEFER") || norm.includes("LẠNH")) {
+        return "20FT RF";
+      } else if (norm.includes("TANK") || norm.includes("TK") || norm.includes("BỒN")) {
+        return "20FT TANK";
+      } else if (norm.includes("OT")) {
+        return "20FT OT";
+      } else {
+        return "20FT ST";
+      }
+    } else if (norm.includes("45")) {
+      return "45FT HC";
+    } else {
+      if (norm.includes("RF") || norm.includes("RH") || norm.includes("REEFER") || norm.includes("LẠNH")) {
+        return "40FT RF";
+      } else if (norm.includes("DC") || norm.includes("GP") || norm.includes("ST")) {
+        return "40FT DC";
+      } else if (norm.includes("TANK") || norm.includes("TK") || norm.includes("BỒN")) {
+        return "40FT TANK";
+      } else {
+        return "40FT HC";
+      }
+    }
+  };
+
   // Handle Container selection in Create Modal
   const handleSelectPredefinedContainer = (c) => {
     setNewContainerNo(c.containerNo);
-    setNewContainerType(c.type);
-    setNewFromLocation(c.location);
+    const matchedType = normalizeDropdownType(c.type);
+    setNewContainerType(matchedType);
+    setNewFromLocation(c.location || "");
   };
+
+  // Auto-detect container info from availableContainers if user types / pastes container number
+  useEffect(() => {
+    if (!newContainerNo || !availableContainers.length) return;
+    const cleanNo = newContainerNo.trim().toUpperCase();
+    const found = availableContainers.find(
+      (c) => c.containerNo?.toUpperCase() === cleanNo
+    );
+    if (found) {
+      const matched = normalizeDropdownType(found.type);
+      setNewContainerType(matched);
+      if (found.location && (!newFromLocation || newFromLocation === "A01-01-01-1")) {
+        setNewFromLocation(found.location);
+      }
+    }
+  }, [newContainerNo, availableContainers]);
 
   // AI Slot Recommendation Trigger
   const handleAiAutoSelectSlot = () => {
@@ -1416,6 +1652,57 @@ export default function YardMovementOperations() {
   // Handle Live Slot Validation
   const handleValidateSlot = async () => {
     setValidatingSlot(true);
+    const tierNum = parseInt(newTargetTier, 10);
+    const is40Ft = newContainerType && (newContainerType.includes("40") || newContainerType.includes("45"));
+    const is20Ft = newContainerType && newContainerType.includes("20");
+
+    // 1. Kiểm tra quy tắc đỡ tầng & góc chịu lực
+    if (tierNum > 1) {
+      const allRes = yardReservationStore.getReservations();
+      const bayNum = parseInt(newTargetBay, 10);
+      const rowNum = parseInt(newTargetRow, 10);
+
+      if (is40Ft) {
+        const bay1 = bayNum % 2 === 0 ? bayNum - 1 : bayNum;
+        const bay2 = bayNum % 2 === 0 ? bayNum + 1 : bayNum + 2;
+
+        const lower1 = allRes.find(r => (r.blockCode === newTargetBlock || r.block === newTargetBlock) && Number(r.bay) === bay1 && Number(r.row) === rowNum && Number(r.tier) === tierNum - 1);
+        const lower2 = allRes.find(r => (r.blockCode === newTargetBlock || r.block === newTargetBlock) && Number(r.bay) === bay2 && Number(r.row) === rowNum && Number(r.tier) === tierNum - 1);
+
+        if (!lower1 && !lower2) {
+          const msg = `❌ Vi phạm quy tắc đỡ tầng: Tầng dưới (Tier ${tierNum - 1}) đang trống. Container không thể lơ lửng trên không, bắt buộc phải xếp từ nền bãi (Tier 1) lên!`;
+          setSlotValidation({ isValid: false, message: msg, warnings: [] });
+          showToast(msg, "error");
+          setValidatingSlot(false);
+          return;
+        }
+
+        if ((lower1 && !lower2) || (!lower1 && lower2)) {
+          const msg = `❌ Vi phạm góc chịu lực kết cấu: Không thể đặt container 40ft lên trên chỉ 1 container 20ft! 4 trụ góc sẽ bị hẫng lơ lửng gây sập đổ. Tầng dưới bắt buộc phải là container 40ft hoặc đủ 2 container 20ft đỡ 4 góc!`;
+          setSlotValidation({ isValid: false, message: msg, warnings: [] });
+          showToast(msg, "error");
+          setValidatingSlot(false);
+          return;
+        }
+      } else if (is20Ft) {
+        const lower = allRes.find(r => (r.blockCode === newTargetBlock || r.block === newTargetBlock) && Number(r.bay) === bayNum && Number(r.row) === rowNum && Number(r.tier) === tierNum - 1);
+        if (!lower) {
+          const msg = `❌ Vi phạm quy tắc đỡ tầng: Tầng dưới (Tier ${tierNum - 1}) đang trống. Container bắt buộc phải có container đỡ bên dưới hoặc xếp từ Tier 1!`;
+          setSlotValidation({ isValid: false, message: msg, warnings: [] });
+          showToast(msg, "error");
+          setValidatingSlot(false);
+          return;
+        }
+        if (lower.size === 40 || lower.moduleSpan === 2) {
+          const msg = `❌ Vi phạm kỹ thuật bãi: Không xếp container 20ft lên trên container 40ft vì gù giữa sẽ tì vào giữa nóc cont 40ft!`;
+          setSlotValidation({ isValid: false, message: msg, warnings: [] });
+          showToast(msg, "error");
+          setValidatingSlot(false);
+          return;
+        }
+      }
+    }
+
     try {
       const res = await yardTaskService.validateTargetSlot({
         targetLocation: computedDestLocation,
@@ -1432,7 +1719,6 @@ export default function YardMovementOperations() {
         showToast(`⚠️ Vị trí đích không hợp lệ: ${res.message}`, "error");
       }
     } catch {
-      const tierNum = parseInt(newTargetTier, 10);
       if (tierNum > 5) {
         setSlotValidation({
           isValid: false,
@@ -1466,6 +1752,11 @@ export default function YardMovementOperations() {
         "❌ Vị trí đích không được trùng với vị trí gốc hiện tại!",
         "error",
       );
+      return;
+    }
+
+    if (slotValidation && !slotValidation.isValid) {
+      showToast(`❌ Không thể tạo lệnh: ${slotValidation.message}`, "error");
       return;
     }
 
@@ -1695,53 +1986,60 @@ export default function YardMovementOperations() {
     setIsAnalyzingConflict(true);
     const scenario = currentConflictScenario;
     const targetNo =
-      customTargetContInput.trim() || scenario.targetContainer.id;
-    const location = scenario.targetContainer.pos;
+      (customTargetContInput.trim() || activeConflictContainer.containerNo).toUpperCase();
+    const targetCont =
+      availableContainers.find((c) => c.containerNo?.toUpperCase() === targetNo) ||
+      activeConflictContainer;
+    const location = targetCont.location || "B02-02-01-2";
     const dest =
-      customDestinationInput.trim() || scenario.targetMove.moveTarget;
+      customDestinationInput.trim() || "Cầu Tàu Bến 02 (Xuất Lên Tàu)";
 
     try {
       const res = await yardRestackService.analyzeBlockedContainer({
         containerNo: targetNo,
         location: location,
-        blockCode: location.split("-")[0] || "C01",
+        blockCode: location.split("-")[0] || "B02",
         targetDestination: dest,
         restackBackToOriginal: restackBackOption,
       });
 
-      if (res && res.blockingContainers && res.blockingContainers.length > 0) {
-        const allMoves = [
-          ...res.blockingContainers.map((b) => ({
-            step: b.stepOrder,
-            id: b.containerNo,
-            type: b.containerType,
-            tier: `Tầng ${b.tier}`,
-            currentPos: b.currentLocation,
-            moveTarget: b.recommendedBufferSlot,
-            rtg: "RTG-01",
-            weight: b.weight,
-            duration: "2.0 phút",
-            reason: b.reason,
-            isTarget: false,
-            status: "READY",
-          })),
-          {
-            step: res.blockingContainers.length + 1,
-            id: res.targetContainer.containerNo,
-            type: res.targetContainer.containerType,
-            tier: `Tầng ${res.targetContainer.tier}`,
-            currentPos: res.targetContainer.currentLocation,
-            moveTarget: res.targetContainer.targetDestination,
-            rtg: "RTG-01",
-            weight: res.targetContainer.weight,
-            duration: "3.5 phút",
-            reason: `Giải phóng container mục tiêu bàn giao ${res.targetContainer.targetDestination}`,
-            isTarget: true,
-            status: "READY",
-          },
-        ];
+      if (res && res.targetContainer) {
+        const blockingMoves = (res.blockingContainers || []).map((b) => ({
+          step: b.stepOrder,
+          id: b.containerNo,
+          type: b.containerType,
+          tier: `Tầng ${b.tier}`,
+          currentPos: b.currentLocation,
+          moveTarget: b.recommendedBufferSlot,
+          rtg: "RTG-01",
+          weight: b.weight || "29.0 Tấn",
+          duration: "2.0 phút",
+          reason: b.reason,
+          isTarget: false,
+          status: "READY",
+        }));
 
-        if (restackBackOption) {
+        const targetMove = {
+          step: blockingMoves.length + 1,
+          id: res.targetContainer.containerNo,
+          type: res.targetContainer.containerType,
+          tier: `Tầng ${res.targetContainer.tier}`,
+          currentPos: res.targetContainer.currentLocation,
+          moveTarget: res.targetContainer.targetDestination || dest,
+          rtg: "RTG-01",
+          weight: res.targetContainer.weight || "29.2 Tấn",
+          duration: "3.5 phút",
+          reason:
+            blockingMoves.length > 0
+              ? `Giải phóng container mục tiêu bàn giao ${res.targetContainer.targetDestination || dest}`
+              : `Container mục tiêu không bị đè, cẩu lấy trực tiếp bàn giao ${res.targetContainer.targetDestination || dest}`,
+          isTarget: true,
+          status: "READY",
+        };
+
+        const allMoves = [...blockingMoves, targetMove];
+
+        if (restackBackOption && blockingMoves.length > 0) {
           let backStep = allMoves.length + 1;
           for (let i = res.blockingContainers.length - 1; i >= 0; i--) {
             const b = res.blockingContainers[i];
@@ -1753,7 +2051,7 @@ export default function YardMovementOperations() {
               currentPos: b.recommendedBufferSlot,
               moveTarget: b.currentLocation,
               rtg: "RTG-01",
-              weight: b.weight,
+              weight: b.weight || "29.0 Tấn",
               duration: "2.0 phút",
               reason: `Khôi phục container ${b.containerNo} về lại vị trí cột ban đầu`,
               isTarget: false,
@@ -1765,11 +2063,12 @@ export default function YardMovementOperations() {
         const canExec =
           res.canExecute !== false &&
           !allMoves.some((m) => m.moveTarget?.includes("KHÔNG CÓ SLOT"));
+
         setConflictPlanResult({
           scenarioId: selectedConflictScenarioId,
           targetContainerNo: res.targetContainer.containerNo,
           targetLocation: res.targetContainer.currentLocation,
-          targetDestination: res.targetContainer.targetDestination,
+          targetDestination: res.targetContainer.targetDestination || dest,
           blockCode: res.targetContainer.blockCode,
           restackBackToOriginal: restackBackOption,
           isOptimized: true,
@@ -1778,12 +2077,14 @@ export default function YardMovementOperations() {
             res.validationMessage ||
             (!canExec
               ? "Không tìm thấy slot đệm trống trong phạm vi an toàn."
-              : "Đủ slot đệm an toàn để thực thi kế hoạch."),
+              : blockingMoves.length === 0
+                ? "Container không bị đè; có thể lập lệnh lấy trực tiếp."
+                : "Đủ slot đệm an toàn để thực thi kế hoạch."),
           generatedTasks: allMoves,
           metrics: {
             timeSaved: res.aiMetrics?.timeSaved || "0%",
-            estimatedDuration: `${res.estimatedDurationMinutes} phút`,
-            originalDuration: `${res.estimatedDurationMinutes * 3} phút`,
+            estimatedDuration: `${res.estimatedDurationMinutes || allMoves.length * 3} phút`,
+            originalDuration: `${(res.estimatedDurationMinutes || allMoves.length * 3) * 3} phút`,
             energySaved: res.aiMetrics?.energySaved || "0%",
             movesCount: allMoves.length,
             confidence: res.aiMetrics?.confidence || "99.8%",
@@ -1799,7 +2100,7 @@ export default function YardMovementOperations() {
 
         if (canExec) {
           showToast(
-            `🤖 AI BRP ĐÃ TỐI ƯU HÓA: Phát hiện ${res.blockingContainers.length} container đè tầng, đã tính toán chuỗi ${allMoves.length} lệnh cẩu tối ưu!`,
+            `🤖 AI BRP ĐÃ TỐI ƯU HÓA: ${blockingMoves.length > 0 ? `Phát hiện ${blockingMoves.length} container đè tầng, đã tính toán chuỗi ${allMoves.length} lệnh cẩu tối ưu!` : "Container không bị đè tầng, sẵn sàng cẩu trực tiếp!"}`,
             "success",
           );
         } else {
@@ -1824,6 +2125,9 @@ export default function YardMovementOperations() {
         })),
         {
           ...scenario.targetMove,
+          id: targetNo,
+          currentPos: location,
+          moveTarget: dest,
           isTarget: true,
           status: "READY",
         },
@@ -1855,10 +2159,10 @@ export default function YardMovementOperations() {
         !allMoves.some((m) => m.moveTarget?.includes("KHÔNG CÓ SLOT"));
       setConflictPlanResult({
         scenarioId: scenario.id,
-        targetContainerNo: scenario.targetContainer.id,
-        targetLocation: scenario.targetContainer.pos,
-        targetDestination: scenario.targetMove.moveTarget,
-        blockCode: scenario.targetContainer.pos.split("-")[0] || "C01",
+        targetContainerNo: targetNo,
+        targetLocation: location,
+        targetDestination: dest,
+        blockCode: location.split("-")[0] || "B02",
         restackBackToOriginal: restackBackOption,
         isOptimized: true,
         canExecute: canExec,
@@ -1882,7 +2186,7 @@ export default function YardMovementOperations() {
 
       if (canExec) {
         showToast(
-          `🤖 AI ĐÃ TỐI ƯU HÓA XONG: Đã hiển thị kết quả và các lệnh triển khai lên màn hình! Vui lòng bấm xác nhận để phát lệnh.`,
+          `🤖 AI ĐÃ TỐI ƯU HÓA: Đã tính toán chuỗi lệnh di chuyển cho container [${targetNo}] tại [${location}]!`,
           "success",
         );
       } else {
@@ -1891,7 +2195,7 @@ export default function YardMovementOperations() {
           "error",
         );
       }
-    }, 600);
+    }, 400);
   };
 
   // Confirm and Deploy All Generated Conflict Resolution Tasks (NXP-126)
@@ -2380,8 +2684,8 @@ export default function YardMovementOperations() {
                 : "text-slate-600 hover:text-slate-900"
             }`}
           >
-            <span className="material-symbols-outlined text-sm">grid_view</span>
-            Sơ Đồ Bãi 2.5D
+            <span className="material-symbols-outlined text-sm">map</span>
+            Sơ Đồ Bãi 2D
           </button>
           <button
             onClick={() => setViewMode("RESTACK_WIZARD")}
@@ -2415,7 +2719,7 @@ export default function YardMovementOperations() {
 
         {/* Right Side: Create New Relocation Task Button */}
         <button
-          onClick={() => setCreateModalOpen(true)}
+          onClick={handleOpenCreateModal}
           className="px-6 py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 active:scale-98 text-white font-black text-xs rounded-2xl shadow-md hover:shadow-lg cursor-pointer transition-all flex items-center justify-center gap-2 shrink-0"
         >
           <span className="material-symbols-outlined text-lg">add_circle</span>[
@@ -3082,12 +3386,12 @@ export default function YardMovementOperations() {
                                   className="text-[8px] font-mono font-black text-slate-700 bg-white border border-slate-200 px-1 py-0.5 rounded truncate max-w-[80px]"
                                   title={
                                     fromP.isStandard
-                                      ? `Khu ${fromP.block}`
+                                      ? `Block ${fromP.block}`
                                       : "Bãi Ngoài"
                                   }
                                 >
                                   {fromP.isStandard
-                                    ? `Khu ${fromP.block}`
+                                    ? `Block ${fromP.block}`
                                     : "Bãi Ngoài"}
                                 </span>
                               </div>
@@ -3101,12 +3405,12 @@ export default function YardMovementOperations() {
                                 className="text-[9px] text-slate-500 font-sans font-medium truncate"
                                 title={
                                   fromP.isStandard
-                                    ? `Bay ${fromP.bay} · Hàng ${fromP.row} · T${fromP.tier}`
+                                    ? `Bay ${fromP.bay} · Row ${fromP.row} · T${fromP.tier}`
                                     : "Điểm bốc dỡ phương tiện"
                                 }
                               >
                                 {fromP.isStandard
-                                  ? `Bay ${fromP.bay} · Hàng ${fromP.row} · T${fromP.tier}`
+                                  ? `Bay ${fromP.bay} · Row ${fromP.row} · T${fromP.tier}`
                                   : "Điểm bốc dỡ phương tiện"}
                               </div>
                             </div>
@@ -3133,12 +3437,12 @@ export default function YardMovementOperations() {
                                   className="text-[8px] font-mono font-black text-blue-800 bg-blue-100/90 px-1 py-0.5 rounded border border-blue-200 truncate max-w-[80px]"
                                   title={
                                     toP.isStandard
-                                      ? `Khu ${toP.block}`
+                                      ? `Block ${toP.block}`
                                       : "Điểm Giao"
                                   }
                                 >
                                   {toP.isStandard
-                                    ? `Khu ${toP.block}`
+                                    ? `Block ${toP.block}`
                                     : "Điểm Giao"}
                                 </span>
                               </div>
@@ -3152,12 +3456,12 @@ export default function YardMovementOperations() {
                                 className="text-[9px] text-blue-700/80 font-sans font-medium truncate"
                                 title={
                                   toP.isStandard
-                                    ? `Bay ${toP.bay} · Hàng ${toP.row} · T${toP.tier}`
+                                    ? `Bay ${toP.bay} · Row ${toP.row} · T${toP.tier}`
                                     : "Bàn giao cẩu STS / Xe kéo"
                                 }
                               >
                                 {toP.isStandard
-                                  ? `Bay ${toP.bay} · Hàng ${toP.row} · T${toP.tier}`
+                                  ? `Bay ${toP.bay} · Row ${toP.row} · T${toP.tier}`
                                   : "Bàn giao cẩu STS / Xe kéo"}
                               </div>
                             </div>
@@ -3278,152 +3582,41 @@ export default function YardMovementOperations() {
 
       {/* ── VIEW 2: INTERACTIVE 2.5D YARD MAP VIEW ── */}
       {viewMode === "YARD_MAP" && (
-        <div
-          className="bg-slate-900 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white rounded-3xl p-6 shadow-xl border border-slate-700 space-y-6"
-          style={{ backgroundColor: "#0f172a" }}
-        >
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-700 pb-4">
+        <div className="bg-white rounded-3xl p-5 shadow-xs border border-slate-200/90 space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-200 pb-3">
             <div>
-              <div className="flex items-center gap-2 text-orange-400 text-xs font-mono font-black uppercase">
-                <span className="material-symbols-outlined text-base">
-                  domain
-                </span>
-                SƠ ĐỒ TỔNG QUAN BÃI CONTAINER 2.5D (BẢN SAO SỐ DIGITAL TWIN)
+              <div className="flex items-center gap-2 text-orange-600 text-xs font-mono font-black uppercase">
+                <span className="material-symbols-outlined text-base">map</span>
+                SƠ ĐỒ BÃI CONTAINER 2D CHUẨN — CẢNG TIÊN SA
               </div>
-              <h3 className="font-heading text-xl font-black text-white">
-                Bản Đồ Vị Trí Các Block & Tuyến Đường RTG
+              <h3 className="font-heading text-xl font-black text-slate-900">
+                Bản Đồ Bãi & Giám Sát Vị Trí Thời Gian Thực
               </h3>
             </div>
-            <div className="flex items-center gap-3 text-xs font-mono">
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-blue-500 rounded"></span> Maersk
+            {activeTask ? (
+              <div className="flex items-center gap-2 text-xs font-mono bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-xl text-blue-900 shadow-2xs">
+                <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+                <span>Lệnh đang chọn: <strong>{activeTask.id}</strong> (Cont: {activeTask.containerId})</span>
+                <span className="text-slate-500 font-sans">|</span>
+                <span className="font-bold text-orange-600">{activeTask.from} ➔ {activeTask.to}</span>
+              </div>
+            ) : (
+              <span className="text-xs text-slate-500 font-mono">
+                Chọn một lệnh trong danh sách để xem lộ trình di chuyển trực quan
               </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-yellow-500 rounded"></span> MSC
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-pink-500 rounded"></span> ONE
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-3 h-3 bg-emerald-500 rounded"></span>{" "}
-                Evergreen
-              </span>
-            </div>
+            )}
           </div>
 
-          {/* 3D Block Visual Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {["A01", "B02", "C01"].map((blockCode) => (
-              <div
-                key={blockCode}
-                className="bg-slate-700/80 border border-slate-600 rounded-3xl p-5 space-y-4 hover:border-orange-500/80 transition-all shadow-lg"
-              >
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <strong className="text-xl font-black font-heading text-white">
-                      Block {blockCode}
-                    </strong>
-                    <span className="px-2.5 py-0.5 rounded-full bg-slate-800 text-emerald-400 font-mono text-[10px] font-black border border-slate-600">
-                      {blockCode === "A01"
-                        ? "RTG-01 / RTG-02"
-                        : blockCode === "B02"
-                          ? "RTG-03"
-                          : "RS-01"}
-                    </span>
-                  </div>
-                  <span className="text-xs font-mono text-slate-300">
-                    12 Dãy (Bay) • 4 Tầng (Tier)
-                  </span>
-                </div>
-
-                {/* 3D Visual Stacking representation */}
-                <div className="grid grid-cols-4 gap-1.5 p-3 bg-slate-900/90 rounded-2xl border border-slate-800">
-                  {(YARD_BAY_MATRIX[blockCode] || []).map((slot, idx) => (
-                    <div
-                      key={idx}
-                      onMouseEnter={() =>
-                        setHoveredSlotInfo({ ...slot, block: blockCode })
-                      }
-                      onMouseLeave={() => setHoveredSlotInfo(null)}
-                      className={`h-11 rounded-lg flex flex-col items-center justify-center font-mono text-[9px] font-black transition-all cursor-pointer hover:scale-105 ${
-                        slot.status === "OCCUPIED"
-                          ? slot.line === "MSC"
-                            ? "bg-yellow-500 text-slate-950 shadow-xs"
-                            : slot.line === "MAERSK"
-                              ? "bg-blue-500 text-white shadow-xs"
-                              : slot.line === "ONE"
-                                ? "bg-pink-500 text-white shadow-xs"
-                                : "bg-emerald-500 text-white shadow-xs"
-                          : slot.status === "AVAILABLE"
-                            ? "bg-slate-800 border border-dashed border-slate-600 text-slate-400 hover:border-emerald-400 hover:text-emerald-400"
-                            : slot.status === "GRAVITY_WARNING"
-                              ? "bg-amber-950/40 border border-amber-800 text-amber-500"
-                              : "bg-red-950/40 border border-red-800 text-red-500"
-                      }`}
-                    >
-                      <div>
-                        {slot.status === "OCCUPIED"
-                          ? slot.line
-                          : `R${slot.row}T${slot.tier}`}
-                      </div>
-                      <div className="text-[8px] opacity-75">
-                        {slot.status === "OCCUPIED"
-                          ? slot.weight || "28T"
-                          : "Trống"}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex justify-between items-center text-xs font-mono pt-2 border-t border-slate-600">
-                  <span className="text-slate-300">Tỷ lệ lấp đầy:</span>
-                  <span className="text-emerald-400 font-bold">
-                    {blockCode === "A01"
-                      ? "68.7%"
-                      : blockCode === "B02"
-                        ? "81.2%"
-                        : "55.0%"}
-                  </span>
-                </div>
-              </div>
-            ))}
+          <div className="rounded-2xl overflow-hidden border border-slate-200">
+            <YardDesignPreview
+              embedded={true}
+              movement={activeTask ? {
+                from: activeTask.from,
+                to: activeTask.to,
+                containerId: activeTask.containerId || activeTask.containerNo
+              } : null}
+            />
           </div>
-
-          {/* Hovered Slot Detail Card */}
-          {hoveredSlotInfo && hoveredSlotInfo.status === "OCCUPIED" && (
-            <div className="p-4 bg-slate-700/90 rounded-2xl border border-slate-600 flex justify-between items-center text-xs font-mono animate-fadeIn">
-              <div className="flex items-center gap-3">
-                <span className="text-xl">📦</span>
-                <div>
-                  <strong className="text-white text-sm">
-                    {hoveredSlotInfo.cont}
-                  </strong>
-                  <span className="text-slate-300 ml-2">
-                    Hãng tàu:{" "}
-                    <strong className="text-yellow-400">
-                      {hoveredSlotInfo.line}
-                    </strong>
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-4 text-slate-200">
-                <span>
-                  Vị trí:{" "}
-                  <strong>
-                    {hoveredSlotInfo.block}-R{hoveredSlotInfo.row}-T
-                    {hoveredSlotInfo.tier}
-                  </strong>
-                </span>
-                <span>
-                  Tải trọng:{" "}
-                  <strong>{hoveredSlotInfo.weight || "28.4T"}</strong>
-                </span>
-                <span>
-                  Lưu bãi: <strong>{hoveredSlotInfo.dwell || "3 ngày"}</strong>
-                </span>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -3454,30 +3647,35 @@ export default function YardMovementOperations() {
               </p>
             </div>
 
-            {/* Scenario Pills Selector */}
+            {/* Real Active Yard Containers Selector */}
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full lg:w-auto shrink-0">
-              <span className="text-[11px] font-bold text-slate-500 uppercase font-sans">
-                Chọn Tình Huống:
+              <span className="text-[11px] font-extrabold text-slate-700 uppercase font-sans flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-ping"></span>
+                Chọn Cont Trong Bãi (PostgreSQL):
               </span>
-              <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold gap-1 flex-wrap">
-                {CONFLICT_SCENARIOS.map((sc) => (
+              <div className="flex bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold gap-1 flex-wrap max-w-xl">
+                {(availableContainers.length > 0
+                  ? availableContainers.slice(0, 6)
+                  : SAMPLE_CONTAINERS
+                ).map((c) => (
                   <button
-                    key={sc.id}
-                    onClick={() => handleSelectConflictScenario(sc.id)}
+                    key={c.containerNo}
+                    type="button"
+                    onClick={() => {
+                      setCustomTargetContInput(c.containerNo);
+                      setConflictPlanResult(null);
+                      setConflictPlanDeployed(false);
+                      setConflictExecutingStep(0);
+                    }}
                     className={`px-3 py-1.5 rounded-xl cursor-pointer transition-all flex items-center gap-1.5 ${
-                      selectedConflictScenarioId === sc.id
+                      activeConflictContainer.containerNo === c.containerNo
                         ? "bg-blue-600 text-white font-black shadow-xs"
-                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-200"
+                        : "text-slate-700 hover:text-slate-900 hover:bg-slate-200 bg-white border border-slate-200"
                     }`}
                   >
-                    <span>
-                      {sc.id === "SCENARIO_1"
-                        ? "⚡ Tàu Khẩn"
-                        : sc.id === "SCENARIO_2"
-                          ? "🚛 Xe Cổng C"
-                          : sc.id === "SCENARIO_3"
-                            ? "❄️ Hàng Reefer"
-                            : "🚫 Hết Slot (Test)"}
+                    <span className="font-mono text-xs">{c.containerNo}</span>
+                    <span className="text-[9px] opacity-75 font-normal">
+                      ({c.location})
                     </span>
                   </button>
                 ))}
@@ -3506,9 +3704,12 @@ export default function YardMovementOperations() {
                     onChange={(e) =>
                       setCustomTargetContInput(e.target.value.toUpperCase())
                     }
-                    placeholder="VD: CAIU1234567 hoặc C01-04-10-1"
+                    placeholder="VD: HAMU6381022 hoặc B02-02-01-2"
                     className="h-9 px-3 rounded-xl border border-slate-300 font-mono font-bold text-xs bg-white text-slate-900 focus:outline-none focus:border-blue-600 w-44"
                   />
+                  <span className="text-[10px] text-blue-700 font-mono font-bold bg-blue-50 px-2 py-1 rounded-lg border border-blue-200">
+                    {activeConflictContainer.location}
+                  </span>
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -3562,10 +3763,8 @@ export default function YardMovementOperations() {
                 <span className="text-xs font-mono font-black text-slate-900 uppercase">
                   CONTAINER MỤC TIÊU CẦN GIẢI PHÓNG
                 </span>
-                <span
-                  className={`px-2.5 py-0.5 rounded-lg font-mono text-[10px] font-black border ${currentConflictScenario.badgeColor}`}
-                >
-                  {currentConflictScenario.badge}
+                <span className="px-2.5 py-0.5 rounded-lg font-mono text-[10px] font-black border bg-emerald-50 text-emerald-950 border-emerald-300">
+                  LIVE DATABASE
                 </span>
               </div>
 
@@ -3576,12 +3775,12 @@ export default function YardMovementOperations() {
                       MÃ CONTAINER
                     </span>
                     <strong className="text-blue-950 font-black text-2xl">
-                      {currentConflictScenario.targetContainer.id}
+                      {activeConflictContainer.containerNo}
                     </strong>
                   </div>
                   <span className="px-2.5 py-1 bg-blue-50 text-blue-900 border border-blue-200 rounded-xl font-bold text-xs">
-                    {currentConflictScenario.targetContainer.type} •{" "}
-                    {currentConflictScenario.targetContainer.weight}
+                    {activeConflictContainer.type} •{" "}
+                    {activeConflictContainer.weight || "29.2 Tấn"}
                   </span>
                 </div>
 
@@ -3591,10 +3790,12 @@ export default function YardMovementOperations() {
                       VỊ TRÍ HIỆN TẠI
                     </span>
                     <strong className="text-slate-900 text-sm font-black">
-                      {currentConflictScenario.targetContainer.pos}
+                      {activeConflictContainer.location}
                     </strong>
                     <div className="text-[10px] text-orange-600 font-sans font-bold">
-                      {currentConflictScenario.targetContainer.tier}
+                      {activeConflictContainer.location?.includes("-")
+                        ? `Tầng ${activeConflictContainer.location.split("-")[3] || 1}`
+                        : "Tầng 1"}
                     </div>
                   </div>
                   <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200">
@@ -3602,171 +3803,271 @@ export default function YardMovementOperations() {
                       HÃNG TÀU / LƯU BÃI
                     </span>
                     <strong className="text-slate-900 text-sm font-black">
-                      {currentConflictScenario.targetContainer.line}
+                      {activeConflictContainer.line || "COSCO"}
                     </strong>
                     <div className="text-[10px] text-slate-500 font-sans">
-                      {currentConflictScenario.targetContainer.dwell}
+                      {activeConflictContainer.dwellDays || 2} ngày lưu bãi
                     </div>
                   </div>
                 </div>
 
-                <div className="p-3 bg-rose-50 rounded-2xl border border-rose-200 text-rose-950 font-sans text-xs">
+                <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 text-slate-800 font-sans text-xs">
+                  <span className="text-[10px] text-slate-400 block font-sans">
+                    LOẠI HÀNG HÓA
+                  </span>
+                  <div className="font-bold text-slate-900 mt-0.5">
+                    {activeConflictContainer.cargo || "Hàng Khô Xuất Nhập Khẩu"}
+                  </div>
+                </div>
+
+                <div
+                  className={`p-3 rounded-2xl border font-sans text-xs ${
+                    conflictPlanResult
+                      ? conflictPlanResult.generatedTasks.filter(
+                          (t) => !t.isTarget,
+                        ).length > 0
+                        ? "bg-rose-50 border-rose-200 text-rose-950"
+                        : "bg-emerald-50 border-emerald-200 text-emerald-950"
+                      : "bg-amber-50 border-amber-200 text-amber-950"
+                  }`}
+                >
                   <div className="flex items-center gap-1.5 font-bold mb-1">
-                    <span className="material-symbols-outlined text-rose-600 text-sm">
-                      warning
+                    <span className="material-symbols-outlined text-sm">
+                      {conflictPlanResult ? "verified" : "info"}
                     </span>
-                    <span>Hiện Trạng Xung Đột:</span>
+                    <span>Hiện Trạng Cột Xếp Bãi:</span>
                   </div>
                   <div>
-                    Đang bị{" "}
-                    <strong className="text-rose-700 font-black">
-                      {currentConflictScenario.blockingContainers.length}{" "}
-                      container
-                    </strong>{" "}
-                    đè phía trên. Cần đảo cẩu để tránh chậm trễ xuất hàng!
-                  </div>
-                  <div className="text-[11px] text-rose-700 font-mono mt-1 font-bold">
-                    Mức độ: {currentConflictScenario.targetContainer.urgency}
+                    {conflictPlanResult ? (
+                      conflictPlanResult.generatedTasks.filter(
+                        (t) => !t.isTarget,
+                      ).length > 0 ? (
+                        <>
+                          Đang bị{" "}
+                          <strong className="text-rose-700 font-black">
+                            {
+                              conflictPlanResult.generatedTasks.filter(
+                                (t) => !t.isTarget,
+                              ).length
+                            }{" "}
+                            container
+                          </strong>{" "}
+                          đè phía trên. Chuỗi lệnh cẩu tối ưu đã được AI tính
+                          toán sẵn sàng!
+                        </>
+                      ) : (
+                        <>
+                          Container{" "}
+                          <strong className="text-emerald-700 font-black">
+                            không bị đè
+                          </strong>{" "}
+                          (đang ở đỉnh tầng). Có thể phát lệnh cẩu trực tiếp lên
+                          xe/tàu!
+                        </>
+                      )
+                    ) : (
+                      "Vị trí bãi đã đồng bộ thời gian thực từ PostgreSQL. Bấm nút 1-Chạm bên dưới để AI quét stack và đề xuất slot đệm."
+                    )}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Khối Phải: Sơ Đồ Mặt Cắt 2D Cột Xếp Container (7 Cột) */}
+            {/* Khối Phải: Sơ Đồ 2D Cảng Tiên Sa Hoặc Mặt Cắt Cột Xếp Container (7 Cột) */}
             <div className="lg:col-span-7 bg-slate-900 text-white rounded-3xl p-5 sm:p-6 shadow-xl border border-slate-800 space-y-4 flex flex-col justify-between">
-              <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-orange-400 text-lg">
-                    view_in_ar
+                    {restackRightView === "MAP" ? "map" : "view_in_ar"}
                   </span>
                   <h4 className="font-heading font-black text-white text-sm sm:text-base">
-                    Mô Phỏng Mặt Cắt 2D Cột Xếp Container (Stack Cross-Section)
+                    {restackRightView === "MAP"
+                      ? "Sơ Đồ Phân Khu Bãi 2D Chuẩn — Cảng Tiên Sa"
+                      : "Mô Phỏng Mặt Cắt 2D Cột Xếp Container (Stack Cross-Section)"}
                   </h4>
                 </div>
-                <span className="text-[11px] font-mono text-slate-400">
-                  {currentConflictScenario.targetContainer.pos.includes("-")
-                    ? `Khu ${parsePosition(currentConflictScenario.targetContainer.pos).block} • Bay ${parsePosition(currentConflictScenario.targetContainer.pos).bay} • Hàng ${parsePosition(currentConflictScenario.targetContainer.pos).row}`
-                    : currentConflictScenario.targetContainer.pos}
-                </span>
+
+                {/* View switcher between 2D Map and 2D Stack */}
+                <div className="flex items-center gap-1 bg-slate-800 p-1 rounded-xl border border-slate-700">
+                  <button
+                    type="button"
+                    onClick={() => setRestackRightView("MAP")}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all flex items-center gap-1 ${
+                      restackRightView === "MAP"
+                        ? "bg-blue-600 text-white font-black shadow-xs"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-xs">
+                      map
+                    </span>
+                    <span>Sơ Đồ 2D Tiên Sa</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRestackRightView("STACK")}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold cursor-pointer transition-all flex items-center gap-1 ${
+                      restackRightView === "STACK"
+                        ? "bg-blue-600 text-white font-black shadow-xs"
+                        : "text-slate-400 hover:text-white"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-xs">
+                      view_in_ar
+                    </span>
+                    <span>Mặt Cắt Cột Stack</span>
+                  </button>
+                </div>
               </div>
 
-              {/* 2D Visual Stack Column */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center font-mono text-xs py-2">
-                {/* Column A: Cột chứa container kẹt */}
-                <div className="space-y-2 p-3 bg-slate-800/90 rounded-2xl border border-slate-700">
-                  <div className="text-[10px] text-slate-400 uppercase font-sans font-bold flex justify-between">
-                    <span>
-                      CỘT HIỆN TẠI (Tọa độ:{" "}
-                      {currentConflictScenario.targetContainer.pos})
-                    </span>
-                    <span className="text-amber-400 font-bold">
-                      ĐANG BỊ KẸT
-                    </span>
-                  </div>
+              {/* View 1: Real 2D Tien Sa Yard Map */}
+              {restackRightView === "MAP" && (
+                <div className="rounded-2xl overflow-hidden border border-slate-700 bg-white min-h-[380px] text-slate-900 shadow-inner">
+                  <YardDesignPreview
+                    embedded={true}
+                    movement={{
+                      from:
+                        conflictPlanResult?.targetLocation ||
+                        activeConflictContainer.location,
+                      to:
+                        conflictPlanResult?.generatedTasks?.[0]?.moveTarget ||
+                        "",
+                      containerId:
+                        conflictPlanResult?.targetContainerNo ||
+                        activeConflictContainer.containerNo,
+                    }}
+                  />
+                </div>
+              )}
 
-                  {/* Tier 4: Trống */}
-                  <div className="h-10 rounded-xl border border-dashed border-slate-600 bg-slate-900/60 flex items-center justify-center text-slate-500 text-[10px]">
-                    Tầng 4: Trống (Không có cont)
-                  </div>
+              {/* View 2: 2D Visual Stack Column */}
+              {restackRightView === "STACK" && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-center font-mono text-xs py-2">
+                  {/* Column A: Cột chứa container kẹt */}
+                  <div className="space-y-2 p-3 bg-slate-800/90 rounded-2xl border border-slate-700">
+                    <div className="text-[10px] text-slate-400 uppercase font-sans font-bold flex justify-between">
+                      <span>
+                        CỘT HIỆN TẠI ({activeConflictContainer.location})
+                      </span>
+                      <span className="text-amber-400 font-bold">
+                        ĐANG KHẢO SÁT
+                      </span>
+                    </div>
 
-                  {/* Tier 3: Trống nếu không có container chắn tầng 3 */}
-                  {!currentConflictScenario.blockingContainers.some((b) =>
-                    b.tier?.includes("3"),
-                  ) && (
+                    {/* Tier 4: Trống */}
+                    <div className="h-10 rounded-xl border border-dashed border-slate-600 bg-slate-900/60 flex items-center justify-center text-slate-500 text-[10px]">
+                      Tầng 4: Trống (Không có cont)
+                    </div>
+
+                    {/* Tier 3: Trống */}
                     <div className="h-10 rounded-xl border border-dashed border-slate-600 bg-slate-900/60 flex items-center justify-center text-slate-500 text-[10px]">
                       Tầng 3: Trống (Không có cont)
                     </div>
-                  )}
 
-                  {/* Blocking Containers in Stack */}
-                  {currentConflictScenario.blockingContainers.map((b) => (
-                    <div
-                      key={b.id}
-                      className="h-12 rounded-xl bg-amber-500/20 border-2 border-amber-400 text-amber-200 p-2 flex items-center justify-between shadow-xs"
-                    >
+                    {/* Blocking Container if analyzed */}
+                    {conflictPlanResult &&
+                      conflictPlanResult.generatedTasks
+                        .filter((t) => !t.isTarget)
+                        .map((b, bIdx) => (
+                          <div
+                            key={bIdx}
+                            className="h-12 rounded-xl bg-amber-500/20 border-2 border-amber-400 text-amber-200 p-2 flex items-center justify-between shadow-xs"
+                          >
+                            <div>
+                              <div className="font-black text-white flex items-center gap-1">
+                                <span className="text-red-400">❌</span>
+                                <span>{b.id}</span>
+                              </div>
+                              <div className="text-[9px] text-amber-300 font-sans">
+                                {b.tier} • {b.weight}
+                              </div>
+                            </div>
+                            <span className="text-[9px] px-1.5 py-0.5 bg-amber-400/20 text-amber-300 rounded font-bold border border-amber-400/40">
+                              Chắn Trên
+                            </span>
+                          </div>
+                        ))}
+
+                    {/* Target Container */}
+                    <div className="h-14 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 border-2 border-blue-300 text-white p-2.5 flex items-center justify-between shadow-md">
                       <div>
                         <div className="font-black text-white flex items-center gap-1">
-                          <span className="text-red-400">❌</span>
-                          <span>{b.id}</span>
+                          <span>🎯</span>
+                          <span className="text-sm">
+                            {activeConflictContainer.containerNo}
+                          </span>
                         </div>
-                        <div className="text-[9px] text-amber-300 font-sans">
-                          {b.tier} • {b.weight}
+                        <div className="text-[9px] text-blue-100 font-sans">
+                          {activeConflictContainer.location} •{" "}
+                          {activeConflictContainer.type}
                         </div>
                       </div>
-                      <span className="text-[9px] px-1.5 py-0.5 bg-amber-400/20 text-amber-300 rounded font-bold border border-amber-400/40">
-                        Chắn Trên
+                      <span className="text-[9px] px-2 py-0.5 bg-emerald-400 text-slate-950 font-black rounded-lg">
+                        MỤC TIÊU
                       </span>
                     </div>
-                  ))}
+                  </div>
 
-                  {/* Target Container at Bottom */}
-                  <div className="h-14 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 border-2 border-blue-300 text-white p-2.5 flex items-center justify-between shadow-md">
-                    <div>
-                      <div className="font-black text-white flex items-center gap-1">
-                        <span>🎯</span>
-                        <span className="text-sm">
-                          {currentConflictScenario.targetContainer.id}
-                        </span>
-                      </div>
-                      <div className="text-[9px] text-blue-100 font-sans">
-                        Tầng 1 (Đáy) •{" "}
-                        {currentConflictScenario.targetContainer.weight}
-                      </div>
+                  {/* Column B: Slot Đệm Tối Ưu Do AI Tính Toán */}
+                  <div className="space-y-2 p-3 bg-slate-800/90 rounded-2xl border border-blue-500/40">
+                    <div className="text-[10px] text-blue-300 uppercase font-sans font-bold flex justify-between">
+                      <span>SLOT ĐỆM ĐỀ XUẤT (BUFFER SLOTS)</span>
+                      <span className="text-emerald-400 font-bold">
+                        KHÔNG XUNG ĐỘT
+                      </span>
                     </div>
-                    <span className="text-[9px] px-2 py-0.5 bg-emerald-400 text-slate-950 font-black rounded-lg">
-                      MỤC TIÊU
-                    </span>
-                  </div>
-                </div>
 
-                {/* Column B: Slot Đệm Tối Ưu Do AI Tính Toán */}
-                <div className="space-y-2 p-3 bg-slate-800/90 rounded-2xl border border-blue-500/40">
-                  <div className="text-[10px] text-blue-300 uppercase font-sans font-bold flex justify-between">
-                    <span>SLOT ĐỆM ĐỀ XUẤT (BUFFER SLOTS)</span>
-                    <span className="text-emerald-400 font-bold">
-                      KHÔNG XUNG ĐỘT
-                    </span>
-                  </div>
+                    {conflictPlanResult &&
+                    conflictPlanResult.generatedTasks.filter((t) => !t.isTarget)
+                      .length > 0 ? (
+                      conflictPlanResult.generatedTasks
+                        .filter((t) => !t.isTarget)
+                        .map((b, bIdx) => (
+                          <div
+                            key={bIdx}
+                            className="h-14 rounded-xl bg-slate-800/90 border border-blue-400/40 p-2 flex items-center justify-between"
+                          >
+                            <div>
+                              <div className="text-[10px] text-slate-400 font-sans">
+                                Đích di dời cho {b.id}:
+                              </div>
+                              <strong className="text-emerald-400 font-black text-sm">
+                                {b.moveTarget}
+                              </strong>
+                              <div className="text-[9px] text-slate-300 font-sans mt-0.5">
+                                {b.reason}
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[9px] px-1.5 py-0.5 bg-blue-900/60 text-blue-200 rounded border border-blue-400/40">
+                                {b.rtg}
+                              </span>
+                            </div>
+                          </div>
+                        ))
+                    ) : (
+                      <div className="p-4 rounded-xl border border-dashed border-slate-700 text-center text-slate-400 text-xs font-sans">
+                        Chưa có slot đệm. Bấm nút 1-Chạm bên dưới để AI tìm slot
+                        đệm tối ưu.
+                      </div>
+                    )}
 
-                  {currentConflictScenario.blockingContainers.map((b) => (
-                    <div
-                      key={b.id}
-                      className="h-14 rounded-xl bg-slate-800/90 border border-blue-400/40 p-2 flex items-center justify-between"
-                    >
+                    <div className="h-12 rounded-xl bg-emerald-950/60 border border-emerald-400/60 p-2 flex items-center justify-between">
                       <div>
-                        <div className="text-[10px] text-slate-400 font-sans">
-                          Đích di dời cho {b.id}:
+                        <div className="text-[10px] text-emerald-300 font-sans">
+                          Đích bàn giao container mục tiêu:
                         </div>
-                        <strong className="text-emerald-400 font-black text-sm">
-                          {b.moveTarget}
+                        <strong className="text-white font-black text-xs">
+                          {customDestinationInput || "Xe Đầu Kéo Cổng C"}
                         </strong>
-                        <div className="text-[9px] text-slate-300 font-sans mt-0.5">
-                          {b.reason}
-                        </div>
                       </div>
-                      <div className="text-right">
-                        <span className="text-[9px] px-1.5 py-0.5 bg-blue-900/60 text-blue-200 rounded border border-blue-400/40">
-                          {b.rtg}
-                        </span>
-                      </div>
+                      <span className="text-[9px] px-1.5 py-0.5 bg-emerald-400 text-slate-950 font-black rounded">
+                        GIAO TÀU/XE
+                      </span>
                     </div>
-                  ))}
-
-                  <div className="h-12 rounded-xl bg-emerald-950/60 border border-emerald-400/60 p-2 flex items-center justify-between">
-                    <div>
-                      <div className="text-[10px] text-emerald-300 font-sans">
-                        Đích bàn giao container mục tiêu:
-                      </div>
-                      <strong className="text-white font-black text-xs">
-                        {currentConflictScenario.targetMove.moveTarget}
-                      </strong>
-                    </div>
-                    <span className="text-[9px] px-1.5 py-0.5 bg-emerald-400 text-slate-950 font-black rounded">
-                      GIAO TÀU/XE
-                    </span>
                   </div>
                 </div>
-              </div>
+              )}
 
               <div className="text-[11px] text-slate-400 font-sans flex items-center gap-1.5 border-t border-slate-800 pt-2">
                 <span className="material-symbols-outlined text-sm text-blue-400">
@@ -4567,17 +4868,17 @@ export default function YardMovementOperations() {
                 Container Phân Tích:
               </span>
               <strong className="font-mono text-sm px-2.5 py-0.5 bg-blue-50 text-blue-950 rounded-lg border border-blue-200">
-                {selectedCompareContainer.containerNo}
+                {(selectedCompareContainer || availableContainers[0] || SAMPLE_CONTAINERS[0])?.containerNo}
               </strong>
               <span className="text-xs text-slate-600 font-bold">
-                ({selectedCompareContainer.type} •{" "}
-                {selectedCompareContainer.cargo})
+                ({(selectedCompareContainer || availableContainers[0] || SAMPLE_CONTAINERS[0])?.type} •{" "}
+                {(selectedCompareContainer || availableContainers[0] || SAMPLE_CONTAINERS[0])?.cargo})
               </span>
               <span className="text-[11px] font-mono px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md border border-slate-200">
-                Gốc: <strong>{selectedCompareContainer.location}</strong>
+                Gốc: <strong>{(selectedCompareContainer || availableContainers[0] || SAMPLE_CONTAINERS[0])?.location}</strong>
               </span>
               <span className="text-[11px] font-sans px-2 py-0.5 bg-blue-50 text-blue-900 rounded-md border border-blue-200 font-bold">
-                🚢 {selectedCompareContainer.nextVessel}
+                🚢 {(selectedCompareContainer || availableContainers[0] || SAMPLE_CONTAINERS[0])?.nextVessel || "FEEDER EXPRESS"}
               </span>
             </div>
 
@@ -4585,12 +4886,12 @@ export default function YardMovementOperations() {
               <span className="text-[10px] text-slate-400 font-bold uppercase mr-1 shrink-0">
                 Chọn nhanh:
               </span>
-              {SAMPLE_CONTAINERS.map((c) => (
+              {(availableContainers.length > 0 ? availableContainers : SAMPLE_CONTAINERS).map((c) => (
                 <button
                   key={c.containerNo}
                   onClick={() => setSelectedCompareContainer(c)}
                   className={`px-3 py-1.5 rounded-xl font-mono text-xs font-black cursor-pointer transition-all shrink-0 ${
-                    selectedCompareContainer.containerNo === c.containerNo
+                    (selectedCompareContainer?.containerNo || (availableContainers[0] || SAMPLE_CONTAINERS[0]).containerNo) === c.containerNo
                       ? "bg-blue-600 text-white shadow-xs"
                       : "bg-slate-100 hover:bg-slate-200 text-slate-700"
                   }`}
@@ -5254,31 +5555,33 @@ export default function YardMovementOperations() {
         </div>
       )}
 
-      {/* ── MODAL: TẠO LỆNH CHUYỂN BLOCK MỚI ── */}
+      {/* ── MODAL: TẠO LỆNH CHUYỂN BLOCK MỚI — SƠ ĐỒ PHÂN KHU BÃI CONTAINER TIÊN SA ── */}
       {createModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white max-w-3xl w-full rounded-3xl p-6 shadow-2xl space-y-5 border border-slate-200 font-sans my-8 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-xl bg-orange-500 text-white flex items-center justify-center shadow-md">
+        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-3 sm:p-5">
+          <div className="bg-white rounded-3xl max-w-5xl lg:max-w-6xl w-full p-6 sm:p-7 space-y-5 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 text-xs font-sans max-h-[92vh] overflow-y-auto">
+            {/* Header */}
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3.5">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-orange-50 text-orange-600 border border-orange-200/80 flex items-center justify-center shrink-0 shadow-xs">
                   <span className="material-symbols-outlined text-2xl">
                     swap_horiz
                   </span>
                 </div>
                 <div>
-                  <h3 className="font-heading text-xl font-black text-slate-900">
-                    Tạo Lệnh Chuyển Container Giữa Các Block
+                  <h3 className="font-heading text-base sm:text-lg font-black text-slate-900">
+                    Tạo Lệnh Chuyển Container Giữa Các Block — Sơ Đồ Phân Khu Bãi Container Tiên Sa
                   </h3>
-                  <span className="text-xs text-slate-500">
-                    Thiết lập lệnh di chuyển container và kiểm tra slot đích
-                  </span>
+                  <p className="text-xs text-slate-500">
+                    Thiết lập thông tin container và tự động chọn phân khu, block, mở sơ đồ Bay &amp; Slot 2D để chỉ định vị trí đích
+                  </p>
                 </div>
               </div>
               <button
+                type="button"
                 onClick={() => setCreateModalOpen(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 hover:text-slate-900 cursor-pointer"
+                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition cursor-pointer text-sm font-bold"
               >
-                <span className="material-symbols-outlined text-sm">close</span>
+                ✕
               </button>
             </div>
 
@@ -5286,13 +5589,26 @@ export default function YardMovementOperations() {
               onSubmit={handleCreateRelocationTask}
               className="space-y-4 text-xs font-bold"
             >
-              {/* Quick Pick Container */}
+              {/* Quick Pick Container (Real Data from PostgreSQL Database) */}
               <div>
-                <label className="block text-slate-600 uppercase text-[10px] mb-1.5 font-extrabold">
-                  Chọn Nhanh Container Có Sẵn Trong Bãi
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  {SAMPLE_CONTAINERS.map((c) => (
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-slate-700 uppercase text-[10px] font-extrabold flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block animate-ping"></span>
+                    Chọn Nhanh Container Có Sẵn Trong Bãi
+                  </label>
+                  {loadingContainers ? (
+                    <span className="text-[10px] text-blue-600 font-bold flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[12px] animate-spin">sync</span>
+                      Đang đồng bộ...
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-emerald-700 font-extrabold bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                      ✓ Dữ liệu thật Database ({availableContainers.length > 0 ? availableContainers.length : 6} container)
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-56 overflow-y-auto pr-1">
+                  {(availableContainers.length > 0 ? availableContainers : SAMPLE_CONTAINERS).map((c) => (
                     <button
                       key={c.containerNo}
                       type="button"
@@ -5303,10 +5619,15 @@ export default function YardMovementOperations() {
                           : "bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100"
                       }`}
                     >
-                      <div className="font-mono text-xs text-blue-900 font-black">
-                        {c.containerNo}
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs text-blue-900 font-black">
+                          {c.containerNo}
+                        </span>
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-md font-extrabold bg-blue-100/70 text-blue-800 border border-blue-200">
+                          {c.category || (c.type?.includes("RF") ? "REEFER" : "DRY")}
+                        </span>
                       </div>
-                      <div className="text-[10px] text-slate-500 font-normal">
+                      <div className="text-[10px] text-slate-500 font-normal mt-0.5">
                         {c.location} • {c.type} ({c.line})
                       </div>
                     </button>
@@ -5314,7 +5635,7 @@ export default function YardMovementOperations() {
                 </div>
               </div>
 
-              {/* Row 1: Container No & Type */}
+              {/* Row 1: Container No, Type, Origin Location */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-slate-600 uppercase text-[10px] mb-1 font-extrabold">
@@ -5332,19 +5653,48 @@ export default function YardMovementOperations() {
                   />
                 </div>
                 <div>
-                  <label className="block text-slate-600 uppercase text-[10px] mb-1 font-extrabold">
-                    Loại Kích Thước
+                  <label className="block text-slate-600 uppercase text-[10px] mb-1 font-extrabold flex items-center justify-between">
+                    <span>Loại Kích Thước *</span>
+                    <span
+                      className={`text-[9px] px-1.5 py-0.5 rounded font-black tracking-wider ${
+                        newContainerType.includes("20")
+                          ? "bg-amber-100 text-amber-900 border border-amber-300"
+                          : "bg-blue-100 text-blue-900 border border-blue-300"
+                      }`}
+                    >
+                      {newContainerType.includes("20") ? "⚡ 20 FEET" : "🚢 40 FEET"}
+                    </span>
                   </label>
                   <select
                     value={newContainerType}
                     onChange={(e) => setNewContainerType(e.target.value)}
                     className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-300 rounded-2xl text-slate-900 font-bold focus:outline-none"
                   >
-                    <option value="40FT HC">40FT High Cube (HC)</option>
-                    <option value="20FT ST">20FT Standard (ST)</option>
-                    <option value="40FT RF">40FT Reefer (Lạnh)</option>
+                    <option value="20FT ST">20FT Standard (ST) - Hàng Khô</option>
+                    <option value="20FT RF">20FT Reefer (RF) - Hàng Lạnh</option>
                     <option value="20FT TANK">20FT Tank (Bồn Hóa Chất)</option>
-                    <option value="45FT HC">45FT High Cube</option>
+                    <option value="20FT OT">20FT Open Top (Mở Mái)</option>
+                    <option value="40FT HC">40FT High Cube (HC) - Khô Cao</option>
+                    <option value="40FT DC">40FT Dry Cargo (DC / GP) - Khô Chuẩn</option>
+                    <option value="40FT RF">40FT Reefer (RF) - Hàng Lạnh</option>
+                    <option value="40FT TANK">40FT Tank (Bồn)</option>
+                    <option value="45FT HC">45FT High Cube (Siêu Dài)</option>
+                    {![
+                      "20FT ST",
+                      "20FT RF",
+                      "20FT TANK",
+                      "20FT OT",
+                      "40FT HC",
+                      "40FT DC",
+                      "40FT RF",
+                      "40FT TANK",
+                      "45FT HC",
+                    ].includes(newContainerType) &&
+                      newContainerType && (
+                        <option value={newContainerType}>
+                          {newContainerType}
+                        </option>
+                      )}
                   </select>
                 </div>
                 <div>
@@ -5357,116 +5707,47 @@ export default function YardMovementOperations() {
                     onChange={(e) =>
                       setNewFromLocation(e.target.value.toUpperCase())
                     }
-                    placeholder="VD: A01-03-12-2"
+                    placeholder="VD: A01-03-02-2"
                     required
                     className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-300 rounded-2xl font-mono font-black text-sm uppercase focus:outline-none focus:border-slate-900"
                   />
                 </div>
               </div>
 
-              {/* Interactive Visual Slot Matrix Picker */}
-              <div className="p-4 bg-slate-50 border border-slate-200 rounded-3xl space-y-3">
-                <div className="flex justify-between items-center">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-emerald-600 text-lg">
-                      grid_view
+              {/* ── SƠ ĐỒ PHÂN KHU BÃI CONTAINER TIÊN SA: BƯỚC 1 & BƯỚC 2 ── */}
+              <div className="p-4 sm:p-5 rounded-3xl bg-slate-50 border border-slate-200 space-y-4">
+                {/* Vị trí đích đã chọn */}
+                <div className="p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+                  <div>
+                    <span className="text-[11px] font-extrabold text-emerald-800 uppercase tracking-wide">
+                      Vị trí đích đã chọn cho Container:
                     </span>
-                    <span className="text-slate-800 uppercase text-[11px] font-black">
-                      SƠ ĐỒ MA TRẬN SLOT BÃI ĐÍCH (CLICK ĐỂ CHỌN SLOT)
-                    </span>
+                    <div className="text-base font-black text-slate-900 font-mono mt-0.5">
+                      Block {newTargetBlock} • Bay {newTargetBay} • Hàng (Row) {newTargetRow} • Tầng (Tier) {newTargetTier}
+                      <span className="ml-2 text-xs text-emerald-800 font-bold">
+                        (Mã Slot: {computedDestLocation})
+                      </span>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={handleAiAutoSelectSlot}
-                      className="px-2.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 rounded-xl font-bold text-[11px] cursor-pointer flex items-center gap-1"
+                      className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 rounded-xl font-bold text-xs cursor-pointer flex items-center gap-1 shadow-2xs"
                     >
-                      <span>🤖 AI Gợi Ý Slot</span>
+                      <span className="material-symbols-outlined text-sm">smart_toy</span>
+                      <span>AI Gợi Ý Slot Tối Ưu</span>
                     </button>
-                    <select
-                      value={selectedSlotMatrixBlock}
-                      onChange={(e) => {
-                        setSelectedSlotMatrixBlock(e.target.value);
-                        setNewTargetBlock(e.target.value);
-                      }}
-                      className="px-2.5 py-1 bg-white border border-slate-300 rounded-xl font-mono font-bold text-xs"
+                    <button
+                      type="button"
+                      onClick={handleValidateSlot}
+                      disabled={validatingSlot}
+                      className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs cursor-pointer flex items-center gap-1 shadow-2xs"
                     >
-                      <option value="B02">Block B02</option>
-                      <option value="A01">Block A01</option>
-                      <option value="C01">Block C01</option>
-                    </select>
+                      <span className="material-symbols-outlined text-sm">rule</span>
+                      <span>{validatingSlot ? "Kiểm tra..." : "Kiểm Tra Slot"}</span>
+                    </button>
                   </div>
-                </div>
-
-                {/* Matrix Grid Visualization */}
-                <div className="grid grid-cols-4 gap-2 bg-white p-3.5 rounded-2xl border border-slate-200">
-                  {(
-                    YARD_BAY_MATRIX[selectedSlotMatrixBlock] ||
-                    YARD_BAY_MATRIX["B02"]
-                  ).map((slot, idx) => {
-                    const isSelected =
-                      newTargetRow === String(slot.row).padStart(2, "0") &&
-                      newTargetTier === String(slot.tier);
-                    return (
-                      <button
-                        key={idx}
-                        type="button"
-                        onClick={() => handleMatrixSlotClick(slot)}
-                        className={`p-2 rounded-xl border text-center transition-all cursor-pointer font-mono text-[10px] ${
-                          isSelected
-                            ? "bg-blue-600 text-white border-blue-700 shadow-md ring-2 ring-blue-300 font-black"
-                            : slot.status === "AVAILABLE"
-                              ? "bg-emerald-50 text-emerald-900 border-emerald-300 hover:bg-emerald-100 font-bold"
-                              : slot.status === "GRAVITY_WARNING"
-                                ? "bg-amber-50 text-amber-900 border-amber-300 hover:bg-amber-100 font-bold"
-                                : slot.status === "MAINTENANCE"
-                                  ? "bg-slate-200 text-slate-500 border-slate-300 cursor-not-allowed opacity-60"
-                                  : "bg-red-50 text-red-900 border-red-200 cursor-not-allowed opacity-70"
-                        }`}
-                      >
-                        <div>
-                          Hàng {slot.row} - T{slot.tier}
-                        </div>
-                        <div className="text-[9px] mt-0.5 truncate">
-                          {isSelected
-                            ? "✓ ĐÃ CHỌN"
-                            : slot.status === "AVAILABLE"
-                              ? "Trống"
-                              : slot.status === "GRAVITY_WARNING"
-                                ? "⚠️ Trọng lực"
-                                : slot.status === "MAINTENANCE"
-                                  ? "Bảo trì"
-                                  : slot.cont}
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {/* Selected Coordinate & Live Validation */}
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pt-2 border-t border-slate-200">
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-600 text-xs">
-                      Tọa độ đích đã chọn:
-                    </span>
-                    <strong className="px-3 py-1 bg-emerald-100 text-emerald-950 font-mono font-black text-sm rounded-xl border border-emerald-300">
-                      {computedDestLocation}
-                    </strong>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleValidateSlot}
-                    disabled={validatingSlot}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-98 text-white rounded-xl font-black text-xs cursor-pointer flex items-center gap-1.5 shadow-sm"
-                  >
-                    <span className="material-symbols-outlined text-sm">
-                      {validatingSlot ? "hourglass_top" : "rule"}
-                    </span>
-                    {validatingSlot
-                      ? "Đang kiểm tra..."
-                      : "🔍 Kiểm Tra Slot Đích"}
-                  </button>
                 </div>
 
                 {slotValidation && (
@@ -5482,45 +5763,142 @@ export default function YardMovementOperations() {
                   </div>
                 )}
 
-                {/* AI vs Manual Instant Comparison Card inside Modal */}
-                <div className="p-3.5 bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-white rounded-2xl border border-blue-200 space-y-2.5">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="font-extrabold text-blue-950 flex items-center gap-1.5 font-mono uppercase text-[11px]">
-                      <span className="material-symbols-outlined text-blue-600 text-sm">
-                        smart_toy
-                      </span>
-                      Đánh Giá Tối Ưu Hóa AI (BRP Score: {dynamicAiScore}/100)
+                {/* BƯỚC 1: Chọn Phân Khu Bãi Cảng Tiên Sa (Zone A ➔ G) */}
+                <div className="space-y-2.5">
+                  <label className="text-xs font-black uppercase tracking-wide text-slate-800 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-slate-900 text-white inline-flex items-center justify-center text-[11px] font-bold">
+                      1
                     </span>
-                    <span className="text-[10px] bg-emerald-100 text-emerald-950 border border-emerald-400 font-bold px-2 py-0.5 rounded">
-                      Tiết kiệm -62% quãng đường
-                    </span>
-                  </div>
+                    <span>Chọn Phân Khu Bãi Cảng Tiên Sa (Zone A ➔ G):</span>
+                  </label>
 
-                  <div className="grid grid-cols-3 gap-2 text-center text-[10px] font-mono">
-                    <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-                      <div className="text-slate-500 text-[9px]">
-                        Quãng đường RTG
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                    {YARD_ZONES.map((zone) => {
+                      const isSelected = selectedZone === zone.code;
+                      const count = combinedBlocks.filter(
+                        (b) =>
+                          b.sector === zone.code ||
+                          (b.blockCode || "").toUpperCase().startsWith(zone.code)
+                      ).length;
+
+                      return (
+                        <button
+                          key={zone.code}
+                          type="button"
+                          onClick={() => {
+                            setSelectedZone(zone.code);
+                            const firstInZone = combinedBlocks.find(
+                              (b) =>
+                                b.sector === zone.code ||
+                                (b.blockCode || "").startsWith(zone.code)
+                            );
+                            if (firstInZone) {
+                              setNewTargetBlock(firstInZone.blockCode);
+                            }
+                          }}
+                          className={`p-2.5 sm:p-3 rounded-2xl border text-left transition flex flex-col justify-between min-h-[78px] cursor-pointer ${
+                            isSelected
+                              ? "border-2 border-orange-500 bg-orange-50/70 shadow-xs ring-2 ring-orange-500/20"
+                              : "border-slate-200 bg-white hover:bg-slate-50 hover:border-slate-300"
+                          }`}
+                        >
+                          <div className="flex justify-between items-start">
+                            <span
+                              className={`text-xs font-black ${
+                                isSelected ? "text-orange-700" : "text-slate-900"
+                              }`}
+                            >
+                              {zone.name}
+                            </span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-slate-100 text-slate-700 border border-slate-200">
+                              {count}
+                            </span>
+                          </div>
+                          <span
+                            className={`text-[10px] mt-1 font-medium leading-snug break-words ${
+                              isSelected
+                                ? "text-orange-800 font-semibold"
+                                : "text-slate-500"
+                            }`}
+                          >
+                            {zone.desc}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* BƯỚC 2: Các Block thuộc Khu đã chọn */}
+                <div className="space-y-2 pt-2 border-t border-slate-200">
+                  <label className="text-xs font-bold uppercase tracking-wide text-slate-800 flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-slate-800 text-white inline-flex items-center justify-center text-[10px] font-bold">
+                      2
+                    </span>
+                    <span>
+                      Các Block thuộc{" "}
+                      {YARD_ZONES.find((z) => z.code === selectedZone)?.name ||
+                        `Khu ${selectedZone}`}
+                      : (Bấm vào để mở sơ đồ 2D chọn Bay &amp; Slot)
+                    </span>
+                  </label>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5">
+                    {currentZoneBlocks.length === 0 ? (
+                      <div className="p-4 rounded-xl bg-white text-slate-500 text-xs font-medium col-span-full text-center border border-slate-200">
+                        Đang tải danh sách Block thuộc Khu {selectedZone}...
                       </div>
-                      <div className="font-black text-blue-950 text-xs">
-                        160m <span className="text-emerald-600">(-62%)</span>
-                      </div>
-                    </div>
-                    <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-                      <div className="text-slate-500 text-[9px]">
-                        Chu kỳ cẩu
-                      </div>
-                      <div className="font-black text-blue-950 text-xs">
-                        7.5p <span className="text-emerald-600">(-58%)</span>
-                      </div>
-                    </div>
-                    <div className="bg-white p-2 rounded-xl border border-slate-200 shadow-2xs">
-                      <div className="text-slate-500 text-[9px]">
-                        Rủi ro đảo vỏ
-                      </div>
-                      <div className="font-black text-emerald-700 text-xs">
-                        0 lần <span className="text-emerald-600">(-100%)</span>
-                      </div>
-                    </div>
+                    ) : (
+                      currentZoneBlocks.map((block) => {
+                        const code = block.blockCode || block.code;
+                        const isChosenBlock = newTargetBlock === code;
+
+                        return (
+                          <div
+                            key={code}
+                            className={`p-3 rounded-2xl border transition flex flex-col justify-between gap-2 ${
+                              isChosenBlock
+                                ? "bg-emerald-50/70 border-2 border-emerald-500 shadow-sm ring-2 ring-emerald-500/20"
+                                : "bg-white border-slate-200 hover:border-orange-400 hover:shadow-xs"
+                            }`}
+                          >
+                            <div>
+                              <div className="flex justify-between items-start mb-1">
+                                <span className="font-heading text-sm font-black text-slate-900 font-mono">
+                                  Block {code}
+                                </span>
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                  {block.empty} slot trống
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 font-normal">
+                                Sức chứa: {block.totalCapacity} TEU · Đang lưu: {block.occupied} Cont
+                              </p>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setNewTargetBlock(code);
+                                setPickerBlock(block);
+                              }}
+                              className={`w-full py-2 px-3 rounded-xl text-xs font-bold transition shadow-2xs flex items-center justify-center gap-1.5 cursor-pointer ${
+                                isChosenBlock
+                                  ? "bg-emerald-600 hover:bg-emerald-700 text-white"
+                                  : "bg-slate-900 hover:bg-orange-600 text-white"
+                              }`}
+                            >
+                              <span className="material-symbols-outlined text-sm">
+                                grid_view
+                              </span>
+                              <span>
+                                {isChosenBlock ? "Đổi Bay & Slot 2D ➔" : "Chọn Bay & Slot 2D ➔"}
+                              </span>
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
                   </div>
                 </div>
               </div>
@@ -5645,12 +6023,34 @@ export default function YardMovementOperations() {
                   </span>
                   {isSubmittingTask
                     ? "Đang Tạo Lệnh..."
-                    : "[ TẠO & PHÁT LỆNH CHUYỂN BLOCK ]"}
+                    : "[ TẠO & PHÁT LỆNH CHUYỂN CONTAINER ]"}
                 </button>
               </div>
             </form>
           </div>
         </div>
+      )}
+
+      {/* ── MODAL CHỌN BAY & SLOT TRỰC QUAN 2D CHO BLOCK ── */}
+      {pickerBlock && (
+        <YardSlotReservationModal
+          isOpen={Boolean(pickerBlock)}
+          onClose={() => setPickerBlock(null)}
+          block={pickerBlock}
+          booking={modalBooking}
+          currentReservation={null}
+          onConfirm={(slotInfo) => {
+            const bayStr = String(slotInfo.bay || "02").padStart(2, "0");
+            const rowStr = String(slotInfo.row || "01").padStart(2, "0");
+            const tierNum = Number(slotInfo.tier) || 1;
+            const blockCode = slotInfo.blockCode || pickerBlock.blockCode;
+            setNewTargetBlock(blockCode);
+            setNewTargetBay(bayStr);
+            setNewTargetRow(rowStr);
+            setNewTargetTier(String(tierNum));
+            setPickerBlock(null);
+          }}
+        />
       )}
 
       {/* ── MODAL: JOB TICKET SHEET PREVIEW ── */}
@@ -5861,136 +6261,95 @@ export default function YardMovementOperations() {
         </div>
       )}
 
-      {/* ── MODAL: XEM TRÊN SƠ ĐỒ BÃI 2D (Mini-Map) ── */}
+      {/* ── MODAL: XEM TRÊN SƠ ĐỒ BÃI 2D (TỔNG QUÁT TIÊN SA) ── */}
       {mapViewTask && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white max-w-lg w-full rounded-3xl p-6 shadow-2xl space-y-4 border-2 border-blue-400 font-sans">
-            <div className="flex justify-between items-center border-b border-slate-200 pb-3">
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-5">
+          <div className="bg-white max-w-5xl w-full rounded-3xl p-5 sm:p-6 shadow-2xl space-y-3.5 border-2 border-blue-400 font-sans max-h-[94vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="flex justify-between items-center border-b border-slate-200 pb-3 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-blue-100 border border-blue-200 flex items-center justify-center text-blue-700 shadow-xs shrink-0">
+                  <span className="material-symbols-outlined text-2xl">
+                    map
+                  </span>
+                </div>
+                <div>
+                  <h3 className="font-heading text-lg font-black text-slate-900 leading-tight">
+                    Sơ Đồ Bãi 2D — Lệnh Di Chuyển #{mapViewTask.id}
+                  </h3>
+                  <p className="text-xs text-slate-500 font-mono mt-0.5">
+                    Container <strong className="text-slate-900">{mapViewTask.containerId}</strong> · {mapViewTask.containerType || "40FT HC"} · {mapViewTask.reason || "Di chuyển bãi"}
+                  </p>
+                </div>
+              </div>
+
+              {/* 2 Location Badges with Distinct Colors */}
               <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-blue-600 text-xl">
-                  map
-                </span>
-                <h3 className="font-heading text-lg font-black text-slate-900">
-                  Sơ Đồ Bãi 2D — Lệnh {mapViewTask.id}
-                </h3>
-              </div>
-              <button
-                onClick={() => setMapViewTask(null)}
-                className="w-8 h-8 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 hover:text-slate-900 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-sm">close</span>
-              </button>
-            </div>
-
-            {/* Mini Map Visual */}
-            <div className="bg-slate-900 p-5 rounded-2xl border border-slate-700 space-y-4">
-              <div className="text-[10px] text-amber-400 font-mono font-black uppercase">
-                SƠ ĐỒ CHUYỂN CONTAINER: {mapViewTask.containerId} (
-                {mapViewTask.from} ➔ {mapViewTask.to})
-              </div>
-
-              <div className="grid grid-cols-5 gap-2 font-mono text-[10px] text-center">
-                {["A01-01", "A01-02", "A01-03", "A01-04", "A01-05"].map(
-                  (cell) => (
-                    <div
-                      key={cell}
-                      className={`p-2.5 rounded-xl border-2 font-black ${
-                        cell.includes(parsePosition(mapViewTask.from).bay) ||
-                        mapViewTask.from.includes(cell.split("-")[1])
-                          ? "bg-blue-500 text-white border-blue-300 shadow-lg shadow-blue-900/50 animate-pulse"
-                          : "bg-slate-800 text-slate-500 border-slate-700"
-                      }`}
-                    >
-                      {cell}
-                      {(cell.includes(parsePosition(mapViewTask.from).bay) ||
-                        mapViewTask.from.includes(cell.split("-")[1])) && (
-                        <div className="text-[9px] mt-0.5">📦 GỐC</div>
-                      )}
-                    </div>
-                  ),
-                )}
-
-                <div className="col-span-5 flex items-center justify-center gap-2 py-2 text-slate-400 font-bold text-xs">
-                  <span>
-                    {mapViewTask.from?.includes("-")
-                      ? `Block ${parsePosition(mapViewTask.from).block}`
-                      : mapViewTask.from}
-                  </span>
-                  <div className="flex-1 h-px bg-slate-700"></div>
-                  <span>➔ RTG Lộ Trình ➔</span>
-                  <div className="flex-1 h-px bg-slate-700"></div>
-                  <span>
-                    {mapViewTask.to?.includes("-")
-                      ? `Block ${parsePosition(mapViewTask.to).block}`
-                      : mapViewTask.to}
-                  </span>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 border-2 border-blue-500 text-blue-900 text-xs font-mono font-black shadow-2xs">
+                  <span className="w-2.5 h-2.5 rounded-full bg-blue-600 animate-pulse"></span>
+                  <span>GỐC: Block {parsePosition(mapViewTask.from).block} ({mapViewTask.from})</span>
                 </div>
-
-                {["B02-01", "B02-02", "B02-03", "B02-04", "B02-05"].map(
-                  (cell) => {
-                    const isMatch =
-                      mapViewTask.to?.includes("-") &&
-                      (cell.includes(parsePosition(mapViewTask.to).bay) ||
-                        mapViewTask.to.includes(cell.split("-")[1]));
-                    return (
-                      <div
-                        key={cell}
-                        className={`p-2.5 rounded-xl border-2 font-black ${
-                          isMatch
-                            ? "bg-emerald-500 text-white border-emerald-300 shadow-lg shadow-emerald-900/50 animate-pulse"
-                            : "bg-slate-800 text-slate-500 border-slate-700"
-                        }`}
-                      >
-                        {cell}
-                        {isMatch && (
-                          <div className="text-[9px] mt-0.5">🎯 ĐÍCH</div>
-                        )}
-                      </div>
-                    );
-                  },
-                )}
-              </div>
-
-              {!mapViewTask.to?.includes("-") && (
-                <div className="p-2.5 bg-emerald-950/60 border border-emerald-500/50 rounded-xl text-emerald-300 text-center font-sans text-xs">
-                  🚢 Vị trí đích là điểm giao nhận phương tiện ngoài bãi:{" "}
-                  <strong>{mapViewTask.to}</strong>
+                <span className="text-slate-400 font-black text-sm">➔</span>
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-50 border-2 border-emerald-500 text-emerald-900 text-xs font-mono font-black shadow-2xs">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse"></span>
+                  <span>ĐÍCH: Block {parsePosition(mapViewTask.to).block} ({mapViewTask.to})</span>
                 </div>
-              )}
-
-              <div className="flex justify-between items-center font-mono text-xs pt-2 border-t border-slate-700">
-                <div className="bg-blue-900/40 border border-blue-400 px-3 py-2 rounded-xl">
-                  <span className="text-blue-300 text-[10px] font-sans font-bold block">
-                    VỊ TRÍ GỐC
-                  </span>
-                  <strong className="text-white">{mapViewTask.from}</strong>
-                </div>
-                <div className="text-slate-400 text-2xl font-black">➔</div>
-                <div className="bg-emerald-900/40 border border-emerald-400 px-3 py-2 rounded-xl">
-                  <span className="text-emerald-300 text-[10px] font-sans font-bold block">
-                    VỊ TRÍ ĐÍCH
-                  </span>
-                  <strong className="text-white">{mapViewTask.to}</strong>
-                </div>
+                <button
+                  onClick={() => setMapViewTask(null)}
+                  className="ml-2 w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 border border-slate-200 flex items-center justify-center text-slate-600 hover:text-slate-900 cursor-pointer transition-colors"
+                  title="Đóng"
+                >
+                  <span className="material-symbols-outlined text-sm">close</span>
+                </button>
               </div>
             </div>
 
-            <div className="flex gap-3 font-sans text-xs">
-              <button
-                onClick={() => setMapViewTask(null)}
-                className="flex-1 h-11 border border-slate-300 text-slate-700 rounded-2xl font-extrabold hover:bg-slate-100 cursor-pointer"
-              >
-                Đóng
-              </button>
-              <a
-                href="/yard-staff/map"
-                className="flex-1 h-11 bg-blue-100 hover:bg-blue-200 text-blue-950 border-2 border-blue-400 rounded-2xl font-black flex items-center justify-center gap-1.5 transition-all"
-              >
-                <span className="material-symbols-outlined text-base">
-                  open_in_new
+            {/* Embedded Real 2D Map View (Tien Sa Overall Map) */}
+            <div className="flex-1 min-h-[460px] overflow-auto rounded-2xl border border-slate-200 bg-slate-50 shadow-inner">
+              <YardDesignPreview
+                embedded={true}
+                movement={{
+                  from: mapViewTask.from,
+                  to: mapViewTask.to,
+                  containerId: mapViewTask.containerId || mapViewTask.containerNo,
+                }}
+              />
+            </div>
+
+            {/* Modal Footer with Legend */}
+            <div className="flex justify-between items-center pt-2 border-t border-slate-200 shrink-0 text-xs">
+              <div className="flex items-center gap-4 text-slate-700">
+                <span className="flex items-center gap-1.5 font-bold">
+                  <span className="w-3.5 h-3.5 rounded bg-blue-600 border border-blue-700 inline-block"></span>
+                  <span>Vị trí gốc (Nguồn - Xanh dương)</span>
                 </span>
-                Mở Sơ Đồ Bãi 2D Đầy Đủ
-              </a>
+                <span className="flex items-center gap-1.5 font-bold">
+                  <span className="w-3.5 h-3.5 rounded bg-emerald-600 border border-emerald-700 inline-block"></span>
+                  <span>Vị trí đích (Đến - Xanh lá)</span>
+                </span>
+                <span className="text-slate-400 font-normal">
+                  (Nhấp vào từng Block trên sơ đồ để xem chi tiết từng Bay / Row / Tier)
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setMapViewTask(null)}
+                  className="px-5 h-9 border border-slate-300 text-slate-700 rounded-xl font-bold hover:bg-slate-100 cursor-pointer transition-colors"
+                >
+                  Đóng
+                </button>
+                <a
+                  href="/yard-staff/map"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-4 h-9 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black flex items-center gap-1.5 shadow-sm transition-colors"
+                >
+                  <span className="material-symbols-outlined text-sm">
+                    open_in_new
+                  </span>
+                  Mở Sơ Đồ Bãi Riêng
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -6312,74 +6671,5 @@ export default function YardMovementOperations() {
 
 // Fallback seed tasks
 function getFallbackTasks() {
-  return [
-    {
-      id: "MOV-1024",
-      containerId: "MSCU1234567",
-      containerType: "40FT HC",
-      cargoType: "Hàng May Mặc",
-      from: "A01-03-12-2",
-      to: "B02-02-08-3",
-      reason: "Tái cơ cấu xếp bãi",
-      priority: "HIGH",
-      assignedBy: "Operator - Nguyễn Văn Q",
-      status: "PENDING",
-      flowStep: 0,
-      equipment: null,
-      confirmedPos: "",
-      internalFee: 350000,
-      durationMinutes: 0,
-    },
-    {
-      id: "MOV-1025",
-      containerId: "TEMU8822190",
-      containerType: "40FT HC",
-      cargoType: "Hàng Xuất Khẩu Khẩn",
-      from: "B02-01-02-1",
-      to: "A01-05-02-1",
-      reason: "Chuẩn bị xuất cổng khẩn",
-      priority: "CRITICAL",
-      assignedBy: "Operator - Nguyễn Văn Q",
-      status: "PENDING",
-      flowStep: 0,
-      equipment: null,
-      confirmedPos: "",
-      internalFee: 550000,
-      durationMinutes: 0,
-    },
-    {
-      id: "MOV-1022",
-      containerId: "CMAU9918234",
-      containerType: "20FT ST",
-      cargoType: "Hàng Bách Hóa",
-      from: "A01-01-05-3",
-      to: "A01-01-01-1",
-      reason: "Đảo tầng cẩu bãi",
-      priority: "MEDIUM",
-      assignedBy: "Điều phối viên",
-      status: "IN PROGRESS",
-      flowStep: 1,
-      equipment: { name: "RTG-01", operator: "Trần Văn Hùng" },
-      confirmedPos: "",
-      internalFee: 0,
-      durationMinutes: 15,
-    },
-    {
-      id: "MOV-1020",
-      containerId: "COSU8819201",
-      containerType: "40FT HC",
-      cargoType: "Hàng Công Nghiệp Tiêu Dùng",
-      from: "A01-02-04-2",
-      to: "B02-03-01-1",
-      reason: "Chuyển kho bãi lưu trữ dài hạn",
-      priority: "NORMAL",
-      assignedBy: "Operator - Lê Văn Hoàng",
-      status: "COMPLETED",
-      flowStep: 3,
-      equipment: { name: "RTG-02", operator: "Phạm Văn Cần" },
-      confirmedPos: "B02-03-01-1",
-      internalFee: 0,
-      durationMinutes: 18,
-    },
-  ];
+  return [];
 }

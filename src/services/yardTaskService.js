@@ -184,6 +184,19 @@ export const yardTaskService = {
       console.error('Error calculating shifting fee:', error)
       throw error
     }
+  },
+
+  /**
+   * NXP-119: Lấy danh sách container thực tế đang có trong bãi từ Database
+   */
+  getActiveContainers: async () => {
+    try {
+      const res = await apiClient.get('/v1/YardTask/active-containers')
+      return res.data || []
+    } catch (error) {
+      console.error('Error fetching active yard containers:', error)
+      return []
+    }
   }
 }
 
