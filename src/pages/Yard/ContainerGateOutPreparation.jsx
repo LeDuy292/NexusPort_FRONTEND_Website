@@ -1075,9 +1075,8 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
       const rBlk = r.block || r.yard_block || 'B'
       const rBay = Number(r.bay || r.yard_bay)
       const rRow = Number(r.row || r.yard_row)
-      return (rBlk === targetBlock || rBlk.replace(/^B0?/, 'B') === targetBlock.replace(/^B0?/, 'B')) &&
-             rBay === targetBay &&
-             rRow === targetRow
+      const matchBlk = rBlk === targetBlock || String(rBlk).replace(/[^A-Z]/g, '') === String(targetBlock).replace(/[^A-Z]/g, '')
+      return matchBlk && rBay === targetBay && rRow === targetRow
     })
 
     const mapByTier = new Map()
@@ -4206,9 +4205,20 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
                     <h3 className="text-sm font-bold text-slate-900">Quy hoạch phân khu bãi container Cảng Tiên Sa</h3>
                     <p className="text-xs text-slate-500">Giám sát vị trí lưu trữ container theo khu vực chuyên dụng.</p>
                   </div>
-                  <span className="px-3 py-1 bg-orange-50 text-orange-700 border border-orange-200 text-xs font-bold rounded-lg">
-                    Hệ thống TOS Live
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href="/yard/map"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
+                    >
+                      <span className="material-symbols-outlined text-sm">map</span>
+                      Mở Sơ Đồ Bãi 2D Trực Quan
+                    </a>
+                    <span className="px-3 py-1 bg-orange-50 text-orange-700 border border-orange-200 text-xs font-bold rounded-lg">
+                      Hệ thống TOS Live
+                    </span>
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
