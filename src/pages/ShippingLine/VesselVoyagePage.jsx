@@ -170,12 +170,34 @@ export default function VesselVoyagePage() {
       const voyList = Array.isArray(voyagesRes) ? voyagesRes : (voyagesRes?.data || []);
       setVessels(vList);
       setVoyages(voyList);
+      // Đồng bộ ngay lập tức sang phân hệ Điều Độ Cảng (Cảng Tiên Sa)
+      manifestPortSyncService.syncVoyages(voyList);
     } catch (err) {
       setError(formatApiErrorMessage(err, 'Lỗi tải dữ liệu chuyến tàu'));
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const handleVoyageUpdate = (e) => {
+      const detail = e?.detail;
+      if (!detail) return;
+      if (detail.voyages) {
+        setVoyages(detail.voyages);
+      } else if (detail.voyageNumber && detail.vesselStatus) {
+        setVoyages(prev => prev.map(v =>
+          (v.voyageNumber || '').trim().toUpperCase() === detail.voyageNumber.trim().toUpperCase()
+            ? { ...v, status: detail.vesselStatus }
+            : v
+        ));
+      }
+    };
+    window.addEventListener('nexusport:voyage_status_updated', handleVoyageUpdate);
+    return () => {
+      window.removeEventListener('nexusport:voyage_status_updated', handleVoyageUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     setVoyagePage(1);
