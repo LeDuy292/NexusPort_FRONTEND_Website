@@ -226,12 +226,6 @@ const sidebarItems = [
     roles: [ROLES.ADMINISTRATOR],
   },
   {
-    path: '/admin/berths',
-    label: 'Quản Lý Cầu Bến',
-    icon: 'anchor',
-    roles: [ROLES.ADMINISTRATOR],
-  },
-  {
     path: '/admin/gates',
     label: 'Quản Lý Cổng Bãi',
     icon: 'sensor_door',

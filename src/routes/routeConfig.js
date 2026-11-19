@@ -246,10 +246,6 @@ export const routeConfig = [
     allowedRoles: [ROLES.ADMINISTRATOR],
   },
   {
-    path: '/admin/berths',
-    allowedRoles: [ROLES.ADMINISTRATOR],
-  },
-  {
     path: '/admin/gates',
     allowedRoles: [ROLES.ADMINISTRATOR],
   },
