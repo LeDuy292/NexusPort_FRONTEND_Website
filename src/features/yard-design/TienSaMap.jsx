@@ -32,6 +32,7 @@ export default function TienSaMap({
   onSelectArea,
   navigation,
   operational = false,
+  movement,
 }) {
   const design = useMemo(() => cleanDesign(layout), [layout]);
   const [source, setSource] = useState("design");
@@ -402,7 +403,9 @@ export default function TienSaMap({
                 const shape = areaPolygon(area),
                   center = area.label,
                   proposed = area.geometryStatus === "proposed",
-                  active = selectedCode === area.code;
+                  active = selectedCode === area.code,
+                  movementFrom = movement?.fromBlock === area.code,
+                  movementTo = movement?.toBlock === area.code;
                 const divisions = area.planning.bayModules,
                   rows = area.planning.rows;
                 return (
@@ -413,18 +416,16 @@ export default function TienSaMap({
                     data-area-code={area.code}
                     role={onSelectArea ? "button" : undefined}
                     tabIndex={onSelectArea ? 0 : undefined}
-                    aria-label={`Block ${area.code}`}
+                    aria-label={`Block ${area.code}${movementFrom ? ', vị trí nguồn' : ''}${movementTo ? ', vị trí đích' : ''}`}
                     aria-pressed={onSelectArea ? active : undefined}
                     onClick={() => onSelectArea?.(area)}
                     onKeyDown={activate(() => onSelectArea?.(area))}
                   >
                     <polygon
                       points={points(shape)}
-                      fill={proposed ? "#f1e5cc" : "#dcebe3"}
-                      stroke={
-                        active ? "#173e48" : proposed ? "#b8995e" : "#6e9e8a"
-                      }
-                      strokeWidth={active ? 2.5 : 1}
+                      fill={movementFrom ? "#93c5fd" : movementTo ? "#6ee7b7" : (proposed ? "#f1e5cc" : "#dcebe3")}
+                      stroke={movementFrom ? "#2563eb" : movementTo ? "#059669" : active ? "#173e48" : proposed ? "#b8995e" : "#6e9e8a"}
+                      strokeWidth={movementFrom || movementTo ? 4 : active ? 2.5 : 1}
                     />
                     {Array.from({ length: rows - 1 }, (_, i) => (
                       <path
@@ -449,13 +450,13 @@ export default function TienSaMap({
                         width="32"
                         height="24"
                         rx="3"
-                        fill={active ? "#173e48" : "#fffffff2"}
+                        fill={movementFrom ? "#2563eb" : movementTo ? "#059669" : active ? "#173e48" : "#fffffff2"}
                       />
                       <text
                         x={center[0]}
                         y={center[1] + 5}
                         textAnchor="middle"
-                        className={`yard-block-label ${active ? "active" : ""}`}
+                        className={`yard-block-label ${active || movementFrom || movementTo ? "active" : ""}`}
                       >
                         {area.code}
                       </text>
@@ -463,6 +464,31 @@ export default function TienSaMap({
                   </g>
                 );
               })}
+              {movement?.fromBlock && movement?.toBlock && movement.fromBlock !== movement.toBlock && (() => {
+                const fromArea = visibleAreas.find(a => a.code === movement.fromBlock);
+                const toArea = visibleAreas.find(a => a.code === movement.toBlock);
+                if (!fromArea || !toArea) return null;
+                return (
+                  <g data-movement-connector="true">
+                    <defs>
+                      <marker id="map-movement-arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                        <path d="M 0 1 L 10 5 L 0 9 z" fill="#2563eb" />
+                      </marker>
+                    </defs>
+                    <line
+                      x1={fromArea.label[0]}
+                      y1={fromArea.label[1]}
+                      x2={toArea.label[0]}
+                      y2={toArea.label[1]}
+                      stroke="#2563eb"
+                      strokeWidth="4"
+                      strokeDasharray="8 6"
+                      markerEnd="url(#map-movement-arrow)"
+                      opacity="0.95"
+                    />
+                  </g>
+                );
+              })()}
               {assignedRoute.length > 0 && (
                 <g data-assigned-route="true">
                   <polyline

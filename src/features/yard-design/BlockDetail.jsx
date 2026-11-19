@@ -1,7 +1,7 @@
 import {useLayoutEffect,useRef,useState} from 'react'
 import {padPosition,slotAddress,slotCoveringModule} from './positions'
 
-export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,onOpenHistory,onOpenContainerDetail}){
+export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,onOpenHistory,onOpenContainerDetail,focusPosition}){
  const gridViewport=useRef(null)
  const [cellWidth,setCellWidth]=useState(40)
  useLayoutEffect(()=>{
@@ -13,7 +13,14 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
   return ()=>observer.disconnect()
  },[maxModules])
  const [size,setSize]=useState(area.planning.bayModules>1?40:20)
- const [selection,setSelection]=useState({module:0,row:1,tier:1})
+ const [selection,setSelection]=useState(()=>{
+  const match=/^[A-G]\d{2}[.-](\d{1,3})[.-](\d{1,3})[.-](\d{1,2})$/i.exec(String(focusPosition||''))
+  if(!match)return {module:0,row:1,tier:1}
+  const bay=Number(match[1]),row=Number(match[2]),tier=Number(match[3])
+  return bay>0&&row>=1&&row<=area.planning.rows&&tier>=1&&tier<=area.planning.tiers
+   ? {module:Math.min(area.planning.bayModules-1,Math.floor((bay-1)/2)),row,tier}
+   : {module:0,row:1,tier:1}
+ })
  const {bayModules,rows,tiers,lengthBasis}=area.planning
  const live=Array.isArray(inventorySlots)
  const activeSlot=slotCoveringModule(inventorySlots,selection.module,selection.row,selection.tier)
@@ -355,7 +362,80 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
     </div>
     </div><div className="yard-position-controls">    {<div className="yard-size-switch" role="group" aria-label="Kích thước container">{[20,40].map(value=><button type="button" key={value} disabled={value===40&&bayModules<2} aria-pressed={size===value} onClick={()=>chooseSize(value)}>{value}ft</button>)}</div>}
     <label className="yard-tier-select">Chọn tier<select aria-label="Chọn tier" value={selection.tier} onChange={event=>setSelection(current=>({...current,tier:Number(event.target.value)}))}>{Array.from({length:tiers},(_,i)=><option key={i+1} value={i+1}>Tier {i+1}</option>)}</select></label>
-</div><div>    <div className="yard-tier-profile" aria-label="Mặt cắt tầng">{Array.from({length:tiers},(_,i)=>tiers-i).map(tier=><button type="button" key={tier} aria-pressed={selection.tier===tier} onClick={()=>setSelection(current=>({...current,tier}))}>Tier {tier}</button>)}<span>NỀN BÃI</span></div>
+</div><div>    <div className="yard-tier-profile" aria-label="Mặt cắt tầng">
+      {Array.from({length:tiers},(_,i)=>tiers-i).map(tier => {
+        const tierSlot = inventorySlots?.find(s => 
+          s.row === selection.row && 
+          s.tier === tier && 
+          (s.status === 'reserved' || s.status === 'occupied' || Boolean(s.containerNumber)) &&
+          ((s.moduleSpan === 2 && (selection.module === s.moduleStart - 1 || selection.module === s.moduleStart)) || Number(s.bay) === selection.module * 2 + 1 || Number(s.bay) === selection.module * 2 + 2)
+        ) || slotCoveringModule(inventorySlots, selection.module, selection.row, tier);
+
+        const hasCont = Boolean(tierSlot && (tierSlot.status === 'reserved' || tierSlot.status === 'occupied' || (Boolean(tierSlot.containerNumber) && tierSlot.status !== 'empty')));
+        const isReserved = tierSlot?.status === 'reserved';
+        const is40 = hasCont && (Number(tierSlot.containerLengthFt) === 40 || Number(tierSlot.size) === 40 || tierSlot.moduleSpan === 2 || (tierSlot.containerType && String(tierSlot.containerType).includes('40')));
+        const isSelected = selection.tier === tier;
+
+        return (
+          <button 
+            type="button" 
+            key={tier} 
+            aria-pressed={isSelected} 
+            onClick={()=>setSelection(current=>({...current,tier}))}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              padding: '3px 8px',
+              fontSize: '11px',
+              fontWeight: isSelected ? 700 : 500,
+              borderRadius: '4px',
+              background: hasCont ? (isReserved ? '#fef3c7' : '#e2e8f0') : (isSelected ? '#e0f2fe' : '#fafcfd'),
+              borderColor: isSelected ? '#0284c7' : (hasCont ? (isReserved ? '#f59e0b' : '#94a3b8') : '#cbd5e1'),
+              borderWidth: isSelected ? '2px' : '1px',
+              borderStyle: hasCont ? 'solid' : 'dashed',
+              color: hasCont ? (isReserved ? '#92400e' : '#1e293b') : (isSelected ? '#0369a1' : '#64748b'),
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              width: '100%'
+            }}
+            title={hasCont ? `Tier ${tier}: Có container (${is40 ? '40ft' : '20ft'})` : `Tier ${tier}: Ô trống`}
+          >
+            <span>Tier {tier}</span>
+            <span style={{
+              fontSize: '9px',
+              padding: '1px 5px',
+              borderRadius: '3px',
+              background: hasCont ? (isReserved ? '#fde68a' : '#cbd5e1') : 'transparent',
+              fontWeight: 700,
+              color: hasCont ? (isReserved ? '#78350f' : '#334155') : '#94a3b8'
+            }}>
+              {hasCont ? (is40 ? '40ft' : '20ft') : 'Trống'}
+            </span>
+          </button>
+        );
+      })}
+      <span>NỀN BÃI</span>
+    </div>
+    <div style={{
+      marginTop: '8px',
+      padding: '6px 8px',
+      background: '#f8fafc',
+      borderRadius: '6px',
+      border: '1px solid #e2e8f0',
+      fontSize: '10px',
+      color: '#64748b',
+      lineHeight: 1.4,
+      maxWidth: '140px',
+      margin: '8px auto 0'
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '3px', color: '#0369a1', fontWeight: 600, marginBottom: '2px' }}>
+        <span className="material-symbols-outlined" style={{ fontSize: '12px' }}>info</span>
+        <span>Nguyên tắc xếp</span>
+      </div>
+      • Tầng trên bắt buộc có cont tầng dưới đỡ.<br />
+      • Cấm đặt 40ft đè lên 1 cont 20ft đơn lẻ.
+    </div>
 </div>
    </aside>
   </div>

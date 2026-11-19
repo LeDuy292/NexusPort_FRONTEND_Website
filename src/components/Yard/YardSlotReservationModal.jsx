@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { padPosition } from '../../features/yard-design/positions'
 import { yardReservationStore } from '../../services/yardReservationStore'
 import { manifestPortSyncService } from '../../services/manifestPortSyncService'
@@ -37,6 +37,8 @@ export default function YardSlotReservationModal({
   // Selection state: { module, row, tier } hoặc null nếu chưa chọn ô nào trong block hiện tại
   const [selection, setSelection] = useState(null)
   const [existingReservation, setExistingReservation] = useState(null)
+  const prevOpenRef = useRef(false)
+  const prevBlockCodeRef = useRef('')
 
   const currentBlockCode = block?.blockCode || block?.code || 'C01'
   const currentContId = (booking?.containerId || booking?.containerNo || '').trim().toUpperCase()
@@ -112,59 +114,66 @@ export default function YardSlotReservationModal({
     return [...syntheticReservations, ...backendOccupied]
   }, [isOpen, currentBlockCode, currentContId, currentBookId, block?.slots])
 
-  // Khi mở Modal: tự động lấy vị trí hiện tại đã lưu của container này để hiển thị chuẩn xác
+  // Khi mở Modal: tự động lấy vị trí hiện tại đã lưu của container này để hiển thị chuẩn xác (chỉ khởi tạo khi mở hoặc đổi block, không reset khi re-render)
   useEffect(() => {
     if (isOpen) {
-      setWarningMessage('')
-      const allRes = yardReservationStore.getReservations()
-      
-      const storeRes = allRes.find((r) => {
-        const rCont = (r.containerId || r.containerNo || r.booking?.containerId || '').trim().toUpperCase()
-        const rBook = (r.bookingCode || r.booking?.id || '').trim().toUpperCase()
-        return (currentContId && rCont === currentContId) || (currentBookId && rBook === currentBookId)
-      })
-      const existingRes =
-        storeRes ||
-        currentReservation ||
-        booking?.autoYardSlot ||
-        booking?.reservedSlot ||
-        booking?.slotInfo
-
-      setExistingReservation(existingRes || null)
-
-      const initialSize = existingRes?.size ? Number(existingRes.size) : (isDefault40 ? 40 : 20)
-      setSize(initialSize)
-
-      const isReservedInThisBlock = Boolean(
-        existingRes &&
-        existingRes.bay &&
-        existingRes.row &&
-        (existingRes.blockCode === currentBlockCode || existingRes.block === currentBlockCode)
-      )
-
-      if (isReservedInThisBlock) {
-        // Container ĐÃ nằm tại chính Block này -> Highlight đúng vị trí đang nằm
-        const bayNum = Number(existingRes.bay)
-        let modIdx = initialSize === 40 
-          ? (bayNum % 2 === 0 ? (bayNum / 2) - 1 : Math.floor(bayNum / 2))
-          : Math.floor((bayNum - 1) / 2)
+      const isNewOpen = !prevOpenRef.current || prevBlockCodeRef.current !== currentBlockCode
+      if (isNewOpen) {
+        prevOpenRef.current = true
+        prevBlockCodeRef.current = currentBlockCode
+        setWarningMessage('')
+        const allRes = yardReservationStore.getReservations()
         
-        modIdx = Math.max(0, Math.min(modIdx, bayModules - (initialSize === 40 ? 2 : 1)))
-        const resTier = Number(existingRes.tier) || 1
-        setCurrentTier(resTier)
-
-        setSelection({
-          module: modIdx,
-          row: Number(existingRes.row) || maxRows,
-          tier: resTier,
+        const storeRes = allRes.find((r) => {
+          const rCont = (r.containerId || r.containerNo || r.booking?.containerId || '').trim().toUpperCase()
+          const rBook = (r.bookingCode || r.booking?.id || '').trim().toUpperCase()
+          return (currentContId && rCont === currentContId) || (currentBookId && rBook === currentBookId)
         })
-      } else {
-        // Container đang nằm ở Block khác -> Giữ selection = null để người dùng click chọn ô mới tại Block này
-        setSelection(null)
-        setCurrentTier(1)
+        const existingRes =
+          storeRes ||
+          currentReservation ||
+          booking?.autoYardSlot ||
+          booking?.reservedSlot ||
+          booking?.slotInfo
+
+        setExistingReservation(existingRes || null)
+
+        const initialSize = existingRes?.size ? Number(existingRes.size) : (isDefault40 ? 40 : 20)
+        setSize(initialSize)
+
+        const isReservedInThisBlock = Boolean(
+          existingRes &&
+          existingRes.bay &&
+          existingRes.row &&
+          (existingRes.blockCode === currentBlockCode || existingRes.block === currentBlockCode)
+        )
+
+        if (isReservedInThisBlock) {
+          // Container ĐÃ nằm tại chính Block này -> Highlight đúng vị trí đang nằm
+          const bayNum = Number(existingRes.bay)
+          let modIdx = initialSize === 40 
+            ? (bayNum % 2 === 0 ? (bayNum / 2) - 1 : Math.floor(bayNum / 2))
+            : Math.floor((bayNum - 1) / 2)
+          
+          modIdx = Math.max(0, Math.min(modIdx, bayModules - (initialSize === 40 ? 2 : 1)))
+          const resTier = Number(existingRes.tier) || 1
+          setCurrentTier(resTier)
+
+          setSelection({
+            module: modIdx,
+            row: Number(existingRes.row) || maxRows,
+            tier: resTier,
+          })
+        } else {
+          // Chỉ khởi tạo rỗng khi vừa mở modal
+          setSelection(null)
+          setCurrentTier(1)
+        }
       }
+    } else {
+      prevOpenRef.current = false
     }
-  }, [isOpen, isDefault40, bayModules, booking, currentReservation, maxRows, currentBlockCode, currentContId, currentBookId])
+  }, [isOpen, currentBlockCode, currentContId, currentBookId, isDefault40, bayModules, currentReservation, maxRows])
 
   // Tọa độ gốc nơi container đang thực sự nằm trong Block này (nếu có)
   const originCellInThisBlock = useMemo(() => {
@@ -260,6 +269,25 @@ export default function YardSlotReservationModal({
         return
       }
 
+      // 3. KIỂM TRA QUY TẮC ĐỠ TẦNG & GÓC CHỊU LỰC CHO CONTAINER 40FT:
+      if (currentTier > 1) {
+        const lowerCont1 = findExistingContainerAt(adjustedModule, row, currentTier - 1)
+        const lowerCont2 = findExistingContainerAt(adjustedModule + 1, row, currentTier - 1)
+
+        // Không có container nào ở tầng dưới -> Lơ lửng
+        if (!lowerCont1 && !lowerCont2) {
+          setWarningMessage(`❌ Không thể chọn vị trí này: Tầng dưới (Tier ${currentTier - 1}) đang trống! Container không thể lơ lửng trên không, bắt buộc phải xếp từ nền bãi (Tier 1) lên.`)
+          return
+        }
+
+        // Chỉ có 1 container 20ft ở dưới, ô kia trống -> Thiếu gù chịu lực
+        if ((lowerCont1 && !lowerCont2) || (!lowerCont1 && lowerCont2)) {
+          const presentCont = lowerCont1 || lowerCont2
+          setWarningMessage(`❌ Vi phạm góc chịu lực: Không thể đặt container 40ft lên trên chỉ 1 container 20ft (${presentCont.containerNumber || '20ft'}). 4 trụ góc của cont 40ft sẽ bị hẫng lơ lửng gây sập đổ! Tầng dưới bắt buộc phải là container 40ft hoặc đủ 2 container 20ft đỡ 4 góc.`)
+          return
+        }
+      }
+
       setSelection({
         module: adjustedModule,
         row,
@@ -267,6 +295,22 @@ export default function YardSlotReservationModal({
       })
     } else {
       // Container 20ft
+      // 3. KIỂM TRA QUY TẮC ĐỠ TẦNG CHO CONTAINER 20FT:
+      if (currentTier > 1) {
+        const lowerCont = findExistingContainerAt(moduleIndex, row, currentTier - 1)
+        if (!lowerCont) {
+          setWarningMessage(`❌ Không thể chọn vị trí này: Tầng dưới (Tier ${currentTier - 1}) đang trống! Container bắt buộc phải có container đỡ bên dưới hoặc xếp từ Tier 1.`)
+          return
+        }
+
+        // Không cho phép xếp 20ft lên nóc cont 40ft
+        const isLower40 = lowerCont.moduleSpan === 2 || Number(lowerCont.containerLengthFt) === 40 || Number(lowerCont.size) === 40
+        if (isLower40) {
+          setWarningMessage(`❌ Vi phạm kỹ thuật chất xếp bãi: Không được xếp container 20ft lên trên container 40ft (${lowerCont.containerNumber || '40ft'}), vì gù chịu lực giữa của cont 20ft sẽ ấn vào giữa nóc cont 40ft gây bẹp thủng nóc!`)
+          return
+        }
+      }
+
       setSelection({
         module: moduleIndex,
         row,
@@ -277,6 +321,33 @@ export default function YardSlotReservationModal({
 
   const handleConfirmReservation = () => {
     if (!selection || conflictContainer) return
+
+    // Kiểm tra an toàn xếp tầng lần cuối trước khi xác nhận
+    if (currentTier > 1) {
+      if (size === 40) {
+        const lower1 = findExistingContainerAt(selection.module, selection.row, currentTier - 1)
+        const lower2 = findExistingContainerAt(selection.module + 1, selection.row, currentTier - 1)
+        if (!lower1 && !lower2) {
+          setWarningMessage(`❌ Không thể xác nhận: Tầng dưới (Tier ${currentTier - 1}) đang trống!`)
+          return
+        }
+        if ((lower1 && !lower2) || (!lower1 && lower2)) {
+          setWarningMessage(`❌ Vi phạm góc chịu lực: Không thể đặt container 40ft lên trên chỉ 1 container 20ft!`)
+          return
+        }
+      } else {
+        const lower = findExistingContainerAt(selection.module, selection.row, currentTier - 1)
+        if (!lower) {
+          setWarningMessage(`❌ Không thể xác nhận: Tầng dưới (Tier ${currentTier - 1}) đang trống!`)
+          return
+        }
+        const isLower40 = lower.moduleSpan === 2 || Number(lower.containerLengthFt) === 40 || Number(lower.size) === 40
+        if (isLower40) {
+          setWarningMessage(`❌ Không được xếp container 20ft lên trên container 40ft!`)
+          return
+        }
+      }
+    }
 
     const reservation = {
       posId,
@@ -458,8 +529,33 @@ export default function YardSlotReservationModal({
                   key={`tier-${tierNum}`}
                   type="button"
                   onClick={() => {
-                    setCurrentTier(tierNum)
                     setWarningMessage('')
+                    if (selection && tierNum > 1) {
+                      if (size === 40) {
+                        const lower1 = findExistingContainerAt(selection.module, selection.row, tierNum - 1)
+                        const lower2 = findExistingContainerAt(selection.module + 1, selection.row, tierNum - 1)
+                        if (!lower1 && !lower2) {
+                          setWarningMessage(`❌ Không thể chuyển lên Tier ${tierNum}: Vị trí này ở tầng dưới (Tier ${tierNum - 1}) đang trống! Bắt buộc phải có container đỡ.`)
+                          return
+                        }
+                        if ((lower1 && !lower2) || (!lower1 && lower2)) {
+                          setWarningMessage(`❌ Vi phạm góc chịu lực: Không thể xếp cont 40ft lên trên chỉ 1 cont 20ft ở Tier ${tierNum - 1}!`)
+                          return
+                        }
+                      } else {
+                        const lower = findExistingContainerAt(selection.module, selection.row, tierNum - 1)
+                        if (!lower) {
+                          setWarningMessage(`❌ Không thể chuyển lên Tier ${tierNum}: Tầng dưới (Tier ${tierNum - 1}) đang trống!`)
+                          return
+                        }
+                        const isLower40 = lower.moduleSpan === 2 || Number(lower.containerLengthFt) === 40 || Number(lower.size) === 40
+                        if (isLower40) {
+                          setWarningMessage(`❌ Không được xếp container 20ft lên trên container 40ft ở Tier ${tierNum - 1}!`)
+                          return
+                        }
+                      }
+                    }
+                    setCurrentTier(tierNum)
                     if (selection) {
                       setSelection((curr) => ({ ...curr, tier: tierNum }))
                     }
