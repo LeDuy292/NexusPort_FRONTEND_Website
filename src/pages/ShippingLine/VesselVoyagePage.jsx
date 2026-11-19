@@ -3,6 +3,7 @@ import { shippingLineApi, formatApiErrorMessage } from './api/shippingLineApi';
 import ShippingBadge from './components/ShippingBadge';
 import ShippingPagination from './components/ShippingPagination';
 import { manifestPortSyncService } from '../../services/manifestPortSyncService';
+import { buildVoyageNumber } from './utils/voyageNumber';
 
 const TIEN_SA_PORT = 'Cảng Tiên Sa, Đà Nẵng (VNDAD)';
 
@@ -52,6 +53,27 @@ function toLocalDatetimeInput(dateStr) {
 function fromLocalDatetimeInput(inputVal) {
   if (!inputVal) return '';
   return inputVal.replace('T', ' ').slice(0, 16);
+}
+
+// ETA mặc định: 3 ngày sau, 08:00 (giờ máy), để các hạn chót tính ra luôn ở tương lai
+function defaultEta() {
+  const d = new Date();
+  d.setDate(d.getDate() + 3);
+  d.setHours(8, 0, 0, 0);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} 08:00`;
+}
+
+// Kiểm tra thứ tự mốc: VGM ≤ hạ bãi (CY) < ETD, ETA < ETD, hạn chót chưa qua
+function voyageTimeError(form) {
+  const at = (v) => (v ? new Date(String(v).replace(' ', 'T')) : null);
+  const [eta, etd, cy, vgm] = [at(form.eta), at(form.etd), at(form.cyCutOff), at(form.vgmCutOff)];
+  if (![eta, etd, cy, vgm].every((d) => d && !isNaN(d.getTime()))) return 'Cần nhập đủ ETA, ETD, hạn chót hạ bãi và hạn chót nộp VGM.';
+  if (cy <= new Date() || vgm <= new Date()) return 'Hạn chót hạ bãi và hạn chót nộp VGM phải ở thời điểm sau hiện tại.';
+  if (vgm > cy) return 'Hạn chót nộp VGM không được sau hạn chót hạ bãi.';
+  if (cy >= etd) return 'Hạn chót hạ bãi phải trước giờ tàu rời cảng (ETD).';
+  if (eta >= etd) return 'Giờ tàu đến (ETA) phải trước giờ tàu rời cảng (ETD).';
+  return '';
 }
 
 function calculateCutoffsFromEta(etaDateTimeStr) {
@@ -127,10 +149,8 @@ export default function VesselVoyagePage() {
     vesselId: '',
     pol: TIEN_SA_PORT,
     pod: 'Tokyo, Nhật Bản (JPTYO)',
-    eta: '2026-11-20 08:00',
-    etd: '2026-11-21 12:00',
-    cyCutOff: '2026-11-19 20:00',
-    vgmCutOff: '2026-11-19 12:00',
+    eta: defaultEta(),
+    ...calculateCutoffsFromEta(defaultEta()),
     terminal: TIEN_SA_TERMINALS[0],
     remarks: '',
   });
@@ -167,15 +187,15 @@ export default function VesselVoyagePage() {
   }, [vesselSearch]);
 
   // Helper sinh mã chuyến tàu tự động theo tàu biển
-  const generateVoyageNumber = (targetVesselId) => {
-    const vId = targetVesselId || createForm.vesselId || vessels[0]?.id;
+  // Theo quy tắc chung: {tiền tố tàu}{năm ETA}{STT}{X xuất | N nhập}, không dựa vào số lượng chuyến
+  const generateVoyageNumber = (targetVesselId, form = createForm) => {
+    const vId = targetVesselId || form.vesselId || vessels[0]?.id;
     const v = vessels.find(item => item.id === vId);
-    if (!v) return 'TS-2601W';
-    const words = v.vesselName.trim().split(' ');
-    const prefix = words.length >= 2 ? (words[0][0] + words[1][0]).toUpperCase() : v.vesselName.slice(0, 2).toUpperCase();
-    const count = (voyages || []).length + 1;
-    const num = 2600 + count;
-    return `${prefix}-${num}W`;
+    if (!v) return '';
+    return buildVoyageNumber({
+      vesselName: v.vesselName, eta: form.eta, pol: form.pol, pod: form.pod,
+      taken: (voyages || []).map(item => item.voyageNumber),
+    });
   };
 
   // Cập nhật nhanh trạng thái chuyến tàu (SCHEDULED -> IN_TRANSIT -> BERTHED -> OPERATING -> DEPARTED -> COMPLETED)
@@ -201,7 +221,7 @@ export default function VesselVoyagePage() {
   const handleOpenCreateForVessel = (vesselId) => {
     const targetVesselId = vesselId || vessels[0]?.id || '';
     const autoVoyageNo = generateVoyageNumber(targetVesselId);
-    const initialEta = '2026-11-20 08:00';
+    const initialEta = defaultEta();
     const calculated = calculateCutoffsFromEta(initialEta);
 
     setRouteType('OUTBOUND');
@@ -211,9 +231,9 @@ export default function VesselVoyagePage() {
       pol: TIEN_SA_PORT,
       pod: 'Tokyo, Nhật Bản (JPTYO)',
       eta: initialEta,
-      etd: calculated?.etd || '2026-11-21 12:00',
-      cyCutOff: calculated?.cyCutOff || '2026-11-19 20:00',
-      vgmCutOff: calculated?.vgmCutOff || '2026-11-19 12:00',
+      etd: calculated?.etd || '',
+      cyCutOff: calculated?.cyCutOff || '',
+      vgmCutOff: calculated?.vgmCutOff || '',
       terminal: TIEN_SA_TERMINALS[0],
       remarks: 'Chuyến tàu làm hàng container tại Cảng Tiên Sa',
     });
@@ -272,6 +292,11 @@ export default function VesselVoyagePage() {
       setError('Vui lòng chọn Tàu biển');
       return;
     }
+    const timeError = voyageTimeError(createForm);
+    if (timeError) {
+      setError(timeError);
+      return;
+    }
     setSaving(true);
     setError('');
 
@@ -279,7 +304,8 @@ export default function VesselVoyagePage() {
       await shippingLineApi.createVoyage({
         ...createForm,
         vesselId: effectiveVesselId,
-        voyageNumber: createForm.voyageNumber || generateVoyageNumber(effectiveVesselId),
+        // Sinh lại theo dữ liệu cuối cùng trên form (tàu, ETA, chiều tuyến); backend kiểm tra trùng lần cuối
+        voyageNumber: generateVoyageNumber(effectiveVesselId, createForm),
       });
       setShowCreateModal(false);
       loadData();
@@ -405,12 +431,13 @@ export default function VesselVoyagePage() {
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="w-full sm:w-auto px-3.5 py-2 bg-fog border border-chalk rounded-xl text-xs font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
               >
-                <option value="">Tất cả trạng thái</option>
+                <option value="">Đang hoạt động (ẩn chuyến đã xong)</option>
                 <option value="SCHEDULED">Kế hoạch</option>
                 <option value="IN_TRANSIT">Đang hành trình</option>
                 <option value="BERTHED">Đã cập cảng</option>
                 <option value="OPERATING">Đang làm hàng</option>
                 <option value="DEPARTED">Đã rời cảng</option>
+                <option value="COMPLETED">Hoàn tất</option>
               </select>
             </div>
           </div>
@@ -654,6 +681,8 @@ export default function VesselVoyagePage() {
             </div>
 
             <form id="createVoyageForm" onSubmit={handleCreateVoyage} className="px-7 py-6 space-y-6 text-xs font-sans overflow-y-auto flex-1 bg-fog/30">
+              {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">{error}</p>}
+              <p className="rounded-xl border border-chalk bg-white px-4 py-2.5 text-xs text-slate">Mã chuyến tự sinh: <strong className="font-mono text-carbon">{generateVoyageNumber(createForm.vesselId, createForm) || '—'}</strong> <span className="ml-1">(tiền tố tàu + năm ETA + số thứ tự + X xuất / N nhập)</span></p>
 
               {/* 1. Tàu và cầu bến */}
               <section className="bg-white border border-chalk rounded-xl p-5 space-y-4">
@@ -798,24 +827,6 @@ export default function VesselVoyagePage() {
                       type="datetime-local"
                       value={toLocalDatetimeInput(createForm.etd)}
                       onChange={(e) => setCreateForm({ ...createForm, etd: fromLocalDatetimeInput(e.target.value) })}
-                      className="w-full h-11 px-3 bg-white border border-chalk rounded-lg text-sm font-semibold text-carbon focus:outline-none focus:border-signal-orange"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-amber-800 uppercase mb-1.5">Hạn chót hạ bãi (trước đến 12 giờ) *</label>
-                    <input
-                      type="datetime-local"
-                      value={toLocalDatetimeInput(createForm.cyCutOff)}
-                      onChange={(e) => setCreateForm({ ...createForm, cyCutOff: fromLocalDatetimeInput(e.target.value) })}
-                      className="w-full h-11 px-3 bg-amber-50/60 border border-amber-300 rounded-lg text-sm font-semibold text-amber-900 focus:outline-none focus:border-signal-orange"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate uppercase mb-1.5">Hạn chót nộp VGM (trước đến 20 giờ) *</label>
-                    <input
-                      type="datetime-local"
-                      value={toLocalDatetimeInput(createForm.vgmCutOff)}
-                      onChange={(e) => setCreateForm({ ...createForm, vgmCutOff: fromLocalDatetimeInput(e.target.value) })}
                       className="w-full h-11 px-3 bg-white border border-chalk rounded-lg text-sm font-semibold text-carbon focus:outline-none focus:border-signal-orange"
                     />
                   </div>

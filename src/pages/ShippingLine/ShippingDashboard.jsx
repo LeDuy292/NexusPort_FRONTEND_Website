@@ -10,16 +10,12 @@ const sumOf = (obj) => Object.values(obj || {}).reduce((a, b) => a + b, 0)
 
 // Trạng thái hiển thị theo ngữ cảnh người dùng, không đưa mã nội bộ ra giao diện
 const voyageLabel = { Scheduled: 'Đang nhận booking', Closed: 'Đã chốt nhận hàng', Departed: 'Đã rời cảng', Cancelled: 'Đã huỷ' }
-const bookingLabel = {
-  Pending: 'Chờ khai container', ContainersDeclared: 'Đã khai container', Approved: 'Đã xác nhận', Confirmed: 'Đã xác nhận',
-  Loaded: 'Đã xếp lên tàu', Cancelled: 'Đã huỷ', Rejected: 'Bị từ chối',
-}
 const importLabel = {
   RECEIVED: 'Đã nhận pre-alert', MISMATCH: 'Lệch thông tin', NOTICE_SENT: 'Chờ chủ hàng xác nhận', AMENDMENT_REQUESTED: 'Chủ hàng yêu cầu sửa',
   CONFIRMED: 'Chủ hàng đã xác nhận', RELEASE_VERIFIED: 'Đủ điều kiện giao hàng', DO_ISSUED: 'Đã phát hành D/O',
 }
 const requestLabel = { LOI_RELEASE: 'Giao hàng theo LOI', CHANGE_CONSIGNEE: 'Đổi người nhận', CHANGE_POD: 'Đổi cảng dỡ', SCHEDULE_CHANGE: 'Đổi lịch tàu' }
-const docLabel = { BL: 'Vận đơn', PRE_ALERT: 'Pre-alert', ARRIVAL_NOTICE: 'Thông báo hàng đến', DO: 'Lệnh giao hàng', MANIFEST: 'Bản khai', BOOKING: 'Booking' }
+const docLabel = { BL: 'Vận đơn', PRE_ALERT: 'Pre-alert', ARRIVAL_NOTICE: 'Thông báo hàng đến', DO: 'Lệnh giao hàng', MANIFEST: 'Bản khai' }
 const alertTone = { ERROR: 'border-rose-200 bg-rose-50 text-rose-950', WARNING: 'border-amber-200 bg-amber-50 text-amber-950', INFO: 'border-chalk bg-fog text-carbon' }
 
 function Breakdown({ items, labels, empty }) {
@@ -99,7 +95,7 @@ export default function ShippingDashboard() {
       <PageHeader
         badge="Không gian Hãng tàu"
         title={`Tổng Quan Hoạt Động${data?.line ? ` · ${data.line.short_name}` : ''}`}
-        subtitle="Chiều xuất: chuyến tàu → booking → bản khai → phát hành vận đơn. Chiều nhập: pre-alert → thông báo hàng đến → giải phóng hàng → lệnh giao hàng."
+        subtitle="Chiều xuất: chuyến tàu → bản khai → phát hành vận đơn → chủ hàng khai báo ePort theo số vận đơn. Chiều nhập: pre-alert → thông báo hàng đến → giải phóng hàng → lệnh giao hàng."
         actions={(
           <>
             {data?.generatedAt && <span className="text-[11px] font-mono text-slate">Cập nhật {when(data.generatedAt)}</span>}
@@ -116,7 +112,7 @@ export default function ShippingDashboard() {
       {/* Chỉ số chính, bấm vào để tới đúng trang nghiệp vụ */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
         <StatCard label="Chuyến tàu đang mở" value={ex.voyages?.byStatus?.Scheduled || 0} hint={`${ex.voyages?.total || 0} chuyến của hãng`} tone="text-blue-700" onClick={() => navigate('/shipping-line/voyages')} />
-        <StatCard label="Booking xuất" value={ex.bookings?.total || 0} hint={`${ex.bookings?.byStatus?.Pending || 0} chờ khai container`} tone="text-amber-700" onClick={() => navigate('/shipping-line/voyages')} />
+        <StatCard label="Vận đơn xuất" value={bills.total || 0} hint={`${bills.notIssued || 0} chờ phát hành`} tone="text-amber-700" onClick={() => navigate('/shipping-line/manifest')} />
         <StatCard label="Bản khai hàng hóa" value={manifests.total || 0} hint={`${sumOf(manifests.export)} xuất · ${sumOf(manifests.import)} nhập`} tone="text-purple-700" onClick={() => navigate('/shipping-line/manifest')} />
         <StatCard label="Vận đơn đã phát hành" value={bills.issued || 0} hint={`${bills.notIssued || 0} vận đơn chưa phát hành`} tone={bills.notIssued ? 'text-amber-700' : 'text-emerald-700'} onClick={() => navigate('/shipping-line/manifest')} />
         <StatCard label="Hồ sơ hàng nhập" value={im.shipments?.total || 0} hint={`${im.postIssuanceRequests?.total || 0} yêu cầu chờ duyệt`} tone="text-blue-700" onClick={() => navigate('/shipping-line/import-documents')} />
@@ -146,7 +142,7 @@ export default function ShippingDashboard() {
                       <th className="py-2.5 px-3">Hạn VGM</th>
                       <th className="py-2.5 px-3">Hạn hạ bãi (CY)</th>
                       <th className="py-2.5 px-3">ETD</th>
-                      <th className="py-2.5 px-3 text-right">Booking / Cont</th>
+                      <th className="py-2.5 px-3 text-right">Vận đơn / Cont</th>
                       <th className="py-2.5 px-3">Trạng thái</th>
                     </tr>
                   </thead>
@@ -160,8 +156,7 @@ export default function ShippingDashboard() {
                         <td className="py-3 px-3 font-mono font-bold text-amber-700">{when(v.cyCutoff)}</td>
                         <td className="py-3 px-3 font-mono text-slate">{when(v.etd)}</td>
                         <td className="py-3 px-3 text-right font-mono font-bold text-carbon">
-                          {v.bookings} / {v.containers}
-                          {v.bookingsPending > 0 && <div className="text-[10px] font-sans text-amber-700">{v.bookingsPending} chờ khai cont</div>}
+                          {v.bills} / {v.containers}
                         </td>
                         <td className="py-3 px-3"><Pill tone={v.status === 'Scheduled' ? 'green' : 'slate'}>{voyageLabel[v.status] || v.status}</Pill></td>
                       </tr>
@@ -176,9 +171,7 @@ export default function ShippingDashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className={card}>
               <SectionTitle icon="north_east">Chiều xuất</SectionTitle>
-              <p className="text-[10px] font-bold uppercase text-slate mb-2">Booking</p>
-              <Breakdown items={ex.bookings?.byStatus} labels={bookingLabel} empty="Chưa có booking." />
-              <p className="text-[10px] font-bold uppercase text-slate mt-4 mb-2">Bản khai xuất</p>
+              <p className="text-[10px] font-bold uppercase text-slate mb-2">Bản khai xuất</p>
               <Breakdown
                 items={Object.fromEntries(Object.entries(manifests.export || {}).map(([s, n]) => [manifestStatusView({ status: s, direction: 'EXPORT' }).label, n]))}
                 empty="Chưa có bản khai xuất."

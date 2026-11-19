@@ -924,7 +924,7 @@ export default function GateBookingRequests() {
   const handleRefresh = async () => {
     await manifestPortSyncService.fetchRemoteSyncedManifests().catch(() => { })
     fetchBookings()
-    showToast('🔄 Đã cập nhật danh sách Yêu Cầu Booking Cổng mới nhất từ các Hãng xe!')
+    showToast('🔄 Đã cập nhật danh sách Yêu Cầu Lịch Hẹn Cổng mới nhất từ các Hãng xe!')
   }
 
   // Reset toàn bộ dữ liệu test về 0
@@ -1238,7 +1238,7 @@ export default function GateBookingRequests() {
   // 1. KPI Stats Calculation (Tính trực tiếp trên danh sách Container chia theo Công ty Vận tải)
   const kpiStats = useMemo(() => {
     const sourceList = manifestGeneratedBookings
-    const pending = sourceList.filter(b => b.status === 'Pending').length
+    const pending = sourceList.filter(b => b.status === 'Pending' || b.status === 'WaitingTransport').length
     const underReview = sourceList.filter(b => b.status === 'Under Review').length
     const approvedToday = sourceList.filter(b => b.status === 'Approved' || b.status === 'Ready').length
     const rejectedToday = sourceList.filter(b => b.status === 'Rejected').length
@@ -1294,7 +1294,7 @@ export default function GateBookingRequests() {
     return dir === 'IMPORT' || op.includes('pickup') || op.includes('import') || op.includes('nhận') || op.includes('nhập')
   }, [selectedBooking, selectedManifestInfo])
 
-  // Tự động đối chiếu với đơn Dịch Vụ ePort khi mở chi tiết Booking Cổng
+  // Tự động đối chiếu với đơn Dịch Vụ ePort khi mở chi tiết Lịch Hẹn Cổng
   const loadEportMatches = async (keyword) => {
     const q = String(keyword || '').trim()
     if (!q) {
@@ -2244,6 +2244,8 @@ export default function GateBookingRequests() {
       if (statusFilter !== 'All') {
         if (statusFilter === 'Pending') {
           matchesStatus = b.status === 'Pending' || b.status === 'WaitingTransport'
+        } else if (statusFilter === 'Approved') {
+          matchesStatus = b.status === 'Approved' || b.status === 'Ready'
         } else if (statusFilter === 'Cancelled') {
           matchesStatus = b.status === 'Cancelled' || b.status === 'Canceled'
         } else {
@@ -3449,9 +3451,9 @@ export default function GateBookingRequests() {
       <div className="epc-page-header !mb-0">
         <div>
           <div className="epc-breadcrumb">
-            Cổng điều độ viên<span>/</span>Quản lý yêu cầu Booking cổng
+            Cổng điều độ viên<span>/</span>Quản lý yêu cầu lịch hẹn cổng
           </div>
-          <h1>Quản Lý Yêu Cầu Booking Cổng</h1>
+          <h1>Quản Lý Yêu Cầu Lịch Hẹn Cổng</h1>
           <p>
             Kiểm soát bản khai tàu e-Manifest, đối chiếu đơn dịch vụ ePort, cấp phép xe vận tải và tự động phân bổ vị trí bãi.
           </p>
@@ -3619,7 +3621,7 @@ export default function GateBookingRequests() {
               className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${statusFilter === 'Pending' ? 'border-[#cc9469] ring-2 ring-[#fb9b70]/40' : 'border-[#e0e8f0] hover:border-[#becbd8]'
                 }`}
             >
-              <div className="text-[10px] font-bold text-[#a1845f] uppercase tracking-wider">Chờ kiểm duyệt</div>
+              <div className="text-[10px] font-bold text-[#a1845f] uppercase tracking-wider">Chờ xử lý</div>
               <div className="text-2xl font-bold text-[#29415a] mt-1 font-mono">{kpiStats.pending}</div>
               <div className="text-[11px] text-[#778ba3] mt-0.5">Cần xử lý ngay</div>
             </div>
@@ -3629,7 +3631,7 @@ export default function GateBookingRequests() {
               className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${statusFilter === 'Under Review' ? 'border-[#6b88a9] ring-2 ring-[#6b88a9]/30' : 'border-[#e0e8f0] hover:border-[#becbd8]'
                 }`}
             >
-              <div className="text-[10px] font-bold text-[#6b88a9] uppercase tracking-wider">Đang duyệt</div>
+              <div className="text-[10px] font-bold text-[#6b88a9] uppercase tracking-wider">Đang xem xét</div>
               <div className="text-2xl font-bold text-[#29415a] mt-1 font-mono">{kpiStats.underReview}</div>
               <div className="text-[11px] text-[#778ba3] mt-0.5">Đang đối soát hồ sơ</div>
             </div>
@@ -3639,7 +3641,7 @@ export default function GateBookingRequests() {
               className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${statusFilter === 'Approved' ? 'border-[#5e8b74] ring-2 ring-[#5e8b74]/30' : 'border-[#e0e8f0] hover:border-[#becbd8]'
                 }`}
             >
-              <div className="text-[10px] font-bold text-[#5e8b74] uppercase tracking-wider">Đã duyệt hôm nay</div>
+              <div className="text-[10px] font-bold text-[#5e8b74] uppercase tracking-wider">Đã cấp lịch</div>
               <div className="text-2xl font-bold text-[#29415a] mt-1 font-mono">{kpiStats.approvedToday}</div>
               <div className="text-[11px] text-[#778ba3] mt-0.5">Đủ điều kiện qua cổng</div>
             </div>
@@ -3649,7 +3651,7 @@ export default function GateBookingRequests() {
               className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${statusFilter === 'Rejected' ? 'border-[#ad7a73] ring-2 ring-[#ad7a73]/30' : 'border-[#e0e8f0] hover:border-[#becbd8]'
                 }`}
             >
-              <div className="text-[10px] font-bold text-[#ad7a73] uppercase tracking-wider">Từ chối hôm nay</div>
+              <div className="text-[10px] font-bold text-[#ad7a73] uppercase tracking-wider">Bị từ chối</div>
               <div className="text-2xl font-bold text-[#29415a] mt-1 font-mono">{kpiStats.rejectedToday}</div>
               <div className="text-[11px] text-[#778ba3] mt-0.5">Sai lệch chứng từ</div>
             </div>
@@ -3664,36 +3666,8 @@ export default function GateBookingRequests() {
             </div>
           </div>
 
-          {/* ── THANH TÌM KIẾM & BỘ LỌC NHANH THEO VIBE ePORT ── */}
-          <div className="epo-worklist p-4 flex flex-col lg:flex-row justify-between items-stretch lg:items-center gap-3.5">
-            {/* Quick Status Filter Pills */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 lg:pb-0 rounded-[12px] bg-[#eaf0f5] p-1 border border-[#e3e8ed]">
-              {[
-                { key: 'All', label: 'Tất cả', count: manifestGeneratedBookings.length },
-                { key: 'Pending', label: 'Chờ duyệt', count: kpiStats.pending },
-                { key: 'Under Review', label: 'Đang duyệt', count: kpiStats.underReview },
-                { key: 'Approved', label: 'Đã duyệt', count: kpiStats.approvedToday },
-                { key: 'Rejected', label: 'Từ chối', count: kpiStats.rejectedToday },
-                { key: 'Cancelled', label: 'Đã hủy', count: kpiStats.cancelledToday },
-              ].map((st) => (
-                <button
-                  key={st.key}
-                  type="button"
-                  onClick={() => setStatusFilter(st.key)}
-                  className={`px-3 py-1.5 rounded-[9px] text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${statusFilter === st.key
-                    ? 'bg-white text-[#b94717] border border-[#e2e5e9] shadow-2xs'
-                    : 'text-[#68798c] hover:text-[#172638] hover:bg-white/50'
-                    }`}
-                >
-                  <span>{st.label}</span>
-                  <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${statusFilter === st.key ? 'bg-[#fff0e7] text-[#b94717]' : 'bg-[#dbe4ed]/90 text-[#6a7c8d]'
-                    }`}>
-                    {st.count}
-                  </span>
-                </button>
-              ))}
-            </div>
-
+          {/* ── THANH TÌM KIẾM & BỘ LỌC THEO VIBE ePORT ── */}
+          <div className="epo-worklist p-4">
             {/* Search + Select Dropdowns */}
             <div className="flex flex-wrap items-center gap-2.5 text-xs font-bold">
               <div className="relative flex-1 sm:w-64 min-w-[200px]">
@@ -4960,9 +4934,9 @@ export default function GateBookingRequests() {
                                       id: validation?.bookingId || 'CHUA-CO-BOOKING-CONG',
                                       containerId: dConts[0] || 'Chưa có Cont cổng',
                                       bookingType: detail.flow === 'IMPORT' ? 'Import' : 'Export',
-                                      billOfLading: 'Chưa có trên Booking Cổng',
-                                      bookingNumber: 'Chưa có trên Booking Cổng',
-                                      company: 'Chưa có Booking Cổng khớp',
+                                      billOfLading: 'Chưa có trên Lịch Hẹn Cổng',
+                                      bookingNumber: 'Chưa có trên Lịch Hẹn Cổng',
+                                      company: 'Chưa có Lịch Hẹn Cổng khớp',
                                       status: 'Pending',
                                       _noGateBooking: true
                                     }
@@ -5455,7 +5429,7 @@ export default function GateBookingRequests() {
                 <span className="material-symbols-outlined text-green-600 text-3xl shrink-0">task_alt</span>
                 <div>
                   <div className="text-[11px] font-mono font-bold text-blue-700">
-                    Booking Cổng · {selectedBooking.id}
+                    Lịch Hẹn Cổng · {selectedBooking.id}
                   </div>
                   <h3 className="font-heading text-lg font-extrabold text-carbon mt-0.5">
                     {selectedBooking.containerId} <span className="text-sm font-semibold text-slate-500">({selectedBooking.containerType || '20GP'} · {isImportBooking ? 'Lấy cont hàng' : 'Hạ cont'})</span>
@@ -6525,7 +6499,7 @@ export default function GateBookingRequests() {
                 </div>
                 <div>
                   <h3 className="font-heading text-sm font-bold text-slate-900">
-                    Đối Chiếu Thống Nhất: Dịch Vụ ePort ↔ Yêu Cầu Booking Cổng
+                    Đối Chiếu Thống Nhất: Dịch Vụ ePort ↔ Yêu Cầu Lịch Hẹn Cổng
                   </h3>
                   <p className="text-[11px] text-slate-500">
                     Kiểm tra chéo giữa hồ sơ doanh nghiệp đăng ký trên ePort và đơn điều phối cổng của Cảng Tiên Sa
@@ -6639,7 +6613,7 @@ export default function GateBookingRequests() {
                       <thead>
                         <tr className="bg-slate-100 text-slate-600 text-[10px] uppercase tracking-wide border-b border-slate-200">
                           <th className="py-2.5 px-3 w-[24%]">Tiêu chí đối chiếu</th>
-                          <th className="py-2.5 px-3 w-[32%]">Bên Yêu Cầu Booking Cổng</th>
+                          <th className="py-2.5 px-3 w-[32%]">Bên Yêu Cầu Lịch Hẹn Cổng</th>
                           <th className="py-2.5 px-3 w-[32%]">Bên Dịch Vụ ePort</th>
                           <th className="py-2.5 px-3 w-[12%] text-center">Kết quả</th>
                         </tr>
