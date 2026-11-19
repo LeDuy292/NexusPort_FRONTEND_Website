@@ -2119,38 +2119,6 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
             )}
           </div>
 
-          {/* BANNER PHÁP LÝ KHÓA BẤT BIẾN KHI ĐÃ CẤP / IN e-EIR */}
-          {isEirLocked && (
-            <div className="p-4 bg-amber-50/90 border border-amber-300 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3 text-xs shadow-2xs">
-              <div className="flex items-start gap-3">
-                <div className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-xs">
-                  <span className="material-symbols-outlined text-xl">lock</span>
-                </div>
-                <div>
-                  <div className="font-bold text-slate-900 text-sm flex flex-wrap items-center gap-2">
-                    <span>Phiếu giao nhận e-EIR đã được ký phát hành & in ấn</span>
-                    <span className="px-2 py-0.5 rounded-lg bg-white border border-amber-300 text-amber-900 font-mono font-bold text-xs shadow-2xs">
-                      {issuedEir?.referenceNo || currentReq.eirReferenceNo || 'EIR-ISSUED'}
-                    </span>
-                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold text-[10px] border border-emerald-200">
-                      Khóa Bất Biến (Read-Only)
-                    </span>
-                  </div>
-                  <p className="text-slate-600 text-xs mt-1 leading-relaxed">
-                    Theo quy chuẩn TOS Cảng Tiên Sa: Dữ liệu giao nhận đã có hiệu lực pháp lý ràng buộc. <strong>Toàn bộ thông tin vỏ cont, seal và chữ ký đã được khóa bất biến</strong>, không thể chỉnh sửa lại phiếu sau khi in/phát hành.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowEirModal(true)}
-                className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold text-xs shadow-xs cursor-pointer transition-colors shrink-0"
-              >
-                <span className="material-symbols-outlined text-base">print</span>
-                Xem & In Lại Phiếu e-EIR
-              </button>
-            </div>
-          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Sơ đồ Khám 6 mặt vỏ container */}
