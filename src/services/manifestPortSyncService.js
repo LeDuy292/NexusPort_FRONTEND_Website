@@ -1142,16 +1142,16 @@ export const manifestPortSyncService = {
           }
         })
 
-        // Giữ lại các tàu trong local storage nếu remoteList chưa có (tránh mất dữ liệu)
-        existingLocal.forEach(localM => {
-          if (!current.some(c => c.id === localM.id || c.manifestNumber === localM.manifestNumber || c.voyageNumber === localM.voyageNumber)) {
+        // 100% đồng bộ theo DB Deploy trên PostgreSQL - chỉ dùng local nếu DB rỗng hoàn toàn
+        if (remoteList.length === 0) {
+          existingLocal.forEach(localM => {
             if (isManifestPermanentlyApproved(localM)) {
               localM.portApprovalStatus = 'PORT_APPROVED'
               localM.status = 'PORT_APPROVED'
             }
             current.push(localM)
-          }
-        })
+          })
+        }
 
         // Luôn bảo lưu tuyệt đối trạng thái PORT_APPROVED
         current.forEach(m => {
@@ -1261,7 +1261,13 @@ export const manifestPortSyncService = {
         parsed = []
       }
 
-      let hasChanged = false
+      // Tự động dọn dẹp các ID bản khai rác/thử nghiệm đã bị xóa khỏi PostgreSQL
+      const beforeFilterLen = parsed.length
+      parsed = parsed.filter(m => {
+        const mId = String(m?.id || m?.manifestId || '')
+        return mId !== '1e2fbb53-544b-44e6-abcc-1f461c8a311a'
+      })
+      let hasChanged = parsed.length !== beforeFilterLen
       const mapped = parsed.map(m => {
         if (isManifestPermanentlyApproved(m)) {
           if (m.portApprovalStatus !== 'PORT_APPROVED' || m.status !== 'PORT_APPROVED') {
@@ -1299,21 +1305,41 @@ export const manifestPortSyncService = {
       let parsed = raw ? JSON.parse(raw) : []
       if (!Array.isArray(parsed)) parsed = []
 
-      // CHỈ hiển thị bookings của những tàu ĐÃ ĐƯỢC PHÊ DUYỆT (PORT_APPROVED)
-      const approvedManifests = new Set(
+      // Lấy danh sách tàu đã được phê duyệt (PORT_APPROVED)
+      let approvedManifests = new Set(
         allManifests
-          .filter(m => m.portApprovalStatus === 'PORT_APPROVED' || m.status === 'PORT_APPROVED')
+          .filter(m => m.portApprovalStatus === 'PORT_APPROVED' || m.status === 'PORT_APPROVED' || m.status === 'DISCHARGING')
           .map(m => m.manifestNumber || m.manifestId)
       )
 
-      if (approvedManifests.size === 0) {
+      // TỰ ĐỘNG PHÂN BỔ BÃI & ĐẶT CHỖ CHO CÁC TÀU NẾU CHƯA CÓ BOOKINGS
+      if (approvedManifests.size === 0 || parsed.length === 0) {
+        const toAutoApprove = allManifests.filter(m => m.status === 'SENT_TO_PORT' || m.status === 'PORT_APPROVED' || m.status === 'DISCHARGING' || !m.portApprovalStatus)
+        const targetList = toAutoApprove.length > 0 ? toAutoApprove : allManifests
+        targetList.forEach(m => {
+          try {
+            const mId = m.manifestId || m.id || m.manifestNumber
+            this.approveManifestByPort(mId, null, { silent: true })
+          } catch (e) {}
+        })
+        raw = localStorage.getItem(GENERATED_BOOKINGS_KEY)
+        parsed = raw ? JSON.parse(raw) : []
+        if (!Array.isArray(parsed)) parsed = []
+        approvedManifests = new Set(
+          this.getSyncedManifests()
+            .filter(m => m.portApprovalStatus === 'PORT_APPROVED' || m.status === 'PORT_APPROVED' || m.status === 'DISCHARGING')
+            .map(m => m.manifestNumber || m.manifestId)
+        )
+      }
+
+      if (approvedManifests.size === 0 && parsed.length === 0) {
         return []
       }
 
       if (parsed.length > 0) {
-        const filteredApproved = parsed.filter(b =>
-          approvedManifests.has(b.sourceManifestNumber) || approvedManifests.has(b.sourceManifestId)
-        )
+        const filteredApproved = approvedManifests.size > 0 
+          ? parsed.filter(b => approvedManifests.has(b.sourceManifestNumber) || approvedManifests.has(b.sourceManifestId))
+          : parsed
           const allReservations = yardReservationStore.getReservations()
           let hasBookingsMigrated = false
           const enriched = filteredApproved.map((item, idx) => {
@@ -1505,58 +1531,24 @@ export const manifestPortSyncService = {
               r => (r.containerId || r.containerNo || '').trim().toUpperCase() === contKey
             )
 
-            // 1. Nếu chưa có autoYardSlot (bản ghi cũ), tự động tính toán vị trí chuẩn theo loại Cont
+            // 1. Tự động tính toán vị trí chuẩn theo quy tắc Cảng Tiên Sa (Không dùng bãi đệm tạm thời)
             let slot = item.autoYardSlot
-            if (!slot || !slot.blockCode) {
-              if (item.operation === 'Pickup') {
-                const is20 = String(item.containerType || '40HC').startsWith('20')
-                const bayNum = is20 ? (1 + (idx % 16) * 2) : (2 + (idx % 8) * 4)
-                const bayStr = String(bayNum).padStart(2, '0')
-                const rowNum = 1 + (idx % 4)
-                const rowStr = String(rowNum).padStart(2, '0')
-                const tierNum = 1
-                const coord = `A01-${bayStr}-${rowStr}-${tierNum}`
-                slot = {
-                  slotId: coord,
-                  posId: coord,
-                  zoneCode: 'A',
-                  zoneName: 'Khu A · Bãi tập kết tạm dỡ tàu (Đệm cầu cảng)',
-                  blockCode: 'A01',
-                  bay: bayNum,
-                  bayCode: bayStr,
-                  bayDisplay: `Bay ${bayStr}`,
-                  row: rowNum,
-                  rowCode: rowStr,
-                  tier: tierNum,
-                  tierCode: '1',
-                  gate: 'Gate 1',
-                  gateDisplay: 'Gate 1 (Cổng Cảng Tiên Sa)',
-                  slotName: `Khu A01 · Bay ${bayStr} (R${rowStr}-T1) [Tập kết tạm]`,
-                  fullLocation: `Block A01 · Bay ${bayStr} · Row ${rowStr} · Tier 1`,
-                  size: is20 ? 20 : 40,
-                  isoType: item.containerType || '40HC',
-                  isReefer: Boolean(item.isReefer) || /RF|RH|R[01]/.test(String(item.containerType || '')),
-                  isDG: String(item.dgClass || '').includes('IMO'),
-                  allocationScore: 50,
-                  allocationReason: 'Tập kết tạm tại Khu A sau khi dỡ tàu - Chờ kiểm tra Tally & đối soát trước khi phân bổ',
-                  autoAssigned: false,
-                  isPreAllocated: false,
-                  isTemporaryBuffer: true,
-                  assignedAt: new Date().toLocaleString('vi-VN'),
-                }
-              } else {
-                slot = computeAutoYardSlot(
-                  {
-                    containerNumber: item.containerId,
-                    isoType: item.containerType,
-                    tempRequired: item.tempRequired,
-                    dgClass: item.dgClass,
-                    cargoDescription: item.cargoDescription,
-                  },
-                  'EXPORT',
-                  idx
-                )
-              }
+            if (!slot || !slot.blockCode || slot.isTemporaryBuffer || slot.allocationScore === 50) {
+              const opDirection = item.operation === 'Pickup' || item.direction === 'IMPORT' ? 'IMPORT' : 'EXPORT'
+              slot = computeAutoYardSlot(
+                {
+                  containerNumber: item.containerId || item.containerNumber,
+                  isoType: item.containerType || item.isoType,
+                  tempRequired: item.tempRequired,
+                  dgClass: item.dgClass,
+                  cargoDescription: item.cargoDescription,
+                  grossWeightKg: item.grossWeightKg || item.weight,
+                  isReefer: item.isReefer,
+                },
+                opDirection,
+                idx,
+                items
+              )
               dirty = true
             }
 
@@ -1978,12 +1970,10 @@ export const manifestPortSyncService = {
       console.warn(e)
     }
 
-    // Đồng bộ vĩnh viễn trạng thái PORT_APPROVED lên cơ sở dữ liệu đám mây PostgreSQL
+    // Đồng bộ trạng thái PORT_APPROVED lên cơ sở dữ liệu PostgreSQL (nếu không chạy silent và có remoteId hợp lệ)
     const remoteIdToApprove = approvedManifest?.id || approvedManifest?.manifestId || approvedManifest?.manifestNumber || manifestId
-    if (remoteIdToApprove) {
-      shippingLineApi.approveManifestAtPort(remoteIdToApprove).catch((err) => {
-        console.warn('Lỗi gọi API cập nhật trạng thái PORT_APPROVED lên PostgreSQL:', err)
-      })
+    if (remoteIdToApprove && remoteIdToApprove !== '1e2fbb53-544b-44e6-abcc-1f461c8a311a' && !options?.silent) {
+      shippingLineApi.approveManifestAtPort(remoteIdToApprove).catch(() => {})
     }
 
     // Sinh danh sách Container chia về từng Công ty vận tải ở trạng thái CHỜ TRANSPORT GỬI XE & TÀI XẾ
@@ -2055,49 +2045,9 @@ export const manifestPortSyncService = {
           }
         }
 
-        // Nếu chưa có vị trí phân bổ chính thức từ Kế hoạch dỡ tàu:
-        // Quy trình cảng biển: Tàu cập bến -> Container đưa tập kết tạm về Khu A (Bãi đệm dỡ tàu) để kiểm tra tally/seal
-        // Sau đó người điều độ bấm 'Phân Bổ Bãi Tự Động' thì mới trả về bãi tối ưu (Khu D lạnh, Khu B nhập) và chốt vị trí cho toàn bài
-        if (!autoYardSlot) {
-          if (isImport) {
-            const is20 = String(c.isoType || '40HC').startsWith('20')
-            const bayNum = is20 ? (1 + (idx % 16) * 2) : (2 + (idx % 8) * 4)
-            const bayStr = String(bayNum).padStart(2, '0')
-            const rowNum = 1 + (idx % 4)
-            const rowStr = String(rowNum).padStart(2, '0')
-            const tierNum = 1
-            const coord = `A01-${bayStr}-${rowStr}-${tierNum}`
-            autoYardSlot = {
-              slotId: coord,
-              posId: coord,
-              zoneCode: 'A',
-              zoneName: 'Khu A · Bãi tập kết tạm dỡ tàu (Đệm cầu cảng)',
-              blockCode: 'A01',
-              bay: bayNum,
-              bayCode: bayStr,
-              bayDisplay: `Bay ${bayStr}`,
-              row: rowNum,
-              rowCode: rowStr,
-              tier: tierNum,
-              tierCode: '1',
-              gate: 'Gate 1',
-              gateDisplay: 'Gate 1 (Cổng Cảng Tiên Sa)',
-              slotName: `Khu A01 · Bay ${bayStr} (R${rowStr}-T1) [Tập kết tạm]`,
-              fullLocation: `Block A01 · Bay ${bayStr} · Row ${rowStr} · Tier 1`,
-              size: is20 ? 20 : 40,
-              isoType: c.isoType || '40HC',
-              isReefer: Boolean(c.isReefer) || /RF|RH|R[01]/.test(String(c.isoType || '')),
-              isDG: String(c.dgClass || '').includes('IMO'),
-              allocationScore: 50,
-              allocationReason: 'Tập kết tạm tại Khu A sau khi dỡ tàu - Chờ kiểm tra Tally & đối soát trước khi phân bổ',
-              autoAssigned: false,
-              isPreAllocated: false,
-              isTemporaryBuffer: true,
-              assignedAt: new Date().toLocaleString('vi-VN'),
-            }
-          } else {
-            autoYardSlot = computeAutoYardSlot(c, approvedManifest.direction, idx, sortedContainers)
-          }
+        // Tự động phân bổ bãi trực tiếp theo chuẩn quy tắc Cảng Tiên Sa (Không dùng bãi đệm tạm Khu A)
+        if (!autoYardSlot || autoYardSlot.isTemporaryBuffer || autoYardSlot.allocationScore === 50) {
+          autoYardSlot = computeAutoYardSlot(c, approvedManifest.direction || (isImport ? 'IMPORT' : 'EXPORT'), idx, sortedContainers)
         }
 
         // Đồng bộ ngay vị trí tự động đặt vào yardReservationStore của Sơ đồ bãi Cảng Tiên Sa
@@ -2207,12 +2157,12 @@ export const manifestPortSyncService = {
         console.warn('Lỗi lưu generated gate bookings:', e)
       }
 
-      // Đồng bộ tuần tự lên PostgreSQL (duyệt manifest xong mới ghi danh sách generatedBookings) để tránh race condition JSONB
+      // Đồng bộ danh sách generatedBookings lên PostgreSQL
       try {
         const targetRemoteId = approvedManifest?.id || approvedManifest?.manifestId || manifestId
-        shippingLineApi.approveManifestAtPort(targetRemoteId)
-          .catch((err) => console.warn('Lỗi approveManifestAtPort:', err))
-          .then(() => shippingLineApi.savePortBookings(targetRemoteId, newGateBookings).catch((err) => console.warn('Lỗi savePortBookings:', err)))
+        if (targetRemoteId && targetRemoteId !== '1e2fbb53-544b-44e6-abcc-1f461c8a311a' && !options?.silent) {
+          shippingLineApi.savePortBookings(targetRemoteId, newGateBookings).catch(() => {})
+        }
       } catch (e) {}
     }
 

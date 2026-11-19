@@ -118,10 +118,39 @@ export const yardReservationStore = {
     }
   },
 
+  // Thêm hoặc cập nhật nhiều reservations cùng lúc (Batch)
+  addReservationsBatch: async (reservations = [], options = {}) => {
+    if (!Array.isArray(reservations) || reservations.length === 0) return [];
+    try {
+      const list = yardReservationStore.getReservations();
+      const newItems = reservations.map(r => {
+        const contId = (r.containerId || r.containerNo || r.booking?.containerId || '').trim().toUpperCase();
+        return {
+          ...r,
+          containerNo: contId,
+          containerId: contId,
+          createdAt: r.createdAt || new Date().toISOString(),
+        };
+      });
+      const updated = dedupAndValidate([...list, ...newItems]);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      if (!options?.silent && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('yard-reservation-updated', { detail: { batch: true, count: newItems.length } }));
+      }
+      // Đồng bộ background lên server
+      for (const item of newItems) {
+        apiRequest('', 'POST', item).catch(() => null);
+      }
+      return updated;
+    } catch (e) {
+      console.warn('Batch add reservation warning:', e);
+      return [];
+    }
+  },
+
   // Thêm hoặc cập nhật một reservation
   addReservation: async (reservation, options = {}) => {
-    if (yardReservationStore._isAdding) return null;
-    yardReservationStore._isAdding = true;
+    if (!reservation) return null;
     try {
       const list = yardReservationStore.getReservations();
       const contId = (reservation.containerId || reservation.containerNo || reservation.booking?.containerId || '').trim().toUpperCase();
@@ -129,11 +158,11 @@ export const yardReservationStore = {
         ...reservation,
         containerNo: contId,
         containerId: contId,
-        createdAt: new Date().toISOString(),
+        createdAt: reservation.createdAt || new Date().toISOString(),
       };
       const updated = dedupAndValidate([...list, newItem]);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      if (!options?.silent) {
+      if (!options?.silent && typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('yard-reservation-updated', { detail: newItem }));
       }
 
@@ -143,8 +172,9 @@ export const yardReservationStore = {
       } catch {
         return newItem;
       }
-    } finally {
-      yardReservationStore._isAdding = false;
+    } catch (err) {
+      console.warn('Add reservation error:', err);
+      return null;
     }
   },
 

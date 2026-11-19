@@ -168,6 +168,7 @@ function App() {
           <Route element={<RoleRoute allowedRoles={[ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
             <Route path="/dispatcher/yard-discharge" element={<YardOperationsDashboard />} />
             <Route path="/dispatcher/gate-bookings" element={<GateBookingRequests />} />
+            <Route path="/dispatch/gate-bookings" element={<Navigate to="/dispatcher/gate-bookings" replace />} />
             <Route path="/fleet" element={<VehicleManagement />} />
             <Route path="/container-flow" element={<ContainerFlow />} />
             <Route path="/dispatcher/drivers" element={<DispatcherDriverManagement />} />
