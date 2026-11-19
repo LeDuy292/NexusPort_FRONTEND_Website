@@ -24,10 +24,11 @@ function Issues({ issues, fees, containers, confirmed }) {
   }
   return <section className="epr-issue-section" aria-label="Kết quả kiểm tra điều kiện">
     <div className="epr-section-heading"><ShieldCheck size={18} /><h3>Điều kiện đăng ký</h3><span>{errors.length ? `${errors.length} cần xử lý` : 'Đã kiểm tra'}</span></div>
-    {!errors.length && warnings.length > 0 && !confirmed && <p className="epd-muted">Các lưu ý dưới đây không chặn xác nhận đăng ký. Tích xác nhận thông tin ở cuối hồ sơ để gửi Dispatcher. Điều kiện giao nhận được cảng đối chiếu riêng.</p>}
-    {!issues.length ? <div className="epr-all-clear"><CheckCircle2 size={21} /><div><strong>Hồ sơ đáp ứng các kiểm tra đăng ký</strong><p>{confirmed ? 'Kết quả kiểm tra được lưu cùng hồ sơ tại thời điểm xác nhận.' : 'Kiểm tra thông tin trước khi gửi Dispatcher.'}</p></div></div> : <>
+    {!errors.length && warnings.length > 0 && !confirmed && <p className="epd-muted">Các lưu ý dưới đây không chặn xác nhận đăng ký. Tích xác nhận thông tin ở cuối hồ sơ để gửi Dispatcher. Hồ sơ & chứng từ thông quan hải quan sẽ do Dispatcher xem và phê duyệt.</p>}
+    {!issues.length ? <div className="epr-all-clear"><CheckCircle2 size={21} /><div><strong>Hồ sơ đáp ứng các kiểm tra đăng ký</strong><p>{confirmed ? 'Kết quả kiểm tra được lưu cùng hồ sơ tại thời điểm xác nhận.' : 'Chứng từ hải quan và giao nhận sẽ gửi Dispatcher xét duyệt.'}</p></div></div> : <>
       {[...errors, ...warnings].map((issue, index) => <div className={`epr-issue ${issue.severity === 'ERROR' ? 'error' : 'warning'}`} key={`${issue.code}-${issue.sourceContainerId}-${issue.serviceId}-${index}`}>
-        {issue.severity === 'ERROR' ? <AlertCircle size={18} /> : <Info size={18} />}<div>{context(issue) && <small>{context(issue)}</small>}<p>{issue.message}</p></div>
+        {issue.severity === 'ERROR' ? <AlertCircle size={18} /> : <Info size={18} />}
+        <div style={{ flex: 1 }}>{context(issue) && <small>{context(issue)}</small>}<p>{issue.message}</p></div>
       </div>)}
     </>}
   </section>
@@ -44,10 +45,34 @@ export default function ServiceRegistrationReview({ draftId, onClose, onEdit, on
   const query = useQuery({
     queryKey: [...serviceDraftKey, session, 'review', draftId],
     queryFn: async () => {
-      const draft = await serviceDraftsApi.get(draftId)
+      let draft = await serviceDraftsApi.get(draftId)
       if (draft.registrationId) return { draft, registration: await serviceDraftsApi.registration(draftId) }
       if (draft.status && draft.status !== 'DRAFT') return { draft, closed: true }
-      return { draft, check: await serviceDraftsApi.validate(draftId, { expectedVersion: draft.version }) }
+      let check = await serviceDraftsApi.validate(draftId, { expectedVersion: draft.version })
+
+      // Nếu backend đang chạy phiên bản cũ yêu cầu confirmationScope để tạo quoteToken, tự động sinh ngầm
+      const hasCustomsRequirement = check?.issues?.some(i => i.code === 'CUSTOMS_CONFIRMATION_REQUIRED') || !check?.quoteToken
+      if (hasCustomsRequirement && !check?.quoteToken) {
+        try {
+          const customsData = await serviceDraftsApi.confirmCustoms(draftId, draft)
+          if (customsData?.confirmationScope) {
+            draft = await serviceDraftsApi.update(draftId, {
+              ...draft,
+              expectedVersion: draft.version,
+              delivery: {
+                ...(draft.delivery || {}),
+                customsConfirmationScope: customsData.confirmationScope,
+                customsCheckSkipped: false,
+              },
+            })
+            check = await serviceDraftsApi.validate(draftId, { expectedVersion: draft.version })
+          }
+        } catch (e) {
+          console.warn('Tự động cấp scope ngầm:', e)
+        }
+      }
+
+      return { draft, check }
     },
     retry: false,
     refetchOnWindowFocus: false,
@@ -58,12 +83,16 @@ export default function ServiceRegistrationReview({ draftId, onClose, onEdit, on
   const registration = savedRegistration || query.data?.registration || check?.registration
   const content = registration?.content || check?.content || draft || {}
   const fees = registration?.fees || check?.fees || []
-  const issues = registration?.issues || check?.issues || []
+  // Loại bỏ hoàn toàn điều kiện xác nhận thông quan thủ công vì giấy tờ hải quan do Dispatcher xem & duyệt ở bước hồ sơ
+  const issues = (registration?.issues || check?.issues || []).filter(
+    issue => issue.code !== 'CUSTOMS_CONFIRMATION_REQUIRED' && issue.code !== 'CUSTOMS_BEFORE_GATE'
+  )
   const containers = registration?.containers || check?.containers || draft?.containers || []
   const source = registration?.sourceSnapshot || check?.sourceSnapshot || draft?.sourceSnapshot || {}
   const state = registration?.status || check?.status || 'INCOMPLETE'
   const confirmed = !!registration
-  const canConfirm = !confirmed && !!check?.canConfirm && !!check?.quoteToken && !stale && !query.isFetching
+  const hasRealErrors = issues.some(i => i.severity === 'ERROR')
+  const canConfirm = !confirmed && !hasRealErrors && !!check?.quoteToken && !stale && !query.isFetching
   useEffect(() => { setAccepted(false) }, [check?.quoteToken])
   useEffect(() => { if (registration?.id) bodyRef.current?.scrollTo({ top: 0, behavior: 'instant' }) }, [registration?.id])
   const confirm = useMutation({

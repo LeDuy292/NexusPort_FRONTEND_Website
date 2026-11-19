@@ -119,24 +119,32 @@ export const yardReservationStore = {
   },
 
   // Thêm hoặc cập nhật một reservation
-  addReservation: async (reservation) => {
-    const list = yardReservationStore.getReservations();
-    const contId = (reservation.containerId || reservation.containerNo || reservation.booking?.containerId || '').trim().toUpperCase();
-    const newItem = {
-      ...reservation,
-      containerNo: contId,
-      containerId: contId,
-      createdAt: new Date().toISOString(),
-    };
-    const updated = dedupAndValidate([...list, newItem]);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-    window.dispatchEvent(new CustomEvent('yard-reservation-updated', { detail: newItem }));
-
+  addReservation: async (reservation, options = {}) => {
+    if (yardReservationStore._isAdding) return null;
+    yardReservationStore._isAdding = true;
     try {
-      const saved = await apiRequest('', 'POST', reservation);
-      return saved || newItem;
-    } catch {
-      return newItem;
+      const list = yardReservationStore.getReservations();
+      const contId = (reservation.containerId || reservation.containerNo || reservation.booking?.containerId || '').trim().toUpperCase();
+      const newItem = {
+        ...reservation,
+        containerNo: contId,
+        containerId: contId,
+        createdAt: new Date().toISOString(),
+      };
+      const updated = dedupAndValidate([...list, newItem]);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+      if (!options?.silent) {
+        window.dispatchEvent(new CustomEvent('yard-reservation-updated', { detail: newItem }));
+      }
+
+      try {
+        const saved = await apiRequest('', 'POST', reservation);
+        return saved || newItem;
+      } catch {
+        return newItem;
+      }
+    } finally {
+      yardReservationStore._isAdding = false;
     }
   },
 

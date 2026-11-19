@@ -1400,7 +1400,7 @@ export const manifestPortSyncService = {
                     company: item.company,
                     vesselName: item.vesselName,
                     voyageNumber: item.voyageNumber,
-                  })
+                  }, { silent: true })
                 } catch (e) {}
               }
             }
