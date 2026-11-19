@@ -12,6 +12,7 @@ import { orderStatusLabels, paymentStateLabel, paymentStatusLabels, serviceOrder
 import { manifestPortSyncService } from '../../services/manifestPortSyncService'
 
 const actionNames = { CANCEL: 'Hủy đơn dịch vụ', RECEIVE: 'Tiếp nhận hồ sơ', APPROVE: 'Duyệt đăng ký', REJECT: 'Từ chối đăng ký', CREATE_PAYMENT: 'Tạo mã thanh toán VietQR', SYNC_PAYMENT: 'Kiểm tra giao dịch VietQR', CANCEL_PAYMENT: 'Hủy yêu cầu thanh toán' }
+const displayCompanyName = name => name === 'Bien Dong Logistics - Nexus Logistics' ? 'Tien Sa Logistics - Nexus Logistics' : name
 const eventNames = { DRAFT_CREATED: 'Tạo bản nháp', DRAFT_UPDATED: 'Cập nhật bản nháp', BASELINE_RECORDED: 'Ghi nhận hồ sơ hiện có', REGISTERED: 'Xác nhận đăng ký', REGISTRATION_CONFIRMED: 'Xác nhận đăng ký', CONFIRMED: 'Xác nhận đăng ký', CANCEL: 'Hủy đơn dịch vụ', CANCELLED: 'Hủy đơn dịch vụ', RECEIVE: 'Cảng tiếp nhận hồ sơ', RECEIVED: 'Cảng tiếp nhận hồ sơ', APPROVE: 'Cảng duyệt đăng ký', APPROVED: 'Cảng duyệt đăng ký', REJECT: 'Cảng từ chối đăng ký', REJECTED: 'Cảng từ chối đăng ký', PAYMENT_CREATED: 'Tạo mã thanh toán VietQR', PAYMENT_SYNCED: 'Kiểm tra kết quả thanh toán', PAYMENT_SUCCEEDED: 'Xác nhận thanh toán thành công', PAYMENT_FAILED: 'Thanh toán không thành công', PAYMENT_CANCELLED: 'Hủy yêu cầu thanh toán', PAYMENT_REVIEW_REQUIRED: 'Giao dịch cần đối soát', PAYMENT_REFERENCE_OBSERVED: 'Bổ sung tham chiếu giao dịch', MIGRATED: 'Ghi nhận hồ sơ hiện có' }
 const actionIcons = { CANCEL: Ban, RECEIVE: ArrowDownToLine, APPROVE: CheckCircle2, REJECT: XCircle }
 const amountFormat = value => new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(value)
@@ -26,7 +27,7 @@ function Facts({ order }) {
   const source = order.sourceSnapshot || {}
   const bookingNo = content.source?.bookingNumber || source.bookingNumber || ''
   const blNo = content.source?.blNumber || source.blNumber || ''
-  return <section className="epo-panel"><div className="epo-panel-title"><FileText size={17} /><h3>Thông tin đăng ký</h3></div><dl className="epo-facts"><div><dt>Hồ sơ nguồn</dt><dd>{order.sourceLabel || source.bookingNumber || content.source?.referenceNumber || 'Chưa chọn'}</dd></div><div><dt>Số Booking</dt><dd>{bookingNo || 'Chưa nhập'}</dd></div><div><dt>Số Vận đơn (B/L)</dt><dd>{blNo || 'Chưa nhập'}</dd></div><div><dt>Luồng hàng</dt><dd>{labels.direction[order.flow || content.flow] || 'Chưa chọn'}</dd></div><div><dt>Doanh nghiệp</dt><dd>{order.companyName || 'Doanh nghiệp đăng ký'}</dd></div><div><dt>Dự kiến sử dụng</dt><dd>{draftDateTime(content.plannedAt)}</dd></div><div><dt>Người liên hệ</dt><dd>{content.contactName || 'Chưa khai báo'}</dd></div><div><dt>Điện thoại</dt><dd>{content.contactPhone || 'Chưa khai báo'}</dd></div>{order.confirmedAt && <div><dt>Xác nhận đăng ký</dt><dd>{draftDateTime(order.confirmedAt)}</dd></div>}<div><dt>Cập nhật gần nhất</dt><dd>{draftDateTime(order.updatedAt)}</dd></div></dl>{content.note && <div className="epo-note"><strong>Ghi chú của khách hàng</strong><p>{content.note}</p></div>}</section>
+  return <section className="epo-panel"><div className="epo-panel-title"><FileText size={17} /><h3>Thông tin đăng ký</h3></div><dl className="epo-facts"><div><dt>Hồ sơ nguồn</dt><dd>{order.sourceLabel || source.bookingNumber || content.source?.referenceNumber || 'Chưa chọn'}</dd></div><div><dt>Số Booking</dt><dd>{bookingNo || 'Chưa nhập'}</dd></div><div><dt>Số Vận đơn (B/L)</dt><dd>{blNo || 'Chưa nhập'}</dd></div><div><dt>Luồng hàng</dt><dd>{labels.direction[order.flow || content.flow] || 'Chưa chọn'}</dd></div><div><dt>Doanh nghiệp</dt><dd>{displayCompanyName(order.companyName) || 'Doanh nghiệp đăng ký'}</dd></div><div><dt>Dự kiến sử dụng</dt><dd>{draftDateTime(content.plannedAt)}</dd></div><div><dt>Người liên hệ</dt><dd>{content.contactName || 'Chưa khai báo'}</dd></div><div><dt>Điện thoại</dt><dd>{content.contactPhone || 'Chưa khai báo'}</dd></div>{order.confirmedAt && <div><dt>Xác nhận đăng ký</dt><dd>{draftDateTime(order.confirmedAt)}</dd></div>}<div><dt>Cập nhật gần nhất</dt><dd>{draftDateTime(order.updatedAt)}</dd></div></dl>{content.note && <div className="epo-note"><strong>Ghi chú của khách hàng</strong><p>{content.note}</p></div>}</section>
 }
 
 function OrderInformation({ order }) {
@@ -196,7 +197,7 @@ function VietQrPaymentCard({ payment, order }) {
   const containers = order?.containers || []
   const buyer = content.invoiceBuyer || {}
   const contactName = content.contactName || buyer.name || order?.companyName || 'Người đặt dịch vụ'
-  const companyName = order?.companyName || buyer.name || 'Công ty đăng ký dịch vụ'
+  const companyName = displayCompanyName(order?.companyName) || buyer.name || 'Công ty đăng ký dịch vụ'
   const contactPhone = content.contactPhone || '—'
   const invoiceEmail = buyer.email || content.contactEmail || 'tvan20152@gmail.com'
   const containerNumbers = containers.map(c => `${c.containerNumber}${c.typeCode ? ` (${c.typeCode})` : ''}`).join(', ')
@@ -205,7 +206,7 @@ function VietQrPaymentCard({ payment, order }) {
   const transferDescription = payment.transferDescription || `DV${String(payment.orderCode || '').slice(-7).padStart(7, '0')}`
   const qrSrc = payment.qrCode
     ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(payment.qrCode)}`
-    : `https://img.vietqr.io/image/MB-VQRQANOSG2264-compact2.png?amount=${payment.amount || 0}&addInfo=${encodeURIComponent(transferDescription)}&accountName=TRAN%20VAN%20TUNG`
+    : `https://img.vietqr.io/image/MB-VQRQANOSG2264-compact2.png?amount=${(payment.transferAmount ?? payment.amount) || 0}&addInfo=${encodeURIComponent(transferDescription)}&accountName=TRAN%20VAN%20TUNG`
 
   return (
     <div style={{
@@ -251,16 +252,16 @@ function VietQrPaymentCard({ payment, order }) {
               />
             </div>
             <div style={{ marginTop: '10px', fontSize: '18px', fontWeight: 800, color: payment.status === 'SUCCEEDED' ? '#166534' : '#0369a1' }}>
-              {money(payment.amount)} {payment.status === 'SUCCEEDED' && '(ĐÃ HOÀN TẤT)'}
+              {money(order.total ?? payment.amount)}
             </div>
             <div style={{ margin: '4px 0', fontSize: '12px', color: '#475569' }}>
-              Tổng phí đơn dịch vụ: <strong>{money(order.total)}</strong> · Số tiền chuyển khoản: <strong>{money(payment.amount)}</strong>
+              Tổng phí đơn dịch vụ do Dispatcher xác nhận
             </div>
             {payment.status === 'PENDING' && (
               <>
                 <div style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px', margin: '2px 0 6px', padding: '4px 10px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', fontSize: '11px', color: '#64748b' }}>
                   <Loader2 size={12} className="epc-spin" style={{ color: '#0284c7' }} />
-                  <span>Hệ thống đang tự động kiểm tra giao dịch (mỗi 2-3s)...</span>
+                  <span>Hệ thống đang tự động kiểm tra giao dịch (mỗi 10s)...</span>
                 </div>
               </>
             )}
@@ -382,7 +383,23 @@ function PaymentPanel({ query, order, pending, onAction }) {
   </div>
 }
 
-export default function ServiceOrderDetail({ orderId, initialTab = 'information', onClose, onEdit, onReview }) {
+function PaymentSuccessDialog({ orderNumber, onClose }) {
+  const dialogRef = useRef(null)
+  useEffect(() => {
+    const dialog = dialogRef.current
+    dialog.showModal()
+    dialog.querySelector('button')?.focus()
+    return () => { if (dialog.open) dialog.close() }
+  }, [])
+  return <dialog ref={dialogRef} className="epo-payment-success-dialog" aria-labelledby="epo-payment-success-title" aria-describedby="epo-payment-success-description" onCancel={event => { event.preventDefault(); onClose() }}>
+    <div className="epo-payment-success-mark" aria-hidden="true"><Check size={72} strokeWidth={5} /></div>
+    <h2 id="epo-payment-success-title">Thanh toán thành công!</h2>
+    <p id="epo-payment-success-description">PayOS đã xác nhận giao dịch cho đơn dịch vụ <strong>{orderNumber}</strong>. Bạn có thể tiếp tục xem hồ sơ và biên lai.</p>
+    <button type="button" className="epc-button primary" onClick={onClose}>Xem hồ sơ</button>
+  </dialog>
+}
+
+export default function ServiceOrderDetail({ orderId, initialTab = 'information', showPaymentSuccess = false, onPaymentSuccessShown, onClose, onEdit, onReview }) {
   const id = useId()
   const client = useQueryClient()
   const session = draftSession()
@@ -391,11 +408,25 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
   const [conflict, setConflict] = useState(false)
   const [notice, setNotice] = useState('')
   const [noticeWarning, setNoticeWarning] = useState(false)
+  const [successOpen, setSuccessOpen] = useState(false)
+  const shownSuccess = useRef(false)
+  const previousPaymentStatus = useRef(null)
   const formRef = useRef(null)
-  const orderQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'detail', orderId], queryFn: () => serviceOrdersApi.get(orderId), retry: false, refetchOnWindowFocus: true, refetchInterval: query => query.state.data?.pricingStatus === 'AWAITING' || query.state.data?.paymentStatus === 'PENDING' || query.state.data?.emailNotifications?.some(item => ['PENDING','SENDING'].includes(item.status)) ? 2000 : false })
+  const orderQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'detail', orderId], queryFn: () => serviceOrdersApi.get(orderId), retry: false, refetchOnWindowFocus: true, refetchInterval: query => query.state.data?.pricingStatus === 'AWAITING' || query.state.data?.paymentStatus === 'PENDING' || query.state.data?.emailNotifications?.some(item => ['PENDING','SENDING'].includes(item.status)) ? 5000 : false })
   const historyQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'history', orderId], queryFn: () => serviceOrdersApi.history(orderId), enabled: tab === 'history', retry: false, refetchOnWindowFocus: false })
-  const paymentQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'payments', orderId], queryFn: () => serviceOrdersApi.payments(orderId), enabled: tab === 'payments', retry: false, refetchOnWindowFocus: true, refetchInterval: () => tab === 'payments' && orderQuery.data?.paymentStatus === 'PENDING' ? 2000 : false })
+  const paymentQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'payments', orderId], queryFn: () => serviceOrdersApi.payments(orderId), enabled: tab === 'payments', retry: false, refetchOnWindowFocus: true, refetchInterval: () => tab === 'payments' && orderQuery.data?.paymentStatus === 'PENDING' ? 5000 : false })
   const order = orderQuery.data
+
+  useEffect(() => {
+    if (!order) return
+    const wasPending = previousPaymentStatus.current === 'PENDING'
+    previousPaymentStatus.current = order.paymentStatus
+    if (order.paymentStatus === 'PAID' && (wasPending || showPaymentSuccess) && !shownSuccess.current) {
+      shownSuccess.current = true
+      setSuccessOpen(true)
+      onPaymentSuccessShown?.()
+    }
+  }, [order?.paymentStatus, showPaymentSuccess])
 
   useEffect(() => {
     if (!order) return
@@ -407,7 +438,12 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
   const canReceipt = order?.registrationId && (order.pricingMode !== 'DISPATCHER' || order.paymentStatus === 'PAID' || order.pricingStatus === 'PUBLISHED' && order.paymentStatus === 'NOT_REQUIRED')
   const mutation = useMutation({
     mutationFn: async value => {
-      const body = { requestId: value.requestId, expectedVersion: value.expectedVersion }
+      let versionToUse = value.expectedVersion
+      if (value.kind === 'CREATE_PAYMENT' || value.kind === 'SYNC_PAYMENT') {
+        const latest = await serviceOrdersApi.get(orderId).catch(() => null)
+        if (latest?.version) versionToUse = latest.version
+      }
+      const body = { requestId: value.requestId, expectedVersion: versionToUse }
       if (value.kind === 'CREATE_PAYMENT') return serviceOrdersApi.createPayment(orderId, body)
       if (value.kind === 'SYNC_PAYMENT') return serviceOrdersApi.syncPayment(orderId, value.payment.id, body)
       if (value.kind === 'CANCEL_PAYMENT') return serviceOrdersApi.cancelPayment(orderId, value.payment.id, { ...body, reason: value.reason.trim() })
@@ -420,6 +456,7 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
       setNoticeWarning(uncertain)
       if (value.kind === 'SYNC_PAYMENT') {
         if (result.paymentStatus === 'PAID') {
+          if (!shownSuccess.current) { shownSuccess.current = true; setSuccessOpen(true); onPaymentSuccessShown?.() }
           await syncPaymentToCarrierBooking(result)
           setNotice('✓ Xác nhận thanh toán thành công! Hệ thống đã ghi nhận và gửi hóa đơn & biên lai (PDF) về email.')
         } else if (!value.silent) {
@@ -427,6 +464,7 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
         }
       } else if (value.kind === 'CREATE_PAYMENT') {
         if (result.paymentStatus === 'PAID') {
+          if (!shownSuccess.current) { shownSuccess.current = true; setSuccessOpen(true); onPaymentSuccessShown?.() }
           await syncPaymentToCarrierBooking(result)
         }
         setNotice(result.paymentStatus === 'PAID' ? 'Hệ thống đã xác nhận thanh toán thành công cho đơn dịch vụ.' : result.payment?.checkoutUrl ? 'Đã tạo mã thanh toán VietQR. Quét mã QR hoặc mở cổng thanh toán để tiếp tục.' : 'Yêu cầu thanh toán đã được lưu. Quét mã QR để hoàn tất.')
@@ -563,25 +601,37 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
     }
   }, [orderQuery.data?.paymentStatus, orderQuery.data?.id])
 
-  // Tự động kiểm tra đối soát giao dịch ngân hàng mỗi 2.5s khi có yêu cầu đang chờ thanh toán
+  // Tự động kiểm tra đối soát giao dịch ngân hàng mỗi 10s khi có yêu cầu đang chờ thanh toán
+  // Tự động kiểm tra đối soát giao dịch ngân hàng định kỳ khi tab Thanh toán đang mở
   const pendingPayment = paymentQuery.data?.items?.find(p => p.status === 'PENDING')
   useEffect(() => {
-    if (!pendingPayment || order?.paymentStatus === 'PAID') return
-    const timer = setInterval(() => {
-      if (!mutation.isPending && !form) {
-        mutation.mutate({
-          kind: 'SYNC_PAYMENT',
-          payment: pendingPayment,
+    if (tab !== 'payments' || !pendingPayment || order?.paymentStatus === 'PAID') return
+    const timer = setInterval(async () => {
+      if (mutation.isPending || form) return
+      try {
+        const latest = await serviceOrdersApi.get(orderId).catch(() => null)
+        if (latest?.paymentStatus === 'PAID') {
+          client.invalidateQueries({ queryKey: [...serviceOrderKey, session, 'detail', orderId] })
+          client.invalidateQueries({ queryKey: [...serviceOrderKey, session, 'payments', orderId] })
+          return
+        }
+        const syncResult = await serviceOrdersApi.syncPayment(orderId, pendingPayment.id, {
           requestId: crypto.randomUUID(),
-          expectedVersion: order?.version,
-          reason: '',
-          acknowledged: false,
-          silent: true,
+          expectedVersion: latest?.version || order?.version,
         })
+        if (syncResult?.paymentStatus === 'PAID') {
+          if (!shownSuccess.current) { shownSuccess.current = true; setSuccessOpen(true); onPaymentSuccessShown?.() }
+          await syncPaymentToCarrierBooking(syncResult)
+          setNotice('✓ Xác nhận thanh toán thành công! Hệ thống đã ghi nhận và gửi hóa đơn & biên lai (PDF) về email.')
+          client.invalidateQueries({ queryKey: [...serviceOrderKey, session, 'detail', orderId] })
+          client.invalidateQueries({ queryKey: [...serviceOrderKey, session, 'payments', orderId] })
+        }
+      } catch {
+        // Background sync im lặng, không quăng lỗi ra màn hình
       }
-    }, 2500)
+    }, 12000)
     return () => clearInterval(timer)
-  }, [pendingPayment?.id, pendingPayment?.status, order?.paymentStatus, order?.version, mutation.isPending, !!form])
+  }, [tab, pendingPayment?.id, pendingPayment?.status, order?.paymentStatus, orderId])
   useEffect(() => { if (form?.kind) { formRef.current?.scrollIntoView({ block: 'nearest', behavior: 'instant' }); formRef.current?.querySelector('input:not([type="checkbox"]),textarea,button')?.focus({ preventScroll: true }) } }, [form?.kind])
   const changeTab = value => { if (!pending) { setTab(value); setNotice('') } }
   const tabs = [['information', 'Thông tin', FileText], ['payments', 'Thanh toán', CreditCard], ['invoice', 'Hóa đơn', FileText], ['history', 'Lịch sử', History]]
@@ -609,10 +659,10 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
     ? 'Chưa phát hành phí'
     : 'Chờ Dispatcher báo giá'
 
-  return <CatalogDialog className="epd-dialog epo-detail-dialog" labelledBy={`${id}-title`} describedBy={`${id}-description`} onClose={requestClose}>
+  return <><CatalogDialog className="epd-dialog epo-detail-dialog" labelledBy={`${id}-title`} describedBy={`${id}-description`} onClose={requestClose}>
     <header className="epd-header"><div><span className="epc-eyebrow">NEXUSPORT / HỒ SƠ DỊCH VỤ</span><h2 id={`${id}-title`} tabIndex={-1} data-dialog-initial-focus>Chi tiết đơn dịch vụ</h2><p id={`${id}-description`}>Thông tin đăng ký, thanh toán và lịch sử xử lý của hồ sơ.</p></div><button type="button" className="epc-icon-button" aria-label="Đóng chi tiết đơn dịch vụ" disabled={pending} onClick={requestClose}><X size={21} /></button></header>
     {orderQuery.isPending ? <div className="epo-tab-loading" role="status"><Loader2 size={26} className="epc-spin" />Đang tải hồ sơ…</div> : orderQuery.isError ? <div className="epo-empty"><AlertCircle size={33} /><h3>Chưa mở được hồ sơ</h3><p role="alert">{draftError(orderQuery.error)}</p><button type="button" className="epc-button secondary" onClick={refresh}><RefreshCw size={16} />Thử lại</button></div> : <>
-      <div className="epo-detail-identity"><span className="epo-detail-file"><FileText size={23} /></span><div><span>{order.mainServiceName || 'Đăng ký dịch vụ cảng'}</span><strong>{order.number}</strong><small>{order.sourceLabel || 'Chưa chọn hồ sơ nguồn'}{order.companyName ? ` · ${order.companyName}` : ''}</small></div><OrderBadge status={order.status} /></div>
+      <div className="epo-detail-identity"><span className="epo-detail-file"><FileText size={23} /></span><div><span>{order.mainServiceName || 'Đăng ký dịch vụ cảng'}</span><strong>{order.number}</strong><small>{order.sourceLabel || 'Chưa chọn hồ sơ nguồn'}{order.companyName ? ` · ${displayCompanyName(order.companyName)}` : ''}</small></div><OrderBadge status={order.status} /></div>
       <div className="epo-detail-tabs" role="tablist" aria-label="Nội dung hồ sơ">{tabs.map(([value, label, Icon], index) => <button key={value} type="button" id={`${id}-tab-${value}`} role="tab" aria-controls={`${id}-panel`} aria-selected={tab === value} tabIndex={tab === value ? 0 : -1} disabled={pending} onClick={() => changeTab(value)} onKeyDown={event => handleTabKey(event, index)}><Icon size={16} />{label}{value === 'payments' && order.paymentStatus === 'PAID' && <Check size={12} />}</button>)}<button type="button" className="epo-detail-refresh" aria-label="Tải lại hồ sơ" disabled={pending || orderQuery.isFetching} onClick={refresh}><RefreshCw size={16} className={orderQuery.isFetching ? 'epc-spin' : ''} /></button></div>
       <div className="epd-body epo-detail-body" aria-busy={pending || orderQuery.isFetching}>
         {notice && <div className={`epo-detail-notice ${noticeWarning ? 'warning' : ''}`} role="status">{noticeWarning ? <Info size={17} /> : <CheckCircle2 size={17} />}<p>{notice}</p></div>}
@@ -631,5 +681,5 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
       </div>
     </>}
     <footer className="epd-footer epo-detail-footer"><span><Clock3 size={14} />Trạng thái xử lý và thanh toán được theo dõi riêng.</span><div className="esr-entry-actions">{canReceipt && <ServiceReceiptButton orderId={orderId} disabled={pending || orderQuery.isFetching} />}<button type="button" className="epc-button secondary" disabled={pending} onClick={requestClose}>Đóng hồ sơ</button></div></footer>
-  </CatalogDialog>
+  </CatalogDialog>{successOpen && <PaymentSuccessDialog orderNumber={order?.number || orderId} onClose={() => setSuccessOpen(false)} />}</>
 }

@@ -10,6 +10,7 @@ export const serviceOrdersApi = {
   billingResult: async (id, body) => (await apiClient.post(`${root}/${id}/billing-result`, body)).data,
   action: async (id, body) => (await apiClient.post(`${root}/${id}/actions`, body)).data,
   payments: async id => (await apiClient.get(`${root}/${id}/payments`)).data,
+  resolvePaymentReturn: async orderCode => (await apiClient.get(`${root}/payments/return/${encodeURIComponent(orderCode)}`)).data,
   createPayment: async (id, body) => (await apiClient.post(`${root}/${id}/payments`, body)).data,
   syncPayment: async (id, paymentId, body) => (await apiClient.post(`${root}/${id}/payments/${paymentId}/sync`, body)).data,
   cancelPayment: async (id, paymentId, body) => (await apiClient.post(`${root}/${id}/payments/${paymentId}/cancel`, body)).data,

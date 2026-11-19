@@ -483,3 +483,35 @@
   border-color: #d8e5f0;
   box-shadow: 0 4px 24px #2a4a6a0a, 0 1px 4px #2a4a6a08;
 }
+
+.epo-payment-success-dialog {
+  width: min(430px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  margin: auto;
+  border: 1px solid #dceee3;
+  border-radius: 24px;
+  padding: 38px 32px 32px;
+  background: #fff;
+  box-shadow: 0 28px 90px #112b2540;
+  text-align: center;
+  color: #153047;
+  animation: epo-payment-success-enter .25s ease-out;
+}
+.epo-payment-success-dialog::backdrop { background: #0c1d31a8; backdrop-filter: blur(5px); }
+.epo-payment-success-mark {
+  display: grid;
+  place-items: center;
+  width: 132px;
+  height: 132px;
+  margin: 0 auto 22px;
+  border-radius: 50%;
+  background: #27c170;
+  color: #fff;
+  box-shadow: 0 12px 32px #27c17040;
+}
+.epo-payment-success-dialog h2 { margin: 0 0 10px; font-size: 25px; line-height: 1.25; }
+.epo-payment-success-dialog p { margin: 0 0 25px; color: #64748b; font-size: 14px; line-height: 1.65; }
+.epo-payment-success-dialog p strong { color: #263f58; overflow-wrap: anywhere; }
+.epo-payment-success-dialog .epc-button { width: 100%; justify-content: center; min-height: 45px; }
+@keyframes epo-payment-success-enter { from { opacity: 0; transform: translateY(12px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@media (prefers-reduced-motion: reduce) { .epo-payment-success-dialog { animation: none; } }
