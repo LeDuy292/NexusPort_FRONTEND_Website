@@ -482,15 +482,41 @@ function StrictUnstackModal({
     }
   }
 
-  // Fallback nếu không phát hiện
-  if (!blockingCont) {
+  // Nếu không có cont chắn thực tế
+  if (!blockingCont && targetReq.blockingContainerNo) {
     blockingCont = {
-      id: targetReq.blockingContainerNo || (targetTier === 1 ? 'CAIU5506483' : 'TEMU4451923'),
+      id: targetReq.blockingContainerNo,
       tier: targetTier + 1,
-      carrier: 'COSCO / Evergreen',
+      carrier: 'Hãng tàu liên kết',
       weight: '26,500 KG',
       note: 'Cont chắn tầng trên',
     }
+  }
+
+  // Nếu hoàn toàn không có container chắn (ô bãi thông thoáng)
+  if (!blockingCont) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+        <div className="bg-white rounded-2xl max-w-md w-full p-6 text-center space-y-4 shadow-xl border border-slate-200">
+          <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+            <span className="material-symbols-outlined text-2xl">check_circle</span>
+          </div>
+          <div>
+            <h3 className="font-bold text-slate-900 text-base">Không Có Container Chắn</h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Container <strong className="font-mono text-slate-800">{targetReq.containerId}</strong> tại vị trí <strong className="font-mono text-slate-800">{targetReq.position}</strong> (Tầng {targetTier}) không bị container nào đè phía trên. Ô bãi hoàn toàn thông thoáng, sẵn sàng nâng hạ trực tiếp lên phương tiện vận chuyển!
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2.5 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition cursor-pointer"
+          >
+            Đã Hiểu & Đóng
+          </button>
+        </div>
+      </div>
+    )
   }
 
   const handleExecute = async () => {
@@ -1792,12 +1818,12 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
               </div>
               <div>
                 <h3 className={`text-sm font-bold ${eligibility.eligible ? 'text-emerald-950' : 'text-rose-950'}`}>
-                  {eligibility.eligible ? 'Đủ 5/5 điều kiện giao container (Đã hoàn tất thủ tục qua cổng)' : 'Chưa đủ điều kiện giao container'}
+                  {eligibility.eligible ? 'Đủ 5/5 điều kiện giao container (Đã hoàn tất thủ tục giao nhận)' : 'Chưa đủ điều kiện giao container'}
                 </h3>
                 <p className="text-xs text-slate-600">
                   {eligibility.eligible
-                    ? 'Phương tiện đã hoàn thành 100% thủ tục vào cổng (e-D/O, thanh toán phí, giờ hẹn, phương tiện) & container sẵn sàng tại bãi.'
-                    : 'Kiểm soát tự động: Phương tiện bắt buộc phải hoàn thành đầy đủ các thủ tục trước khi được phép vào cổng cảng.'}
+                    ? 'Phương tiện đã hoàn thành 100% thủ tục nhận container (e-D/O, thanh toán phí, giờ hẹn, phương tiện) & container sẵn sàng tại bãi.'
+                    : 'Kiểm soát tự động: Phương tiện bắt buộc phải hoàn thành đầy đủ các thủ tục trước khi được phép vào nhận container.'}
                 </p>
               </div>
             </div>
@@ -3989,7 +4015,7 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
                         1. Container Đang Làm:
                       </span>
                       <span className="text-slate-600 font-medium">
-                        Tự động sắp xếp mức ưu tiên: <strong className="text-rose-700">Khẩn cấp (Xe tại cổng)</strong> ➔ <strong className="text-amber-700">Cao (Hẹn sớm)</strong> ➔ <strong className="text-slate-700">Thấp</strong>.
+                        Tự động sắp xếp mức ưu tiên: <strong className="text-rose-700">Khẩn cấp (Xe tại bãi)</strong> ➔ <strong className="text-amber-700">Cao (Hẹn sớm)</strong> ➔ <strong className="text-slate-700">Thấp</strong>.
                       </span>
                     </>
                   ) : (
