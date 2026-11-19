@@ -105,6 +105,10 @@ export default function ContainerYardDetailModal({
   const totalVGM = is40 ? '28,450 kg' : '21,100 kg'
   const maxGross = is40 ? '30,480 kg' : '24,000 kg'
 
+  const weightNum = parseFloat(String(totalVGM).replace(/[^0-9.]/g, '')) || 25000
+  const weightClass = weightNum > 20000 ? 'HEAVY (>20T)' : weightNum >= 12000 ? 'MEDIUM (12-20T)' : 'LIGHT (<12T)'
+  const weightBadgeColor = weightNum > 20000 ? 'bg-red-100 text-red-800 border-red-200' : weightNum >= 12000 ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+
   const blockCode = containerData.block || containerData.blockCode || 'A01'
   const bay = String(containerData.bay || 2).padStart(2, '0')
   const row = String(containerData.row || 6).padStart(2, '0')
@@ -318,6 +322,37 @@ export default function ContainerYardDetailModal({
                     <div className="p-2.5 rounded-xl bg-fog border border-chalk">
                       <span className="text-[10px] text-slate block font-semibold">Số Chì (Seal):</span>
                       <strong className="text-signal-orange font-mono font-extrabold">{containerData.sealNumber || (contPrefix.startsWith('NXP') ? 'EMC-98231-SEAL' : `${contPrefix}-77218-SEAL`)}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quy hoạch bãi theo Mục 4.5.1 */}
+                <div className="border border-chalk rounded-2xl p-4 bg-white space-y-2.5 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate font-mono flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm text-signal-orange">rule</span>
+                      QUY HOẠCH CHẤT XẾP BÃI (MỤC 4.5.1 TOS)
+                    </h4>
+                    <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded border ${weightBadgeColor}`}>
+                      {weightClass}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate block font-semibold">Phân loại hàng:</span>
+                      <strong className="text-carbon font-mono">{containerData.cargoType || 'FCL (Nguyên cont)'}</strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate block font-semibold">Nguyên tắc trọng lượng:</span>
+                      <strong className="text-carbon">{tier <= 2 ? 'Nặng ở dưới (Tầng 1-2)' : 'Nhẹ ở trên (Tầng 3+)'}</strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate block font-semibold">Gom nhóm:</span>
+                      <strong className="text-carbon font-mono">{containerData.blNumber ? `Lô B/L: ${containerData.blNumber}` : isDischarge ? 'Gom theo Vận đơn' : 'Gom theo Hãng tàu'}</strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate block font-semibold">Khu vực chuyên trách:</span>
+                      <strong className="text-carbon">{size === 40 ? 'Bay chẵn (40ft/45ft)' : 'Bay lẻ (20ft)'}</strong>
                     </div>
                   </div>
                 </div>
