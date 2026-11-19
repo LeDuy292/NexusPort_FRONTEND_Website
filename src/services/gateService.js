@@ -56,14 +56,18 @@ export const gateService = {
     }
   },
   async commandBarrier(payload) {
-    // 1. Đồng bộ lệnh mở / đóng / lỗi xuống phần cứng ESP32 qua AI Service
+    // 1. Đồng bộ lệnh mở / đóng / lỗi xuống phần cứng ESP32 qua AI Service theo đúng làn
     try {
-      if (payload?.action === 'open') {
-        void aiClient.post('/api/v1/gate/barrier/open').catch(() => {})
-      } else if (payload?.action === 'close') {
-        void aiClient.post('/api/v1/gate/barrier/close').catch(() => {})
-      } else if (payload?.action === 'fail') {
-        void aiClient.post('/api/v1/gate/barrier/fail').catch(() => {})
+      if (!payload?.skipHardware) {
+        const isOut = payload?.lane === 'OUT' || payload?.gateCode === 'GATE-02' || payload?.gateCode === 'GATE_OUT';
+        const laneSuffix = isOut ? '/out' : '/in';
+        if (payload?.action === 'open') {
+          void aiClient.post(`/api/v1/gate/barrier/open${laneSuffix}`).catch(() => {})
+        } else if (payload?.action === 'close') {
+          void aiClient.post(`/api/v1/gate/barrier/close${laneSuffix}`).catch(() => {})
+        } else if (payload?.action === 'fail') {
+          void aiClient.post(`/api/v1/gate/barrier/fail${laneSuffix}`).catch(() => {})
+        }
       }
     } catch (_) {}
 
