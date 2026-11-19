@@ -11,7 +11,8 @@ export const stateOf = booking => booking.dispatch?.status === 'withdrawn'
 
 export const displayState = booking => booking.coordination?.isHeld ? 'held' : stateOf(booking)
 export const statusLabel = booking => booking.coordination?.isHeld
-  ? 'Điều độ yêu cầu chờ' : DISPATCH_STATUS[stateOf(booking)]
+  ? 'Điều độ yêu cầu chờ' : booking.dispatch?.action === 'gate_admitted'
+    ? 'Đã cấp lệnh tại cổng' : DISPATCH_STATUS[stateOf(booking)]
 
 export const vietnamDate = value => new Intl.DateTimeFormat('sv-SE', {
   timeZone: 'Asia/Ho_Chi_Minh',

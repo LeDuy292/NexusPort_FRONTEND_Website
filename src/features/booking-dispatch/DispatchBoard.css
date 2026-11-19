@@ -38,6 +38,9 @@ main:has(> .arrival-page){scrollbar-gutter:stable}
 .arrival-tabs button[aria-pressed=true]{background:#edf1f6;border-color:#8193a8;color:#23394e;font-weight:650}
 .arrival-order{padding:0 16px;margin:12px 0}
 .arrival-list{padding:0 12px 12px}
+.dispatch-pagination{display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:6px;padding:12px;border-top:1px solid #e3e8ef}
+.arrival-page .dispatch-pagination button{padding:6px 9px;min-width:30px;font-size:12px}
+.arrival-page .dispatch-pagination button[aria-current=page]{background:#edf1f6;border-color:#8193a8;font-weight:700}
 .arrival-page .arrival-row{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);width:100%;gap:16px;text-align:left;padding:16px 14px;border:1px solid #e3e8ef;border-left:3px solid #a6b2c1;border-radius:9px;margin-top:8px;background:#fff}
 .arrival-page .arrival-row:nth-child(even){background:#f8fafc}
 .arrival-page .arrival-row.ready{border-left-color:#4b8264}

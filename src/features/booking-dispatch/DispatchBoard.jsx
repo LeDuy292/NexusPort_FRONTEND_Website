@@ -1,89 +1,76 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useDispatchBoard } from './useDispatchBoard'
 import { updateDispatch } from './dispatchService'
 import { dateTime as time, displayState, stateOf, statusLabel, vietnamDate } from './dispatchPresentation'
 import './DispatchBoard.css'
 import { SmartRouteDetail } from './SmartRouteMonitor'
-import { useYardMonitor } from './useYardMonitor'
 import DispatchJourney from './JourneyTimeline'
-import { dispatchVehicles } from './dispatchJourney'
-import { routePhaseLabel, routeDestination } from '../../utils/smartRoutePresentation'
 import { formatPlateNumber } from '../../utils/format'
 
 const dateToday = () => vietnamDate(new Date())
 
 export default function DispatchBoard() {
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
   const targetCode = (searchParams.get('bookingCode') || '').trim().toUpperCase()
   const targetId = (searchParams.get('bookingId') || '').trim()
+  const hasSelection = Boolean(targetId || targetCode)
+  const selection = targetId ? { bookingId: targetId } : targetCode ? { bookingCode: targetCode } : null
   const [date, setDate] = useState(dateToday)
-  const { data, loading, error, connected, reload } = useDispatchBoard(date)
-  const monitor = useYardMonitor()
-  const [containerId, setContainerId] = useState('')
   const [filter, setFilter] = useState('all')
-  const [selectedId, setSelectedId] = useState(null)
-  const autoPickedRef = useRef('')
-  const initialSelectedRef = useRef(false)
+  const [page, setPage] = useState(1)
+  const { data, loading, error, connected, selected, detailsLoading, detailError,
+    routes, routesLoading, routeError, cacheBooking, reload } = useDispatchBoard(date, filter, page, selection)
+  const [containerId, setContainerId] = useState('')
   const [note, setNote] = useState('')
   const [minutes, setMinutes] = useState(15)
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState(null)
-  const bookings = data?.bookings || []
-  const vehicles = dispatchVehicles(bookings, monitor.data?.routes || [])
+  const initialSelectionDone = useRef(hasSelection)
+  const currentPage = loading ? page : data?.pagination?.page
   useEffect(() => {
-    if (!vehicles.length) return
-    const paramKey = `${targetId}:${targetCode}`
-    if ((targetCode || targetId) && autoPickedRef.current !== paramKey) {
-      const match = vehicles.find(row =>
-        (targetId && row.id === targetId) ||
-        (targetCode && (
-          String(row.booking?.bookingCode || '').toUpperCase() === targetCode ||
-          row.routes?.some(r => String(r.bookingCode || '').toUpperCase() === targetCode)
-        ))
-      )
-      if (match) {
-        autoPickedRef.current = paramKey
-        initialSelectedRef.current = true
-        setSelectedId(match.id)
-        return
-      }
-    }
-    if (!initialSelectedRef.current && !selectedId) {
-      initialSelectedRef.current = true
-      setSelectedId(vehicles[0].id)
-    }
-  }, [vehicles, targetCode, targetId, selectedId])
-  const vehicle = vehicles.find(row => row.id === selectedId)
-  const selected = vehicle?.booking
-  const route = vehicle?.routes.find(item => item.containerId === containerId) || vehicle?.routes[0]
+    if (currentPage && currentPage !== page) setPage(currentPage)
+  }, [currentPage, page])
+  const route = routes.find(item => item.containerId === containerId) || routes[0]
   const yard = data?.yard
-  const inside = vehicles.filter(row => row.group === 'inside').length
-  const counts = {
-    ready: bookings.filter(b => b.coordination.canCall).length,
-    absent: bookings.filter(b => stateOf(b) === 'not-arrived').length,
-    called: bookings.filter(b => ['called', 'acknowledged'].includes(stateOf(b))).length,
-  }
-  const visible = vehicles.filter(row => filter === 'all' || filter === row.group
-    || (row.group === 'queue' && ((filter === 'waiting' && ['ready','arrived'].includes(stateOf(row.booking)))
-      || (filter === 'called' && ['called','acknowledged'].includes(stateOf(row.booking)))
-      || (filter === 'absent' && stateOf(row.booking) === 'not-arrived'))))
+  const counts = data?.counts || { ready: 0, absent: 0, called: 0 }
+  const bookings = loading ? [] : data?.bookings || []
+  const { total, pageSize } = data?.pagination || { total: 0, pageSize: 3 }
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const firstPageButton = Math.max(1, Math.min(page - 2, totalPages - 4))
+  const changeSelection = useCallback(id => {
+    initialSelectionDone.current = true
+    const params = new URLSearchParams(searchParams)
+    params.delete('bookingCode')
+    if (id) params.set('bookingId', id)
+    else params.delete('bookingId')
+    setSearchParams(params, { replace: true })
+    setNote(''); setFeedback(null); setContainerId('')
+  }, [searchParams, setSearchParams])
+  const firstBooking = bookings[0]
+  useEffect(() => {
+    if (hasSelection) initialSelectionDone.current = true
+    if (initialSelectionDone.current || !firstBooking || busy) return
+    cacheBooking(firstBooking)
+    changeSelection(firstBooking.id)
+  }, [hasSelection, firstBooking, busy, cacheBooking, changeSelection])
   const choose = row => {
-    if (busy) return
-    if (row.id !== selectedId) { setNote(''); setFeedback(null); setContainerId('') }
-    setSelectedId(row.id)
+    if (busy || row.id === selected?.id) return
+    cacheBooking(row)
+    changeSelection(row.id)
   }
   async function act(action) {
     if (!selected || busy) return
     setBusy(true); setFeedback(null)
     try {
       await updateDispatch(selected, action, { note, minutes: Number(minutes) })
-      setFeedback({ ok: true, text: action === 'call' ? 'Đã gửi lệnh gọi tới tài xế.' : action === 'delay' ? 'Đã báo thời gian chờ mới tới tài xế.' : 'Đã đưa xe về hàng chờ.' })
+      setFeedback({ ok: true, text: action === 'call' ? 'Đã gửi lệnh gọi. Cổng đang chờ tài xế nhận lệnh.' : action === 'delay' ? 'Đã báo thời gian chờ mới tới tài xế.' : 'Đã đưa xe về hàng chờ.' })
       setNote('')
     } catch (err) { setFeedback({ ok: false, text: err.message }) }
     finally { await reload(); setBusy(false) }
   }
   const selectedState = selected && stateOf(selected)
+  const entryOrder = selected?.gateEntryOrder
   const canDelay = ['ready', 'called', 'acknowledged'].includes(selectedState)
   return <div className="arrival-page">
     <header className="arrival-header">
@@ -92,53 +79,78 @@ export default function DispatchBoard() {
       <span className={'arrival-live ' + (connected ? 'connected' : '')}>{connected ? '● Realtime đang kết nối' : '◌ Đang nối lại realtime'}</span>
     </header>
     <div className="arrival-toolbar">
-      <label>Ngày hẹn <input type="date" value={date} disabled={busy} onChange={e => { setDate(e.target.value); setSelectedId(null) }} /></label>
-      <button type="button" onClick={() => { void reload(); void monitor.reload() }} disabled={loading}>Làm mới</button>
+      <label>Ngày hẹn <input type="date" value={date} disabled={busy} onChange={e => { setDate(e.target.value || dateToday()); setPage(1); changeSelection(null) }} /></label>
+      <button type="button" onClick={() => void reload()} disabled={loading && !error}>Làm mới</button>
       <Link to="/dispatcher/gate-bookings">Duyệt booking →</Link>
-      <span className="arrival-muted">Cập nhật: {time(data?.serverTime)} · Giờ Việt Nam</span>
+      <span className="arrival-muted">Dữ liệu lúc {time(data?.serverTime)} · Giờ Việt Nam</span>
     </div>
-    {error && <div className="arrival-error" role="alert">Không tải được hàng chờ: {error} <button type="button" onClick={() => { void reload(); void monitor.reload() }}>Thử lại</button></div>}
+    {error && <div className="arrival-error" role="alert">Không tải được danh sách xe: {error} <button type="button" onClick={() => void reload()}>Thử lại</button></div>}
     <div className="arrival-counts">
       <div className="count-ready"><span className="arrival-stat-icon material-symbols-outlined" aria-hidden="true">local_shipping</span><div><span>Có thể gọi ngay</span><strong>{counts.ready}</strong></div></div>
       <div className="count-absent"><span className="arrival-stat-icon material-symbols-outlined" aria-hidden="true">schedule</span><div><span>Chưa xác nhận đến</span><strong>{counts.absent}</strong></div></div>
       <div className="count-called"><span className="arrival-stat-icon material-symbols-outlined" aria-hidden="true">campaign</span><div><span>Đã gọi / đã nhận lệnh</span><strong>{counts.called}</strong></div></div>
     </div>
-    <div className="dispatch-capacity" role="status"><strong>{yard ? yard.inside + ' / ' + yard.capacity + ' xe trong bãi' : inside + ' xe trong bãi'}</strong>
+    <div className="dispatch-capacity" role="status"><strong>{yard ? yard.inside + ' / ' + yard.capacity + ' xe trong bãi' : 'Sức chứa bãi'}</strong>
       <span>{yard ? yard.reserved + ' chỗ đã giữ cho lệnh vào · Còn ' + yard.available + ' chỗ' : 'Đang tải sức chứa từ hệ thống'}</span>
       <span>{yard?.automatic ? 'Tự gọi xe sẵn sàng khi còn sức chứa' : 'Điều độ gọi xe theo sức chứa'}</span>
     </div>
-    {monitor.error && <p className="arrival-error" role="alert">Chưa cập nhật được xe trong bãi: {monitor.error}. Dữ liệu đang hiển thị có thể cũ. <button type="button" onClick={() => void monitor.reload()}>Thử lại</button></p>}
     <div className="arrival-workspace">
       <section className="arrival-queue" aria-label="Hàng chờ điều phối">
         <div className="arrival-panel-heading">
-          <div><h2>Danh sách xe</h2><span>{visible.length} chuyến · chọn xe để xem lộ trình bên phải</span></div>
+          <div><h2>Danh sách xe</h2>{data && <span>{total} chuyến · {pageSize} chuyến mỗi trang</span>}</div>
         </div>
         <div className="arrival-tabs" aria-label="Lọc hàng chờ">
           {[['all','Tất cả'],['waiting','Chờ gọi'],['called','Đã gọi'],['inside','Trong bãi'],['exited','Đã ra'],['absent','Chưa đến']].map(([key,label]) =>
-            <button type="button" key={key} aria-pressed={filter === key} onClick={() => setFilter(key)}>{label}</button>)}
+            <button type="button" key={key} aria-pressed={filter === key} disabled={busy} onClick={() => { setFilter(key); setPage(1) }}>{label}</button>)}
         </div>
-        <p className="arrival-muted arrival-order">Ngày hẹn lọc hàng chờ. Xe đang trong bãi luôn hiển thị; xe đã ra được giữ trong 24 giờ.</p>
-        {loading && <p className="arrival-empty">Đang tải booking…</p>}
-        {!loading && !visible.length && <p className="arrival-empty">Chưa có booking trong nhóm này. Booking phải được duyệt và có tài xế trước khi xác nhận đến.</p>}
+        <p className="arrival-muted arrival-order">Hàng chờ theo ngày hẹn booking. Xe có lệnh còn hiệu lực trong ngày, xe trong bãi và xe đã ra trong 24 giờ cũng hiển thị.</p>
+        {loading && <p className="arrival-empty" role="status">Đang tải danh sách xe…</p>}
+        {data && !loading && !bookings.length && <p className="arrival-empty">Chưa có booking trong nhóm này.</p>}
         <div className="arrival-list">
-          {visible.map(row => {
-            const booking = row.booking, trip = row.routes[0]
-            const label = row.group === 'queue' ? statusLabel(booking) : row.group === 'exited' ? 'Hoàn thành · đã ra cổng' : routePhaseLabel[trip?.journey?.phase] || 'Trong bãi'
-            return <button key={row.id} type="button" onClick={() => choose(row)} aria-pressed={selectedId === row.id} className={'arrival-row ' + row.group + (selectedId === row.id ? ' selected' : '')}>
-              <div><strong>{formatPlateNumber(booking?.truckPlate || trip?.truckPlate) || 'Chưa gán xe'}</strong><span>{booking?.driverName || trip?.driverName}</span><small>{booking?.bookingCode || trip?.bookingCode}</small></div>
-              <div><span className="arrival-status">{label}</span><small>{trip ? routeDestination(trip) : 'Hẹn: ' + time(booking.appointmentStart)}</small>
-                <small>{trip ? row.routes.length + ' container' : booking.coordination.isLate ? 'Đến muộn >10 phút' : booking.dispatch?.arrivedAt ? 'Đến: ' + time(booking.dispatch.arrivedAt) : 'Chưa xác nhận đến'}</small></div>
+          {bookings.map(booking => {
+            const inQueue = booking.group === 'queue'
+            const selectedRow = selected?.id === booking.id || targetId === booking.id
+            const label = inQueue ? statusLabel(booking) : booking.group === 'exited' ? 'Hoàn thành · đã ra cổng' : 'Trong bãi'
+            return <button key={booking.id} type="button" disabled={busy} onClick={() => choose(booking)} aria-pressed={selectedRow}
+              className={'arrival-row ' + (inQueue ? displayState(booking) : booking.group) + (selectedRow ? ' selected' : '')}>
+              <div><strong>{formatPlateNumber(booking.truckPlate) || 'Chưa gán xe'}</strong><span>{booking.driverName}</span><small>{booking.bookingCode}</small></div>
+              <div><span className="arrival-status">{label}</span>
+                <small>Hẹn booking: {time(booking.appointmentStart)}</small>
+                {booking.gateEntryOrder?.revokedAt
+                  ? <small>Thu hồi lệnh: {time(booking.gateEntryOrder.revokedAt)}</small>
+                  : booking.gateEntryOrder?.issuedAt && <small>Gọi vào cổng: {time(booking.gateEntryOrder.issuedAt)}</small>}
+                {!inQueue && <small>{booking.containers.length} container</small>}</div>
             </button>
           })}
         </div>
+        {totalPages > 1 && <nav aria-label="Phân trang danh sách xe" className="dispatch-pagination">
+          <button type="button" disabled={busy || currentPage <= 1} onClick={() => setPage(currentPage - 1)}>Trước</button>
+          {Array.from({ length: Math.min(5, totalPages) }, (_, index) => firstPageButton + index).map(number =>
+            <button type="button" key={number} aria-label={`Trang ${number}`} aria-current={number === currentPage ? 'page' : undefined}
+              disabled={busy} onClick={() => setPage(number)}>{number}</button>)}
+          <button type="button" disabled={busy || currentPage >= totalPages} onClick={() => setPage(currentPage + 1)}>Sau</button>
+        </nav>}
       </section>
-      <aside key={vehicle ? `${vehicle.id}:${route?.containerId || 'queue'}` : 'empty'} className="arrival-detail" aria-label="Chi tiết điều phối">
-        {!vehicle ? <div className="dispatch-no-selection"><span className="material-symbols-outlined" aria-hidden="true">route</span><h2>{selectedId ? 'Đang chuyển sang hành trình trong bãi…' : 'Chọn xe để theo dõi hành trình'}</h2><p>Lộ trình, các bước đã hoàn tất và việc cần làm sẽ hiển thị ở đây.</p></div> : <>
-          <div className="arrival-detail-heading"><div><p className="arrival-eyebrow">CHI TIẾT ĐIỀU PHỐI</p><h2>{selected?.bookingCode || route?.bookingCode}</h2></div><button type="button" disabled={busy} onClick={() => setSelectedId(null)} aria-label="Đóng chi tiết">×</button></div>
-          <DispatchJourney booking={selected} route={route} />
-          {vehicle.routes.length > 1 && <label className="dispatch-container-picker">Container<select value={route?.containerId || ''} onChange={event => setContainerId(event.target.value)}>{vehicle.routes.map(item => <option key={item.containerId} value={item.containerId}>{item.containerNumber}</option>)}</select></label>}
-          {route && <SmartRouteDetail selected={route} error={monitor.error} />}
-          {selected && !route && <>
+      <aside key={selected?.id || 'empty'} className="arrival-detail" aria-label="Chi tiết điều phối">
+        {selection && <div className="arrival-detail-heading"><div><p className="arrival-eyebrow">CHI TIẾT ĐIỀU PHỐI</p><h2>{selected?.bookingCode || targetCode}</h2></div>
+          <button type="button" disabled={busy} onClick={() => changeSelection(null)} aria-label="Đóng chi tiết">×</button></div>}
+        {detailError && <div className="arrival-error" role="alert">{detailError} <button type="button" onClick={() => void reload()}>Thử lại</button></div>}
+        {detailsLoading && <p className="arrival-empty" role="status">Đang tải chi tiết chuyến…</p>}
+        {!selection && <div className="dispatch-no-selection"><span className="material-symbols-outlined" aria-hidden="true">route</span><h2>Chọn xe để theo dõi hành trình</h2><p>Lộ trình, các bước đã hoàn tất và việc cần làm sẽ hiển thị ở đây.</p></div>}
+        {selected && <>
+          <dl className="arrival-facts">
+            <div><dt>Giờ hẹn booking</dt><dd>{time(selected.appointmentStart)} – {time(selected.appointmentEnd)}</dd></div>
+            {entryOrder?.issuedAt && <div><dt>Gọi vào cổng</dt><dd>{time(entryOrder.issuedAt)}</dd></div>}
+            {entryOrder?.revokedAt && <div><dt>Thu hồi lệnh</dt><dd>{time(entryOrder.revokedAt)}</dd></div>}
+          </dl>
+          {(selected.group === 'queue' || route) && <DispatchJourney booking={selected} route={route} />}
+          {routesLoading && <p role="status" className="arrival-muted">Đang tải lộ trình xe…</p>}
+          {routeError && <div className="arrival-error" role="alert">{routeError} <button type="button" onClick={() => void reload()}>Thử lại</button></div>}
+          {selected.group !== 'queue' && !route && !routesLoading && !routeError &&
+            <p className="arrival-muted">Chưa có lộ trình container cho chuyến này.</p>}
+          {routes.length > 1 && <label className="dispatch-container-picker">Container<select value={route?.containerId || ''} onChange={event => setContainerId(event.target.value)}>{routes.map(item => <option key={item.containerId} value={item.containerId}>{item.containerNumber}</option>)}</select></label>}
+          {route && <SmartRouteDetail selected={route} error={routeError} />}
+          {selected.group === 'queue' && <>
           <div className="arrival-detail-tools"><span className={'arrival-status ' + displayState(selected)}>{statusLabel(selected)}</span>
           </div>
           <dl className="arrival-facts">
@@ -147,8 +159,6 @@ export default function DispatchBoard() {
             <div><dt>Công ty</dt><dd>{selected.carrierName}</dd></div>
             {selected.description && <div><dt>Vị trí bãi</dt><dd>{selected.description}</dd></div>}
             <div><dt>Thao tác</dt><dd>{selected.bookingType?.toLowerCase() === 'pickup' ? 'Lấy container' : 'Giao container'}</dd></div>
-            <div><dt>Lịch hẹn</dt><dd>{time(selected.appointmentStart)} – {time(selected.appointmentEnd)}</dd></div>
-            <div><dt>Đến khu chờ</dt><dd>{selectedState === 'not-arrived' ? 'Chưa xác nhận' : time(selected.dispatch?.arrivedAt)}</dd></div>
             {selected.dispatch?.callExpiresAt && <div><dt>Hạn phản hồi</dt><dd>{time(selected.dispatch.callExpiresAt)}</dd></div>}
             {selected.dispatch?.acknowledgedAt && <div><dt>Đã nhận lệnh</dt><dd>{time(selected.dispatch.acknowledgedAt)}</dd></div>}
             {selected.gateEntryOrder&&<div><dt>Lệnh vào cổng</dt><dd>{({pending_ack:'Chờ tài xế nhận lệnh',active:'Được phép vào',expired:'Hết hạn',consumed:'Đã Gate In',revoked:'Đã thu hồi'})[selected.gateEntryOrder.status]||selected.gateEntryOrder.status} · Hạn {time(selected.gateEntryOrder.validUntil)}</dd></div>}
@@ -163,15 +173,15 @@ export default function DispatchBoard() {
           <label className="arrival-note">Hướng dẫn / lý do chờ
             <textarea rows="3" maxLength="500" value={note} onChange={e => setNote(e.target.value)} placeholder="Ví dụ: Tiếp tục chờ tại khu chờ, thiết bị đang phục vụ xe trước." />
           </label>
-          <button type="button" className="arrival-call" disabled={busy || !selected.coordination.canCall || yard?.available === 0 || Boolean(error)} onClick={() => void act('call')}>{busy ? 'Đang gửi…' : 'Gọi tài xế'}</button>
+          <button type="button" className="arrival-call" disabled={busy || !selected.coordination.canCall || yard?.available === 0 || Boolean(detailError)} onClick={() => void act('call')}>{busy ? 'Đang gửi…' : 'Gọi tài xế'}</button>
           {yard?.available === 0 && <p className="arrival-muted">Đã đủ xe hoặc chỗ giữ cho lệnh vào. Chờ xe Gate Out để có chỗ.</p>}
           {!selected.coordination.canCall && <p className="arrival-muted">{selectedState === 'acknowledged'
-            ? 'Tài xế đã nhận lệnh. Dùng lệnh còn hạn tại cổng; không cần gọi thêm. Khi lệnh hết hạn, hệ thống trả xe về sẵn sàng để gọi lại.'
+            ? 'Xe đã có lệnh vào cổng. Khi lệnh hết hạn, hệ thống trả xe về sẵn sàng để gọi lại.'
             : selectedState === 'called' ? 'Đã gửi lệnh gọi, đang chờ tài xế nhận trên app trong 10 phút.'
             : 'Chỉ gọi khi tài xế sẵn sàng, từ 12 giờ trước giờ hẹn và không còn thời gian chờ thêm.'}</p>}
           <div className="arrival-delay"><label>Chờ thêm (phút)<input type="number" min="1" max="120" value={minutes} onChange={e => setMinutes(e.target.value)} /></label>
-            <button type="button" disabled={busy || !canDelay || !note.trim() || Boolean(error)} onClick={() => void act('delay')}>Báo chờ thêm</button></div>
-          {(['called','acknowledged'].includes(selectedState) || selected.dispatch?.holdUntil) && <button type="button" disabled={busy || Boolean(error)} onClick={() => void act('release')}>Thu hồi lệnh / bỏ thời gian chờ</button>}
+            <button type="button" disabled={busy || !canDelay || !note.trim() || Boolean(detailError)} onClick={() => void act('delay')}>Báo chờ thêm</button></div>
+          {(['called','acknowledged'].includes(selectedState) || selected.dispatch?.holdUntil) && <button type="button" disabled={busy || Boolean(detailError)} onClick={() => void act('release')}>Thu hồi lệnh / bỏ thời gian chờ</button>}
           </details>
           {feedback && <p role="status" className={feedback.ok ? 'arrival-success' : 'arrival-error'}>{feedback.text}</p>}
           <p className="arrival-boundary">Lệnh vào còn hạn giữ một chỗ trong bãi. Gate In chuyển chỗ đã giữ thành xe trong bãi; Gate Out mới giải phóng chỗ.</p>

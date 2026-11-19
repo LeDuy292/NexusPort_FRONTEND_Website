@@ -55,37 +55,19 @@ export const gateService = {
       return { items: [], total: 0 }
     }
   },
+  async authorizeEntry(payload) {
+    return (await apiClient.post('/gate/entry-admission', payload)).data.data
+  },
   async commandBarrier(payload) {
-    // 1. Đồng bộ lệnh mở / đóng / lỗi xuống phần cứng ESP32 qua AI Service theo đúng làn
-    try {
-      if (!payload?.skipHardware) {
-        const isOut = payload?.lane === 'OUT' || payload?.gateCode === 'GATE-02' || payload?.gateCode === 'GATE_OUT';
-        const laneSuffix = isOut ? '/out' : '/in';
-        if (payload?.action === 'open') {
-          void aiClient.post(`/api/v1/gate/barrier/open${laneSuffix}`).catch(() => {})
-        } else if (payload?.action === 'close') {
-          void aiClient.post(`/api/v1/gate/barrier/close${laneSuffix}`).catch(() => {})
-        } else if (payload?.action === 'fail') {
-          void aiClient.post(`/api/v1/gate/barrier/fail${laneSuffix}`).catch(() => {})
-        }
-      }
-    } catch (_) {}
-
-    // 2. Gửi lệnh tới C# Backend / fallback
-    try {
-      return (await apiClient.post('/v1/Gate/barrier-commands',payload)).data;
-    } catch (err) {
-      console.warn('C# barrier command offline, fallback simulation:', err.message)
-      return { status: 'acknowledged', simulated: true, ...payload }
-    }
+    return (await apiClient.post('/v1/Gate/barrier-commands', payload)).data
+  },
+  async openVerifiedInboundBarrier(commandId) {
+    const { data } = await aiClient.post('/api/v1/gate/barrier/open/in', { commandId })
+    if (!data.success) throw new Error(data.message || 'Chưa gửi được lệnh mở barie tới ESP32.')
+    return data
   },
   async recordPassageIn(payload) {
-    try {
-      return (await apiClient.post('/v1/Gate/passage-in',{...payload,passageConfirmed:true})).data;
-    } catch (err) {
-      console.warn('C# recordPassageIn offline, fallback simulation:', err.message)
-      return { success: true, status: 'acknowledged', simulated: true, ...payload }
-    }
+    return (await apiClient.post('/v1/Gate/passage-in', { ...payload, passageConfirmed: true })).data
   },
 
   // ── AI CONTAINER ONNX & OCR INSPECTION (C# Core container.onnx + OCR + ISO 6346) ──
@@ -286,75 +268,9 @@ export const gateService = {
 
   // ── .NET BACKEND VERIFICATION & APPROVAL (PURE REAL API) ─────────────────
 
-  /**
-   * Gửi thông tin phương tiện đến .NET Backend để đối soát qua 7 điều kiện (Rule Engine)
-   * Tự động fallback sang Express /api/gate/verify-plate nếu C# backend offline
-   */
   async verifyGateScan(payload) {
-    let csharpFailure = null;
-
-    // 1. Thử gọi C# Backend qua apiClient (/v1/gate/verify)
-    try {
-      const res = await apiClient.post('/v1/gate/verify', payload)
-      if (res?.data && (res.data.status === 'PASS' || res.data.isSuccess === true)) {
-        return { success: true, isLive: true, data: res.data }
-      }
-      if (res?.data) {
-        csharpFailure = res.data;
-      }
-    } catch (csharpErr) {
-      console.warn('[verifyGateScan] C# Rule Engine offline/error, fallback sang Express verify-plate:', csharpErr.message)
-    }
-
-    // 2. Fallback sang Express Node.js Backend (/api/gate/verify-plate)
-    try {
-      const plate = payload.detectedVehiclePlate || payload.vehiclePlate
-      const res = await fetch(`/api/gate/verify-plate?plate=${encodeURIComponent(plate)}&gateCode=${encodeURIComponent(payload.gateCode || 'GATE_IN')}`)
-      const json = await res.json()
-      if (json && json.valid && json.booking) {
-        const b = json.booking
-        return {
-          success: true,
-          isLive: true,
-          data: {
-            status: 'PASS',
-            isSuccess: true,
-            recordId: b.id,
-            booking: {
-              bookingId: b.id,
-              bookingNumber: b.bookingCode,
-              vehiclePlate: b.vehiclePlate,
-              carrierName: 'Công ty Vận tải NexusPort',
-              gateType: b.gateType === 'gate_out' ? 'GateOut' : 'GateIn',
-              validFrom: b.appointmentStart,
-              validTo: b.appointmentEnd,
-              containerNumber: 'HAMU6381022',
-              containerType: '40GP',
-            },
-            driver: {
-              driverId: 'DRV-001',
-              fullName: b.driverName || 'Phạm Hoàng Long',
-              licenseNumber: '010148291034',
-              phone: '0936184910',
-            }
-          }
-        }
-      }
-    } catch (expressErr) {
-      console.warn('[verifyGateScan] Express verify-plate offline:', expressErr.message)
-    }
-
-    if (csharpFailure) {
-      return { success: true, isLive: true, data: csharpFailure }
-    }
-
-    const targetPlate = payload.detectedVehiclePlate || payload.vehiclePlate || ''
-    return {
-      success: false,
-      isLive: true,
-      error: `Không tìm thấy thông tin hợp lệ cho biển số "${targetPlate}"`,
-      data: null,
-    }
+    const { data } = await apiClient.post('/v1/Gate/verify', payload)
+    return { success: true, isLive: true, data }
   },
 
   /**

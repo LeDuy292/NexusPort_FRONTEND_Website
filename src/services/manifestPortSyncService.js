@@ -1328,17 +1328,6 @@ export const manifestPortSyncService = {
                 date: '25/11/2026',
               }
             }
-            if (typeof item.eta === 'string' && item.eta.startsWith('2026-11-10')) {
-              const refSource = item.paidAt || item.approvedAt
-              const vnDate = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(refSource ? new Date(refSource) : new Date())
-              const timePart = (item.eta.split('T')[1] || '08:30:00').replace(/[Zz]|([+-]\d{2}:\d{2})$/, '')
-              patchDates = {
-                ...patchDates,
-                eta: `${vnDate}T${timePart}+07:00`,
-              }
-              hasBookingsMigrated = true
-            }
-
             const contKey = String(item.containerId || '').trim().toUpperCase()
             const bookKey = String(item.id || item.bookingCode || '').trim().toUpperCase()
             const matchedRes = allReservations.find(r => {
@@ -1671,9 +1660,9 @@ export const manifestPortSyncService = {
         const driver = customFleetData.driverName || orderFleet?.driver || (['TRẦN VĂN TÙNG', 'Nguyễn Văn Minh'].includes(item.suggestedDriver) ? null : item.suggestedDriver) || null
         const licenseNo = customFleetData.licenseNumber || orderFleet?.license || (item.suggestedLicense === 'FC-782910' ? null : item.suggestedLicense) || null
         const gate = customFleetData.requestedGate || item.suggestedGate || 'Gate 1'
-        const etaTime = customFleetData.etaTime || item.suggestedEta || '08:30'
-        const todayVn = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date())
-        const etaIso = customFleetData.eta || `${todayVn}T${etaTime.slice(0, 5)}:00+07:00`
+        const etaTime = customFleetData.etaTime?.slice(0, 5)
+        const todayVn = etaTime && new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date())
+        const etaIso = customFleetData.eta || (etaTime ? `${todayVn}T${etaTime}:00+07:00` : item.eta || null)
 
         const transportSubmittedDocs = [
           {
@@ -1716,7 +1705,7 @@ export const manifestPortSyncService = {
           driverStatus: 'Available',
           requestedGate: gate,
           eta: etaIso,
-          etaWindow: customFleetData.etaWindow || `${etaTime.slice(0, 5)} - ${Number(etaTime.slice(0, 2)) + 2}:00`,
+          etaWindow: customFleetData.etaWindow || item.etaWindow || null,
           transportDocuments: transportSubmittedDocs,
           status: 'Pending', // Chuyển từ WaitingTransport -> Pending để bên Gate Booking bấm Kiểm duyệt!
           timelineStep: 2,

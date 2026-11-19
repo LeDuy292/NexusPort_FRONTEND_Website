@@ -15,15 +15,3 @@ export function journeyStep(booking, route) {
   if (route?.gateTransactionId) return 2
   return booking?.gateEntryOrder?.status === 'active' ? 1 : 0
 }
-// One vehicle/booking row remains selected when it moves from queue into yard.
-// Multiple containers are shown inside the detail instead of duplicating trucks.
-export function dispatchVehicles(bookings, routes) {
-  const byId = new Map(bookings.map(booking => [booking.id, { id: booking.id, booking, routes: [] }]))
-  for (const route of routes) {
-    const row = byId.get(route.bookingId) || { id: route.bookingId, booking: null, routes: [] }
-    row.routes.push(route)
-    byId.set(row.id, row)
-  }
-  return [...byId.values()].map(row => ({ ...row, group: row.routes.length
-    ? row.routes.every(route => route.journey?.phase === 'exited') ? 'exited' : 'inside' : 'queue' }))
-}

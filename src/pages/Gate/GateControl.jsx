@@ -52,10 +52,11 @@ export default function GateControl() {
   const [processingStatus, setProcessingStatus] = useState('idle')
   const [barrierState, setBarrierState] = useState('closed') // 'closed' | 'opening' | 'opened'
   const [barrierBusy,setBarrierBusy]=useState(false)
-  const [manualPlate,setManualPlate]=useState('')
   const [manualReason,setManualReason]=useState('')
   const [selectedEntry,setSelectedEntry]=useState(null)
   const [passageEvidence,setPassageEvidence]=useState(null)
+  const [passageBusy, setPassageBusy] = useState(false)
+  const physicalPassagePending = passageEvidence?.physical && processingStatus === 'passed'
   const barrierRequestRef=useRef(null)
   const barrierInFlightRef=useRef(false)
   const [rejectionReason, setRejectionReason] = useState('')
@@ -213,11 +214,12 @@ export default function GateControl() {
     setTimeout(() => setToastMessage(''), 4500)
   }
 
-  const commandBarrier=async(action,source,verificationRecordId,reasonOverride)=>{
-    if(!selectedGate || barrierInFlightRef.current) throw new Error('Cổng chưa sẵn sàng hoặc đang xử lý lệnh.')
+  const commandBarrier=async(action,source,verificationRecordId,reasonOverride,gate=selectedGate,physical=false)=>{
+    if(!gate || barrierInFlightRef.current) throw new Error('Cổng chưa sẵn sàng hoặc đang xử lý lệnh.')
     const reason=reasonOverride??(manualReason.trim() || 'Thao tác thủ công của nhân viên trực cổng')
     if(source==='manual'&&!reason)throw new Error('Nhập lý do điều khiển cổng thủ công.')
-    const mappedGateCode = selectedGate?.code === 'GATE_OUT' || selectedGate?.code === 'GATE-02' ? 'GATE-02' : 'GATE-01'
+    const outbound = gate.gateType === 'gate_out'
+    const mappedGateCode = outbound && gate.code === 'GATE_OUT' ? 'GATE-02' : outbound ? gate.code : 'GATE-01'
     const key=JSON.stringify([mappedGateCode,action,source,verificationRecordId,reason])
     if(barrierRequestRef.current?.key!==key){
       const requestId=globalThis.crypto?.randomUUID?.()||'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g,c=>{const n=Math.floor(Math.random()*16);return(c==='x'?n:(n&3)|8).toString(16)})
@@ -225,24 +227,32 @@ export default function GateControl() {
     }
     barrierInFlightRef.current=true;setBarrierBusy(true)
     try{
-      // Đồng thời kích hoạt mở/đóng Servo phần cứng ESP32 qua AI Service theo làn Vào/Ra
-      const targetLane = mode === 'checkout' ? 'OUT' : 'IN'
-      if (action === 'open') {
-        void gateService.manualBarrierOpen(targetLane).catch(() => {})
-      } else {
-        void gateService.manualBarrierFail(targetLane).catch(() => {})
-      }
-
       const result=await gateService.commandBarrier({requestId:barrierRequestRef.current.requestId,gateCode:mappedGateCode,
-        lane:targetLane,skipHardware:true,action,source,verificationRecordId:verificationRecordId||null,reason:source==='manual'?reason:undefined})
+        action,source,verificationRecordId:verificationRecordId||null,reason:source==='manual'?reason:undefined})
       if(result.status!=='simulated'&&result.status!=='acknowledged')throw new Error('Lệnh chưa được bộ điều khiển xác nhận.')
-      setBarrierState(action==='open'?'opened':'closed')
+      if (action === 'open' && physical && !outbound) {
+        setBarrierState('opening')
+        try {
+          await gateService.openVerifiedInboundBarrier(result.commandId)
+        } catch (error) {
+          setBarrierState('closed')
+          throw error
+        }
+      } else {
+        if (action === 'open' && outbound) void gateService.manualBarrierOpen('OUT')
+        if (action === 'close') void gateService.manualBarrierClose(outbound ? 'OUT' : 'IN')
+        setBarrierState(action === 'open' ? 'opened' : 'closed')
+      }
       barrierRequestRef.current=null
       return result
     }finally{barrierInFlightRef.current=false;setBarrierBusy(false)}
   }
 
   const manualBarrier = async (action) => {
+    if (action === 'open' && mode === 'checkin') {
+      showToast('Xác minh xe để mở barie cổng vào.')
+      return
+    }
     // 1. Luôn ưu tiên cập nhật trạng thái Barie ngay lập tức trên UI (không bị chặn)
     const nextState = action === 'open' ? 'opened' : 'closed'
     setBarrierState(nextState)
@@ -304,12 +314,17 @@ export default function GateControl() {
   }
 
   // ── 4. ĐỐI SOÁT QUA RULE ENGINE BACKEND & TỰ ĐỘNG TỪ CHỐI NẾU THẤT BẠI ─────────────────────────
-  const evaluateVerification = async (plate, currentConfidence = 98, overviewImg = null, plateImg = null, manual = false) => {
+  const evaluateVerification = async (plate, currentConfidence = 98, overviewImg = null, plateImg = null, manual = false, scan = {}) => {
     if (!plate || !plate.trim()) return
-    const activeGate = selectedGate || DEFAULT_GATES[mode === 'checkin' ? 0 : 1]
+    const scanMode = scan.mode || mode
+    const inbound = scanMode === 'checkin'
+    const activeGate = scan.gate || selectedGate
+    const gateCode = inbound ? 'GATE-01' : activeGate?.code === 'GATE_OUT' ? 'GATE-02' : activeGate?.code
+    const physical = inbound && (scan.physical || Boolean(hwStatus?.esp32?.connected))
     if (!activeGate || gateError) { showToast('Vui lòng chọn cổng thực tế đang hoạt động trước khi xác minh.'); return }
     if (barrierState === 'opened' || barrierState === 'opening') return // Cổng đang mở: giữ nguyên, không quét lại làm giật servo
-    if (verificationInFlightRef.current || simulationLockRef.current || verificationBusy || gateOutBusy || barrierInFlightRef.current) return
+    if (verificationInFlightRef.current || simulationLockRef.current || verificationBusy || gateOutBusy ||
+      barrierInFlightRef.current || physicalPassagePending) return
     if(manual&&!manualReason.trim()){showToast('Nhập lý do xác minh thủ công (ví dụ: mưa, camera không đọc được biển số).');return}
     verificationInFlightRef.current = true
     setPassageEvidence(null)
@@ -328,23 +343,27 @@ export default function GateControl() {
     showToast(`Đang đối soát thông tin xe "${trimmedPlate}"...`)
 
     try {
-      // Gọi trực tiếp API đối soát qua 7 điều kiện Rule Engine của Backend C# (kèm hình ảnh lưu trữ)
+      const selectedBooking = manual && selectedEntry && normalizePlate(selectedEntry.vehiclePlate) === normalizePlate(trimmedPlate)
+        ? selectedEntry.bookingCode : undefined
+      const admission = inbound ? await gateService.authorizeEntry({
+        gateCode, vehiclePlate: trimmedPlate, bookingCode: selectedBooking,
+      }) : null
       const verifyRes = await gateService.verifyGateScan({
-        gateCode: selectedGate.code,
+        gateCode,
         laneCode: 'LANE_01',
         detectedVehiclePlate: trimmedPlate,
         vehicleDetected: true,
         plateConfidence: currentConfidence / 100,
-        verificationType: `${manual?'MANUAL':'AI'}_GATE_${mode==='checkin'?'IN':'OUT'}`,
+        verificationType: `${manual?'MANUAL':'AI'}_GATE_${inbound?'IN':'OUT'}`,
         manualReason:manual?manualReason.trim():undefined,
-        bookingNumber:manual&&selectedEntry&&normalizePlate(selectedEntry.vehiclePlate)===normalizePlate(trimmedPlate)?selectedEntry.bookingCode:undefined,
+        bookingNumber: admission?.bookingCode || selectedBooking,
         overviewImageUrl: finalOverviewImg,
         vehiclePlateImageUrl: finalPlateImg,
       })
 
       if (verifyRes.success && verifyRes.data) {
         const result = verifyRes.data
-        const isPass = result.status === 'PASS' || result.isSuccess === true
+        const isPass = result.status === 'PASS' && Boolean(result.recordId)
 
         if (isPass) {
           // ✅ KIỂM TRA ĐÚNG: Nạp thông tin thật từ Backend và TỰ ĐỘNG MỞ CỔNG
@@ -372,7 +391,7 @@ export default function GateControl() {
             containerType: matchedFull?.containers?.[0]?.containerType || 'Chưa cập nhật',
             cargoType: matchedFull?.containers?.[0]?.cargoType || 'Theo booking',
             operation: bkg?.gateType === 'GateOut' ? 'Giao container hàng' : 'Hạ bãi container',
-            gate: `${selectedGate.code} · Làn 01`,
+            gate: `${gateCode} · Làn 01`,
             etaDisplay: bkg?.validFrom
               ? `${new Date(bkg.validFrom).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} - ${new Date(bkg.validTo).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`
               : 'Trong khung giờ hợp lệ',
@@ -381,33 +400,29 @@ export default function GateControl() {
           if (!bookingData.id) throw new Error('Booking không có mã định danh hợp lệ. Không thể ghi nhận qua cổng.')
           const evidence={
             verificationRecordId: result.recordId,
-            gateCode: selectedGate.code,
+            gateCode,
             laneCode: 'LANE_01',
             vehiclePlate: trimmedPlate,
             bookingNumber: bookingData.bookingCode,
             containerNumber: bookingData.containerId,
-            notes: `Xe qua cổng sau ${gateOpenSeconds} giây.${manual ? ` Lý do thủ công: ${manualReason.trim()}` : ''}`,
+            physical,
+            notes: manual ? manualReason.trim() : undefined,
           }
           const simulator = getGatePassageSimulation()
           if (simulator.pending()) {
             simulator.clear?.()
           }
-          const opened = await commandBarrier('open', manual ? 'manual' : 'automatic', result.recordId)
-          if (opened && opened.status !== 'simulated' && opened.status !== 'acknowledged') {
-            console.warn('Cổng đang ở trạng thái vận hành thực tế:', opened?.status)
-          }
+          await commandBarrier('open', manual ? 'manual' : 'automatic', result.recordId, undefined, activeGate, physical)
           setPassageEvidence(evidence)
           setActiveBooking(bookingData)
           setProcessingStatus('passed')
           setRejectionReason('')
-          try {
-            const gateInfo = { id: selectedGate?.id || 'gate-in-01', code: selectedGate?.code || 'GATE_IN' }
-            void simulator.start({ mode, gate: gateInfo,
+          if (!physical) {
+            const gateInfo = { id: activeGate.id, code: gateCode }
+            void simulator.start({ mode: scanMode, gate: gateInfo,
               booking: bookingData, evidence, closeRequestId: crypto.randomUUID() }, gateOpenSeconds).catch(() => {})
-          } catch (error) {
-            console.warn('Lỗi bộ mô phỏng qua cổng:', error?.message)
           }
-          showToast(`Đã mở barie ${selectedGate?.code || 'GATE_IN'} cho xe qua cổng.`)
+          showToast(physical ? 'Đã gửi lệnh mở barie tới ESP32.' : `Đã mô phỏng mở barie ${gateCode}.`)
         } else {
           // 🚫 KIỂM TRA SAI: Không tìm thấy booking hoặc điều kiện không hợp lệ
           setActiveBooking(null)
@@ -429,7 +444,7 @@ export default function GateControl() {
     } catch (err) {
       setActiveBooking(null)
       setProcessingStatus('rejected')
-      const reason = `Lỗi hệ thống khi kiểm tra: ${err.message}`
+      const reason = err.message
       setRejectionReason(reason)
       showToast(`⛔ ${reason}`)
     } finally {
@@ -439,9 +454,26 @@ export default function GateControl() {
   }
 
   const evaluateVerificationRef = useRef(evaluateVerification)
+  const gateLocationsRef = useRef(gateLocations)
   useEffect(() => {
     evaluateVerificationRef.current = evaluateVerification
+    gateLocationsRef.current = gateLocations
   })
+
+  const confirmPhysicalPassage = async () => {
+    if (!passageEvidence?.physical || passageBusy) return
+    setPassageBusy(true)
+    try {
+      const result = await gateService.recordPassageIn(passageEvidence)
+      if (!result?.success) throw new Error(result?.message || 'Chưa ghi nhận xe qua cổng.')
+      setProcessingStatus('checked-in')
+      showToast('Đã ghi nhận xe qua cổng vào.')
+    } catch (error) {
+      showToast(error.message)
+    } finally {
+      setPassageBusy(false)
+    }
+  }
 
   // ── LẮNG NGHE SỰ KIỆN QUÉT XE TỪ THIẾT BỊ IOT QUA REALTIME SOCKET.IO ──
   useEffect(() => {
@@ -472,14 +504,14 @@ export default function GateControl() {
     socket.on('gate:iot_scan', async (eventData) => {
       console.log('📡 [IoT Camera Event Received]', eventData)
       const plate = eventData?.detectedPlate ? eventData.detectedPlate.trim().toUpperCase() : ''
-      if (!plate) return
+      if (!plate || eventData.vehicleDetected === false) return
 
       const isOutbound = eventData?.laneCode === 'LANE_02' || eventData?.gateCode === 'GATE_OUT' || eventData?.gateCode === 'GATE_OUT_A' || String(eventData?.lane).toUpperCase() === 'OUT'
       const targetMode = isOutbound ? 'checkout' : 'checkin'
 
       // Đồng bộ đúng tab làn xe tương ứng với cảm biến kích hoạt
       setMode(targetMode)
-      const matchingGate = gateLocations.find(g => g.gateType === (isOutbound ? 'gate_out' : 'gate_in'))
+      const matchingGate = gateLocationsRef.current.find(g => g.isActive !== false && g.gateType === (isOutbound ? 'gate_out' : 'gate_in'))
       if (matchingGate) {
         setSelectedGateId(matchingGate.id)
       }
@@ -493,10 +525,16 @@ export default function GateControl() {
       if (overview) setCapturedImage(overview)
       if (crop) setAiCropImage(crop)
 
+      if (!isOutbound && !eventData.trustedCamera) {
+        showToast('Đã nhận biển số. Nhân viên cổng cần xác minh lượt quét này.')
+        return
+      }
       showToast(`🚗 [${isOutbound ? 'CỔNG RA' : 'CỔNG VÀO'}] Nhận diện biển số: "${plate}" (${conf.toFixed(1)}%)`)
       setIsAiScanning(true)
       try {
-        await evaluateVerificationRef.current?.(plate, conf, overview, crop)
+        await evaluateVerificationRef.current?.(plate, conf, overview, crop, false, {
+          mode: targetMode, gate: matchingGate, physical: !isOutbound,
+        })
       } finally {
         setIsAiScanning(false)
       }
@@ -505,6 +543,7 @@ export default function GateControl() {
     socket.on('gate:barrier_state_changed', (data) => {
       console.log('📡 [Barrier State Event Received]', data)
       const currentTargetLane = modeRef.current === 'checkout' ? 'OUT' : 'IN'
+      if (currentTargetLane === 'IN' && !data?.trustedCamera) return
       if (data?.lane === currentTargetLane) {
         setBarrierState(data.state)
         if (data.state === 'closed') {
@@ -638,7 +677,7 @@ export default function GateControl() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center bg-slate-100 border border-slate-200 rounded-xl overflow-hidden text-xs font-bold">
             <button
-              disabled={verificationBusy || isAiScanning || gateOutBusy || barrierBusy}
+              disabled={verificationBusy || isAiScanning || gateOutBusy || barrierBusy || physicalPassagePending}
               onClick={() => {
                 setMode('checkin')
                 setProcessingStatus('idle')
@@ -653,7 +692,7 @@ export default function GateControl() {
               Cổng Vào
             </button>
             <button
-              disabled={verificationBusy || isAiScanning || gateOutBusy || barrierBusy}
+              disabled={verificationBusy || isAiScanning || gateOutBusy || barrierBusy || physicalPassagePending}
               onClick={() => {
                 setMode('checkout')
                 setProcessingStatus('idle')
@@ -782,7 +821,7 @@ export default function GateControl() {
                       <span className="material-symbols-outlined text-base">
                         {processingStatus === 'passed' ? 'verified' : 'cancel'}
                       </span>
-                      <span>{serverPassed ? 'Hợp lệ với lệnh điều độ' : 'Chưa được cấp quyền qua cổng'}</span>
+                      <span>{serverPassed ? 'Lệnh vào cổng hợp lệ' : 'Chưa được cấp quyền qua cổng'}</span>
                     </div>
                     <span className={`text-[11px] mt-1.5 font-medium ${processingStatus === 'passed' ? 'text-emerald-700' : 'text-rose-600'}`}>
                       {processingStatus === 'passed'
@@ -1080,7 +1119,7 @@ export default function GateControl() {
                 <button
                   type="button"
                   onClick={() => void manualBarrier('open')}
-                  disabled={barrierState === 'opened'}
+                  disabled={barrierState === 'opened' || mode === 'checkin'}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
                   title="Mở barie cho xe qua"
                 >
@@ -1368,6 +1407,17 @@ export default function GateControl() {
                 </button>
               </div>
             </div>
+          ) : processingStatus === 'passed' && passageEvidence?.physical ? (
+            <button type="button" disabled={passageBusy} onClick={() => void confirmPhysicalPassage()}
+              className="w-full px-4 py-3 rounded-xl bg-emerald-700 text-white font-semibold disabled:opacity-50">
+              {passageBusy ? 'Đang ghi nhận…' : 'Xác nhận xe đã qua cổng'}
+            </button>
+          ) : mode === 'checkin' && detectedPlate && processingStatus === 'idle' ? (
+            <button type="button" disabled={verificationBusy || barrierBusy}
+              onClick={() => void evaluateVerification(detectedPlate, confidence, capturedImage, aiCropImage)}
+              className="w-full px-4 py-3 rounded-xl bg-slate-800 text-white font-semibold disabled:opacity-50">
+              Xác minh lượt quét
+            </button>
           ) : null}
         </div>
       </div>
