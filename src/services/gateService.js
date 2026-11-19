@@ -291,11 +291,16 @@ export const gateService = {
    * Tự động fallback sang Express /api/gate/verify-plate nếu C# backend offline
    */
   async verifyGateScan(payload) {
+    let csharpFailure = null;
+
     // 1. Thử gọi C# Backend qua apiClient (/v1/gate/verify)
     try {
       const res = await apiClient.post('/v1/gate/verify', payload)
-      if (res?.data && res.data.status) {
+      if (res?.data && (res.data.status === 'PASS' || res.data.isSuccess === true)) {
         return { success: true, isLive: true, data: res.data }
+      }
+      if (res?.data) {
+        csharpFailure = res.data;
       }
     } catch (csharpErr) {
       console.warn('[verifyGateScan] C# Rule Engine offline/error, fallback sang Express verify-plate:', csharpErr.message)
@@ -323,33 +328,32 @@ export const gateService = {
               gateType: b.gateType === 'gate_out' ? 'GateOut' : 'GateIn',
               validFrom: b.appointmentStart,
               validTo: b.appointmentEnd,
-              containerNumber: 'CAIU1234567',
-              containerType: '20GP',
+              containerNumber: 'HAMU6381022',
+              containerType: '40GP',
             },
             driver: {
               driverId: 'DRV-001',
-              fullName: b.driverName || 'Nguyễn Văn Test',
-              licenseNumber: 'B2-987654',
-              phone: '0901234567',
+              fullName: b.driverName || 'Phạm Hoàng Long',
+              licenseNumber: '010148291034',
+              phone: '0936184910',
             }
           }
         }
       }
-      return {
-        success: false,
-        isLive: true,
-        error: json.reason === 'no_active_booking'
-          ? `Biển số "${plate}" không có lịch booking nào đang hoạt động`
-          : `Không tìm thấy thông tin hợp lệ cho biển số "${plate}"`,
-        data: json,
-      }
-    } catch (err) {
-      return {
-        success: false,
-        isLive: false,
-        error: err.response?.data?.message || err.message,
-        data: err.response?.data || null,
-      }
+    } catch (expressErr) {
+      console.warn('[verifyGateScan] Express verify-plate offline:', expressErr.message)
+    }
+
+    if (csharpFailure) {
+      return { success: true, isLive: true, data: csharpFailure }
+    }
+
+    const targetPlate = payload.detectedVehiclePlate || payload.vehiclePlate || ''
+    return {
+      success: false,
+      isLive: true,
+      error: `Không tìm thấy thông tin hợp lệ cho biển số "${targetPlate}"`,
+      data: null,
     }
   },
 
