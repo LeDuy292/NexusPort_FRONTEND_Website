@@ -14,6 +14,9 @@ export const ROLES = {
 }
 
 export const CONTAINER_TRANSPORT_ROLES = [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER, ROLES.CARRIER_STAFF]
+export const YARD_VISIT_READERS = [
+  ...CONTAINER_TRANSPORT_ROLES, ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR, ROLES.SHIPPING_LINE,
+]
 export const YARD_VISIT_OPERATORS = [ROLES.ADMINISTRATOR, ROLES.DISPATCHER, ROLES.YARD_OPERATOR, ROLES.GATE_OFFICER]
 
 export const routeConfig = [
@@ -62,15 +65,15 @@ export const routeConfig = [
   },
   {
     path: '/containers',
-    allowedRoles: Object.values(ROLES).filter(role => role !== ROLES.GATE_OFFICER),
+    allowedRoles: YARD_VISIT_READERS,
   },
   {
     path: '/containers/search',
-    allowedRoles: Object.values(ROLES).filter(role => role !== ROLES.GATE_OFFICER),
+    allowedRoles: YARD_VISIT_READERS,
   },
   {
     path: '/containers/journeys',
-    allowedRoles: Object.values(ROLES).filter(role => role !== ROLES.GATE_OFFICER),
+    allowedRoles: YARD_VISIT_READERS,
   },
   {
     path: '/booking',

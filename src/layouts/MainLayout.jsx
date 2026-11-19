@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation, Outlet } from 'react-router-dom'
-import { ROLES } from '../routes/routeConfig'
+import { ROLES, YARD_VISIT_READERS } from '../routes/routeConfig'
 import NotificationCenter from '../components/NotificationCenter'
 
 // Danh sách các mục trong Sidebar tương ứng với các route
@@ -21,7 +21,7 @@ const sidebarItems = [
     path: '/containers',
     label: 'Tra cứu lượt bãi',
     icon: 'search',
-    roles: Object.values(ROLES).filter(role => role !== ROLES.GATE_OFFICER),
+    roles: YARD_VISIT_READERS,
   },
   // ── DISPATCHER ────────────────────────────────────────────────
   // 1. Tổng quan trước

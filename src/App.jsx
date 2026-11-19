@@ -2,7 +2,7 @@ import ActivateAccount from './pages/Auth/ActivateAccount'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './routes/ProtectedRoute'
 import RoleRoute from './routes/RoleRoute'
-import { CONTAINER_TRANSPORT_ROLES, ROLES } from './routes/routeConfig'
+import { CONTAINER_TRANSPORT_ROLES, ROLES, YARD_VISIT_READERS } from './routes/routeConfig'
 import MainLayout from './layouts/MainLayout'
 import SessionListener from './components/SessionListener'
 import ErrorBoundary from './components/ErrorBoundary'
@@ -138,8 +138,10 @@ function App() {
           <Route element={<RoleRoute allowedRoles={[ROLES.ADMINISTRATOR]} />}>
             <Route path="/admin/service-catalog" element={<ServiceCatalogPage management />} />
           </Route>
-          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
+          <Route element={<RoleRoute allowedRoles={YARD_VISIT_READERS} />}>
             <Route path="/containers" element={<ContainerManagement />} />
+          </Route>
+          <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR]} />}>
             <Route path="/container-intake" element={<Navigate to="/containers" replace />} />
             <Route path="/cargo" element={<Navigate to="/containers" replace />} />
           </Route>
