@@ -1,8 +1,14 @@
 import { io } from 'socket.io-client'
 import apiClient from '../../services/apiClient'
 
-export async function getDispatchBoard(date) {
-  const response = await apiClient.get('/booking-dispatch/board', { params: { date } })
+export async function getDispatchBoard(date, filter, page, signal) {
+  const response = await apiClient.get('/booking-dispatch/board', { params: { date, filter, page }, signal })
+  const data = response.data.data
+  if (!data?.pagination) throw new Error('Dịch vụ điều phối chưa hỗ trợ phân trang. Vui lòng cập nhật backend.')
+  return data
+}
+export async function getDispatchBooking(date, selection, signal) {
+  const response = await apiClient.get('/booking-dispatch/board/booking', { params: { ...selection, date }, signal })
   return response.data.data
 }
 export async function updateDispatch(booking, action, values = {}) {
@@ -26,7 +32,7 @@ export function connectDispatchBoard({ onChange, onConnected, onDisconnected }) 
   return () => { socket.removeAllListeners(); socket.disconnect() }
 }
 
-export function connectYardMonitor(onChange) {
+export function connectYardMonitor(onChange, onConnected) {
   let token
   try { token = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || '{}').token } catch { return () => {} }
   if (!token) return () => {}
@@ -34,7 +40,7 @@ export function connectYardMonitor(onChange) {
     import.meta.env.VITE_NODE_REALTIME_URL || import.meta.env.VITE_REALTIME_URL || 'http://localhost:4000',
     { auth: { token }, transports: ['websocket', 'polling'], reconnection: true }
   )
-  socket.on('connect', onChange)
+  socket.on('connect', onConnected)
   socket.on('dispatcher.status.updated', onChange)
   socket.on('yard.operation.completed', onChange)
   return () => { socket.removeAllListeners(); socket.disconnect() }

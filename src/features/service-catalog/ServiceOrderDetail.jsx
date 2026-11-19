@@ -496,7 +496,7 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
     if (!ord) return
     try {
       const cIds = [
-        ...(ord.containers || []).map(c => c.containerNumber || c),
+        ...(ord.containers || []).map(c => typeof c === 'string' ? c : c?.containerNumber),
         ...(ord.content?.lines || []).map(l => l.declaration?.containerNumber),
       ].filter(Boolean)
       const bkCodes = [
@@ -529,12 +529,18 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
 
       // 2. Cập nhật tuần tự các generated gate bookings sang status: 'Ready' & portBillPaid: true lên PostgreSQL
       const allGateBookings = manifestPortSyncService.getGeneratedGateBookings() || []
+      const orderContainers = new Set(cIds.map(number => String(number).trim().toUpperCase()))
+      const orderVoyage = ord.content?.source?.voyageNumber
       let anyUpdated = false
       for (const b of allGateBookings) {
-        const matchBk = bkCodes.some(code => code && (b.id === code || b.bookingCode === code || b.cargoDeclarationId === code))
-        const matchCont = cIds.some(cont => cont && String(b.containerId || '').toUpperCase() === String(cont).toUpperCase())
-        const matchVoy = ord.content?.source?.voyageNumber && b.voyageNumber && ord.content.source.voyageNumber.includes(b.voyageNumber)
-        if (matchBk || matchCont || matchVoy) {
+        const sameOrder = b.eportOrderId === ord.id
+        const sameBooking = bkCodes.some(code => b.id === code || b.bookingCode === code || b.realId === code)
+        const sameContainer = orderContainers.has(String(b.containerId || '').trim().toUpperCase())
+        const sameVoyage = Boolean(orderVoyage && b.voyageNumber === orderVoyage)
+        const matches = orderContainers.size
+          ? sameContainer && (sameOrder || sameBooking || (!b.eportOrderId && sameVoyage))
+          : sameOrder || sameBooking
+        if (matches) {
           const fleet = manifestPortSyncService.extractFleetFromOrder(ord, b.containerId) ||
             manifestPortSyncService.getOrderFleet(b.containerId) ||
             manifestPortSyncService.getOrderFleet(b.bookingCode)

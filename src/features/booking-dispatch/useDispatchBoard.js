@@ -1,42 +1,81 @@
-import { useEffect, useRef, useState } from 'react'
-import { connectDispatchBoard, connectYardMonitor, getDispatchBoard } from './dispatchService'
+import { useEffect, useState } from 'react'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
+import useAuth from '../../hooks/useAuth'
+import { driverSmartRouteService } from '../../services/driverSmartRouteService'
+import { connectDispatchBoard, connectYardMonitor, getDispatchBoard, getDispatchBooking } from './dispatchService'
 
-export function useDispatchBoard(date) {
-  const [data, setData] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+const queryOptions = {
+  refetchInterval: 15000,
+  refetchOnWindowFocus: true,
+  staleTime: 10000,
+  retry: false,
+}
+
+export function useDispatchBoard(date, filter, page, selection) {
+  const { user } = useAuth()
+  const session = user?.id || user?.username
+  const queryClient = useQueryClient()
   const [connected, setConnected] = useState(false)
-  const reloadRef = useRef(async () => {})
+  const rootKey = ['dispatch-board', session]
+  const board = useQuery({
+    ...queryOptions, queryKey: [...rootKey, 'list', date, filter, page],
+    queryFn: ({ signal }) => getDispatchBoard(date, filter, page, signal),
+    placeholderData: (previousData, previousQuery) => {
+      const [, previousSession, , previousDate, previousFilter] = previousQuery?.queryKey || []
+      if (previousSession === session && previousDate === date && previousFilter === filter) return previousData
+    },
+  })
+  const booking = useQuery({
+    ...queryOptions, queryKey: [...rootKey, 'booking', date, selection],
+    enabled: Boolean(selection),
+    queryFn: ({ signal }) => getDispatchBooking(date, selection, signal),
+  })
+  const selected = booking.error?.response?.status === 404 ? null : booking.data
+  const inYard = selected?.group === 'inside' || selected?.group === 'exited'
+  const bookingId = selected?.id
+  const routes = useQuery({
+    ...queryOptions, queryKey: [...rootKey, 'routes', bookingId],
+    enabled: Boolean(bookingId && inYard),
+    queryFn: ({ signal }) => driverSmartRouteService.monitor(bookingId, signal),
+  })
+
   useEffect(() => {
-    let active = true, busy = false, pending = false
-    async function reload() {
-      if (busy) { pending = true; return }
-      busy = true
-      try {
-        const next = await getDispatchBoard(date)
-        if (active) { setData(next); setError('') }
-      } catch (err) { if (active) setError(err.message) }
-      finally {
-        busy = false
-        if (active) {
-          setLoading(false)
-          if (pending) { pending = false; void reload() }
-        }
-      }
+    let timer = null
+    let dispatchConnected = false, yardConnected = false
+    const onChange = () => {
+      if (timer !== null) return
+      timer = setTimeout(() => {
+        timer = null
+        void queryClient.invalidateQueries({ queryKey: ['dispatch-board', session] }, { cancelRefetch: false })
+      }, 250)
     }
-    reloadRef.current = reload
-    setLoading(true); setData(null); setConnected(false)
-    void reload()
     const cleanup = connectDispatchBoard({
-      onChange: () => { if (active) void reload() },
-      onConnected: () => { if (active) { setConnected(true); void reload() } },
-      onDisconnected: () => { if (active) setConnected(false) },
+      onChange,
+      onConnected: () => {
+        setConnected(true)
+        if (dispatchConnected) onChange()
+        dispatchConnected = true
+      },
+      onDisconnected: () => setConnected(false),
     })
-    const timer = setInterval(() => { if (!document.hidden) void reload() }, 15000)
-    const cleanupYard = connectYardMonitor(() => { if (active) void reload() })
-    const onFocus = () => { if (!document.hidden) void reload() }
-    document.addEventListener('visibilitychange', onFocus)
-    return () => { active = false; cleanup(); cleanupYard(); clearInterval(timer); document.removeEventListener('visibilitychange', onFocus) }
-  }, [date])
-  return { data, loading, error, connected, reload: () => reloadRef.current() }
+    const cleanupYard = connectYardMonitor(onChange, () => {
+      if (yardConnected) onChange()
+      yardConnected = true
+    })
+    return () => { clearTimeout(timer); cleanup(); cleanupYard() }
+  }, [queryClient, session])
+
+  return {
+    data: board.data, loading: board.isPending || board.isPlaceholderData, error: board.error?.message, connected,
+    selected, detailsLoading: booking.isLoading, detailError: booking.error?.message,
+    routes: inYard ? routes.data?.routes || [] : [],
+    routesLoading: inYard && routes.isLoading, routeError: inYard ? routes.error?.message : null,
+    cacheBooking: item => {
+      const key = [...rootKey, 'booking', date, { bookingId: item.id }]
+      if ((queryClient.getQueryState(key)?.dataUpdatedAt || 0) <= board.dataUpdatedAt) {
+        queryClient.setQueryData(key, item, { updatedAt: board.dataUpdatedAt })
+      }
+    },
+    reload: () => queryClient.invalidateQueries({ queryKey: rootKey }, { cancelRefetch: false }),
+  }
 }
