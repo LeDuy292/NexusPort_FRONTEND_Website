@@ -1,471 +1,292 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import expressApiClient from '../../services/expressApiClient';
-import { shippingLineApi, formatApiErrorMessage } from './api/shippingLineApi';
-import ShippingBadge from './components/ShippingBadge';
-import EdoIssueModal from './components/EdoIssueModal';
+import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import expressApiClient from '../../services/expressApiClient'
+import { shippingLineApi, formatApiErrorMessage } from './api/shippingLineApi'
+import { btn, btnSoft, card, inputCls, PageHeader, Pill, SectionTitle, StatCard } from '../../components/Containers/docUi'
+import { manifestStatusView } from './manifestStatusView'
+
+const when = (value) => (value ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—')
+const sumOf = (obj) => Object.values(obj || {}).reduce((a, b) => a + b, 0)
+
+// Trạng thái hiển thị theo ngữ cảnh người dùng, không đưa mã nội bộ ra giao diện
+const voyageLabel = { Scheduled: 'Đang nhận booking', Closed: 'Đã chốt nhận hàng', Departed: 'Đã rời cảng', Cancelled: 'Đã huỷ' }
+const bookingLabel = {
+  Pending: 'Chờ khai container', ContainersDeclared: 'Đã khai container', Approved: 'Đã xác nhận', Confirmed: 'Đã xác nhận',
+  Loaded: 'Đã xếp lên tàu', Cancelled: 'Đã huỷ', Rejected: 'Bị từ chối',
+}
+const importLabel = {
+  RECEIVED: 'Đã nhận pre-alert', MISMATCH: 'Lệch thông tin', NOTICE_SENT: 'Chờ chủ hàng xác nhận', AMENDMENT_REQUESTED: 'Chủ hàng yêu cầu sửa',
+  CONFIRMED: 'Chủ hàng đã xác nhận', RELEASE_VERIFIED: 'Đủ điều kiện giao hàng', DO_ISSUED: 'Đã phát hành D/O',
+}
+const requestLabel = { LOI_RELEASE: 'Giao hàng theo LOI', CHANGE_CONSIGNEE: 'Đổi người nhận', CHANGE_POD: 'Đổi cảng dỡ', SCHEDULE_CHANGE: 'Đổi lịch tàu' }
+const docLabel = { BL: 'Vận đơn', PRE_ALERT: 'Pre-alert', ARRIVAL_NOTICE: 'Thông báo hàng đến', DO: 'Lệnh giao hàng', MANIFEST: 'Bản khai', BOOKING: 'Booking' }
+const alertTone = { ERROR: 'border-rose-200 bg-rose-50 text-rose-950', WARNING: 'border-amber-200 bg-amber-50 text-amber-950', INFO: 'border-chalk bg-fog text-carbon' }
+
+function Breakdown({ items, labels, empty }) {
+  const rows = Object.entries(items || {}).filter(([, n]) => n > 0)
+  if (rows.length === 0) return <p className="text-xs italic text-slate">{empty}</p>
+  return (
+    <ul className="space-y-1.5">
+      {rows.map(([key, n]) => (
+        <li key={key} className="flex items-center justify-between text-xs">
+          <span className="text-carbon font-semibold">{labels?.[key] || key}</span>
+          <span className="font-mono font-extrabold text-carbon">{n}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
 
 export default function ShippingDashboard() {
-  const navigate = useNavigate();
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [activeVoyageFilter, setActiveVoyageFilter] = useState('ALL');
+  const navigate = useNavigate()
+  const [data, setData] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [containerNo, setContainerNo] = useState('')
+  const [gateCheck, setGateCheck] = useState(null)
+  const [checking, setChecking] = useState(false)
 
-  // Modal
-  const [showIssueModal, setShowIssueModal] = useState(false);
-
-  // Quick Gate-out check widget
-  const [quickContNo, setQuickContNo] = useState('EMCU5102949');
-  const [quickCheckResult, setQuickCheckResult] = useState(null);
-  const [checkingGate, setCheckingGate] = useState(false);
-
-  const loadDashboard = async () => {
+  const load = async () => {
+    setLoading(true)
+    setError('')
     try {
-      setLoading(true);
-      const res = await shippingLineApi.getDashboard();
-      const payload = res?.kpis ? res : (res?.data || null);
-      if (payload) {
-        setData(payload);
-      }
+      const res = await shippingLineApi.getDashboard()
+      setData(res?.export ? res : res?.data || null)
     } catch (err) {
-      setError(formatApiErrorMessage(err, 'Không thể tải dữ liệu tổng quan'));
+      setError(formatApiErrorMessage(err, 'Không thể tải dữ liệu tổng quan'))
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
-
-  useEffect(() => {
-    loadDashboard();
-  }, []);
-
-  const handleQuickGateCheck = async (e) => {
-    if (e && e.preventDefault) e.preventDefault();
-    if (!quickContNo.trim()) return;
-    setCheckingGate(true);
-    setQuickCheckResult(null);
-    try {
-      const data = await expressApiClient.get(`/shipping-line/gate-out/verify/${encodeURIComponent(quickContNo.trim().toUpperCase())}`);
-      if (data) {
-        setQuickCheckResult(data);
-      }
-    } catch {
-      setQuickCheckResult({ canGateOut: false, reason: 'Lỗi kết nối kiểm tra cổng' });
-    } finally {
-      setCheckingGate(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <div className="p-8 w-full flex flex-col items-center justify-center min-h-[400px] gap-3 text-slate">
-        <div className="w-8 h-8 border-2 border-signal-orange border-t-transparent rounded-full animate-spin"></div>
-        <div className="text-xs font-bold uppercase tracking-wider">Đang tải dữ liệu tổng quan hãng tàu...</div>
-      </div>
-    );
   }
 
-  const kpis = data?.kpis || {};
-  const alerts = data?.alerts || [];
-  const recentVoyages = data?.recentVoyages || [];
+  useEffect(() => { load() }, [])
 
-  const filteredVoyages = activeVoyageFilter === 'ALL'
-    ? recentVoyages
-    : recentVoyages.filter(v => v.status === activeVoyageFilter);
+  const checkGateOut = async (e) => {
+    e.preventDefault()
+    const no = containerNo.trim().toUpperCase()
+    if (!no) return
+    setChecking(true)
+    setGateCheck(null)
+    try {
+      setGateCheck(await expressApiClient.get(`/shipping-line/gate-out/verify/${encodeURIComponent(no)}`))
+    } catch (err) {
+      setGateCheck({ canGateOut: false, reason: formatApiErrorMessage(err, 'Không kiểm tra được điều kiện ra cổng') })
+    } finally {
+      setChecking(false)
+    }
+  }
+
+  if (loading && !data) {
+    return (
+      <div className="p-8 w-full flex flex-col items-center justify-center min-h-[400px] gap-3 text-slate">
+        <div className="w-8 h-8 border-2 border-signal-orange border-t-transparent rounded-full animate-spin" />
+        <div className="text-xs font-bold uppercase tracking-wider">Đang tải tổng quan hãng tàu...</div>
+      </div>
+    )
+  }
+
+  const ex = data?.export || {}
+  const im = data?.import || {}
+  const manifests = ex.manifests || { export: {}, import: {}, total: 0 }
+  const bills = ex.bills || {}
+  const edo = im.edo || {}
+  const alerts = data?.alerts || []
+  const activity = data?.activity || []
+  const voyages = ex.upcomingVoyages || []
 
   return (
     <div className="p-6 md:p-8 w-full font-sans flex flex-col gap-6 bg-slate-50 min-h-screen">
+      <PageHeader
+        badge="Không gian Hãng tàu"
+        title={`Tổng Quan Hoạt Động${data?.line ? ` · ${data.line.short_name}` : ''}`}
+        subtitle="Chiều xuất: chuyến tàu → booking → bản khai → phát hành vận đơn. Chiều nhập: pre-alert → thông báo hàng đến → giải phóng hàng → lệnh giao hàng."
+        actions={(
+          <>
+            {data?.generatedAt && <span className="text-[11px] font-mono text-slate">Cập nhật {when(data.generatedAt)}</span>}
+            <button type="button" onClick={load} disabled={loading} className={btnSoft}>
+              <span className="material-symbols-outlined text-base">refresh</span>
+              {loading ? 'Đang tải...' : 'Tải lại'}
+            </button>
+          </>
+        )}
+      />
 
-      {/* ── 1. HEADER CHUẨN NEXUSPORT ── */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white border border-chalk rounded-2xl p-5 shadow-sm gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-extrabold bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">
-              KHÔNG GIAN DOANH NGHIỆP HÃNG TÀU
-            </span>
-            <span className="text-xs font-mono text-slate">NexusPort · Cảng Tiên Sa, Đà Nẵng (VNDAD)</span>
-          </div>
-          <h2 className="font-heading text-2xl md:text-3xl font-extrabold text-carbon">
-            Tổng Quan Hoạt Động Hãng Tàu
-          </h2>
-          <p className="text-xs text-slate mt-0.5">
-            Giám sát thời gian thực chuỗi tác nghiệp: Tàu ghé cảng &rarr; Bản khai Manifest &rarr; Vận đơn B/L &rarr; Phát hành lệnh giao hàng điện tử (eDO).
-          </p>
-        </div>
+      {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">{error}</div>}
 
-        {/* Action Buttons */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            onClick={() => setShowIssueModal(true)}
-            className="px-4 py-2 text-xs font-bold text-white bg-signal-orange hover:opacity-90 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-base">assignment_turned_in</span>
-            Cấp Lệnh eDO
-          </button>
-
-          <button
-            onClick={loadDashboard}
-            title="Tải lại dữ liệu"
-            className="w-9 h-9 bg-white border border-chalk rounded-xl flex items-center justify-center text-slate hover:text-carbon hover:bg-fog shadow-sm transition-colors cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-lg">refresh</span>
-          </button>
-        </div>
-      </div>
-
-      {/* ── 2. KPI CARDS (6 Card chuẩn NexusPort) ── */}
+      {/* Chỉ số chính, bấm vào để tới đúng trang nghiệp vụ */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        
-        {/* Card 1: Chuyến Tàu Hoạt Động */}
-        <div className="bg-white rounded-2xl border border-chalk p-4 shadow-sm space-y-1">
-          <span className="text-[10px] font-bold text-slate uppercase tracking-wider">Chuyến Tàu Hoạt Động</span>
-          <div className="text-3xl font-extrabold text-carbon font-mono">
-            {kpis.activeVoyages || 0} <span className="text-xs font-normal text-slate font-sans">/ {kpis.totalVessels || 0} tàu</span>
-          </div>
-          <span className="text-[11px] text-blue-700 font-bold">Cập bến &amp; hành trình</span>
-        </div>
-
-        {/* Card 2: Container Khai Báo */}
-        <div className="bg-white rounded-2xl border border-chalk p-4 shadow-sm space-y-1">
-          <span className="text-[10px] font-bold text-slate uppercase tracking-wider">Container Khai Báo</span>
-          <div className="text-3xl font-extrabold text-carbon font-mono">
-            {kpis.totalContainers || 0}
-          </div>
-          <span className="text-[11px] text-emerald-700 font-bold">Thuộc các bản khai</span>
-        </div>
-
-        {/* Card 3: Bản Khai Manifest */}
-        <div className="bg-white rounded-2xl border border-chalk p-4 shadow-sm space-y-1">
-          <span className="text-[10px] font-bold text-slate uppercase tracking-wider">Bản Khai Manifest</span>
-          <div className="text-3xl font-extrabold text-carbon font-mono">
-            {kpis.totalManifests || 0}
-          </div>
-          <span className="text-[11px] text-purple-700 font-bold">Xuất / Nhập khẩu</span>
-        </div>
-
-        {/* Card 4: Vận Đơn B/L */}
-        <div className="bg-white rounded-2xl border border-chalk p-4 shadow-sm space-y-1">
-          <span className="text-[10px] font-bold text-slate uppercase tracking-wider">Vận Đơn (B/L)</span>
-          <div className="text-3xl font-extrabold text-carbon font-mono">
-            {kpis.totalBillsOfLading || 0}
-          </div>
-          <span className="text-[11px] text-slate font-bold">Quản lý lô hàng</span>
-        </div>
-
-        {/* Card 5: eDO Đã Phát Hành */}
-        <div className="bg-white rounded-2xl border border-chalk p-4 shadow-sm space-y-1">
-          <span className="text-[10px] font-bold text-slate uppercase tracking-wider">eDO Đã Phát Hành</span>
-          <div className="text-3xl font-extrabold text-carbon font-mono">
-            {kpis.issuedEdos || 0}
-          </div>
-          <span className="text-[11px] text-emerald-700 font-bold">Có hiệu lực giao hàng</span>
-        </div>
-
-        {/* Card 6: eDO Đã Hết Hạn */}
-        <div className={`bg-white rounded-2xl border p-4 shadow-sm space-y-1 ${
-          (kpis.expiredEdos || 0) > 0 ? 'border-amber-300 bg-amber-50/30' : 'border-chalk'
-        }`}>
-          <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider">eDO Đã Hết Hạn</span>
-          <div className="text-3xl font-extrabold text-amber-600 font-mono">
-            {kpis.expiredEdos || 0}
-          </div>
-          <span className="text-[11px] text-amber-800 font-bold">Cần gia hạn để lấy hàng</span>
-        </div>
-
+        <StatCard label="Chuyến tàu đang mở" value={ex.voyages?.byStatus?.Scheduled || 0} hint={`${ex.voyages?.total || 0} chuyến của hãng`} tone="text-blue-700" onClick={() => navigate('/shipping-line/voyages')} />
+        <StatCard label="Booking xuất" value={ex.bookings?.total || 0} hint={`${ex.bookings?.byStatus?.Pending || 0} chờ khai container`} tone="text-amber-700" onClick={() => navigate('/shipping-line/voyages')} />
+        <StatCard label="Bản khai hàng hóa" value={manifests.total || 0} hint={`${sumOf(manifests.export)} xuất · ${sumOf(manifests.import)} nhập`} tone="text-purple-700" onClick={() => navigate('/shipping-line/manifest')} />
+        <StatCard label="Vận đơn đã phát hành" value={bills.issued || 0} hint={`${bills.notIssued || 0} vận đơn chưa phát hành`} tone={bills.notIssued ? 'text-amber-700' : 'text-emerald-700'} onClick={() => navigate('/shipping-line/manifest')} />
+        <StatCard label="Hồ sơ hàng nhập" value={im.shipments?.total || 0} hint={`${im.postIssuanceRequests?.total || 0} yêu cầu chờ duyệt`} tone="text-blue-700" onClick={() => navigate('/shipping-line/import-documents')} />
+        <StatCard label="Lệnh giao hàng còn hiệu lực" value={edo.active || 0} hint={`${edo.expiringSoon || 0} sắp hết hạn · ${edo.expired || 0} đã hết hạn`} tone={edo.expiringSoon || edo.expired ? 'text-amber-700' : 'text-emerald-700'} onClick={() => navigate('/shipping-line/delivery-orders')} />
       </div>
 
-      {/* ── 3. KHÔNG GIAN TÁC NGHIỆP CHÍNH (Bố cục 8 - 4) ── */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-
-        {/* ── CỘT TRÁI (8/12): LỊCH TRÌNH CHUYẾN TÀU & NHẬT KÝ VẬN HÀNH ── */}
         <div className="lg:col-span-8 flex flex-col gap-6">
-
-          {/* Card Bảng Lịch Trình Chuyến Tàu */}
-          <div className="bg-white border border-chalk rounded-2xl p-6 shadow-sm space-y-4">
-            
-            {/* Header Toolbar */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-chalk pb-3">
-              <div>
-                <h3 className="font-heading text-lg font-extrabold text-carbon flex items-center gap-2">
-                  <span className="material-symbols-outlined text-signal-orange text-xl">directions_boat</span>
-                  Lịch Trình Chuyến Tàu &amp; Hạn Chót Hạ Bãi
-                </h3>
-                <p className="text-xs text-slate font-mono mt-0.5">
-                  Theo dõi mốc hạn chót hạ bãi (CY Cut-off), nộp VGM và tiến độ làm hàng tại cầu bến
-                </p>
-              </div>
-
-              {/* Filter Tabs */}
-              <div className="flex bg-fog p-1 rounded-xl border border-chalk text-xs font-bold">
-                <button
-                  onClick={() => setActiveVoyageFilter('ALL')}
-                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                    activeVoyageFilter === 'ALL' ? 'bg-carbon text-white shadow-sm' : 'text-slate hover:text-carbon'
-                  }`}
-                >
-                  Tất cả ({recentVoyages.length})
-                </button>
-                <button
-                  onClick={() => setActiveVoyageFilter('BERTHED')}
-                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                    activeVoyageFilter === 'BERTHED' ? 'bg-carbon text-white shadow-sm' : 'text-slate hover:text-carbon'
-                  }`}
-                >
-                  Cập bến
-                </button>
-                <button
-                  onClick={() => setActiveVoyageFilter('IN_TRANSIT')}
-                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                    activeVoyageFilter === 'IN_TRANSIT' ? 'bg-carbon text-white shadow-sm' : 'text-slate hover:text-carbon'
-                  }`}
-                >
-                  Hành trình
-                </button>
-                <button
-                  onClick={() => setActiveVoyageFilter('OPERATING')}
-                  className={`px-3 py-1.5 rounded-lg transition-colors cursor-pointer ${
-                    activeVoyageFilter === 'OPERATING' ? 'bg-carbon text-white shadow-sm' : 'text-slate hover:text-carbon'
-                  }`}
-                >
-                  Làm hàng
-                </button>
-              </div>
-            </div>
-
-            {/* Bảng Dữ Liệu Chuyến Tàu */}
-            {filteredVoyages.length === 0 ? (
-              <div className="p-8 text-center text-slate text-xs italic">
-                Không tìm thấy chuyến tàu nào phù hợp với bộ lọc
-              </div>
+          {/* Chuyến tàu sắp chạy và các mốc hạn chót */}
+          <div className={card}>
+            <SectionTitle
+              icon="directions_boat"
+              aside={<button type="button" onClick={() => navigate('/shipping-line/voyages')} className="text-xs font-bold text-signal-orange hover:underline">Toàn bộ lịch tàu →</button>}
+            >
+              Chuyến tàu sắp chạy & hạn chót
+            </SectionTitle>
+            {voyages.length === 0 ? (
+              <p className="p-6 text-center text-xs italic text-slate">Hãng chưa có chuyến tàu nào đang mở. Tạo chuyến mới ở trang Tàu & Chuyến Tàu.</p>
             ) : (
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[900px] text-left border-collapse text-xs">
+                <table className="w-full min-w-[820px] text-left text-xs">
                   <thead>
-                    <tr className="bg-fog text-slate font-bold uppercase text-[10px] border-b border-chalk">
-                      <th className="py-3 px-3">Mã Chuyến</th>
-                      <th className="py-3 px-3">Tên Tàu</th>
-                      <th className="py-3 px-3">Cảng Bốc &rarr; Cảng Dỡ</th>
-                      <th className="py-3 px-3">Hạn Hạ Bãi (CY)</th>
-                      <th className="py-3 px-3">Hạn Nộp VGM</th>
-                      <th className="py-3 px-3">Trạng Thái</th>
-                      <th className="py-3 px-3 text-right">Chi Tiết</th>
+                    <tr className="bg-fog text-[10px] font-bold uppercase text-slate border-b border-chalk">
+                      <th className="py-2.5 px-3">Chuyến</th>
+                      <th className="py-2.5 px-3">Tuyến</th>
+                      <th className="py-2.5 px-3">Hạn SI</th>
+                      <th className="py-2.5 px-3">Hạn VGM</th>
+                      <th className="py-2.5 px-3">Hạn hạ bãi (CY)</th>
+                      <th className="py-2.5 px-3">ETD</th>
+                      <th className="py-2.5 px-3 text-right">Booking / Cont</th>
+                      <th className="py-2.5 px-3">Trạng thái</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-chalk font-medium font-mono">
-                    {filteredVoyages.map((voy) => (
-                      <tr key={voy.id} className="hover:bg-fog/60 transition-colors">
-                        <td className="py-3.5 px-3 font-bold text-carbon">{voy.voyageNumber}</td>
-                        <td className="py-3.5 px-3 font-sans font-bold text-carbon">{voy.vesselName}</td>
-                        <td className="py-3.5 px-3 font-sans text-slate text-[11px]">
-                          <div><strong className="text-carbon">{voy.pol.split('(')[0]}</strong> &rarr; {voy.pod.split('(')[0]}</div>
-                          <span className="text-[10px] text-slate font-mono">{voy.terminal}</span>
+                  <tbody className="divide-y divide-chalk">
+                    {voyages.map((v) => (
+                      <tr key={v.id} className="hover:bg-fog/60">
+                        <td className="py-3 px-3"><div className="font-mono font-bold text-carbon">{v.voyageNumber}</div><div className="text-[11px] text-slate">{v.vesselName}</div></td>
+                        <td className="py-3 px-3 text-carbon">{v.pol} → {v.pod}</td>
+                        <td className="py-3 px-3 font-mono text-slate">{when(v.siCutoff)}</td>
+                        <td className="py-3 px-3 font-mono text-slate">{when(v.vgmCutoff)}</td>
+                        <td className="py-3 px-3 font-mono font-bold text-amber-700">{when(v.cyCutoff)}</td>
+                        <td className="py-3 px-3 font-mono text-slate">{when(v.etd)}</td>
+                        <td className="py-3 px-3 text-right font-mono font-bold text-carbon">
+                          {v.bookings} / {v.containers}
+                          {v.bookingsPending > 0 && <div className="text-[10px] font-sans text-amber-700">{v.bookingsPending} chờ khai cont</div>}
                         </td>
-                        <td className="py-3.5 px-3 text-amber-700 font-bold">{voy.cyCutOff}</td>
-                        <td className="py-3.5 px-3 text-slate">{voy.vgmCutOff}</td>
-                        <td className="py-3.5 px-3 font-sans">
-                          <ShippingBadge status={voy.status} />
-                        </td>
-                        <td className="py-3.5 px-3 text-right font-sans">
-                          <button
-                            onClick={() => navigate('/shipping-line/voyages')}
-                            className="px-2.5 py-1 text-[11px] font-bold text-carbon bg-fog hover:bg-chalk border border-chalk rounded-lg transition-colors cursor-pointer"
-                          >
-                            Xem lịch &rarr;
-                          </button>
-                        </td>
+                        <td className="py-3 px-3"><Pill tone={v.status === 'Scheduled' ? 'green' : 'slate'}>{voyageLabel[v.status] || v.status}</Pill></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             )}
-
-            <div className="flex justify-between items-center pt-2 border-t border-chalk text-xs">
-              <span className="text-slate font-mono">Hiển thị {filteredVoyages.length} chuyến tàu tiêu biểu</span>
-              <button
-                onClick={() => navigate('/shipping-line/voyages')}
-                className="text-xs font-bold text-signal-orange hover:underline flex items-center gap-1 cursor-pointer"
-              >
-                <span>Xem toàn bộ lịch trình chuyến tàu</span>
-                <span className="material-symbols-outlined text-sm">arrow_forward</span>
-              </button>
-            </div>
-
           </div>
 
-        </div>
-
-        {/* ── CỘT PHẢI (4/12): SỰ VỤ CẦN XỬ LÝ & ĐỐI CHIẾU CỔNG RA ── */}
-        <div className="lg:col-span-4 flex flex-col gap-6">
-
-          {/* 1. SỰ VỤ & CẢNH BÁO TỒN ĐỌNG */}
-          <div className="bg-white border border-chalk rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="flex justify-between items-center border-b border-chalk pb-3">
-              <h3 className="font-heading text-base font-extrabold text-carbon flex items-center gap-2">
-                <span className="material-symbols-outlined text-amber-600 text-xl">notification_important</span>
-                Sự Vụ Cần Xử Lý ({alerts.length})
-              </h3>
+          {/* Tình hình hai chiều xuất / nhập */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className={card}>
+              <SectionTitle icon="north_east">Chiều xuất</SectionTitle>
+              <p className="text-[10px] font-bold uppercase text-slate mb-2">Booking</p>
+              <Breakdown items={ex.bookings?.byStatus} labels={bookingLabel} empty="Chưa có booking." />
+              <p className="text-[10px] font-bold uppercase text-slate mt-4 mb-2">Bản khai xuất</p>
+              <Breakdown
+                items={Object.fromEntries(Object.entries(manifests.export || {}).map(([s, n]) => [manifestStatusView({ status: s, direction: 'EXPORT' }).label, n]))}
+                empty="Chưa có bản khai xuất."
+              />
+              <p className="text-[10px] font-bold uppercase text-slate mt-4 mb-2">Vận đơn trong bản khai</p>
+              <Breakdown items={{ 'Đã phát hành': bills.issued || 0, 'Chưa phát hành': bills.notIssued || 0 }} empty="Bản khai chưa có vận đơn." />
             </div>
-
-            <div className="space-y-3">
-              {alerts.length === 0 ? (
-                <div className="p-6 text-center text-slate text-xs italic">
-                  Không có sự vụ tồn đọng cần xử lý
-                </div>
-              ) : (
-                alerts.map((al) => (
-                  <div
-                    key={al.id}
-                    onClick={() => navigate(al.targetPath)}
-                    className={`p-3.5 rounded-xl border text-xs cursor-pointer transition-all hover:shadow-xs ${
-                      al.type === 'ERROR'
-                        ? 'bg-rose-50 border-rose-200 text-rose-950'
-                        : al.type === 'WARNING'
-                        ? 'bg-amber-50 border-amber-200 text-amber-950'
-                        : 'bg-fog border-chalk text-carbon'
-                    }`}
-                  >
-                    <div className="font-bold text-xs mb-1 flex items-center justify-between">
-                      <span>{al.title}</span>
-                      <span className="material-symbols-outlined text-sm">open_in_new</span>
-                    </div>
-                    <div className="text-[11px] opacity-90 leading-relaxed">{al.description}</div>
-                    <div className="mt-2 text-[10px] font-bold text-signal-orange flex items-center gap-1">
-                      Xử lý ngay &rarr;
-                    </div>
-                  </div>
-                ))
+            <div className={card}>
+              <SectionTitle icon="south_west">Chiều nhập</SectionTitle>
+              <p className="text-[10px] font-bold uppercase text-slate mb-2">Hồ sơ hàng nhập</p>
+              <Breakdown items={im.shipments?.byStatus} labels={importLabel} empty="Chưa có hồ sơ hàng nhập." />
+              <p className="text-[10px] font-bold uppercase text-slate mt-4 mb-2">Bản khai nhập</p>
+              <Breakdown
+                items={Object.fromEntries(Object.entries(manifests.import || {}).map(([s, n]) => [manifestStatusView({ status: s, direction: 'IMPORT' }).label, n]))}
+                empty="Chưa có bản khai nhập."
+              />
+              <p className="text-[10px] font-bold uppercase text-slate mt-4 mb-2">Yêu cầu sau phát hành chờ duyệt</p>
+              <Breakdown items={im.postIssuanceRequests?.byType} labels={requestLabel} empty="Không có yêu cầu chờ duyệt." />
+              {(im.loi?.outstanding || 0) > 0 && (
+                <p className="mt-3 text-xs text-carbon">B/L gốc chưa nộp lại sau LOI: <strong className="font-mono">{im.loi.outstanding}</strong>{im.loi.overdue ? <span className="text-rose-700 font-bold"> ({im.loi.overdue} quá hạn)</span> : null}</p>
               )}
             </div>
           </div>
 
-          {/* 2. CÔNG CỤ TRA CỨU ĐIỀU KIỆN GATE OUT TỨC THÌ */}
-          <div className="bg-white border border-chalk rounded-2xl p-6 shadow-sm space-y-4">
-            <div className="border-b border-chalk pb-3">
-              <h3 className="font-heading text-base font-extrabold text-carbon flex items-center gap-2">
-                <span className="material-symbols-outlined text-signal-orange text-xl">fact_check</span>
-                Đối Chiếu Cổng Cảng Ra
-              </h3>
-              <p className="text-xs text-slate mt-0.5">Kiểm tra tức thì tính hợp lệ của lệnh eDO khi xe nhận container</p>
-            </div>
+          {/* Nhật ký hồ sơ gần đây */}
+          <div className={card}>
+            <SectionTitle icon="history">Hoạt động gần đây</SectionTitle>
+            {activity.length === 0 ? (
+              <p className="p-4 text-center text-xs italic text-slate">Chưa có hoạt động nào được ghi nhận.</p>
+            ) : (
+              <ul className="divide-y divide-chalk">
+                {activity.map((a) => (
+                  <li key={a.id} className="py-2.5 flex items-start justify-between gap-3 text-xs">
+                    <div className="min-w-0">
+                      <div className="font-bold text-carbon">
+                        <Pill tone={a.direction === 'IMPORT' ? 'blue' : 'orange'}>{a.direction === 'IMPORT' ? 'Nhập' : 'Xuất'}</Pill>{' '}
+                        {docLabel[a.documentType] || a.documentType} <span className="font-mono">{a.fileRef}</span>
+                      </div>
+                      {a.note && <div className="mt-0.5 text-[11px] text-slate">{a.note}</div>}
+                    </div>
+                    <div className="shrink-0 text-right text-[11px] text-slate">
+                      <div className="font-mono">{when(a.createdAt)}</div>
+                      {a.actor && <div>{a.actor}</div>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
 
-            <form onSubmit={handleQuickGateCheck} className="space-y-3">
-              <label className="block text-[11px] font-bold text-carbon uppercase">Số Container Cần Đối Chiếu</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={quickContNo}
-                  onChange={(e) => setQuickContNo(e.target.value.toUpperCase())}
-                  placeholder="VD: EMCU5102949..."
-                  className="flex-1 px-3 py-2 bg-fog border border-chalk rounded-xl text-xs font-mono font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0 uppercase"
-                />
-                <button
-                  type="submit"
-                  disabled={checkingGate}
-                  className="px-4 py-2 text-xs font-bold text-white bg-carbon hover:bg-black disabled:bg-slate rounded-xl transition-colors flex items-center gap-1 cursor-pointer"
-                >
-                  {checkingGate ? '...' : 'Kiểm tra'}
-                </button>
-              </div>
-
-              {/* Gợi ý container mẫu để test nhanh */}
-              <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                <span className="text-[10px] text-slate font-bold uppercase">Mẫu test:</span>
-                <button
-                  type="button"
-                  onClick={() => { setQuickContNo('EMCU5102949'); setQuickCheckResult(null); }}
-                  className="px-2 py-0.5 text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 rounded hover:bg-emerald-100 cursor-pointer"
-                  title="eDO Hợp lệ, sẵn sàng ra cổng"
-                >
-                  EMCU5102949 (Hợp lệ)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setQuickContNo('MSKU7712907'); setQuickCheckResult(null); }}
-                  className="px-2 py-0.5 text-[10px] font-mono font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded hover:bg-amber-100 cursor-pointer"
-                  title="eDO đã hết hạn"
-                >
-                  MSKU7712907 (Hết hạn)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => { setQuickContNo('EMCU9284712'); setQuickCheckResult(null); }}
-                  className="px-2 py-0.5 text-[10px] font-mono font-bold bg-fog text-slate border border-chalk rounded hover:bg-chalk cursor-pointer"
-                  title="Chưa cấp lệnh eDO"
-                >
-                  EMCU9284712 (Chưa cấp eDO)
-                </button>
-              </div>
-            </form>
-
-            {quickCheckResult && (
-              <div className={`p-4 rounded-xl border text-xs space-y-2 ${
-                quickCheckResult.canGateOut
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-950'
-                  : 'bg-red-50 border-red-200 text-red-950'
-              }`}>
-                <div className="flex items-center gap-2 font-bold text-xs">
-                  <span className={`material-symbols-outlined text-base ${quickCheckResult.canGateOut ? 'text-emerald-700' : 'text-red-700'}`}>
-                    {quickCheckResult.canGateOut ? 'check_circle' : 'cancel'}
-                  </span>
-                  <span>{quickCheckResult.canGateOut ? 'ĐỦ ĐIỀU KIỆN RA CỔNG' : 'BỊ CHẶN RA CỔNG'}</span>
-                </div>
-                <p className="text-[11px] leading-relaxed">{quickCheckResult.reason}</p>
+        <div className="lg:col-span-4 flex flex-col gap-6">
+          {/* Việc cần xử lý */}
+          <div className={card}>
+            <SectionTitle icon="notification_important">Việc cần xử lý ({alerts.length})</SectionTitle>
+            {alerts.length === 0 ? (
+              <p className="p-4 text-center text-xs italic text-slate">Không có việc tồn đọng.</p>
+            ) : (
+              <div className="space-y-3">
+                {alerts.map((al) => (
+                  <button key={al.id} type="button" onClick={() => navigate(al.targetPath)} className={`w-full text-left p-3.5 rounded-xl border text-xs hover:shadow-sm ${alertTone[al.type] || alertTone.INFO}`}>
+                    <div className="font-bold flex items-center justify-between gap-2">
+                      <span>{al.title}</span>
+                      <span className="material-symbols-outlined text-sm">arrow_forward</span>
+                    </div>
+                    <div className="mt-1 text-[11px] opacity-90">{al.description}</div>
+                  </button>
+                ))}
               </div>
             )}
           </div>
 
-          {/* 3. QUY TRÌNH LIÊN KẾT NHANH */}
-          <div className="bg-white border border-chalk rounded-2xl p-6 shadow-sm space-y-3">
-            <h3 className="font-heading text-sm font-extrabold text-carbon uppercase tracking-wider flex items-center gap-2">
-              <span className="material-symbols-outlined text-signal-orange text-lg">alt_route</span>
-              Lối Tắt Nghiệp Vụ Hãng Tàu
-            </h3>
-            <div className="space-y-2 text-xs">
-              <button
-                onClick={() => navigate('/shipping-line/voyages')}
-                className="w-full text-left p-2.5 rounded-xl bg-fog hover:bg-chalk border border-chalk flex items-center justify-between text-carbon font-bold transition-colors cursor-pointer"
-              >
-                <span>1. Lịch Tàu &amp; Hạn Chót</span>
-                <span className="material-symbols-outlined text-sm text-slate">arrow_forward</span>
-              </button>
-              <button
-                onClick={() => navigate('/shipping-line/manifest')}
-                className="w-full text-left p-2.5 rounded-xl bg-fog hover:bg-chalk border border-chalk flex items-center justify-between text-carbon font-bold transition-colors cursor-pointer"
-              >
-                <span>2. Bản Khai Hàng Hóa Manifest</span>
-                <span className="material-symbols-outlined text-sm text-slate">arrow_forward</span>
-              </button>
-              <button
-                onClick={() => navigate('/shipping-line/bills-of-lading')}
-                className="w-full text-left p-2.5 rounded-xl bg-fog hover:bg-chalk border border-chalk flex items-center justify-between text-carbon font-bold transition-colors cursor-pointer"
-              >
-                <span>3. Quản Lý Vận Đơn B/L</span>
-                <span className="material-symbols-outlined text-sm text-slate">arrow_forward</span>
-              </button>
-              <button
-                onClick={() => navigate('/shipping-line/delivery-orders')}
-                className="w-full text-left p-2.5 rounded-xl bg-fog hover:bg-chalk border border-chalk flex items-center justify-between text-carbon font-bold transition-colors cursor-pointer"
-              >
-                <span>4. Lệnh Giao Hàng Điện Tử (eDO)</span>
-                <span className="material-symbols-outlined text-sm text-slate">arrow_forward</span>
-              </button>
-            </div>
+          {/* Đối chiếu điều kiện ra cổng theo lệnh giao hàng */}
+          <div className={card}>
+            <SectionTitle icon="fact_check">Kiểm tra điều kiện ra cổng</SectionTitle>
+            <p className="text-xs text-slate mb-3">Nhập số container để kiểm tra lệnh giao hàng còn hiệu lực và không bị giữ.</p>
+            <form onSubmit={checkGateOut} className="flex gap-2">
+              <input value={containerNo} onChange={(e) => setContainerNo(e.target.value.toUpperCase())} placeholder="Số container (11 ký tự)" maxLength={11} className={`${inputCls} font-mono uppercase`} />
+              <button type="submit" disabled={checking || !containerNo.trim()} className={btn}>{checking ? '...' : 'Kiểm tra'}</button>
+            </form>
+            {gateCheck && (
+              <div className={`mt-3 p-3.5 rounded-xl border text-xs ${gateCheck.canGateOut ? 'bg-emerald-50 border-emerald-200 text-emerald-950' : 'bg-rose-50 border-rose-200 text-rose-950'}`}>
+                <div className="font-bold">{gateCheck.canGateOut ? 'Đủ điều kiện ra cổng' : 'Chưa được ra cổng'}</div>
+                {gateCheck.reason && <p className="mt-1 text-[11px]">{gateCheck.reason}</p>}
+              </div>
+            )}
           </div>
 
+          {/* Lối tắt theo đúng trình tự nghiệp vụ */}
+          <div className={card}>
+            <SectionTitle icon="alt_route">Lối tắt nghiệp vụ</SectionTitle>
+            <div className="space-y-2">
+              {[
+                ['/shipping-line/voyages', 'Tàu & chuyến tàu, hạn chót'],
+                ['/shipping-line/containers', 'Khai báo container'],
+                ['/shipping-line/manifest', 'Bản khai hàng hóa & phát hành vận đơn'],
+                ['/shipping-line/import-documents', 'Hồ sơ hàng nhập & yêu cầu sau phát hành'],
+                ['/shipping-line/delivery-orders', 'Lệnh giao hàng (e-D/O)'],
+              ].map(([path, label]) => (
+                <button key={path} type="button" onClick={() => navigate(path)} className="w-full text-left p-2.5 rounded-xl bg-fog hover:bg-chalk border border-chalk flex items-center justify-between text-xs font-bold text-carbon">
+                  <span>{label}</span>
+                  <span className="material-symbols-outlined text-sm text-slate">arrow_forward</span>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
-
       </div>
-
-      {/* Quick Edo Issue Modal */}
-      <EdoIssueModal
-        isOpen={showIssueModal}
-        onClose={() => setShowIssueModal(false)}
-        onSuccess={() => {
-          loadDashboard();
-        }}
-      />
-
     </div>
-  );
+  )
 }
