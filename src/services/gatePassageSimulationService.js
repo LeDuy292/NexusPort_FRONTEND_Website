@@ -1,7 +1,7 @@
 import gateService from './gateService'
 import { createGatePassageSimulation, passageOpenSeconds } from './gatePassageSimulation'
 
-export const gateOpenSeconds = passageOpenSeconds(import.meta.env.VITE_GATE_OPEN_SECONDS || 30)
+export const gateOpenSeconds = passageOpenSeconds(import.meta.env.VITE_GATE_OPEN_SECONDS || 10)
 
 // Scope recovery to the signed-in account. Keep the small pending cycle in this
 // tab across refreshes; image evidence is already persisted by verification.

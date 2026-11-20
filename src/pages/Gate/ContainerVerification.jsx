@@ -871,7 +871,7 @@ export default function ContainerVerification() {
                   type="text"
                   value={quickSearchInput}
                   onChange={(e) => setQuickSearchInput(e.target.value.toUpperCase())}
-                  placeholder="Quét mã QR e-Pass hoặc nhập Biển số xe (VD: 51C-123.45) / Mã container (DEMU6112040)..."
+                  placeholder="Nhập biển số xe (VD: 51C-123.45) hoặc mã container (VD: EGHU6112079)..."
                   className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:border-blue-500 focus:bg-white transition-all uppercase"
                 />
               </div>

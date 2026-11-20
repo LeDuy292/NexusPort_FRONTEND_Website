@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import TienSaMap from '../../features/yard-design/TienSaMap'
 import sourceLayout from '../../features/yard-design/tienSaLayout.json'
 import { cleanDesign } from '../../features/yard-design/geometry'
@@ -16,7 +17,15 @@ import '../../features/yard-design/YardDesignPreview.css'
 
 const blockFromPosition = value => /^([A-G]\d{2})(?:[.\-]|$)/i.exec(String(value || '').replace(/^Block\s*/i, '').trim())?.[1]?.toUpperCase() || ''
 
-export default function YardDesignPreview({ previewOnly = false, movement = null, embedded = false }) {
+export default function YardDesignPreview({ previewOnly = false, movement: movementProp = null, embedded = false }) {
+  const [searchParams] = useSearchParams()
+  const movement = useMemo(() => {
+    if (movementProp) return movementProp
+    const from = searchParams.get('from')
+    const to = searchParams.get('to')
+    if (!from && !to) return null
+    return { from: from || '', to: to || '', containerId: searchParams.get('container') || '' }
+  }, [movementProp, searchParams])
   const pageRoot = useRef(null)
   const layout = useMemo(() => cleanDesign(sourceLayout), [])
   const [detail, setDetail] = useState(false)

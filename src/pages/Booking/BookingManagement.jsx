@@ -312,8 +312,6 @@ export default function BookingManagement() {
     containerNo: ''
   })
 
-  // Smart e-Pass QR Modal
-  const [showQrModal, setShowQrModal] = useState(false)
 
   // NXP Payment & TOS Port Charges Modal States
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -1126,7 +1124,7 @@ export default function BookingManagement() {
       }
 
       // Cập nhật booking trong state danh sách:
-      // Nếu booking đang ở Approved hoặc Pending thì chuyển sang Ready (kích hoạt vé e-Pass vào cổng)
+      // Nếu booking đang ở Approved hoặc Pending thì chuyển sang Ready (đủ điều kiện để tài xế báo đã đến cổng và điều độ gọi xe)
       setBookings(prev => prev.map(b => {
         if ((b.bookingCode && b.bookingCode === code) || b.id === paymentBooking.id) {
           return {
@@ -1762,22 +1760,6 @@ export default function BookingManagement() {
                                 <span>Chi tiết</span>
                               </button>
 
-                              {/* Vé e-Pass QR & chuyển sang Theo dõi & điều phối xe khi đã Ready */}
-                              {(bk.status === 'Ready' || bk.status === 'Approved' || bk.status === 'CheckedIn') && (
-                                <>
-                                  <button
-                                    onClick={() => {
-                                      setSelectedBooking(bk)
-                                      setShowQrModal(true)
-                                    }}
-                                    className="w-8 h-8 justify-center rounded-xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-[11px] transition-all flex items-center gap-1 shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 cursor-pointer group whitespace-nowrap"
-                                    title="Xem Vé Điện Tử e-Pass để quét vào cổng"
-                                  >
-                                    <span className="material-symbols-outlined text-sm text-white group-hover:scale-110 transition-transform">qr_code_2</span>
-                                  </button>
-                                </>
-                              )}
-
                               {bk.status === 'Pending' && (
                                 <button
                                   onClick={() => openEditModal(bk)}
@@ -1985,7 +1967,7 @@ export default function BookingManagement() {
 
               <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-emerald-800 text-[11px] flex items-center gap-2">
                 <span className="material-symbols-outlined text-base">info</span>
-                <span>Sau khi xác nhận, Booking sẽ tự động chuyển sang <strong>Sẵn sàng</strong> và kích hoạt Vé e-Pass QR vào cổng.</span>
+                <span>Sau khi xác nhận, lịch hẹn chuyển sang <strong>Sẵn sàng</strong>. Tài xế xác nhận chuyến và báo đã đến cổng để điều độ gọi xe vào cảng.</span>
               </div>
 
               <div className="flex justify-end gap-3 pt-3 border-t border-chalk">
@@ -2006,113 +1988,6 @@ export default function BookingManagement() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODAL 2: DIGITAL SMART E-PASS QR MODAL */}
-      {/* ========================================================================= */}
-      {showQrModal && selectedBooking && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-paper border border-chalk rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95 text-center relative overflow-hidden">
-
-            {/* Ticket Accent Header */}
-            <div className="flex justify-between items-center border-b border-chalk pb-3">
-              <div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-signal-orange">
-                <span className="w-2 h-2 rounded-full bg-signal-orange"></span>
-                Vé Vào Cổng Điện Tử NexusPort
-              </div>
-              <button
-                onClick={() => setShowQrModal(false)}
-                className="w-7 h-7 rounded-full bg-fog hover:bg-chalk flex items-center justify-center text-slate-500 hover:text-carbon font-bold text-sm cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Ticket Card Info */}
-            <div className="bg-gradient-to-br from-orange-50/70 via-white to-slate-50 text-carbon rounded-2xl p-4 text-left space-y-2 border border-orange-200/80 shadow-xs">
-              <div className="flex justify-between items-start">
-                <div>
-                  <span className="text-[10px] text-slate-500 font-mono tracking-wider block">MÃ LỊCH HẸN</span>
-                  <h4 className="font-mono font-black text-xl text-signal-orange tracking-tight">{selectedBooking.bookingCode}</h4>
-                </div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  SẴN SÀNG
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-orange-200/60 text-xs">
-                <div>
-                  <span className="text-[10px] text-slate-500 font-semibold">BIỂN SỐ XE</span>
-                  <p className="font-mono font-bold text-carbon">{getBookingVehiclePlate(selectedBooking) || '51C-992.81'}</p>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 font-semibold">TÀI XẾ</span>
-                  <p className="font-bold text-carbon truncate">{getBookingDriverName(selectedBooking) || 'Nguyễn Văn Hùng'}</p>
-                </div>
-              </div>
-
-              {selectedBooking.isReeferPowerRequired && (
-                <div className="pt-2 border-t border-orange-200/60 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1.5 text-cyan-800 font-bold">
-                    <span className="material-symbols-outlined text-sm text-cyan-600 animate-pulse">ac_unit</span>
-                    <span>Kho Lạnh {selectedBooking.targetTemperature ? `${selectedBooking.targetTemperature}°C` : 'Cấp điện'}</span>
-                  </div>
-                  {selectedBooking.reeferPlugCode && (
-                    <span className="font-mono text-[11px] font-extrabold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded border border-emerald-300">
-                      ⚡ Trụ: {selectedBooking.reeferPlugCode}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* QR Code Frame */}
-            <div className="bg-white p-5 border-2 border-dashed border-chalk rounded-3xl w-52 h-52 mx-auto flex items-center justify-center shadow-inner relative group">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-                  JSON.stringify({
-                    bookingCode: selectedBooking.bookingCode,
-                    plateNumber: getBookingVehiclePlate(selectedBooking) || '51C-992.81',
-                    status: 'Ready',
-                    expires: selectedBooking.appointmentEnd
-                  })
-                )}`}
-                alt="Gate Pass QR"
-                className="w-full h-full object-contain"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <p className="text-xs text-carbon font-bold flex items-center justify-center gap-1">
-                <span className="material-symbols-outlined text-sm text-emerald-600">check_circle</span>
-                Hợp lệ để vào cổng cảng
-              </p>
-              <p className="text-[11px] text-slate-500 leading-tight">
-                Quét mã này tại đầu đọc tự động của trạm barrier cảng để kích hoạt cân và mở barie vào bãi.
-              </p>
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={() => {
-                  window.print()
-                }}
-                className="flex-1 py-3 rounded-2xl border border-chalk bg-fog hover:bg-chalk text-carbon font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-sm">print</span>
-                In Thẻ
-              </button>
-
-              <button
-                onClick={() => setShowQrModal(false)}
-                className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 transition-all cursor-pointer"
-              >
-                Đóng Thẻ
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -2276,7 +2151,7 @@ export default function BookingManagement() {
                     <div className="text-[11px] text-slate-600 bg-white/90 p-2.5 rounded-xl border border-sky-100 flex items-start gap-2">
                       <span className="material-symbols-outlined text-sm text-sky-600 shrink-0 mt-0.5">info</span>
                       <span>
-                        Tài xế khi đưa xe đến cổng xuất trình mã vé <strong>e-Pass</strong> hoặc quét QR tự động tại barie để hệ thống cân nhận diện và chỉ dẫn di chuyển thẳng vào vị trí container trên bãi.
+                        Tài xế xác nhận chuyến trên app, báo <strong>đã đến cổng</strong> để điều độ gọi xe (tự động nếu bãi còn chỗ). Camera cổng nhận diện biển số và hệ thống chỉ dẫn di chuyển thẳng vào vị trí container trên bãi.
                       </span>
                     </div>
                   </div>
@@ -2846,7 +2721,7 @@ export default function BookingManagement() {
                       <div>
                         <h4 className="font-black text-emerald-900 text-sm">GIAO DỊCH ĐÃ THANH TOÁN THÀNH CÔNG</h4>
                         <p className="text-xs text-emerald-700">
-                          Hệ thống đã ghi nhận thanh toán phí cảng. Chuyến xe đủ điều kiện nhận vé e-Pass để vào cảng.
+                          Hệ thống đã ghi nhận thanh toán phí cảng. Chuyến xe đủ điều kiện để điều độ gọi vào cảng.
                         </p>
                       </div>
                     </div>
@@ -2870,7 +2745,7 @@ export default function BookingManagement() {
                         <span className="text-slate-400 text-[11px]">Trạng Thái Kế Toán Cảng:</span>
                         <p className="font-bold text-emerald-600 mt-0.5 flex items-center gap-1">
                           <span className="material-symbols-outlined text-sm">done_all</span>
-                          Đã Đối Soát & Xuất Vé
+                          Đã Đối Soát
                         </p>
                       </div>
                     </div>
@@ -2889,19 +2764,6 @@ export default function BookingManagement() {
                     </button>
 
                     <div className="flex items-center gap-2 w-full sm:w-auto">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowPaymentModal(false)
-                          setSelectedBooking(paymentBooking)
-                          setShowQrModal(true)
-                        }}
-                        className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <span className="material-symbols-outlined text-sm">qr_code_2</span>
-                        Xem Vé Vào Cổng
-                      </button>
-
                       <button
                         type="button"
                         onClick={() => setShowPaymentModal(false)}

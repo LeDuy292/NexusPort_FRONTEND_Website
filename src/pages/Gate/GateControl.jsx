@@ -325,7 +325,9 @@ export default function GateControl() {
     const inbound = scanMode === 'checkin'
     const activeGate = scan.gate || selectedGate
     const gateCode = inbound ? 'GATE-01' : activeGate?.code === 'GATE_OUT' ? 'GATE-02' : activeGate?.code
-    const physical = inbound && (scan.physical || Boolean(hwStatus?.esp32?.connected))
+    // Chỉ chờ cảm biến barie khi ESP32 thật sự đang kết nối. Nếu không có thiết bị (lệnh barie ở chế độ mô phỏng),
+    // dùng đếm ngược mô phỏng để tự ghi nhận xe qua cổng, kể cả khi lượt quét đến từ camera / thiết bị nhận diện.
+    const physical = inbound && Boolean(hwStatus?.esp32?.connected)
     if (!activeGate || gateError) { showToast('Vui lòng chọn cổng thực tế đang hoạt động trước khi xác minh.'); return }
     if (barrierState === 'opened' || barrierState === 'opening') return // Cổng đang mở: giữ nguyên, không quét lại làm giật servo
     if (verificationInFlightRef.current || simulationLockRef.current || verificationBusy || gateOutBusy ||
@@ -510,6 +512,11 @@ export default function GateControl() {
       console.log('📡 [IoT Camera Event Received]', eventData)
       const plate = eventData?.detectedPlate ? eventData.detectedPlate.trim().toUpperCase() : ''
       if (!plate || eventData.vehicleDetected === false) return
+      // Camera chưa đọc được biển số: không đối soát, chỉ nhắc nhân viên để tránh báo lỗi và khóa cổng oan.
+      if (plate === 'KHÔNG_NHẬN_DIỆN' || eventData.decision === 'FAIL') {
+        showToast('Chưa đọc được biển số. Đưa xe vào đúng vị trí và chạm cảm biến lại.')
+        return
+      }
 
       const isOutbound = eventData?.laneCode === 'LANE_02' || eventData?.gateCode === 'GATE_OUT' || eventData?.gateCode === 'GATE_OUT_A' || String(eventData?.lane).toUpperCase() === 'OUT'
       const targetMode = isOutbound ? 'checkout' : 'checkin'
@@ -530,10 +537,7 @@ export default function GateControl() {
       if (overview) setCapturedImage(overview)
       if (crop) setAiCropImage(crop)
 
-      if (!isOutbound && !eventData.trustedCamera) {
-        showToast('Đã nhận biển số. Nhân viên cổng cần xác minh lượt quét này.')
-        return
-      }
+      // Bắt được biển số là tự đối chiếu booking / lệnh vào cổng; chỉ khi xác minh thành công mới gửi lệnh mở (servo xoay).
       showToast(`🚗 [${isOutbound ? 'CỔNG RA' : 'CỔNG VÀO'}] Nhận diện biển số: "${plate}" (${conf.toFixed(1)}%)`)
       setIsAiScanning(true)
       try {
@@ -548,7 +552,6 @@ export default function GateControl() {
     socket.on('gate:barrier_state_changed', (data) => {
       console.log('📡 [Barrier State Event Received]', data)
       const currentTargetLane = modeRef.current === 'checkout' ? 'OUT' : 'IN'
-      if (currentTargetLane === 'IN' && !data?.trustedCamera) return
       if (data?.lane === currentTargetLane) {
         setBarrierState(data.state)
         if (data.state === 'closed') {
@@ -820,18 +823,22 @@ export default function GateControl() {
                       className={`px-3.5 py-2 rounded-xl text-xs font-bold inline-flex items-center gap-2 border shadow-2xs ${
                         processingStatus === 'passed'
                           ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
-                          : 'bg-rose-100 text-rose-900 border-rose-300'
+                          : processingStatus === 'rejected'
+                            ? 'bg-rose-100 text-rose-900 border-rose-300'
+                            : 'bg-amber-100 text-amber-900 border-amber-300'
                       }`}
                     >
                       <span className="material-symbols-outlined text-base">
-                        {processingStatus === 'passed' ? 'verified' : 'cancel'}
+                        {processingStatus === 'passed' ? 'verified' : processingStatus === 'rejected' ? 'cancel' : 'hourglass_top'}
                       </span>
-                      <span>{serverPassed ? 'Lệnh vào cổng hợp lệ' : 'Chưa được cấp quyền qua cổng'}</span>
+                      <span>{serverPassed ? 'Lệnh vào cổng hợp lệ' : processingStatus === 'rejected' ? 'Chưa được cấp quyền qua cổng' : verificationBusy ? 'Đang đối soát…' : 'Chờ xác minh'}</span>
                     </div>
-                    <span className={`text-[11px] mt-1.5 font-medium ${processingStatus === 'passed' ? 'text-emerald-700' : 'text-rose-600'}`}>
+                    <span className={`text-[11px] mt-1.5 font-medium ${processingStatus === 'passed' ? 'text-emerald-700' : processingStatus === 'rejected' ? 'text-rose-600' : 'text-amber-700'}`}>
                       {processingStatus === 'passed'
                         ? 'Hệ thống tự động kích hoạt mở barie'
-                        : rejectionReason || 'Vui lòng kiểm tra lại thông tin xe'}
+                        : processingStatus === 'rejected'
+                          ? rejectionReason || 'Vui lòng kiểm tra lại thông tin xe'
+                          : 'Đã nhận biển số, nhân viên cổng bấm xác minh để đối soát với lệnh vào cổng'}
                     </span>
                   </div>
                 </div>
@@ -1420,11 +1427,9 @@ export default function GateControl() {
               {passageBusy ? 'Đang ghi nhận…' : 'Xác nhận xe đã qua cổng'}
             </button>
           ) : mode === 'checkin' && detectedPlate && processingStatus === 'idle' ? (
-            <button type="button" disabled={verificationBusy || barrierBusy}
-              onClick={() => void evaluateVerification(detectedPlate, confidence, capturedImage, aiCropImage)}
-              className="w-full px-4 py-3 rounded-xl bg-slate-800 text-white font-semibold disabled:opacity-50">
-              Xác minh lượt quét
-            </button>
+            <div className="w-full px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-semibold text-center">
+              Hệ thống đang tự động đối soát biển số với booking…
+            </div>
           ) : null}
         </div>
       </div>

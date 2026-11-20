@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import { useDispatchBoard } from './useDispatchBoard'
 import { updateDispatch } from './dispatchService'
-import { dateTime as time, displayState, stateOf, statusLabel, vietnamDate } from './dispatchPresentation'
+import { awaitingTrip, dateTime as time, displayState, stateOf, statusLabel, tripStepLabel, vietnamDate } from './dispatchPresentation'
 import './DispatchBoard.css'
+import './dispatchTheme.css'
 import { SmartRouteDetail } from './SmartRouteMonitor'
 import DispatchJourney from './JourneyTimeline'
 import { formatPlateNumber } from '../../utils/format'
@@ -74,38 +75,37 @@ export default function DispatchBoard() {
   const canDelay = ['ready', 'called', 'acknowledged'].includes(selectedState)
   return <div className="arrival-page">
     <header className="arrival-header">
-      <div><p className="arrival-eyebrow">ĐIỀU ĐỘ · HÀNH TRÌNH XE</p><h1>Theo dõi & điều phối xe</h1>
-        <p>Từ khu chờ đến khi ra cổng · tài xế xác nhận các mốc, điều độ theo dõi hành trình.</p></div>
+      <div><p className="arrival-eyebrow"><span className="arrival-badge">KHÔNG GIAN ĐIỀU ĐỘ</span> NexusPort · Cảng Tiên Sa, Đà Nẵng (VNDAD)</p><h1>Theo dõi & điều phối xe</h1>
+        <p>Tài xế xác nhận chuyến → báo đã đến cổng → điều độ gọi xe vào cổng → Gate In → làm hàng → Gate Out.</p></div>
       <span className={'arrival-live ' + (connected ? 'connected' : '')}>{connected ? '● Realtime đang kết nối' : '◌ Đang nối lại realtime'}</span>
     </header>
     <div className="arrival-toolbar">
       <label>Ngày hẹn <input type="date" value={date} disabled={busy} onChange={e => { setDate(e.target.value || dateToday()); setPage(1); changeSelection(null) }} /></label>
       <button type="button" onClick={() => void reload()} disabled={loading && !error}>Làm mới</button>
-      <Link to="/dispatcher/gate-bookings">Duyệt booking →</Link>
-      <span className="arrival-muted">Dữ liệu lúc {time(data?.serverTime)} · Giờ Việt Nam</span>
     </div>
     {error && <div className="arrival-error" role="alert">Không tải được danh sách xe: {error} <button type="button" onClick={() => void reload()}>Thử lại</button></div>}
     <div className="arrival-counts">
-      <div className="count-ready"><span className="arrival-stat-icon material-symbols-outlined" aria-hidden="true">local_shipping</span><div><span>Có thể gọi ngay</span><strong>{counts.ready}</strong></div></div>
-      <div className="count-absent"><span className="arrival-stat-icon material-symbols-outlined" aria-hidden="true">schedule</span><div><span>Chưa xác nhận đến</span><strong>{counts.absent}</strong></div></div>
-      <div className="count-called"><span className="arrival-stat-icon material-symbols-outlined" aria-hidden="true">campaign</span><div><span>Đã gọi / đã nhận lệnh</span><strong>{counts.called}</strong></div></div>
+      <div className="count-ready"><span className="arrival-stat-icon material-symbols-outlined" aria-hidden="true">local_shipping</span><div><span>Đã đến cổng · có thể gọi ngay</span><strong>{counts.ready}</strong></div></div>
+      <div className="count-absent"><span className="arrival-stat-icon material-symbols-outlined" aria-hidden="true">schedule</span><div><span>Chưa đến cổng</span><strong>{counts.absent}</strong></div></div>
+      <div className="count-called"><span className="arrival-stat-icon material-symbols-outlined" aria-hidden="true">campaign</span><div><span>Đã gọi / đã nhận lệnh vào cổng</span><strong>{counts.called}</strong></div></div>
     </div>
     <div className="dispatch-capacity" role="status"><strong>{yard ? yard.inside + ' / ' + yard.capacity + ' xe trong bãi' : 'Sức chứa bãi'}</strong>
       <span>{yard ? yard.reserved + ' chỗ đã giữ cho lệnh vào · Còn ' + yard.available + ' chỗ' : 'Đang tải sức chứa từ hệ thống'}</span>
       <span>{yard?.automatic ? 'Tự gọi xe sẵn sàng khi còn sức chứa' : 'Điều độ gọi xe theo sức chứa'}</span>
+      {yard && <div className={'dispatch-capacity-bar ' + (yard.available === 0 ? 'full' : yard.available / yard.capacity < 0.25 ? 'busy' : '')} aria-hidden="true">
+        <span style={{ width: Math.min(100, Math.round(((yard.inside + yard.reserved) / yard.capacity) * 100)) + '%' }} /></div>}
     </div>
     <div className="arrival-workspace">
       <section className="arrival-queue" aria-label="Hàng chờ điều phối">
         <div className="arrival-panel-heading">
-          <div><h2>Danh sách xe</h2>{data && <span>{total} chuyến · {pageSize} chuyến mỗi trang</span>}</div>
+          <div><h2>Danh sách xe</h2>{data && <span>{total} lịch hẹn · {pageSize} lịch hẹn mỗi trang</span>}</div>
         </div>
         <div className="arrival-tabs" aria-label="Lọc hàng chờ">
-          {[['all','Tất cả'],['waiting','Chờ gọi'],['called','Đã gọi'],['inside','Trong bãi'],['exited','Đã ra'],['absent','Chưa đến']].map(([key,label]) =>
+          {[['all','Tất cả'],['waiting','Đã đến cổng'],['called','Đã gọi'],['inside','Trong bãi'],['exited','Đã ra'],['absent','Chưa đến cổng']].map(([key,label]) =>
             <button type="button" key={key} aria-pressed={filter === key} disabled={busy} onClick={() => { setFilter(key); setPage(1) }}>{label}</button>)}
         </div>
-        <p className="arrival-muted arrival-order">Hàng chờ theo ngày hẹn booking. Xe có lệnh còn hiệu lực trong ngày, xe trong bãi và xe đã ra trong 24 giờ cũng hiển thị.</p>
         {loading && <p className="arrival-empty" role="status">Đang tải danh sách xe…</p>}
-        {data && !loading && !bookings.length && <p className="arrival-empty">Chưa có booking trong nhóm này.</p>}
+        {data && !loading && !bookings.length && <p className="arrival-empty">Chưa có lịch hẹn trong nhóm này.</p>}
         <div className="arrival-list">
           {bookings.map(booking => {
             const inQueue = booking.group === 'queue'
@@ -115,7 +115,8 @@ export default function DispatchBoard() {
               className={'arrival-row ' + (inQueue ? displayState(booking) : booking.group) + (selectedRow ? ' selected' : '')}>
               <div><strong>{formatPlateNumber(booking.truckPlate) || 'Chưa gán xe'}</strong><span>{booking.driverName}</span><small>{booking.bookingCode}</small></div>
               <div><span className="arrival-status">{label}</span>
-                <small>Hẹn booking: {time(booking.appointmentStart)}</small>
+                <small>Giờ hẹn: {time(booking.appointmentStart)}</small>
+                {inQueue && <small className={'arrival-step ' + (booking.coordination?.tripConfirmed ? 'done' : 'todo')}>{booking.coordination?.tripConfirmed ? '✓' : '○'} {tripStepLabel(booking)}</small>}
                 {booking.gateEntryOrder?.revokedAt
                   ? <small>Thu hồi lệnh: {time(booking.gateEntryOrder.revokedAt)}</small>
                   : booking.gateEntryOrder?.issuedAt && <small>Gọi vào cổng: {time(booking.gateEntryOrder.issuedAt)}</small>}
@@ -139,7 +140,7 @@ export default function DispatchBoard() {
         {!selection && <div className="dispatch-no-selection"><span className="material-symbols-outlined" aria-hidden="true">route</span><h2>Chọn xe để theo dõi hành trình</h2><p>Lộ trình, các bước đã hoàn tất và việc cần làm sẽ hiển thị ở đây.</p></div>}
         {selected && <>
           <dl className="arrival-facts">
-            <div><dt>Giờ hẹn booking</dt><dd>{time(selected.appointmentStart)} – {time(selected.appointmentEnd)}</dd></div>
+            <div><dt>Giờ hẹn</dt><dd>{time(selected.appointmentStart)} – {time(selected.appointmentEnd)}</dd></div>
             {entryOrder?.issuedAt && <div><dt>Gọi vào cổng</dt><dd>{time(entryOrder.issuedAt)}</dd></div>}
             {entryOrder?.revokedAt && <div><dt>Thu hồi lệnh</dt><dd>{time(entryOrder.revokedAt)}</dd></div>}
           </dl>
@@ -168,6 +169,7 @@ export default function DispatchBoard() {
             {selected.containers.map(c => <div key={c.id}><strong>{c.containerNo}</strong> · {c.containerType || '—'}<small>{c.cargoType || 'Chưa khai báo hàng'} · {c.grossWeightKg == null ? 'Chưa có tải trọng' : Number(c.grossWeightKg).toLocaleString('vi-VN') + ' kg'}</small></div>)}
             {!selected.containers.length && <p className="arrival-muted">Chưa có container liên kết.</p>}
           </div>
+          {awaitingTrip(selected) && <div className="arrival-message" aria-live="polite">Tài xế chưa xác nhận chuyến vận chuyển. Xe sẽ hiện "Đã đến cổng" sau khi tài xế xác nhận chuyến và báo đã đến cổng.</div>}
           {selected.dispatch?.message && <div className="arrival-message" aria-live="polite">{selected.dispatch.message}</div>}
           <details className="dispatch-intervention"><summary>Can thiệp điều phối / gọi thủ công</summary>
           <label className="arrival-note">Hướng dẫn / lý do chờ
@@ -178,7 +180,7 @@ export default function DispatchBoard() {
           {!selected.coordination.canCall && <p className="arrival-muted">{selectedState === 'acknowledged'
             ? 'Xe đã có lệnh vào cổng. Khi lệnh hết hạn, hệ thống trả xe về sẵn sàng để gọi lại.'
             : selectedState === 'called' ? 'Đã gửi lệnh gọi, đang chờ tài xế nhận trên app trong 10 phút.'
-            : 'Chỉ gọi khi tài xế sẵn sàng, từ 3 ngày trước giờ hẹn và không còn thời gian chờ thêm.'}</p>}
+            : 'Chỉ gọi khi tài xế đã xác nhận chuyến, báo đã đến cổng (từ 3 ngày trước giờ hẹn) và không còn thời gian chờ thêm.'}</p>}
           <div className="arrival-delay"><label>Chờ thêm (phút)<input type="number" min="1" max="120" value={minutes} onChange={e => setMinutes(e.target.value)} /></label>
             <button type="button" disabled={busy || !canDelay || !note.trim() || Boolean(detailError)} onClick={() => void act('delay')}>Báo chờ thêm</button></div>
           {(['called','acknowledged'].includes(selectedState) || selected.dispatch?.holdUntil) && <button type="button" disabled={busy || Boolean(detailError)} onClick={() => void act('release')}>Thu hồi lệnh / bỏ thời gian chờ</button>}
@@ -186,7 +188,7 @@ export default function DispatchBoard() {
           {feedback && <p role="status" className={feedback.ok ? 'arrival-success' : 'arrival-error'}>{feedback.text}</p>}
           <p className="arrival-boundary">Lệnh vào còn hạn giữ một chỗ trong bãi. Gate In chuyển chỗ đã giữ thành xe trong bãi; Gate Out mới giải phóng chỗ.</p>
           </>}
-          {route && <p className="arrival-boundary">Dùng cùng booking đến Gate Out. Tài xế xác nhận đã đến và kiểm tra container; nhân viên bãi hoàn tất thao tác hàng. Điều độ theo dõi và xử lý ngoại lệ.</p>}
+          {route && <p className="arrival-boundary">Dùng cùng lịch hẹn đến Gate Out. Tài xế xác nhận đã đến và kiểm tra container; nhân viên bãi hoàn tất thao tác hàng. Điều độ theo dõi và xử lý ngoại lệ.</p>}
         </>}
       </aside>
     </div>
