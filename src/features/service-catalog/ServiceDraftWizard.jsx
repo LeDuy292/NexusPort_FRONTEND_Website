@@ -1386,6 +1386,13 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       })
     }
 
+    // Container chỉ thuộc vận đơn đang chọn khi chính B/L của nó khớp; nếu nó không ghi B/L thì chỉ nhận
+    // khi nguồn chứa nó (fallbackBl) là đúng vận đơn này. Không lấy theo tên tàu hay theo "toàn bộ container của tài khoản".
+    const sameBl = (c, fallbackBl = '') => {
+      const own = norm(c.blNumber || c.billOfLading || '')
+      return own ? own === blNorm : Boolean(fallbackBl) && norm(fallbackBl) === blNorm
+    }
+
     if (form.flow === 'EXPORT') {
       // 1. Quét allExportManifests
       for (const m of allExportManifests) {
@@ -1395,15 +1402,12 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         const aliases = (m.bookingAliases || []).map(a => norm(a))
         const matchesBk = bkNorm && (mBkNorm === bkNorm || mIdNorm === bkNorm || aliases.includes(bkNorm))
         const matchesBl = blNorm && mBlNorm === blNorm
-        const matchesVessel = norm(m.vesselName) === norm(form.source.vesselName) && (
-          !form.source.voyageNumber || norm(m.voyageNumber) === norm(form.source.voyageNumber)
-        )
 
         // Kiểm tra trong bills nếu có
         if (Array.isArray(m.bills)) {
           m.bills.forEach(b => {
             const bBlNorm = norm(b.blNumber || '')
-            if (bBlNorm === blNorm || (matchesBk && !bBlNorm) || (matchesVessel && !bBlNorm)) {
+            if (bBlNorm === blNorm || (matchesBk && !bBlNorm)) {
               (b.containers || []).forEach(c => addCont(c, b.blNumber || m.blNumber, m))
             }
           })
@@ -1412,10 +1416,10 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         // Kiểm tra trong containers / records của m
         const contList = m.containers || m.records || []
         const hasMatchingCont = contList.some(c => norm(c.blNumber || '') === blNorm)
-        if (matchesBl || hasMatchingCont || matchesBk || matchesVessel) {
+        if (matchesBl || hasMatchingCont || matchesBk) {
           contList.forEach(c => {
             const cBlNorm = norm(c.blNumber || '')
-            if (cBlNorm === blNorm || (matchesBl && !cBlNorm) || (matchesBk && (!cBlNorm || cBlNorm === blNorm)) || (matchesVessel && !cBlNorm)) {
+            if (cBlNorm === blNorm || (matchesBl && !cBlNorm) || (matchesBk && !cBlNorm)) {
               addCont(c, c.blNumber || m.blNumber, m)
             }
           })
@@ -1431,12 +1435,11 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         const mBkNorm = norm(m.bookingNumber || '')
         const matchesBk = bkNorm && mBkNorm === bkNorm
         const matchesBl = blNorm && mBlNorm === blNorm
-        const matchesVessel = norm(m.vesselName) === norm(form.source.vesselName)
 
         if (Array.isArray(m.bills)) {
           m.bills.forEach(b => {
             const bBlNorm = norm(b.blNumber || '')
-            if (bBlNorm === blNorm || matchesBl || (matchesBk && !bBlNorm) || (matchesVessel && !bBlNorm)) {
+            if (bBlNorm === blNorm || (matchesBl && !bBlNorm) || (matchesBk && !bBlNorm)) {
               (b.containers || []).forEach(c => addCont(c, b.blNumber || m.blNumber, m))
             }
           })
@@ -1445,7 +1448,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         const contList = m.records || m.containers || []
         contList.forEach(c => {
           const cBlNorm = norm(c.blNumber || '')
-          if (cBlNorm === blNorm || matchesBl || (matchesBk && (!cBlNorm || cBlNorm === blNorm)) || (matchesVessel && !cBlNorm)) {
+          if (cBlNorm === blNorm || (matchesBl && !cBlNorm) || (matchesBk && !cBlNorm)) {
             addCont(c, c.blNumber || m.blNumber, m)
           }
         })
@@ -1475,7 +1478,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       // 4. Quét qua containers từ backend API (containers.data?.items hoặc eligibleContainers)
       const apiConts = containers.data?.items || eligibleContainers || []
       if (Array.isArray(apiConts) && apiConts.length > 0) {
-        apiConts.forEach(c => {
+        apiConts.filter(c => sameBl(c)).forEach(c => {
           addCont({
             containerNumber: c.containerNumber || c.containerNo || c.id,
             typeCode: c.typeCode || c.isoCode || c.isoType || '40HC',
@@ -1491,7 +1494,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
       // 5. Quét qua containers từ step1VesselInfo nếu có
       if (Array.isArray(step1VesselInfo?.containers) && step1VesselInfo.containers.length > 0) {
-        step1VesselInfo.containers.forEach(c => {
+        step1VesselInfo.containers.filter(c => sameBl(c, step1VesselInfo.blNumber)).forEach(c => {
           addCont(c, step1VesselInfo.blNumber || currentBl)
         })
       }
@@ -1520,7 +1523,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         if (Array.isArray(m.bills)) {
           m.bills.forEach(b => {
             const bBlNorm = norm(b.blNumber || '')
-            if (bBlNorm === blNorm || isManifestMatch) {
+            if (bBlNorm === blNorm || (isManifestMatch && !bBlNorm)) {
               (b.containers || []).forEach(c => addCont(c, b.blNumber || m.blNumber, m))
             }
           })
@@ -1532,7 +1535,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         if (isManifestMatch || hasMatchingCont) {
           contList.forEach(c => {
             const cBlNorm = norm(c.blNumber || '')
-            if (cBlNorm === blNorm || isManifestMatch || (!cBlNorm && hasMatchingCont)) {
+            if (cBlNorm === blNorm || (isManifestMatch && !cBlNorm)) {
               addCont(c, c.blNumber || m.blNumber, m)
             }
           })
@@ -1572,7 +1575,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       // 4. Quét qua containers từ backend API
       const apiImportConts = containers.data?.items || eligibleContainers || []
       if (Array.isArray(apiImportConts) && apiImportConts.length > 0) {
-        apiImportConts.forEach(c => {
+        apiImportConts.filter(c => sameBl(c)).forEach(c => {
           addCont({
             containerNumber: c.containerNumber || c.containerNo || c.id,
             typeCode: c.typeCode || c.isoCode || c.isoType || '40HC',
@@ -1587,7 +1590,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       }
 
       if (Array.isArray(step1ImportInfo?.containers) && step1ImportInfo.containers.length > 0) {
-        step1ImportInfo.containers.forEach(c => {
+        step1ImportInfo.containers.filter(c => sameBl(c, step1ImportInfo.blNumber)).forEach(c => {
           addCont(c, step1ImportInfo.blNumber || currentBl)
         })
       }
