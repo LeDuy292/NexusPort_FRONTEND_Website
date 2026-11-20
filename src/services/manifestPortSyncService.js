@@ -1920,7 +1920,7 @@ export const manifestPortSyncService = {
    * CHÚ Ý QUAN TRỌNG: Lúc vừa duyệt tàu xong, CHƯA CÓ TÀI XẾ HAY XE ĐẦU KÉO!
    * Phải chờ bên Công ty Vận tải (Transport) điều phối Xe + Tài xế + Giờ hẹn ETA + Chứng từ gửi lại 1 lần nữa!
    */
-  approveManifestByPort(manifestId, preAllocatedPlan = null) {
+  approveManifestByPort(manifestId, preAllocatedPlan = null, options = {}) {
     const list = this.getSyncedManifests()
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
     let approvedManifest = null
@@ -2292,6 +2292,45 @@ export const manifestPortSyncService = {
       }))
     }
     return updatedManifest
+  },
+
+  /**
+   * Đồng bộ danh sách chuyến tàu (từ phân hệ Hãng Tàu) sang các manifest đã lưu tại cảng:
+   * cập nhật vesselStatus theo Mã Chuyến Tàu. Chỉ ghi/phát sự kiện khi có thay đổi.
+   */
+  syncVoyages(voyages = []) {
+    if (!Array.isArray(voyages) || voyages.length === 0) return []
+    const statusByVoyage = new Map()
+    voyages.forEach(v => {
+      const key = (v?.voyageNumber || '').trim().toUpperCase()
+      if (key && v.status) statusByVoyage.set(key, v.status)
+    })
+    if (statusByVoyage.size === 0) return []
+
+    const changed = []
+    const updated = this.getSyncedManifests().map(m => {
+      const mVoy = (m.voyageNumber || m.voyageInfo?.voyageNumber || '').trim().toUpperCase()
+      const newStatus = statusByVoyage.get(mVoy)
+      if (newStatus && m.vesselStatus !== newStatus) {
+        const next = { ...m, vesselStatus: newStatus }
+        changed.push(next)
+        return next
+      }
+      return m
+    })
+    if (changed.length === 0) return []
+
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+    } catch (e) {
+      console.warn(e)
+    }
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nexusport:manifest_synced', {
+        detail: { type: 'VOYAGES_SYNCED', manifests: changed }
+      }))
+    }
+    return changed
   },
 
   /**

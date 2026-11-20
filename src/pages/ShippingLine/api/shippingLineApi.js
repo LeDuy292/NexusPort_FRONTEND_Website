@@ -27,6 +27,7 @@ export const shippingLineApi = {
     return nodeApiClient.postForm('/shipping-line/manifests/import/preview', form);
   },
   lookupManifestContainer: (containerNumber) => nodeApiClient.get('/shipping-line/manifests/container-lookup', { containerNumber }),
+  checkManifestBill: (blNumber, excludeManifestId) => nodeApiClient.get('/shipping-line/manifests/bill-check', excludeManifestId ? { blNumber, excludeManifestId } : { blNumber }),
   getManifests: async (params = {}) => {
     const query = new URLSearchParams(params).toString();
     const [current, legacy] = await Promise.all([nodeApiClient.get('/shipping-line/manifests', params), expressApiClient.get(`/shipping-line/manifests${query ? `?${query}` : ''}`)]);

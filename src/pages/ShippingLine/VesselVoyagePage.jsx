@@ -704,8 +704,6 @@ export default function VesselVoyagePage() {
 
             <form id="createVoyageForm" onSubmit={handleCreateVoyage} className="px-7 py-6 space-y-6 text-xs font-sans overflow-y-auto flex-1 bg-fog/30">
               {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">{error}</p>}
-              <p className="rounded-xl border border-chalk bg-white px-4 py-2.5 text-xs text-slate">Mã chuyến tự sinh: <strong className="font-mono text-carbon">{generateVoyageNumber(createForm.vesselId, createForm) || '—'}</strong> <span className="ml-1">(tiền tố tàu + năm ETA + số thứ tự + X xuất / N nhập)</span></p>
-
               {/* 1. Tàu và cầu bến */}
               <section className="bg-white border border-chalk rounded-xl p-5 space-y-4">
                 <h4 className="flex items-center gap-2 text-[11px] font-extrabold text-carbon uppercase tracking-wide">
@@ -716,13 +714,6 @@ export default function VesselVoyagePage() {
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-[10px] font-bold text-slate uppercase">Tàu biển khai thác *</label>
-                      <button
-                        type="button"
-                        onClick={() => { setVesselForm(emptyVessel); setVesselError(''); setShowVesselModal(true); }}
-                        className="text-[10px] font-bold text-signal-orange hover:underline cursor-pointer"
-                      >
-                        + Thêm tàu
-                      </button>
                     </div>
                     <select
                       value={createForm.vesselId}
