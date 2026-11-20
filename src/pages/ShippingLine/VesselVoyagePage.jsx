@@ -3,6 +3,7 @@ import { shippingLineApi, formatApiErrorMessage } from './api/shippingLineApi';
 import ShippingBadge from './components/ShippingBadge';
 import ShippingPagination from './components/ShippingPagination';
 import { manifestPortSyncService } from '../../services/manifestPortSyncService';
+import { buildVoyageNumber } from './utils/voyageNumber';
 
 const TIEN_SA_PORT = 'Cảng Tiên Sa, Đà Nẵng (VNDAD)';
 
@@ -54,6 +55,27 @@ function fromLocalDatetimeInput(inputVal) {
   return inputVal.replace('T', ' ').slice(0, 16);
 }
 
+// ETA mặc định: 3 ngày sau, 08:00 (giờ máy), để các hạn chót tính ra luôn ở tương lai
+function defaultEta() {
+  const d = new Date();
+  d.setDate(d.getDate() + 3);
+  d.setHours(8, 0, 0, 0);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} 08:00`;
+}
+
+// Kiểm tra thứ tự mốc: VGM ≤ hạ bãi (CY) < ETD, ETA < ETD, hạn chót chưa qua
+function voyageTimeError(form) {
+  const at = (v) => (v ? new Date(String(v).replace(' ', 'T')) : null);
+  const [eta, etd, cy, vgm] = [at(form.eta), at(form.etd), at(form.cyCutOff), at(form.vgmCutOff)];
+  if (![eta, etd, cy, vgm].every((d) => d && !isNaN(d.getTime()))) return 'Cần nhập đủ ETA, ETD, hạn chót hạ bãi và hạn chót nộp VGM.';
+  if (cy <= new Date() || vgm <= new Date()) return 'Hạn chót hạ bãi và hạn chót nộp VGM phải ở thời điểm sau hiện tại.';
+  if (vgm > cy) return 'Hạn chót nộp VGM không được sau hạn chót hạ bãi.';
+  if (cy >= etd) return 'Hạn chót hạ bãi phải trước giờ tàu rời cảng (ETD).';
+  if (eta >= etd) return 'Giờ tàu đến (ETA) phải trước giờ tàu rời cảng (ETD).';
+  return '';
+}
+
 function calculateCutoffsFromEta(etaDateTimeStr) {
   if (!etaDateTimeStr) return null;
   const d = new Date(etaDateTimeStr.includes('T') ? etaDateTimeStr : etaDateTimeStr.replace(' ', 'T'));
@@ -96,6 +118,29 @@ export default function VesselVoyagePage() {
 
   // Modal states
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // Thêm tàu mới vào danh mục đội tàu
+  const emptyVessel = { vesselName: '', imoNumber: '', callSign: '', flag: '', vesselType: 'Container Ship', capacityTeu: '' };
+  const [showVesselModal, setShowVesselModal] = useState(false);
+  const [vesselForm, setVesselForm] = useState(emptyVessel);
+  const [vesselError, setVesselError] = useState('');
+  const [savingVessel, setSavingVessel] = useState(false);
+
+  const handleCreateVessel = async (event) => {
+    event.preventDefault();
+    setSavingVessel(true);
+    setVesselError('');
+    try {
+      await shippingLineApi.createVessel({ ...vesselForm, capacityTeu: Number(vesselForm.capacityTeu) });
+      setShowVesselModal(false);
+      setVesselForm(emptyVessel);
+      await loadData();
+    } catch (err) {
+      setVesselError(formatApiErrorMessage(err));
+    } finally {
+      setSavingVessel(false);
+    }
+  };
   
   // Route selection in create modal
   const [routeType, setRouteType] = useState('OUTBOUND'); // OUTBOUND (Tiên Sa -> Cảng ngoài), INBOUND (Cảng ngoài -> Tiên Sa)
@@ -104,10 +149,8 @@ export default function VesselVoyagePage() {
     vesselId: '',
     pol: TIEN_SA_PORT,
     pod: 'Tokyo, Nhật Bản (JPTYO)',
-    eta: '2026-11-20 08:00',
-    etd: '2026-11-21 12:00',
-    cyCutOff: '2026-11-19 20:00',
-    vgmCutOff: '2026-11-19 12:00',
+    eta: defaultEta(),
+    ...calculateCutoffsFromEta(defaultEta()),
     terminal: TIEN_SA_TERMINALS[0],
     remarks: '',
   });
@@ -127,12 +170,34 @@ export default function VesselVoyagePage() {
       const voyList = Array.isArray(voyagesRes) ? voyagesRes : (voyagesRes?.data || []);
       setVessels(vList);
       setVoyages(voyList);
+      // Đồng bộ ngay lập tức sang phân hệ Điều Độ Cảng (Cảng Tiên Sa)
+      manifestPortSyncService.syncVoyages(voyList);
     } catch (err) {
       setError(formatApiErrorMessage(err, 'Lỗi tải dữ liệu chuyến tàu'));
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    const handleVoyageUpdate = (e) => {
+      const detail = e?.detail;
+      if (!detail) return;
+      if (detail.voyages) {
+        setVoyages(detail.voyages);
+      } else if (detail.voyageNumber && detail.vesselStatus) {
+        setVoyages(prev => prev.map(v =>
+          (v.voyageNumber || '').trim().toUpperCase() === detail.voyageNumber.trim().toUpperCase()
+            ? { ...v, status: detail.vesselStatus }
+            : v
+        ));
+      }
+    };
+    window.addEventListener('nexusport:voyage_status_updated', handleVoyageUpdate);
+    return () => {
+      window.removeEventListener('nexusport:voyage_status_updated', handleVoyageUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     setVoyagePage(1);
@@ -144,15 +209,15 @@ export default function VesselVoyagePage() {
   }, [vesselSearch]);
 
   // Helper sinh mã chuyến tàu tự động theo tàu biển
-  const generateVoyageNumber = (targetVesselId) => {
-    const vId = targetVesselId || createForm.vesselId || vessels[0]?.id;
+  // Theo quy tắc chung: {tiền tố tàu}{năm ETA}{STT}{X xuất | N nhập}, không dựa vào số lượng chuyến
+  const generateVoyageNumber = (targetVesselId, form = createForm) => {
+    const vId = targetVesselId || form.vesselId || vessels[0]?.id;
     const v = vessels.find(item => item.id === vId);
-    if (!v) return 'TS-2601W';
-    const words = v.vesselName.trim().split(' ');
-    const prefix = words.length >= 2 ? (words[0][0] + words[1][0]).toUpperCase() : v.vesselName.slice(0, 2).toUpperCase();
-    const count = (voyages || []).length + 1;
-    const num = 2600 + count;
-    return `${prefix}-${num}W`;
+    if (!v) return '';
+    return buildVoyageNumber({
+      vesselName: v.vesselName, eta: form.eta, pol: form.pol, pod: form.pod,
+      taken: (voyages || []).map(item => item.voyageNumber),
+    });
   };
 
   // Cập nhật nhanh trạng thái chuyến tàu (SCHEDULED -> IN_TRANSIT -> BERTHED -> OPERATING -> DEPARTED -> COMPLETED)
@@ -178,7 +243,7 @@ export default function VesselVoyagePage() {
   const handleOpenCreateForVessel = (vesselId) => {
     const targetVesselId = vesselId || vessels[0]?.id || '';
     const autoVoyageNo = generateVoyageNumber(targetVesselId);
-    const initialEta = '2026-11-20 08:00';
+    const initialEta = defaultEta();
     const calculated = calculateCutoffsFromEta(initialEta);
 
     setRouteType('OUTBOUND');
@@ -188,9 +253,9 @@ export default function VesselVoyagePage() {
       pol: TIEN_SA_PORT,
       pod: 'Tokyo, Nhật Bản (JPTYO)',
       eta: initialEta,
-      etd: calculated?.etd || '2026-11-21 12:00',
-      cyCutOff: calculated?.cyCutOff || '2026-11-19 20:00',
-      vgmCutOff: calculated?.vgmCutOff || '2026-11-19 12:00',
+      etd: calculated?.etd || '',
+      cyCutOff: calculated?.cyCutOff || '',
+      vgmCutOff: calculated?.vgmCutOff || '',
       terminal: TIEN_SA_TERMINALS[0],
       remarks: 'Chuyến tàu làm hàng container tại Cảng Tiên Sa',
     });
@@ -249,6 +314,11 @@ export default function VesselVoyagePage() {
       setError('Vui lòng chọn Tàu biển');
       return;
     }
+    const timeError = voyageTimeError(createForm);
+    if (timeError) {
+      setError(timeError);
+      return;
+    }
     setSaving(true);
     setError('');
 
@@ -256,7 +326,8 @@ export default function VesselVoyagePage() {
       await shippingLineApi.createVoyage({
         ...createForm,
         vesselId: effectiveVesselId,
-        voyageNumber: createForm.voyageNumber || generateVoyageNumber(effectiveVesselId),
+        // Sinh lại theo dữ liệu cuối cùng trên form (tàu, ETA, chiều tuyến); backend kiểm tra trùng lần cuối
+        voyageNumber: generateVoyageNumber(effectiveVesselId, createForm),
       });
       setShowCreateModal(false);
       loadData();
@@ -300,6 +371,14 @@ export default function VesselVoyagePage() {
 
         {/* Action Controls - Luôn Cố Định, Không Bị Mất Khi Đổi Tab */}
         <div className="flex flex-wrap items-center gap-2.5">
+          <button
+            onClick={() => { setVesselForm(emptyVessel); setVesselError(''); setShowVesselModal(true); }}
+            className="px-4 py-2 text-xs font-bold text-white bg-carbon hover:bg-graphite rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+          >
+            <span className="material-symbols-outlined text-base">directions_boat</span>
+            Thêm tàu
+          </button>
+
           <button
             onClick={() => handleOpenCreateForVessel(vessels[0]?.id || '')}
             className="px-4 py-2 text-xs font-bold text-white bg-signal-orange hover:opacity-90 rounded-xl shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
@@ -374,12 +453,13 @@ export default function VesselVoyagePage() {
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="w-full sm:w-auto px-3.5 py-2 bg-fog border border-chalk rounded-xl text-xs font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
               >
-                <option value="">Tất cả trạng thái</option>
+                <option value="">Đang hoạt động (ẩn chuyến đã xong)</option>
                 <option value="SCHEDULED">Kế hoạch</option>
                 <option value="IN_TRANSIT">Đang hành trình</option>
                 <option value="BERTHED">Đã cập cảng</option>
                 <option value="OPERATING">Đang làm hàng</option>
                 <option value="DEPARTED">Đã rời cảng</option>
+                <option value="COMPLETED">Hoàn tất</option>
               </select>
             </div>
           </div>
@@ -566,212 +646,236 @@ export default function VesselVoyagePage() {
       )}
 
       {/* ── MODAL: TẠO CHUYẾN TÀU MỚI (Tự động sinh mã, tự động điền cảng & chuẩn hóa ngày giờ) ── */}
+      {showVesselModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <form onSubmit={handleCreateVessel} className="bg-white rounded-2xl shadow-2xl border border-chalk max-w-lg w-full overflow-hidden">
+            <div className="px-6 py-4 border-b border-chalk bg-fog flex items-center justify-between">
+              <h3 className="font-heading text-lg font-extrabold text-carbon">Thêm tàu mới</h3>
+              <button type="button" onClick={() => setShowVesselModal(false)} className="text-slate hover:text-carbon text-xl leading-none">×</button>
+            </div>
+            <div className="p-6 grid grid-cols-2 gap-4 text-xs">
+              {vesselError && <p className="col-span-2 rounded bg-rose-50 border border-rose-200 p-2 text-rose-700">{vesselError}</p>}
+              <label className="col-span-2 space-y-1"><span className="font-bold text-slate">Tên tàu *</span>
+                <input required className="w-full border border-chalk rounded-lg px-3 py-2" value={vesselForm.vesselName} onChange={(e) => setVesselForm({ ...vesselForm, vesselName: e.target.value })} placeholder="VD: EVER GIVEN" /></label>
+              <label className="space-y-1"><span className="font-bold text-slate">Số IMO * (7 chữ số)</span>
+                <input required inputMode="numeric" maxLength={7} className="w-full border border-chalk rounded-lg px-3 py-2 font-mono" value={vesselForm.imoNumber} onChange={(e) => setVesselForm({ ...vesselForm, imoNumber: e.target.value })} /></label>
+              <label className="space-y-1"><span className="font-bold text-slate">Hô hiệu (Call Sign) *</span>
+                <input required className="w-full border border-chalk rounded-lg px-3 py-2 font-mono uppercase" value={vesselForm.callSign} onChange={(e) => setVesselForm({ ...vesselForm, callSign: e.target.value })} /></label>
+              <label className="space-y-1"><span className="font-bold text-slate">Quốc tịch</span>
+                <input className="w-full border border-chalk rounded-lg px-3 py-2" value={vesselForm.flag} onChange={(e) => setVesselForm({ ...vesselForm, flag: e.target.value })} placeholder="VD: Panama (PA)" /></label>
+              <label className="space-y-1"><span className="font-bold text-slate">Phân loại</span>
+                <select className="w-full border border-chalk rounded-lg px-3 py-2" value={vesselForm.vesselType} onChange={(e) => setVesselForm({ ...vesselForm, vesselType: e.target.value })}>
+                  <option>Container Ship</option><option>Feeder</option><option>Bulk Carrier</option><option>Ro-Ro</option>
+                </select></label>
+              <label className="col-span-2 space-y-1"><span className="font-bold text-slate">Sức chở (TEU) *</span>
+                <input required type="number" min="1" className="w-full border border-chalk rounded-lg px-3 py-2" value={vesselForm.capacityTeu} onChange={(e) => setVesselForm({ ...vesselForm, capacityTeu: e.target.value })} /></label>
+            </div>
+            <div className="px-6 py-4 border-t border-chalk bg-fog flex justify-end gap-3">
+              <button type="button" onClick={() => setShowVesselModal(false)} className="px-4 py-2 rounded-lg bg-slate-200 text-carbon hover:bg-slate-300 text-xs font-bold">Hủy</button>
+              <button type="submit" disabled={savingVessel} className="px-4 py-2 rounded-lg bg-signal-orange text-white text-xs font-bold hover:opacity-90 disabled:opacity-50">{savingVessel ? 'Đang lưu...' : 'Thêm tàu'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {showCreateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-chalk max-w-xl w-full overflow-hidden animate-fadeIn flex flex-col max-h-[90vh]">
-            <div className="px-6 py-4 border-b border-chalk bg-fog flex items-center justify-between shrink-0">
-              <div>
-                <h3 className="font-heading text-lg font-extrabold text-carbon">
-                  Đăng ký chuyến tàu mới
-                </h3>
-                <p className="text-xs text-slate mt-0.5">Khởi tạo kế hoạch làm hàng cho chuyến tàu ghé Cảng Tiên Sa</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-carbon/60 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-chalk w-full max-w-3xl overflow-hidden animate-fadeIn flex flex-col max-h-[92vh]">
+            {/* Tiêu đề */}
+            <div className="px-7 py-5 border-b border-chalk flex items-start justify-between shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="w-10 h-10 rounded-xl bg-signal-orange/10 text-signal-orange flex items-center justify-center">
+                  <span className="material-symbols-outlined">directions_boat</span>
+                </span>
+                <div>
+                  <h3 className="font-heading text-lg font-extrabold text-carbon leading-tight">Đăng ký chuyến tàu mới</h3>
+                  <p className="text-xs text-slate mt-0.5">Khởi tạo kế hoạch làm hàng cho chuyến tàu ghé Cảng Tiên Sa</p>
+                </div>
               </div>
               <button
+                type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="w-8 h-8 rounded-lg text-slate hover:bg-chalk flex items-center justify-center cursor-pointer font-bold text-lg"
+                className="w-9 h-9 rounded-lg text-slate hover:bg-fog hover:text-carbon flex items-center justify-center cursor-pointer"
+                aria-label="Đóng"
               >
-                &times;
+                <span className="material-symbols-outlined text-xl">close</span>
               </button>
             </div>
 
-            <form id="createVoyageForm" onSubmit={handleCreateVoyage} className="p-6 space-y-4 text-xs font-sans overflow-y-auto flex-1">
-              
-              {/* 1. Tàu Biển Khai Thác & Cầu Bến Tiếp Nhận */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[11px] font-bold text-carbon uppercase mb-1">Tàu Biển Khai Thác *</label>
-                  <select
-                    value={createForm.vesselId}
-                    onChange={(e) => handleVesselChange(e.target.value)}
-                    className="w-full px-3 py-2.5 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
-                  >
-                    {vessels.map((v) => (
-                      <option key={v.id} value={v.id}>
-                        {v.vesselName} (IMO: {v.imoNumber})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+            <form id="createVoyageForm" onSubmit={handleCreateVoyage} className="px-7 py-6 space-y-6 text-xs font-sans overflow-y-auto flex-1 bg-fog/30">
+              {error && <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">{error}</p>}
+              <p className="rounded-xl border border-chalk bg-white px-4 py-2.5 text-xs text-slate">Mã chuyến tự sinh: <strong className="font-mono text-carbon">{generateVoyageNumber(createForm.vesselId, createForm) || '—'}</strong> <span className="ml-1">(tiền tố tàu + năm ETA + số thứ tự + X xuất / N nhập)</span></p>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-carbon uppercase mb-1">Cầu Bến Tiếp Nhận (Cảng Tiên Sa) *</label>
-                  <select
-                    value={createForm.terminal}
-                    onChange={(e) => setCreateForm({ ...createForm, terminal: e.target.value })}
-                    className="w-full px-3 py-2.5 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
-                  >
-                    {TIEN_SA_TERMINALS.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+              {/* 1. Tàu và cầu bến */}
+              <section className="bg-white border border-chalk rounded-xl p-5 space-y-4">
+                <h4 className="flex items-center gap-2 text-[11px] font-extrabold text-carbon uppercase tracking-wide">
+                  <span className="w-5 h-5 rounded-full bg-carbon text-white text-[10px] flex items-center justify-center">1</span>
+                  Tàu và cầu bến
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-[10px] font-bold text-slate uppercase">Tàu biển khai thác *</label>
+                      <button
+                        type="button"
+                        onClick={() => { setVesselForm(emptyVessel); setVesselError(''); setShowVesselModal(true); }}
+                        className="text-[10px] font-bold text-signal-orange hover:underline cursor-pointer"
+                      >
+                        + Thêm tàu
+                      </button>
+                    </div>
+                    <select
+                      value={createForm.vesselId}
+                      onChange={(e) => handleVesselChange(e.target.value)}
+                      className="w-full h-11 px-3 bg-white border border-chalk rounded-lg text-sm font-semibold text-carbon focus:outline-none focus:border-signal-orange"
+                    >
+                      {vessels.map((v) => (
+                        <option key={v.id} value={v.id}>{v.vesselName} · IMO {v.imoNumber}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate uppercase mb-1.5">Cầu bến tiếp nhận *</label>
+                    <select
+                      value={createForm.terminal}
+                      onChange={(e) => setCreateForm({ ...createForm, terminal: e.target.value })}
+                      className="w-full h-11 px-3 bg-white border border-chalk rounded-lg text-sm font-semibold text-carbon focus:outline-none focus:border-signal-orange"
+                    >
+                      {TIEN_SA_TERMINALS.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
-              </div>
+              </section>
 
-              {/* 3. Tuyến Làm Hàng (Tự động chuẩn hóa Cảng Bốc POL và Cảng Dỡ POD) */}
-              <div className="space-y-2 border border-chalk p-3.5 rounded-xl bg-fog/40">
-                <div className="flex items-center justify-between">
-                  <label className="block text-[11px] font-bold text-carbon uppercase">
-                    Hướng Tuyến Hàng Hải:
-                  </label>
+              {/* 2. Tuyến hàng hải */}
+              <section className="bg-white border border-chalk rounded-xl p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <h4 className="flex items-center gap-2 text-[11px] font-extrabold text-carbon uppercase tracking-wide">
+                    <span className="w-5 h-5 rounded-full bg-carbon text-white text-[10px] flex items-center justify-center">2</span>
+                    Tuyến hàng hải
+                  </h4>
                   <div className="flex bg-fog p-0.5 rounded-lg border border-chalk text-[11px] font-bold">
-                    <button
-                      type="button"
-                      onClick={() => handleRouteChange('OUTBOUND')}
-                      className={`px-2.5 py-1 rounded transition-colors ${
-                        routeType === 'OUTBOUND' ? 'bg-carbon text-white shadow-xs' : 'text-slate hover:text-carbon'
-                      }`}
-                    >
-                      Tuyến Xuất Khẩu
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleRouteChange('INBOUND')}
-                      className={`px-2.5 py-1 rounded transition-colors ${
-                        routeType === 'INBOUND' ? 'bg-carbon text-white shadow-xs' : 'text-slate hover:text-carbon'
-                      }`}
-                    >
-                      Tuyến Nhập Khẩu
-                    </button>
+                    {[['OUTBOUND', 'Xuất khẩu'], ['INBOUND', 'Nhập khẩu']].map(([key, text]) => (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => handleRouteChange(key)}
+                        className={`px-3.5 py-1.5 rounded-md transition-colors cursor-pointer ${routeType === key ? 'bg-carbon text-white shadow-sm' : 'text-slate hover:text-carbon'}`}
+                      >
+                        {text}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                  {/* Cảng Bốc */}
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] gap-3 items-end">
                   <div>
-                    <span className="text-[10px] text-slate font-bold uppercase block mb-1">
-                      Cảng Bốc {routeType === 'OUTBOUND' && <b className="text-signal-orange">(Cảng Nhà Tiên Sa)</b>}
+                    <span className="text-[10px] text-slate font-bold uppercase block mb-1.5">
+                      Cảng bốc {routeType === 'OUTBOUND' && <b className="text-signal-orange normal-case">· cảng Tiên Sa</b>}
                     </span>
                     {routeType === 'OUTBOUND' ? (
-                      <div className="p-2 bg-white border border-chalk rounded-xl font-bold text-carbon text-xs flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-sm text-emerald-600">anchor</span>
-                        <span>{TIEN_SA_PORT}</span>
+                      <div className="h-11 px-3 bg-fog border border-chalk rounded-lg font-semibold text-carbon text-sm flex items-center gap-2">
+                        <span className="material-symbols-outlined text-base text-emerald-600">anchor</span>
+                        <span className="truncate">{TIEN_SA_PORT}</span>
                       </div>
                     ) : (
                       <select
                         value={createForm.pol}
                         onChange={(e) => setCreateForm({ ...createForm, pol: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border border-chalk rounded-xl text-carbon font-bold focus:outline-none focus:border-signal-orange focus:ring-0"
+                        className="w-full h-11 px-3 bg-white border border-chalk rounded-lg text-sm font-semibold text-carbon focus:outline-none focus:border-signal-orange"
                       >
-                        {STANDARD_PORTS.map((p) => (
-                          <option key={p} value={p}>{p}</option>
-                        ))}
+                        {STANDARD_PORTS.map((p) => (<option key={p} value={p}>{p}</option>))}
                       </select>
                     )}
                   </div>
 
-                  {/* Cảng Dỡ */}
+                  <span className="material-symbols-outlined text-slate hidden md:flex h-11 items-center justify-center">trending_flat</span>
+
                   <div>
-                    <span className="text-[10px] text-slate font-bold uppercase block mb-1">
-                      Cảng Dỡ {routeType === 'INBOUND' && <b className="text-signal-orange">(Cảng Đến Tiên Sa)</b>}
+                    <span className="text-[10px] text-slate font-bold uppercase block mb-1.5">
+                      Cảng dỡ {routeType === 'INBOUND' && <b className="text-signal-orange normal-case">· cảng Tiên Sa</b>}
                     </span>
                     {routeType === 'INBOUND' ? (
-                      <div className="p-2 bg-white border border-chalk rounded-xl font-bold text-carbon text-xs flex items-center gap-1.5">
-                        <span className="material-symbols-outlined text-sm text-emerald-600">anchor</span>
-                        <span>{TIEN_SA_PORT}</span>
+                      <div className="h-11 px-3 bg-fog border border-chalk rounded-lg font-semibold text-carbon text-sm flex items-center gap-2">
+                        <span className="material-symbols-outlined text-base text-emerald-600">anchor</span>
+                        <span className="truncate">{TIEN_SA_PORT}</span>
                       </div>
                     ) : (
                       <select
                         value={createForm.pod}
                         onChange={(e) => setCreateForm({ ...createForm, pod: e.target.value })}
-                        className="w-full px-3 py-2 bg-white border border-chalk rounded-xl text-carbon font-bold focus:outline-none focus:border-signal-orange focus:ring-0"
+                        className="w-full h-11 px-3 bg-white border border-chalk rounded-lg text-sm font-semibold text-carbon focus:outline-none focus:border-signal-orange"
                       >
-                        {STANDARD_PORTS.map((p) => (
-                          <option key={p} value={p}>{p}</option>
-                        ))}
+                        {STANDARD_PORTS.map((p) => (<option key={p} value={p}>{p}</option>))}
                       </select>
                     )}
                   </div>
                 </div>
-              </div>
+              </section>
 
-              {/* 4. Kế Hoạch Ngày Giờ (Chuẩn datetime-local, tự động tính hạn chót làm hàng) */}
-              <div className="space-y-2 border border-chalk p-3.5 rounded-xl bg-fog/40">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-carbon uppercase">
-                    Kế Hoạch Cập Bến &amp; Hạn Chót Làm Hàng:
-                  </span>
+              {/* 3. Kế hoạch cập bến và hạn chót */}
+              <section className="bg-white border border-chalk rounded-xl p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="flex items-center gap-2 text-[11px] font-extrabold text-carbon uppercase tracking-wide">
+                    <span className="w-5 h-5 rounded-full bg-carbon text-white text-[10px] flex items-center justify-center">3</span>
+                    Kế hoạch cập bến và hạn chót
+                  </h4>
                   <button
                     type="button"
                     onClick={() => handleEtaChange(toLocalDatetimeInput(createForm.eta))}
                     className="text-[10px] text-signal-orange font-bold hover:underline flex items-center gap-1 cursor-pointer"
                     title="Tự động tính thời gian rời cảng, hạn chót hạ bãi và nộp VGM"
                   >
-                    <span className="material-symbols-outlined text-xs">sync</span>
-                    Tự động đồng bộ theo ngày đến
+                    <span className="material-symbols-outlined text-sm">sync</span>
+                    Tính tự động theo ngày đến
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] font-bold text-slate uppercase mb-1">Dự Kiến Đến Cảng *</label>
+                    <label className="block text-[10px] font-bold text-slate uppercase mb-1.5">Dự kiến đến cảng *</label>
                     <input
                       type="datetime-local"
                       value={toLocalDatetimeInput(createForm.eta)}
                       onChange={(e) => handleEtaChange(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-chalk rounded-xl font-mono text-carbon font-bold focus:outline-none focus:border-signal-orange focus:ring-0"
+                      className="w-full h-11 px-3 bg-white border border-chalk rounded-lg text-sm font-semibold text-carbon focus:outline-none focus:border-signal-orange"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-bold text-slate uppercase mb-1">Dự Kiến Rời Cảng *</label>
+                    <label className="block text-[10px] font-bold text-slate uppercase mb-1.5">Dự kiến rời cảng *</label>
                     <input
                       type="datetime-local"
                       value={toLocalDatetimeInput(createForm.etd)}
                       onChange={(e) => setCreateForm({ ...createForm, etd: fromLocalDatetimeInput(e.target.value) })}
-                      className="w-full px-3 py-2 bg-white border border-chalk rounded-xl font-mono text-carbon font-bold focus:outline-none focus:border-signal-orange focus:ring-0"
+                      className="w-full h-11 px-3 bg-white border border-chalk rounded-lg text-sm font-semibold text-carbon focus:outline-none focus:border-signal-orange"
                     />
                   </div>
                 </div>
+              </section>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
-                  <div>
-                    <label className="block text-[10px] font-bold text-amber-800 uppercase mb-1">Hạn Chót Hạ Bãi (Đến -12h) *</label>
-                    <input
-                      type="datetime-local"
-                      value={toLocalDatetimeInput(createForm.cyCutOff)}
-                      onChange={(e) => setCreateForm({ ...createForm, cyCutOff: fromLocalDatetimeInput(e.target.value) })}
-                      className="w-full px-3 py-2 bg-white border border-amber-300 rounded-xl font-mono text-amber-900 font-bold focus:outline-none focus:border-signal-orange focus:ring-0"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate uppercase mb-1">Hạn Chót Nộp Khối Lượng VGM (Đến -20h) *</label>
-                    <input
-                      type="datetime-local"
-                      value={toLocalDatetimeInput(createForm.vgmCutOff)}
-                      onChange={(e) => setCreateForm({ ...createForm, vgmCutOff: fromLocalDatetimeInput(e.target.value) })}
-                      className="w-full px-3 py-2 bg-white border border-chalk rounded-xl font-mono text-carbon font-bold focus:outline-none focus:border-signal-orange focus:ring-0"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* 4. Ghi Chú Vận Hành */}
-              <div>
-                <label className="block text-[11px] font-bold text-carbon uppercase mb-1">Ghi Chú Vận Hành</label>
+              {/* 4. Ghi chú */}
+              <section className="bg-white border border-chalk rounded-xl p-5 space-y-3">
+                <h4 className="flex items-center gap-2 text-[11px] font-extrabold text-carbon uppercase tracking-wide">
+                  <span className="w-5 h-5 rounded-full bg-carbon text-white text-[10px] flex items-center justify-center">4</span>
+                  Ghi chú vận hành
+                </h4>
                 <textarea
                   value={createForm.remarks}
                   onChange={(e) => setCreateForm({ ...createForm, remarks: e.target.value })}
                   rows={2}
                   placeholder="Ghi chú kế hoạch cầu bến hoặc yêu cầu dịch vụ xếp dỡ..."
-                  className="w-full px-3 py-2 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
+                  className="w-full px-3 py-2.5 bg-white border border-chalk rounded-lg text-sm text-carbon focus:outline-none focus:border-signal-orange"
                 />
-              </div>
+              </section>
             </form>
 
-            <div className="px-6 py-3.5 border-t border-chalk bg-fog flex justify-end gap-3 shrink-0">
+            <div className="px-7 py-4 border-t border-chalk bg-white flex justify-end gap-3 shrink-0">
               <button
                 type="button"
                 onClick={() => setShowCreateModal(false)}
-                className="px-4 py-2 bg-white border border-chalk text-carbon hover:bg-fog rounded-xl text-xs font-bold cursor-pointer"
+                className="px-5 h-10 bg-white border border-chalk text-carbon hover:bg-fog rounded-lg text-xs font-bold cursor-pointer"
               >
                 Hủy
               </button>
@@ -779,10 +883,10 @@ export default function VesselVoyagePage() {
                 type="submit"
                 form="createVoyageForm"
                 disabled={saving}
-                className="px-5 py-2.5 bg-signal-orange hover:opacity-90 disabled:opacity-50 text-white rounded-xl text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
+                className="px-6 h-10 bg-signal-orange hover:opacity-90 disabled:opacity-50 text-white rounded-lg text-xs font-bold shadow-sm transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-base">done_all</span>
-                {saving ? 'Đang tạo...' : 'Xác Nhận Tạo Chuyến Tàu'}
+                {saving ? 'Đang tạo...' : 'Xác nhận tạo chuyến tàu'}
               </button>
             </div>
           </div>

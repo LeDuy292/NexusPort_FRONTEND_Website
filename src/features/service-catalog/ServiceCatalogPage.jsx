@@ -188,7 +188,7 @@ export default function ServiceCatalogPage({ management = false }) {
   const client = useQueryClient()
   let account = {}
   try { account = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || '{}') } catch { /* ProtectedRoute handles an invalid session. */ }
-  const query = useQuery({ queryKey: [...key, account?.id || account?.username, account?.role], queryFn: catalogApi.list })
+  const query = useQuery({ queryKey: [...key, account?.id || account?.username, account?.role], queryFn: catalogApi.list, retry: 2, retryDelay: 800, staleTime: 60000, refetchOnWindowFocus: false })
   const [search, setSearch] = useState('')
   const [direction, setDirection] = useState('ALL')
   const [status, setStatus] = useState('ALL')
@@ -211,8 +211,28 @@ export default function ServiceCatalogPage({ management = false }) {
 
   // Orders list state (merged from ServiceOrdersPage)
   const [params, setParams] = useSearchParams()
+  const [returnPaymentOrder, setReturnPaymentOrder] = useState(null)
   const session = draftSession()
-  const selectedOrderId = params.get('order') || params.get('orderId')
+  const returningPaymentCode = params.get('orderCode')
+  const selectedOrderId = returningPaymentCode ? null : params.get('orderId') || params.get('order')
+  useEffect(() => {
+    if (!returningPaymentCode || !canDraft) return
+    let cancelled = false
+    serviceOrdersApi.resolvePaymentReturn(returningPaymentCode).then(({ orderId }) => {
+      if (cancelled) return
+      if (params.get('payment') === 'success') setReturnPaymentOrder(orderId)
+      setParams(previous => {
+        const next = new URLSearchParams(previous)
+        next.set('order', orderId)
+        next.set('tab', 'payments')
+        next.delete('orderId')
+        next.delete('orderCode')
+        next.delete('payment')
+        return next
+      }, { replace: true })
+    }).catch(() => { if (!cancelled) setNotice('Chưa xác định được đơn của giao dịch PayOS. Vui lòng tải lại trang hoặc mở đơn từ danh sách.') })
+    return () => { cancelled = true }
+  }, [returningPaymentCode, canDraft, setParams])
   const [orderSearch, setOrderSearch] = useState('')
   const [orderTerm, setOrderTerm] = useState('')
   const [orderStatus, setOrderStatus] = useState('')
@@ -223,7 +243,7 @@ export default function ServiceCatalogPage({ management = false }) {
   const [orderReviewing, setOrderReviewing] = useState(null)
   useEffect(() => { const timer = setTimeout(() => { setOrderTerm(orderSearch.trim()); setOrderPage(1) }, 280); return () => clearTimeout(timer) }, [orderSearch])
   const orderFilters = { search: orderTerm || undefined, status: orderStatus || undefined, paymentStatus: orderPaymentStatus || undefined, flow: orderFlow || undefined, page: orderPage, pageSize: 10 }
-  const ordersQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'list', orderFilters], queryFn: () => serviceOrdersApi.list(orderFilters), retry: false, enabled: canDraft, refetchInterval: activeSection === 'orders' ? 10000 : false })
+  const ordersQuery = useQuery({ queryKey: [...serviceOrderKey, session, 'list', orderFilters], queryFn: () => serviceOrdersApi.list(orderFilters), retry: 1, retryDelay: 1000, staleTime: 30000, enabled: canDraft, refetchOnWindowFocus: false, refetchInterval: false })
   const ordersTotal = ordersQuery.data?.total || 0
   const ordersPages = Math.max(1, Math.ceil(ordersTotal / 10))
   const orderItems = ordersQuery.data?.items || []
@@ -272,7 +292,7 @@ export default function ServiceCatalogPage({ management = false }) {
 
   return (
     <div className={`epc ${motionPaused ? 'epc-motion-paused' : ''}`}>
-      <div className="epc-page-header">
+      {management && <div className="epc-page-header">
         <div>
           <div className="epc-breadcrumb">
             {management ? 'Quản trị' : 'Cổng doanh nghiệp'}
@@ -299,7 +319,7 @@ export default function ServiceCatalogPage({ management = false }) {
             <ShieldCheck size={16} />Thông tin dịch vụ & đơn giá
           </span>
         )}
-      </div>
+      </div>}
 
       <section className="epc-hero" aria-labelledby="epc-hero-title">
         <div className="epc-hero-grid" aria-hidden="true" />
@@ -357,7 +377,10 @@ export default function ServiceCatalogPage({ management = false }) {
             role="tab"
             aria-selected={activeSection === 'orders'}
             className={`epc-section-tab ${activeSection === 'orders' ? 'active' : ''}`}
-            onClick={() => setActiveSection('orders')}
+            onClick={() => {
+              setActiveSection('orders')
+              ordersQuery.refetch()
+            }}
           >
             <ClipboardList size={16} aria-hidden="true" />
             Đơn dịch vụ
@@ -398,7 +421,7 @@ export default function ServiceCatalogPage({ management = false }) {
               <h3>Giao container hàng nhập</h3>
               <p className="epc-portal-desc">
                 Tác nghiệp bốc container hàng nhập ra khỏi cảng (lấy nguyên). Đăng ký lệnh giao hàng điện tử eDO,
-                kiểm tra thông quan VASSCM cơ quan hải quan và điều động phương tiện xe/sà lan.
+                kiểm tra thông quan VASSCM cơ quan hải quan và điều động phương tiện xe đầu kéo.
               </p>
 
               <div className="epc-portal-steps-box">
@@ -408,9 +431,9 @@ export default function ServiceCatalogPage({ management = false }) {
                 <ul className="epc-portal-steps-list">
                   <li><span className="epc-portal-step-num">1</span>Khai báo lệnh giao nhận điện tử eDO & Xác thực email</li>
                   <li><span className="epc-portal-step-num">2</span>Khai báo container lấy nguyên (chì niêm phong HQ)</li>
-                  <li><span className="epc-portal-step-num">3</span>Khai báo dịch vụ đính kèm (Lưu bãi, Cắm điện lạnh, Clone)</li>
+                  <li><span className="epc-portal-step-num">3</span>Khai báo dịch vụ đính kèm (Lưu bãi, Clone)</li>
                   <li><span className="epc-portal-step-num">4</span>Kiểm tra thông quan qua hệ thống VASSCM</li>
-                  <li><span className="epc-portal-step-num">5</span>Khai báo giao nhận (Xe / Sà lan, Hạn lệnh)</li>
+                  <li><span className="epc-portal-step-num">5</span>Khai báo giao nhận (Xe đầu kéo, Hạn lệnh)</li>
                   <li><span className="epc-portal-step-num">6</span>Gửi Dispatcher → Nhận thông báo → Thanh toán trực tuyến (VietQR)</li>
                   <li><span className="epc-portal-step-num">7</span>Hoàn tất: In phiếu giao nhận từng cont & Hóa đơn</li>
                 </ul>
@@ -446,7 +469,7 @@ export default function ServiceCatalogPage({ management = false }) {
               <h3>Hạ container hàng xuất</h3>
               <p className="epc-portal-desc">
                 Tác nghiệp hạ container hàng xuất vào bãi cảng chờ xếp tàu. Khai báo eBooking hãng tàu đã liên kết,
-                khai báo danh sách container, seal, VGM, chỉ dẫn hàng lạnh/nguy hiểm và xe/sà lan giao nhận.
+                khai báo danh sách container, seal, VGM, chỉ dẫn hàng nguy hiểm và xe giao nhận.
               </p>
 
               <div className="epc-portal-steps-box">
@@ -457,7 +480,7 @@ export default function ServiceCatalogPage({ management = false }) {
                   <li><span className="epc-portal-step-num">1</span>Khai báo eBooking & Xác thực email</li>
                   <li><span className="epc-portal-step-num">2</span>Khai báo Container (Thêm dòng, xóa dòng, seal, VGM, IMO/UN)</li>
                   <li><span className="epc-portal-step-num">3</span>Khai báo dịch vụ đính kèm & Clone dịch vụ</li>
-                  <li><span className="epc-portal-step-num">4</span>Khai báo giao nhận (Xe / Sà lan, Hạn lệnh)</li>
+                  <li><span className="epc-portal-step-num">4</span>Khai báo giao nhận (Xe đầu kéo)</li>
                   <li><span className="epc-portal-step-num">5</span>Gửi Dispatcher → Nhận thông báo → Thanh toán trực tuyến (VietQR)</li>
                   <li><span className="epc-portal-step-num">6</span>Hoàn tất: In phiếu giao nhận từng cont & Hóa đơn</li>
                 </ul>
@@ -585,7 +608,7 @@ export default function ServiceCatalogPage({ management = false }) {
       )}
 
       {/* ORDER DIALOGS */}
-      {selectedOrderId && <ServiceOrderDetail key={`${session}:${selectedOrderId}`} orderId={selectedOrderId} initialTab={params.has('orderId') || params.get('tab') === 'payments' ? 'payments' : 'information'} onClose={() => chooseOrder(null)} onEdit={orderEditDraft} onReview={orderReviewDraft} />}
+      {selectedOrderId && <ServiceOrderDetail key={`${session}:${selectedOrderId}`} orderId={selectedOrderId} initialTab={params.has('orderId') || params.get('tab') === 'payments' ? 'payments' : 'information'} showPaymentSuccess={returnPaymentOrder === selectedOrderId} onPaymentSuccessShown={() => setReturnPaymentOrder(null)} onClose={() => chooseOrder(null)} onEdit={orderEditDraft} onReview={orderReviewDraft} />}
       {orderEditing && (
         catalogForOrders.isPending
           ? <div className="epo-loading-overlay" role="status"><Loader2 className="epc-spin" size={22} />Đang tải danh mục…<button type="button" onClick={() => setOrderEditing(null)}>Đóng</button></div>

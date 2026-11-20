@@ -35,16 +35,121 @@ const aiClient = {
 
 export const gateService = {
   async getBookings(params={}) {
-    return (await apiClient.get('/v1/Gate/bookings',{params})).data;
+    try {
+      const res = (await apiClient.get('/v1/Gate/bookings',{params})).data;
+      // Đảm bảo luôn trả về array
+      if (Array.isArray(res)) return res;
+      if (Array.isArray(res?.items)) return res.items;
+      if (Array.isArray(res?.data)) return res.data;
+      return [];
+    } catch (err) {
+      console.warn('C# getBookings offline, trả về [] rỗng:', err.message)
+      // Không gọi fallback Express vì /api/bookings không tồn tại → luôn trả []
+      return []
+    }
   },
   async getEntryOrders() {
-    return (await apiClient.get('/v1/Gate/entry-orders')).data;
+    try {
+      return (await apiClient.get('/v1/Gate/entry-orders')).data;
+    } catch (err) {
+      return { items: [], total: 0 }
+    }
+  },
+  async authorizeEntry(payload) {
+    return (await apiClient.post('/gate/entry-admission', payload)).data.data
   },
   async commandBarrier(payload) {
-    return (await apiClient.post('/v1/Gate/barrier-commands',payload)).data;
+    return (await apiClient.post('/v1/Gate/barrier-commands', payload)).data
+  },
+  async openAuthorizedInboundBarrier(commandId) {
+    const { data } = await aiClient.post('/api/v1/gate/barrier/open/in', { commandId })
+    if (!data.success) throw new Error(data.message || 'Chưa gửi được lệnh mở barie tới ESP32.')
+    return data
   },
   async recordPassageIn(payload) {
-    return (await apiClient.post('/v1/Gate/passage-in',{...payload,passageConfirmed:true})).data;
+    return (await apiClient.post('/v1/Gate/passage-in', { ...payload, passageConfirmed: true })).data
+  },
+
+  // ── AI CONTAINER ONNX & OCR INSPECTION (C# Core container.onnx + OCR + ISO 6346) ──
+
+  /**
+   * Kiểm tra tình trạng mô hình AI ONNX nhận diện container (container.onnx)
+   */
+  async getContainerModelStatus() {
+    try {
+      const res = await apiClient.get('/v1/Gate/containers/model-status')
+      return { success: true, isLive: true, data: res.data }
+    } catch (err) {
+      return {
+        success: false,
+        isLive: false,
+        error: err.response?.data?.message || err.message,
+      }
+    }
+  },
+
+  /**
+   * Tải ảnh chụp/khung hình container lên C# Backend để:
+   * 1. YOLO ONNX container.onnx nhận diện vùng ID & Type
+   * 2. OCR đọc ký tự và kiểm tra chuẩn ISO 6346
+   * 3. Đối chiếu tự động với Booking & Đăng ký tại Cảng
+   */
+  async inspectContainerImage(file, query = {}) {
+    const formData = new FormData()
+    if (file instanceof Blob && !(file instanceof File)) {
+      formData.append('file', file, 'container_capture.jpg')
+    } else {
+      formData.append('file', file)
+    }
+    if (query.bookingNumber) formData.append('bookingNumber', query.bookingNumber)
+    if (query.vehiclePlate) formData.append('vehiclePlate', query.vehiclePlate)
+    if (query.gateCode) formData.append('gateCode', query.gateCode)
+    if (query.laneCode) formData.append('laneCode', query.laneCode)
+    if (query.gateType) formData.append('gateType', query.gateType)
+    if (query.autoVerify !== undefined) formData.append('autoVerify', String(query.autoVerify))
+
+    try {
+      const res = await apiClient.post('/v1/Gate/containers/inspect', formData)
+      return { success: true, isLive: true, data: res.data }
+    } catch (err) {
+      return {
+        success: false,
+        isLive: false,
+        error: err.response?.data?.message || err.message,
+      }
+    }
+  },
+
+  /**
+   * Gửi chuỗi ảnh Base64 kiểm duyệt container qua container.onnx
+   */
+  async inspectContainerBase64(payload) {
+    try {
+      const res = await apiClient.post('/v1/Gate/containers/inspect-base64', payload)
+      return { success: true, isLive: true, data: res.data }
+    } catch (err) {
+      return {
+        success: false,
+        isLive: false,
+        error: err.response?.data?.message || err.message,
+      }
+    }
+  },
+
+  /**
+   * Gate Officer xác nhận Đạt (Approved) hoặc Từ chối (Rejected) container, lưu log nghiệp vụ
+   */
+  async recordContainerDecision(payload) {
+    try {
+      const res = await apiClient.post('/v1/Gate/containers/verify-decision', payload)
+      return { success: true, isLive: true, data: res.data }
+    } catch (err) {
+      return {
+        success: false,
+        isLive: false,
+        error: err.response?.data?.message || err.message,
+      }
+    }
   },
   // ── AI CAMERA & RECOGNITION (Python FastAPI microservice) ───────────────
 
@@ -108,23 +213,64 @@ export const gateService = {
     }
   },
 
+  getVideoFeedUrl(lane = 'IN') {
+    return `${AI_URL}/api/v1/gate/video-feed?lane=${lane}`
+  },
+
+  async setCameraPreview(lane = 'IN', enabled = true) {
+    try {
+      const action = enabled ? 'start' : 'stop'
+      const res = await aiClient.post(`/api/v1/gate/camera/${action}?lane=${lane}`)
+      return { success: true, data: res.data }
+    } catch (err) {
+      return { success: false, error: err.message }
+    }
+  },
+
+  async getHardwareStatus() {
+    try {
+      const res = await aiClient.get('/api/v1/gate/hardware-status')
+      return { success: true, data: res.data }
+    } catch (err) {
+      return { success: false, error: err.message }
+    }
+  },
+
+  async manualBarrierOpen(lane = 'IN') {
+    try {
+      const endpoint = String(lane).toUpperCase() === 'OUT' ? '/api/v1/gate/barrier/open/out' : '/api/v1/gate/barrier/open/in'
+      const res = await aiClient.post(endpoint)
+      return { success: true, data: res.data }
+    } catch (err) {
+      return { success: false, error: err.message }
+    }
+  },
+
+  async manualBarrierClose(lane = 'IN') {
+    try {
+      const endpoint = String(lane).toUpperCase() === 'OUT' ? '/api/v1/gate/barrier/close/out' : '/api/v1/gate/barrier/close/in'
+      const res = await aiClient.post(endpoint)
+      return { success: true, data: res.data }
+    } catch (err) {
+      return { success: false, error: err.message }
+    }
+  },
+
+  async manualBarrierFail(lane = 'IN') {
+    try {
+      const endpoint = String(lane).toUpperCase() === 'OUT' ? '/api/v1/gate/barrier/fail/out' : '/api/v1/gate/barrier/fail/in'
+      const res = await aiClient.post(endpoint)
+      return { success: true, data: res.data }
+    } catch (err) {
+      return { success: false, error: err.message }
+    }
+  },
+
   // ── .NET BACKEND VERIFICATION & APPROVAL (PURE REAL API) ─────────────────
 
-  /**
-   * Gửi thông tin phương tiện đến .NET Backend để đối soát qua 7 điều kiện (Rule Engine)
-   */
   async verifyGateScan(payload) {
-    try {
-      const res = await apiClient.post('/v1/gate/verify', payload)
-      return { success: true, isLive: true, data: res.data }
-    } catch (err) {
-      return {
-        success: false,
-        isLive: false,
-        error: err.response?.data?.message || err.message,
-        data: err.response?.data || null,
-      }
-    }
+    const { data } = await apiClient.post('/v1/Gate/verify', payload)
+    return { success: true, isLive: true, data }
   },
 
   /**

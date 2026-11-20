@@ -1,8 +1,5 @@
-import ContainerBookingForm from '../../components/Containers/ContainerBookingForm'
-import BookingBatchWorkspace from '../../components/Containers/BookingBatchWorkspace'
 import BookingFleetDetails from '../../components/Containers/BookingFleetDetails'
-import ContainerJourneySearch from '../Containers/ContainerJourneySearch'
-import { useLocation, useSearchParams } from 'react-router-dom'
+import { useSearchParams, useNavigate } from 'react-router-dom'
 import React, { useState, useEffect, useMemo } from 'react'
 import { bookingService } from '../../services/bookingService'
 import driverService from '../../services/driverService'
@@ -11,21 +8,105 @@ import { formatPlateNumber } from '../../utils/format'
 import { manifestPortSyncService } from '../../services/manifestPortSyncService'
 import { yardReservationStore } from '../../services/yardReservationStore'
 import { calculatePortServiceTariff, computeAutoBookingTariff } from '../../utils/portStorageFee'
+import { serviceOrdersApi } from '../../features/service-catalog/serviceOrdersApi'
+
+const mapLocalPortBookings = (generated = [], activePaymentCache = {}) => {
+  return (generated || []).map((p, idx) => {
+    const voyClean = (p.voyageNumber || '').replace(/[^A-Z0-9]/gi, '').toUpperCase()
+    const isPaid = (p.bookingCode && activePaymentCache[p.bookingCode]?.status === 'Paid') ||
+      (p.id && activePaymentCache[p.id]?.status === 'Paid') ||
+      (p.containerId && activePaymentCache[p.containerId]?.status === 'Paid') ||
+      (voyClean && activePaymentCache[voyClean]?.status === 'Paid') ||
+      Boolean(p.portBillPaid) ||
+      p.status === 'Ready' ||
+      (p.portBill && (p.portBill.status === 'PAID' || p.portBill.status === 'Paid'))
+
+    const opName = p.operation || (p.direction === 'IMPORT' ? 'Lấy container nhập' : 'Hạ container xuất')
+    const defaultStart = new Date(Date.now() + (idx * 3600000)).toISOString()
+
+    const orderFleet = manifestPortSyncService.getOrderFleet(p.containerId) ||
+      manifestPortSyncService.getOrderFleet(p.bookingCode) ||
+      manifestPortSyncService.getOrderFleet(p.id)
+
+    const vPlate = orderFleet?.plate ||
+      (p.licensePlate && !['Chưa gán xe', 'Chưa điều phối', '47AB-294.69', '43C-567.89'].includes(p.licensePlate)
+        ? p.licensePlate
+        : null)
+
+    const vDriver = orderFleet?.driver ||
+      (p.driverName && !['Chưa điều phối', 'TRẦN VĂN TÙNG', 'Nguyễn Văn Minh'].includes(p.driverName)
+        ? p.driverName
+        : null)
+
+    const resolvedStartRaw = p.appointmentStart || p.eta || defaultStart
+    const resolvedStartMs = Date.parse(resolvedStartRaw)
+    const appointmentStartIso = Number.isFinite(resolvedStartMs) ? new Date(resolvedStartMs).toISOString() : defaultStart
+    const appointmentEndIso = p.appointmentEnd || new Date((Number.isFinite(resolvedStartMs) ? resolvedStartMs : Date.now()) + 90 * 60000).toISOString()
+
+    return {
+      id: p.id,
+      bookingCode: p.bookingCode || p.id,
+      bookingType: p.bookingType || (p.direction === 'IMPORT' ? 'Pickup' : 'Dropoff'),
+      operation: opName,
+      containerNumbers: [p.containerId],
+      containerIds: [p.containerId],
+      containerType: p.containerType || '40HC',
+      vehiclePlate: vPlate,
+      driverName: vDriver,
+      appointmentStart: appointmentStartIso,
+      appointmentEnd: appointmentEndIso,
+      status: isPaid ? 'Ready' : (p.status || 'Pending'),
+      paymentStatus: isPaid ? 'Paid' : 'Unpaid',
+      yardSlot: p.yardSlot || p.autoYardSlot?.fullLocation || p.autoYardSlot?.slotName || p.autoYardSlot?.posId,
+      autoYardSlot: p.autoYardSlot,
+      portBill: p.portBill,
+      company: p.company,
+      vesselName: p.vesselName,
+      billOfLading: p.billOfLading,
+      documents: (() => {
+        const rawDocs = orderFleet?.documents || p.eportDocuments || p.documents || []
+        return (Array.isArray(rawDocs) ? rawDocs : []).filter(
+          d => d && !String(d.fileUrl || '').includes('pdfobject.com/pdf/sample.pdf')
+        )
+      })(),
+      isFromPortSync: true,
+      createdAt: p.createdAt || new Date().toISOString()
+    }
+  })
+}
 
 export default function BookingManagement() {
-  const location = useLocation()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const detailBookingId = searchParams.get('bookingId')
-  const [activeTab, setActiveTab] = useState(!detailBookingId && location.state?.containerNumber ? 'create' : 'my_bookings')
+  const [activeTab, setActiveTab] = useState('my_bookings')
 
-  // Data States for My Bookings
-  const [bookings, setBookings] = useState([])
-  const [totalCount, setTotalCount] = useState(0)
+  const isFetchingRef = React.useRef(false)
+  const debounceTimerRef = React.useRef(null)
+
+  // Data States for My Bookings - khởi tạo dữ liệu ngay từ local/sync để hiển thị lập tức
+  const [bookings, setBookings] = useState(() => {
+    try {
+      const generated = manifestPortSyncService.getGeneratedGateBookings() || []
+      const initial = mapLocalPortBookings(generated)
+      return initial.filter(b => b.paymentStatus === 'Paid' || ['Ready', 'CheckedIn', 'Completed'].includes(b.status))
+    } catch {
+      return []
+    }
+  })
+  const [totalCount, setTotalCount] = useState(() => {
+    try {
+      const generated = manifestPortSyncService.getGeneratedGateBookings() || []
+      return generated.length
+    } catch {
+      return 0
+    }
+  })
   const [loading, setLoading] = useState(false)
   const [pageNumber, setPageNumber] = useState(1)
   const [pageSize] = useState(10)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('All')
+  const [statusFilter, setStatusFilter] = useState('Ready')
   const [typeFilter, setTypeFilter] = useState('All')
 
   // Available Fleet & Yard Resources (Loaded 100% from Database)
@@ -41,11 +122,20 @@ export default function BookingManagement() {
     }
   })
 
+  const isRefreshingManifestRef = React.useRef(false)
   useEffect(() => {
     const refreshManifestTransport = (e) => {
+      if (isRefreshingManifestRef.current) return
+      isRefreshingManifestRef.current = true
       try {
         setManifestTransportBookings(manifestPortSyncService.getGeneratedGateBookings())
-        fetchBookings()
+        if (e?.detail?.type === 'REMOTE_FETCH_SYNC' || e?.detail?.type === 'REJECTED_FLEET_UNASSIGNED') {
+          return
+        }
+        if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
+        debounceTimerRef.current = setTimeout(() => {
+          fetchBookings(true)
+        }, 1500)
         if (e?.detail?.type === 'PORT_BILL_SENT' && e?.detail?.bill) {
           const bill = e.detail.bill
           setToast({
@@ -55,11 +145,15 @@ export default function BookingManagement() {
           setTimeout(() => setToast(null), 5000)
         }
       } catch { }
+      finally {
+        isRefreshingManifestRef.current = false
+      }
     }
     window.addEventListener('storage', refreshManifestTransport)
     window.addEventListener('nexusport:manifest_synced', refreshManifestTransport)
     window.addEventListener('nexusport_manifest_synced', refreshManifestTransport)
     return () => {
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current)
       window.removeEventListener('storage', refreshManifestTransport)
       window.removeEventListener('nexusport:manifest_synced', refreshManifestTransport)
       window.removeEventListener('nexusport_manifest_synced', refreshManifestTransport)
@@ -218,8 +312,6 @@ export default function BookingManagement() {
     containerNo: ''
   })
 
-  // Smart e-Pass QR Modal
-  const [showQrModal, setShowQrModal] = useState(false)
 
   // NXP Payment & TOS Port Charges Modal States
   const [showPaymentModal, setShowPaymentModal] = useState(false)
@@ -283,37 +375,35 @@ export default function BookingManagement() {
   // Helper lấy biển số xe chính xác cho từng booking
   const getBookingVehiclePlate = (bk) => {
     if (!bk) return null
-    if (bk.vehiclePlate) return formatPlateNumber(bk.vehiclePlate)
-    if (bk.licensePlate) return formatPlateNumber(bk.licensePlate)
-    if (bk.suggestedPlate) return formatPlateNumber(bk.suggestedPlate)
+    const conts = getBookingContainers(bk)
+    const contNo = conts[0]
+    const orderFleet = manifestPortSyncService.getOrderFleet(contNo) ||
+      manifestPortSyncService.getOrderFleet(bk.bookingCode) ||
+      manifestPortSyncService.getOrderFleet(bk.id)
+    if (orderFleet?.plate) return formatPlateNumber(orderFleet.plate)
+
+    const isFakePlate = p => !p || ['Chưa gán xe', 'Chưa gán', 'Chưa điều phối', '47AB-294.69', '43C-567.89'].includes(p)
+    if (!isFakePlate(bk.vehiclePlate)) return formatPlateNumber(bk.vehiclePlate)
+    if (!isFakePlate(bk.licensePlate)) return formatPlateNumber(bk.licensePlate)
+    if (!isFakePlate(bk.suggestedPlate)) return formatPlateNumber(bk.suggestedPlate)
     if (bk.vehicleDetails?.plateNumber) return formatPlateNumber(bk.vehicleDetails.plateNumber)
     if (bk.vehicleDetails?.licensePlate) return formatPlateNumber(bk.vehicleDetails.licensePlate)
 
     const cached = fleetCache[bk.bookingCode] || fleetCache[bk.id]
-    if (cached?.vehiclePlate) return formatPlateNumber(cached.vehiclePlate)
-    if (cached?.licensePlate) return formatPlateNumber(cached.licensePlate)
+    if (cached?.vehiclePlate && !isFakePlate(cached.vehiclePlate)) return formatPlateNumber(cached.vehiclePlate)
+    if (cached?.licensePlate && !isFakePlate(cached.licensePlate)) return formatPlateNumber(cached.licensePlate)
 
     const truck = (availableResources.trucks || []).find(t => t.id === bk.truckId || t.id === bk.vehicleId)
     if (truck?.plateNumber) return formatPlateNumber(truck.plateNumber)
 
-    const conts = getBookingContainers(bk)
-    const contNo = conts[0]
     const matched = manifestTransportBookings.find(m =>
       (m.id && m.id === bk.id) ||
       (m.bookingCode && m.bookingCode === bk.bookingCode) ||
       (contNo && m.containerId === contNo)
     )
-    if (matched?.licensePlate) return formatPlateNumber(matched.licensePlate)
-    if (matched?.suggestedPlate) return formatPlateNumber(matched.suggestedPlate)
-    if (matched?.vehiclePlate) return formatPlateNumber(matched.vehiclePlate)
-
-    // Nếu đơn đã được duyệt hoặc sẵn sàng vào cổng / đã thanh toán: luôn tự động gán xe từ đội xe vận tải
-    if (bk.status === 'Ready' || bk.status === 'Approved' || bk.status === 'CheckedIn' || bk.status === 'Completed' || (bk.paymentStatus || '').toLowerCase() === 'paid') {
-      if (availableResources.trucks && availableResources.trucks.length > 0) {
-        return formatPlateNumber(availableResources.trucks[0].plateNumber)
-      }
-      return formatPlateNumber(bk.company?.includes('Bien Dong') ? '43C-567.89' : '47AB-294.69')
-    }
+    if (!isFakePlate(matched?.licensePlate)) return formatPlateNumber(matched.licensePlate)
+    if (!isFakePlate(matched?.suggestedPlate)) return formatPlateNumber(matched.suggestedPlate)
+    if (!isFakePlate(matched?.vehiclePlate)) return formatPlateNumber(matched.vehiclePlate)
 
     return null
   }
@@ -321,34 +411,32 @@ export default function BookingManagement() {
   // Helper lấy tên tài xế chính xác cho từng booking
   const getBookingDriverName = (bk) => {
     if (!bk) return null
-    if (bk.driverName) return bk.driverName
-    if (bk.suggestedDriver) return bk.suggestedDriver
+    const conts = getBookingContainers(bk)
+    const contNo = conts[0]
+    const orderFleet = manifestPortSyncService.getOrderFleet(contNo) ||
+      manifestPortSyncService.getOrderFleet(bk.bookingCode) ||
+      manifestPortSyncService.getOrderFleet(bk.id)
+    if (orderFleet?.driver) return orderFleet.driver
+
+    const isFakeDriver = d => !d || ['Chưa điều phối', 'Chưa có tài xế', 'TRẦN VĂN TÙNG', 'Nguyễn Văn Minh'].includes(d)
+    if (!isFakeDriver(bk.driverName)) return bk.driverName
+    if (!isFakeDriver(bk.suggestedDriver)) return bk.suggestedDriver
     if (bk.driverDetails?.fullName) return bk.driverDetails.fullName
     if (bk.driverDetails?.name) return bk.driverDetails.name
 
     const cached = fleetCache[bk.bookingCode] || fleetCache[bk.id]
-    if (cached?.driverName) return cached.driverName
+    if (cached?.driverName && !isFakeDriver(cached.driverName)) return cached.driverName
 
     const driver = (availableResources.drivers || []).find(d => d.id === bk.driverId)
     if (driver?.fullName) return driver.fullName
 
-    const conts = getBookingContainers(bk)
-    const contNo = conts[0]
     const matched = manifestTransportBookings.find(m =>
       (m.id && m.id === bk.id) ||
       (m.bookingCode && m.bookingCode === bk.bookingCode) ||
       (contNo && m.containerId === contNo)
     )
-    if (matched?.driverName) return matched.driverName
-    if (matched?.suggestedDriver) return matched.suggestedDriver
-
-    // Nếu đơn đã được duyệt hoặc sẵn sàng vào cổng / đã thanh toán: luôn tự động gán tài xế
-    if (bk.status === 'Ready' || bk.status === 'Approved' || bk.status === 'CheckedIn' || bk.status === 'Completed' || (bk.paymentStatus || '').toLowerCase() === 'paid') {
-      if (availableResources.drivers && availableResources.drivers.length > 0) {
-        return availableResources.drivers[0].fullName
-      }
-      return bk.company?.includes('Bien Dong') ? 'Nguyễn Văn Minh' : 'TRẦN VĂN TÙNG'
-    }
+    if (!isFakeDriver(matched?.driverName)) return matched.driverName
+    if (!isFakeDriver(matched?.suggestedDriver)) return matched.suggestedDriver
 
     return null
   }
@@ -380,26 +468,50 @@ export default function BookingManagement() {
   const getBookingYardSlot = (bk) => {
     if (!bk) return null
 
-    // 1. Từ autoYardSlot có sẵn
-    if (bk.autoYardSlot?.slotName || bk.autoYardSlot?.fullLocation) {
-      return {
-        short: bk.autoYardSlot.slotName || bk.autoYardSlot.posId || `Block ${bk.autoYardSlot.blockCode} · ${bk.autoYardSlot.bayDisplay || 'Bay 01'}`,
-        detail: bk.autoYardSlot.fullLocation || `Block ${bk.autoYardSlot.blockCode} · ${bk.autoYardSlot.bayDisplay || 'Bay 01'} · T${bk.autoYardSlot.tier || 1}-R${bk.autoYardSlot.row || 1}`,
-        zoneName: bk.autoYardSlot.zoneName || 'Khu Bãi Container Tiên Sa'
-      }
-    }
-
-    // 2. Từ yardSlot
-    if (bk.yardSlot) {
-      return {
-        short: bk.yardSlot,
-        detail: bk.yardSlot,
-        zoneName: 'Khu Bãi Container Tiên Sa'
-      }
-    }
-
     const conts = getBookingContainers(bk)
-    const contNo = conts[0]
+    const contNo = (conts[0] || bk.containerNumber || bk.containerId || '').trim().toUpperCase()
+    const bookNo = (bk.bookingCode || bk.id || '').trim().toUpperCase()
+
+    // 1. ƯU TIÊN SỐ 1: Vị trí thực tế mới nhất từ yardReservationStore (Khi điều độ viên đổi vị trí bãi)
+    try {
+      if (contNo || bookNo) {
+        const resv = (contNo ? yardReservationStore.getReservation(contNo) : null) || (bookNo ? yardReservationStore.getReservation(bookNo) : null)
+        if (resv && (resv.bay || resv.posId)) {
+          const block = resv.blockCode || resv.block || 'D01'
+          const bayNum = Number(resv.bay) || 1
+          const bayStr = String(bayNum).padStart(2, '0')
+          const rowNum = Number(resv.row) || 1
+          const rowStr = String(rowNum).padStart(2, '0')
+          const tierNum = Number(resv.tier) || 1
+          return {
+            short: `Khu ${block} · Bay ${bayStr} (R${rowStr}-T${tierNum})`,
+            detail: `Block ${block} - Bay ${bayStr} (${rowNum}-${tierNum})`,
+            zoneName: resv.zoneName || `Khu ${block[0]} Bãi Cảng Tiên Sa`,
+            slotCode: resv.slotCode || `${block}.${bayStr}.${rowStr}.${tierNum}`
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Lỗi đọc yardReservationStore:', e)
+    }
+
+    // 2. ƯU TIÊN SỐ 2: Vị trí cập nhật từ Lịch tài xế Transport (orderFleet)
+    try {
+      const fleet = (contNo ? manifestPortSyncService.getOrderFleet(contNo) : null) || (bookNo ? manifestPortSyncService.getOrderFleet(bookNo) : null)
+      if (fleet?.yardSlot || (fleet?.blockCode && fleet?.bay)) {
+        const block = fleet.blockCode || 'D01'
+        const bayNum = Number(fleet.bay) || 1
+        const bayStr = String(bayNum).padStart(2, '0')
+        const rowNum = Number(fleet.row) || 1
+        const rowStr = String(rowNum).padStart(2, '0')
+        const tierNum = Number(fleet.tier) || 1
+        return {
+          short: fleet.yardSlot?.includes('·') ? fleet.yardSlot : `Khu ${block} · Bay ${bayStr} (R${rowStr}-T${tierNum})`,
+          detail: `Block ${block} - Bay ${bayStr} (${rowNum}-${tierNum})`,
+          zoneName: `Khu ${block[0]} Bãi Cảng Tiên Sa`
+        }
+      }
+    } catch {}
 
     // 3. Từ NEXUSPORT_PORT_BILLS
     try {
@@ -414,19 +526,23 @@ export default function BookingManagement() {
       }
     } catch { }
 
-    // 4. Từ yardReservationStore
-    try {
-      if (contNo) {
-        const resv = yardReservationStore.getReservation(contNo)
-        if (resv) {
-          return {
-            short: resv.slotName || resv.posId || `Block ${resv.blockCode} · Bay ${resv.bayCode || resv.bay}`,
-            detail: resv.fullLocation || `Block ${resv.blockCode} · Bay ${resv.bayCode || resv.bay} · Row ${resv.row} · Tier ${resv.tier}`,
-            zoneName: resv.zoneName || 'Khu Bãi Container Tiên Sa'
-          }
-        }
+    // 4. Từ autoYardSlot có sẵn trên booking (nếu chưa có điều chỉnh mới)
+    if (bk.autoYardSlot?.slotName || bk.autoYardSlot?.fullLocation) {
+      return {
+        short: bk.autoYardSlot.slotName || bk.autoYardSlot.posId || `Block ${bk.autoYardSlot.blockCode} · ${bk.autoYardSlot.bayDisplay || 'Bay 01'}`,
+        detail: bk.autoYardSlot.fullLocation || `Block ${bk.autoYardSlot.blockCode} · ${bk.autoYardSlot.bayDisplay || 'Bay 01'} · T${bk.autoYardSlot.tier || 1}-R${bk.autoYardSlot.row || 1}`,
+        zoneName: bk.autoYardSlot.zoneName || 'Khu Bãi Container Tiên Sa'
       }
-    } catch { }
+    }
+
+    // 5. Từ yardSlot
+    if (bk.yardSlot) {
+      return {
+        short: bk.yardSlot,
+        detail: bk.yardSlot,
+        zoneName: 'Khu Bãi Container Tiên Sa'
+      }
+    }
 
     // 5. Từ manifestTransportBookings
     try {
@@ -460,8 +576,12 @@ export default function BookingManagement() {
   }
 
   // 🤖 GỌI BACKEND XỬ LÝ AI TỰ ĐỘNG PHỐI XE & TÀI XẾ TỐI ƯU TỪ CSDL VÀ ĐỒNG BỘ TỪ CẢNG
-  const fetchBookings = async () => {
-    setLoading(true)
+  const fetchBookings = async (isBackground = false) => {
+    if (isFetchingRef.current) return
+    isFetchingRef.current = true
+    if (!isBackground && bookings.length === 0) {
+      setLoading(true)
+    }
     try {
       const params = {
         pageNumber,
@@ -483,49 +603,38 @@ export default function BookingManagement() {
         })
       } catch { }
 
+      // Đọc các đơn dịch vụ ePort từ Database API nhẹ nhàng (chỉ 1 request list, không gọi chi tiết lặp lại)
+      try {
+        const eportRes = await serviceOrdersApi.list({ pageSize: 20 }).catch(() => ({ items: [] }))
+        const allEportItems = eportRes?.items || []
+        for (const orderToSync of allEportItems) {
+          try {
+            manifestPortSyncService.saveAllOrderFleets(orderToSync)
+          } catch {}
+
+          if (['PAID', 'SUCCEEDED'].includes(String(orderToSync?.paymentStatus || '').toUpperCase())) {
+            if (orderToSync.id) activePaymentCache[orderToSync.id] = { status: 'Paid' }
+            if (orderToSync.number) activePaymentCache[orderToSync.number] = { status: 'Paid' }
+            if (orderToSync.sourceLabel) activePaymentCache[orderToSync.sourceLabel] = { status: 'Paid' }
+            const voyMatch = String(orderToSync.sourceLabel || '').match(/[A-Z]{2}-?\d{4}[A-Z]?/i)
+            if (voyMatch) activePaymentCache[voyMatch[0].toUpperCase()] = { status: 'Paid' }
+            const contMatch = String(orderToSync.sourceLabel || '').match(/[A-Z]{4}\d{7}/g)
+            if (contMatch) contMatch.forEach(c => { activePaymentCache[c.toUpperCase()] = { status: 'Paid' } })
+            ;(orderToSync.containers || []).forEach(c => {
+              const cNo = String(c.containerNumber || c || '').toUpperCase()
+              if (cNo) activePaymentCache[cNo] = { status: 'Paid' }
+            })
+          }
+        }
+      } catch (e) {}
+
       const apiItems = res.items || []
 
       // Lấy danh sách booking đồng bộ từ Cảng (e-Manifest / Gate Booking đã phân bổ cho công ty vận tải)
       let portItems = []
       try {
         const generated = manifestPortSyncService.getGeneratedGateBookings() || []
-        portItems = generated.map((p, idx) => {
-          const isPaid = (p.bookingCode && activePaymentCache[p.bookingCode]?.status === 'Paid') ||
-            (p.id && activePaymentCache[p.id]?.status === 'Paid') ||
-            (p.containerId && activePaymentCache[p.containerId]?.status === 'Paid') ||
-            p.portBillPaid ||
-            p.status === 'Ready' ||
-            p.status === 'Approved' ||
-            (p.portBill && (p.portBill.status === 'PAID' || p.portBill.status === 'Paid'))
-
-          const opName = p.operation || (p.direction === 'IMPORT' ? 'Lấy container nhập' : 'Hạ container xuất')
-          const defaultStart = new Date(Date.now() + (idx * 3600000)).toISOString()
-
-          return {
-            id: p.id,
-            bookingCode: p.bookingCode || p.id,
-            bookingType: p.bookingType || (p.direction === 'IMPORT' ? 'Pickup' : 'Dropoff'),
-            operation: opName,
-            containerNumbers: [p.containerId],
-            containerIds: [p.containerId],
-            containerType: p.containerType || '40HC',
-            vehiclePlate: p.licensePlate || p.vehiclePlate || p.suggestedPlate || (p.company?.includes('Bien Dong') ? '43C-567.89' : '47AB-294.69'),
-            driverName: p.driverName || p.suggestedDriver || (p.company?.includes('Bien Dong') ? 'Nguyễn Văn Minh' : 'TRẦN VĂN TÙNG'),
-            appointmentStart: p.appointmentStart || p.eta || defaultStart,
-            appointmentEnd: p.appointmentEnd || new Date(new Date(p.appointmentStart || defaultStart).getTime() + 45 * 60000).toISOString(),
-            status: isPaid && p.status === 'Approved' ? 'Ready' : (p.status || 'Pending'),
-            paymentStatus: isPaid ? 'Paid' : 'Unpaid',
-            yardSlot: p.yardSlot || p.autoYardSlot?.fullLocation || p.autoYardSlot?.slotName || p.autoYardSlot?.posId,
-            autoYardSlot: p.autoYardSlot,
-            portBill: p.portBill,
-            company: p.company,
-            vesselName: p.vesselName,
-            billOfLading: p.billOfLading,
-            documents: p.documents || [],
-            isFromPortSync: true,
-            createdAt: p.createdAt || new Date().toISOString()
-          }
-        })
+        portItems = mapLocalPortBookings(generated, activePaymentCache)
       } catch (err) {
         console.warn('Lỗi đồng bộ danh sách booking từ cảng:', err)
       }
@@ -552,9 +661,6 @@ export default function BookingManagement() {
           (b.driverName || '').toLowerCase().includes(s)
         )
       }
-      if (statusFilter !== 'All') {
-        allCombined = allCombined.filter(b => b.status === statusFilter)
-      }
       if (typeFilter !== 'All') {
         allCombined = allCombined.filter(b => b.bookingType === typeFilter)
       }
@@ -563,22 +669,38 @@ export default function BookingManagement() {
         const isPaid = (b.bookingCode && activePaymentCache[b.bookingCode]?.status === 'Paid') ||
           (b.id && activePaymentCache[b.id]?.status === 'Paid') ||
           (b.paymentStatus || '').toLowerCase() === 'paid' ||
+          Boolean(b.portBillPaid) ||
           b.status === 'Ready' ||
           b.status === 'CheckedIn' ||
-          b.status === 'Completed'
+          b.status === 'Completed' ||
+          (b.portBill && (b.portBill.status === 'PAID' || b.portBill.status === 'Paid'))
         return {
           ...b,
           paymentStatus: isPaid ? 'Paid' : (b.paymentStatus || 'Unpaid'),
-          status: isPaid && b.status === 'Approved' ? 'Ready' : b.status
+          status: isPaid && (b.status === 'Approved' || b.status === 'Pending') ? 'Ready' : b.status
         }
       })
 
-      setBookings(enriched)
-      setTotalCount(enriched.length)
+      // Xử lý bộ lọc trạng thái: tab "Tất cả" hiển thị toàn bộ hồ sơ; tab "Sẵn sàng" hiển thị đơn đã thanh toán/sẵn sàng
+      const isReady = b => b.paymentStatus === 'Paid' || ['Ready', 'CheckedIn', 'Completed'].includes(b.status)
+      const isCanceled = b => ['Canceled', 'Cancelled'].includes(String(b.status || '').toLowerCase().replace(/^./, c => c.toUpperCase()))
+      const selected = statusFilter === 'Ready' ? enriched.filter(isReady)
+        : statusFilter === 'Canceled' ? enriched.filter(isCanceled)
+          : enriched
+      selected.sort((a, b) => {
+        if (statusFilter === 'All' && isReady(a) !== isReady(b)) return isReady(a) ? -1 : 1
+        const timeA = Date.parse(a.appointmentStart || a.createdAt || '')
+        const timeB = Date.parse(b.appointmentStart || b.createdAt || '')
+        return (Number.isFinite(timeA) ? timeA : Number.MAX_SAFE_INTEGER)
+          - (Number.isFinite(timeB) ? timeB : Number.MAX_SAFE_INTEGER)
+      })
+      setBookings(selected)
+      setTotalCount(selected.length)
     } catch (err) {
       console.error('Lỗi tải danh sách booking:', err)
     } finally {
       setLoading(false)
+      isFetchingRef.current = false
     }
   }
 
@@ -990,8 +1112,19 @@ export default function BookingManagement() {
 
       updatePaymentCache(paymentBooking.bookingCode, paymentBooking.id, newPaymentData)
 
+      try {
+        await manifestPortSyncService.updateGeneratedGateBookingStatus(code, {
+          status: 'Ready',
+          portBillPaid: true,
+          paymentStatus: 'Paid',
+          paidAt: paidDate,
+        })
+      } catch (syncErr) {
+        console.warn('Sync ready status to manifest warning:', syncErr)
+      }
+
       // Cập nhật booking trong state danh sách:
-      // Nếu booking đang ở Approved hoặc Pending thì chuyển sang Ready (kích hoạt vé e-Pass vào cổng)
+      // Nếu booking đang ở Approved hoặc Pending thì chuyển sang Ready (đủ điều kiện để tài xế báo đã đến cổng và điều độ gọi xe)
       setBookings(prev => prev.map(b => {
         if ((b.bookingCode && b.bookingCode === code) || b.id === paymentBooking.id) {
           return {
@@ -1279,37 +1412,11 @@ export default function BookingManagement() {
 
         <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
           <div className="space-y-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-orange-50 text-signal-orange border border-orange-200 shadow-2xs">
-                <span className="material-symbols-outlined text-xs">calendar_month</span>
-                Hệ Thống Đặt Hẹn Cảng Thông Minh (TAS)
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                Hệ Thống Trực Tuyến
-              </span>
-              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
-                <span className="material-symbols-outlined text-xs">tune</span>
-                Tự Động Phân Bổ Xe
-              </span>
-            </div>
-
             <h1 className="text-2xl sm:text-3xl font-black font-heading text-carbon tracking-tight">
               Quản Lý Lịch Hẹn & Điều Phối Bãi Thông Minh
             </h1>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            <button
-              onClick={() => {
-                setActiveTab('create')
-              }}
-              className="px-6 py-3.5 rounded-2xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2 group cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-base group-hover:rotate-90 transition-transform">add_circle</span>
-              Tạo Lịch Hẹn Mới
-            </button>
-          </div>
         </div>
 
         {/* METRICS / STATS RIBBON - SÁNG, TRONG TRẺO, TINH TẾ */}
@@ -1322,10 +1429,13 @@ export default function BookingManagement() {
               </div>
             </div>
             <div className="text-2xl font-black font-heading text-carbon tracking-tight">{metrics.total}</div>
-            <div className="text-[10px] text-slate-400 mt-0.5">Dữ liệu thời gian thực</div>
           </div>
 
-          <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:border-emerald-300 hover:shadow-sm transition-all group">
+          <div
+            onClick={() => navigate('/dispatch')}
+            className="bg-white/95 backdrop-blur-sm rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:border-emerald-300 hover:shadow-sm transition-all group cursor-pointer"
+            title="Chuyển sang Theo dõi & điều phối xe"
+          >
             <div className="flex items-center justify-between text-emerald-700 text-xs mb-1 font-semibold">
               <span>Sẵn Sàng Vào Cổng</span>
               <div className="w-7 h-7 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -1333,7 +1443,6 @@ export default function BookingManagement() {
               </div>
             </div>
             <div className="text-2xl font-black font-heading text-emerald-600 tracking-tight">{metrics.ready}</div>
-            <div className="text-[10px] text-emerald-600/80 mt-0.5 font-medium">Đã cấp vé QR vào cổng</div>
           </div>
 
           <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:border-amber-300 hover:shadow-sm transition-all group">
@@ -1344,7 +1453,6 @@ export default function BookingManagement() {
               </div>
             </div>
             <div className="text-2xl font-black font-heading text-amber-600 tracking-tight">{metrics.pending}</div>
-            <div className="text-[10px] text-amber-600/80 mt-0.5 font-medium">Cần gán xe & tài xế</div>
           </div>
 
           <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:border-blue-300 hover:shadow-sm transition-all group">
@@ -1355,7 +1463,6 @@ export default function BookingManagement() {
               </div>
             </div>
             <div className="text-2xl font-black font-heading text-blue-600 tracking-tight">{metrics.checkedIn}</div>
-            <div className="text-[10px] text-blue-600/80 mt-0.5 font-medium">Xe đã qua barrier cảng</div>
           </div>
         </div>
       </div>
@@ -1367,9 +1474,6 @@ export default function BookingManagement() {
         <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none w-full sm:w-auto">
           {[
             { key: 'my_bookings', label: 'Danh Sách Lịch Hẹn', icon: 'format_list_bulleted', badge: totalCount },
-            { key: 'create', label: 'Tạo Lịch Hẹn Mới', icon: 'add_circle' },
-            { key: 'batch', label: 'Booking Theo Lô', icon: 'view_list' },
-            { key: 'container_status', label: 'Lộ Trình Container', icon: 'timeline' },
           ].map((tab) => (
             <button
               key={tab.key}
@@ -1480,11 +1584,7 @@ export default function BookingManagement() {
                 </span>
                 {[
                   { id: 'All', label: 'Tất cả' },
-                  { id: 'Ready', label: '✨ Sẵn sàng' },
-                  { id: 'Pending', label: 'Chờ điều phối' },
-                  { id: 'Approved', label: 'Đã duyệt' },
-                  { id: 'CheckedIn', label: 'Đã vào cổng' },
-                  { id: 'Completed', label: 'Hoàn tất' },
+                  { id: 'Ready', label: 'Sẵn sàng' },
                   { id: 'Canceled', label: 'Đã hủy' },
                 ].map((s) => (
                   <button
@@ -1511,7 +1611,7 @@ export default function BookingManagement() {
 
           {/* BOOKINGS TABLE CONTAINER */}
           <div className="bg-paper border border-chalk rounded-2xl shadow-xs overflow-hidden">
-            {loading ? (
+            {loading && bookings.length === 0 ? (
               <div className="p-16 text-center space-y-4">
                 <div className="w-12 h-12 rounded-full border-4 border-signal-orange/20 border-t-signal-orange animate-spin mx-auto"></div>
                 <div className="space-y-1">
@@ -1527,45 +1627,33 @@ export default function BookingManagement() {
                 <div className="space-y-1">
                   <h4 className="font-bold text-carbon text-base">Không tìm thấy hồ sơ Đặt chỗ phù hợp</h4>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                    Thử thay đổi bộ lọc tìm kiếm hoặc nhấn nút Tạo Đặt chỗ Mới bên trên để bắt đầu.
+                    Thử thay đổi bộ lọc tìm kiếm để xem các lịch hẹn phù hợp.
                   </p>
                 </div>
-                <button
-                  onClick={() => {
-                    setActiveTab('create')
-                  }}
-                  className="px-5 py-2.5 rounded-xl bg-signal-orange text-white font-bold text-xs hover:bg-orange-600 transition-all inline-flex items-center gap-2 cursor-pointer shadow-sm"
-                >
-                  <span className="material-symbols-outlined text-sm">add_circle</span>
-                  Tạo Đặt chỗ Ngay
-                </button>
               </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
                     <tr className="bg-slate-50/90 border-b border-chalk text-slate-500 font-bold uppercase text-[10px] tracking-wider">
-                      <th className="py-3.5 px-5">Mã Booking</th>
-                      <th className="py-3.5 px-4">Loại &amp; Phương Tiện</th>
-                      <th className="py-3.5 px-4">Container</th>
-                      <th className="py-3.5 px-4">Ngày Hẹn</th>
-                      <th className="py-3.5 px-4">Vị Trí Container</th>
-                      <th className="py-3.5 px-4">Trạng Thái Booking</th>
-                      <th className="py-3.5 px-4">Thanh Toán</th>
-                      <th className="py-3.5 px-5 text-right">Chi Tiết &amp; Thao Tác</th>
+                      <th className="py-3 px-3">Mã Booking</th>
+                      <th className="py-3 px-3">Nghiệp Vụ</th>
+                      <th className="py-3 px-3">Container</th>
+                      <th className="py-3 px-3">Ngày Hẹn</th>
+                      <th className="py-3 px-3">Vị Trí Bãi</th>
+                      <th className="py-3 px-3">Trạng Thái</th>
+                      <th className="py-3 px-3 text-right">Thao Tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-chalk/80">
                     {bookings.map((bk) => {
-                      const resolvedPlate = getBookingVehiclePlate(bk)
-                      const resolvedDriver = getBookingDriverName(bk)
                       const resolvedContainers = getBookingContainers(bk)
 
                       return (
                         <tr key={bk.id} className="hover:bg-orange-50/30 transition-all duration-150 group">
 
                           {/* 1. Mã Booking */}
-                          <td className="py-4 px-5">
+                          <td className="py-3 px-3">
                             <div className="flex items-center gap-2">
                               <span className="font-mono font-extrabold text-sm text-carbon tracking-tight group-hover:text-signal-orange transition-colors">
                                 {bk.bookingCode}
@@ -1580,59 +1668,22 @@ export default function BookingManagement() {
                                 </span>
                               </button>
                             </div>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-[10px] text-slate-400 font-mono">
-                                ID: {bk.id?.slice(0, 8)}...
-                              </span>
-                              {bk.createdAt && (
-                                <span className="text-[10px] text-slate-400">
-                                  • {new Date(bk.createdAt).toLocaleDateString('vi-VN')}
-                                </span>
-                              )}
-                            </div>
                           </td>
 
-                          {/* 2. Loại & Phương tiện */}
-                          <td className="py-4 px-4">
+                          {/* 2. Nghiệp vụ */}
+                          <td className="py-3 px-3">
                             <div className="space-y-1.5">
                               <div className="flex flex-wrap items-center gap-1.5">
                                 {renderOperationTypeBadge(bk)}
 
-                                {bk.tripStatus && (
-                                  <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-600 border border-slate-200">
-                                    {bk.tripStatus === 'Scheduled' ? 'Chuyến: Đã lên lịch' :
-                                      bk.tripStatus === 'Arrived' ? 'Chuyến: Đã đến cảng' :
-                                        bk.tripStatus === 'Processing' ? 'Chuyến: Đang xử lý' :
-                                          bk.tripStatus === 'PartiallyCompleted' ? 'Chuyến: Xong 1 chặng' :
-                                            bk.tripStatus === 'Completed' ? 'Chuyến: Hoàn tất' : `Chuyến: ${bk.tripStatus}`}
-                                  </span>
-                                )}
 
-                                {resolvedPlate ? (
-                                  <span className="font-mono font-bold text-[11px] text-carbon bg-slate-100 px-2.5 py-0.5 rounded-md border border-slate-200 flex items-center gap-1 shadow-2xs">
-                                    <span>🚚</span>
-                                    <span>{resolvedPlate}</span>
-                                  </span>
-                                ) : (
-                                  <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
-                                    Chưa gán xe
-                                  </span>
-                                )}
                               </div>
 
-                              {resolvedDriver ? (
-                                <div className="text-[11px] text-slate-700 flex items-center gap-1 font-medium">
-                                  <span className="material-symbols-outlined text-xs text-slate-400">person</span>
-                                  <span>{resolvedDriver}</span>
-                                </div>
-                              ) : (
-                                <div className="text-[10px] text-slate-400 italic">Chưa chỉ định tài xế</div>
-                              )}
                             </div>
                           </td>
 
                           {/* 3. Container */}
-                          <td className="py-4 px-4">
+                          <td className="py-3 px-3">
                             {resolvedContainers.length > 0 ? (
                               <div className="space-y-1.5">
                                 <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-gradient-to-r from-orange-50 to-amber-50/60 border border-orange-200/90 text-signal-orange font-mono font-black text-xs shadow-2xs">
@@ -1643,38 +1694,24 @@ export default function BookingManagement() {
                                   <div className="flex items-center gap-1 flex-wrap">
                                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-50 border border-cyan-300 text-cyan-800 text-[10px] font-bold shadow-2xs">
                                       <span className="material-symbols-outlined text-[12px] text-cyan-600 animate-pulse">ac_unit</span>
-                                      <span>Kho Lạnh ({bk.targetTemperature ? `${bk.targetTemperature}°C` : 'Cấp điện'})</span>
+                                      <span>Lạnh{bk.targetTemperature ? ` ${bk.targetTemperature}°C` : ''}</span>
                                     </span>
-                                    {bk.reeferPlugCode && (
-                                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-300 text-emerald-800 text-[9px] font-mono font-bold">
-                                        <span className="material-symbols-outlined text-[10px] text-emerald-600">power</span>
-                                        {bk.reeferPlugCode}
-                                      </span>
-                                    )}
                                   </div>
                                 )}
-                                <div className="text-[10px] text-slate-400">Tiêu chuẩn cảng · Đã xác thực</div>
                               </div>
                             ) : (
                               <div className="space-y-1">
                                 <span className="text-[11px] text-amber-700 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200 italic inline-block">
                                   Chưa gắn container
                                 </span>
-                                {bk.isReeferPowerRequired && (
-                                  <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-cyan-50 border border-cyan-300 text-cyan-800 text-[10px] font-bold">
-                                    <span className="material-symbols-outlined text-[12px] text-cyan-600">ac_unit</span>
-                                    <span>Yêu cầu cấp điện kho lạnh</span>
-                                  </div>
-                                )}
                               </div>
                             )}
                           </td>
 
                           {/* 4. Ngày Hẹn */}
-                          <td className="py-4 px-4">
+                          <td className="py-3 px-3">
                             <div className="space-y-0.5">
                               <div className="font-bold text-carbon text-xs flex items-center gap-1.5 whitespace-nowrap">
-                                <span className="material-symbols-outlined text-xs text-slate-400">calendar_today</span>
                                 <span>{new Date(bk.appointmentStart).toLocaleDateString('vi-VN')}</span>
                               </div>
                               <div className="text-[11px] text-slate-500 font-mono bg-fog px-2 py-0.5 rounded w-fit border border-chalk whitespace-nowrap">
@@ -1684,7 +1721,7 @@ export default function BookingManagement() {
                           </td>
 
                           {/* 5. Vị Trí Container */}
-                          <td className="py-4 px-4">
+                          <td className="py-3 px-3">
                             {(() => {
                               const yard = getBookingYardSlot(bk)
                               if (yard) {
@@ -1694,12 +1731,6 @@ export default function BookingManagement() {
                                       <span className="material-symbols-outlined text-xs text-sky-600">location_on</span>
                                       <span>{yard.short}</span>
                                     </div>
-                                    {yard.detail && yard.detail !== yard.short && (
-                                      <div className="text-[10.5px] text-slate-500 font-medium whitespace-nowrap">
-                                        {yard.detail}
-                                      </div>
-                                    )}
-                                    <div className="text-[9.5px] text-slate-400">Bãi Cảng Tiên Sa</div>
                                   </div>
                                 )
                               }
@@ -1712,60 +1743,22 @@ export default function BookingManagement() {
                           </td>
 
                           {/* 6. Trạng Thái Booking */}
-                          <td className="py-4 px-4">
+                          <td className="py-3 px-3">
                             {renderBookingStatusBadge(bk.status)}
                           </td>
 
-                          {/* 7. Trạng Thái Thanh Toán Cước Cảng */}
-                          <td className="py-4 px-4">
-                            {renderPaymentStatusBadge(bk)}
-                          </td>
+                          {/* 7. Chi Tiết & Thao Tác Nghiệp Vụ */}
+                          <td className="py-3 px-3 text-right">
+                            <div className="flex items-center justify-end gap-2">
 
-                          {/* 8. Chi Tiết & Thao Tác Nghiệp Vụ */}
-                          <td className="py-4 px-5 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-
-                              {/* Nút Xem chi tiết rõ ràng, nổi bật */}
+                              {/* Nút Xem chi tiết (kèm biên lai cước bên trong) */}
                               <button
                                 onClick={() => openBookingDetail(bk)}
-                                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-[11px] transition-all flex items-center gap-1.5 shadow-xs hover:shadow cursor-pointer whitespace-nowrap"
-                                title="Xem hồ sơ chi tiết lịch hẹn & điều phối bãi"
+                                className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-black text-white font-bold text-xs transition-all flex items-center gap-1.5 shadow-xs hover:shadow cursor-pointer whitespace-nowrap"
+                                title="Xem hồ sơ chi tiết lịch hẹn & biên lai cước cảng"
                               >
-                                <span className="material-symbols-outlined text-sm">visibility</span>
-                                <span>Xem chi tiết ➔</span>
+                                <span>Chi tiết</span>
                               </button>
-
-                              {/* Nút Xem / Thanh toán cước cảng VietQR */}
-                              <button
-                                onClick={() => openPaymentModal(bk)}
-                                className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition-all flex items-center gap-1 shadow-sm cursor-pointer whitespace-nowrap ${getBookingPaymentInfo(bk).status === 'Paid'
-                                    ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300'
-                                    : 'bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5'
-                                  }`}
-                                title={getBookingPaymentInfo(bk).status === 'Paid' ? 'Xem biên lai cước cảng' : 'Thanh toán cước cảng (VietQR)'}
-                              >
-                                <span className="material-symbols-outlined text-sm">
-                                  {getBookingPaymentInfo(bk).status === 'Paid' ? 'receipt_long' : 'payments'}
-                                </span>
-                                {getBookingPaymentInfo(bk).status === 'Paid' ? 'Biên lai' : 'Thanh toán'}
-                              </button>
-
-                              {/* Vé e-Pass QR khi đã Ready */}
-                              {(bk.status === 'Ready' || bk.status === 'Approved' || bk.status === 'CheckedIn') && (
-                                <button
-                                  onClick={() => {
-                                    setSelectedBooking(bk)
-                                    setShowQrModal(true)
-                                  }}
-                                  className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-[11px] transition-all flex items-center gap-1 shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 cursor-pointer group whitespace-nowrap"
-                                  title="Xem Vé Điện Tử e-Pass để quét vào cổng"
-                                >
-                                  <span className="material-symbols-outlined text-sm text-white group-hover:scale-110 transition-transform">
-                                    qr_code_2
-                                  </span>
-                                  Vé e-Pass
-                                </button>
-                              )}
 
                               {bk.status === 'Pending' && (
                                 <button
@@ -1851,13 +1844,10 @@ export default function BookingManagement() {
       {/* ========================================================================= */}
       {/* TAB 2: CREATE BOOKING WIZARD */}
       {/* ========================================================================= */}
-      {activeTab === 'create' && <ContainerBookingForm onClose={() => setActiveTab('my_bookings')} onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
-      {activeTab === 'batch' && <BookingBatchWorkspace onSaved={() => { fetchBookings(); loadAvailableResources(); }} />}
 
       {/* ========================================================================= */}
       {/* TAB 3: CONTAINER JOURNEY TRACKING */}
       {/* ========================================================================= */}
-      {activeTab === 'container_status' && <ContainerJourneySearch isTransport />}
 
       {/* ========================================================================= */}
       {/* MODAL 1: FLEET ASSIGNMENT MODAL (NXP-049 CHUYỂN SANG READY) */}
@@ -1977,7 +1967,7 @@ export default function BookingManagement() {
 
               <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-emerald-800 text-[11px] flex items-center gap-2">
                 <span className="material-symbols-outlined text-base">info</span>
-                <span>Sau khi xác nhận, Booking sẽ tự động chuyển sang <strong>Sẵn sàng</strong> và kích hoạt Vé e-Pass QR vào cổng.</span>
+                <span>Sau khi xác nhận, lịch hẹn chuyển sang <strong>Sẵn sàng</strong>. Tài xế xác nhận chuyến và báo đã đến cổng để điều độ gọi xe vào cảng.</span>
               </div>
 
               <div className="flex justify-end gap-3 pt-3 border-t border-chalk">
@@ -1998,113 +1988,6 @@ export default function BookingManagement() {
                 </button>
               </div>
             </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODAL 2: DIGITAL SMART E-PASS QR MODAL */}
-      {/* ========================================================================= */}
-      {showQrModal && selectedBooking && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-paper border border-chalk rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-5 animate-in zoom-in-95 text-center relative overflow-hidden">
-
-            {/* Ticket Accent Header */}
-            <div className="flex justify-between items-center border-b border-chalk pb-3">
-              <div className="flex items-center gap-1.5 text-[10px] font-extrabold uppercase tracking-widest text-signal-orange">
-                <span className="w-2 h-2 rounded-full bg-signal-orange"></span>
-                Vé Vào Cổng Điện Tử NexusPort
-              </div>
-              <button
-                onClick={() => setShowQrModal(false)}
-                className="w-7 h-7 rounded-full bg-fog hover:bg-chalk flex items-center justify-center text-slate-500 hover:text-carbon font-bold text-sm cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Ticket Card Info */}
-            <div className="bg-gradient-to-br from-orange-50/70 via-white to-slate-50 text-carbon rounded-2xl p-4 text-left space-y-2 border border-orange-200/80 shadow-xs">
-              <div className="flex justify-between items-start">
-                <div>
-                  <span className="text-[10px] text-slate-500 font-mono tracking-wider block">MÃ LỊCH HẸN</span>
-                  <h4 className="font-mono font-black text-xl text-signal-orange tracking-tight">{selectedBooking.bookingCode}</h4>
-                </div>
-                <span className="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-800 border border-emerald-300">
-                  SẴN SÀNG
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 pt-2 border-t border-orange-200/60 text-xs">
-                <div>
-                  <span className="text-[10px] text-slate-500 font-semibold">BIỂN SỐ XE</span>
-                  <p className="font-mono font-bold text-carbon">{getBookingVehiclePlate(selectedBooking) || '51C-992.81'}</p>
-                </div>
-                <div>
-                  <span className="text-[10px] text-slate-500 font-semibold">TÀI XẾ</span>
-                  <p className="font-bold text-carbon truncate">{getBookingDriverName(selectedBooking) || 'Nguyễn Văn Hùng'}</p>
-                </div>
-              </div>
-
-              {selectedBooking.isReeferPowerRequired && (
-                <div className="pt-2 border-t border-orange-200/60 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-1.5 text-cyan-800 font-bold">
-                    <span className="material-symbols-outlined text-sm text-cyan-600 animate-pulse">ac_unit</span>
-                    <span>Kho Lạnh {selectedBooking.targetTemperature ? `${selectedBooking.targetTemperature}°C` : 'Cấp điện'}</span>
-                  </div>
-                  {selectedBooking.reeferPlugCode && (
-                    <span className="font-mono text-[11px] font-extrabold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded border border-emerald-300">
-                      ⚡ Trụ: {selectedBooking.reeferPlugCode}
-                    </span>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* QR Code Frame */}
-            <div className="bg-white p-5 border-2 border-dashed border-chalk rounded-3xl w-52 h-52 mx-auto flex items-center justify-center shadow-inner relative group">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(
-                  JSON.stringify({
-                    bookingCode: selectedBooking.bookingCode,
-                    plateNumber: getBookingVehiclePlate(selectedBooking) || '51C-992.81',
-                    status: 'Ready',
-                    expires: selectedBooking.appointmentEnd
-                  })
-                )}`}
-                alt="Gate Pass QR"
-                className="w-full h-full object-contain"
-              />
-            </div>
-
-            <div className="space-y-1">
-              <p className="text-xs text-carbon font-bold flex items-center justify-center gap-1">
-                <span className="material-symbols-outlined text-sm text-emerald-600">check_circle</span>
-                Hợp lệ để vào cổng cảng
-              </p>
-              <p className="text-[11px] text-slate-500 leading-tight">
-                Quét mã này tại đầu đọc tự động của trạm barrier cảng để kích hoạt cân và mở barie vào bãi.
-              </p>
-            </div>
-
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={() => {
-                  window.print()
-                }}
-                className="flex-1 py-3 rounded-2xl border border-chalk bg-fog hover:bg-chalk text-carbon font-bold text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-sm">print</span>
-                In Thẻ
-              </button>
-
-              <button
-                onClick={() => setShowQrModal(false)}
-                className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 transition-all cursor-pointer"
-              >
-                Đóng Thẻ
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -2268,7 +2151,7 @@ export default function BookingManagement() {
                     <div className="text-[11px] text-slate-600 bg-white/90 p-2.5 rounded-xl border border-sky-100 flex items-start gap-2">
                       <span className="material-symbols-outlined text-sm text-sky-600 shrink-0 mt-0.5">info</span>
                       <span>
-                        Tài xế khi đưa xe đến cổng xuất trình mã vé <strong>e-Pass</strong> hoặc quét QR tự động tại barie để hệ thống cân nhận diện và chỉ dẫn di chuyển thẳng vào vị trí container trên bãi.
+                        Tài xế xác nhận chuyến trên app, báo <strong>đã đến cổng</strong> để điều độ gọi xe (tự động nếu bãi còn chỗ). Camera cổng nhận diện biển số và hệ thống chỉ dẫn di chuyển thẳng vào vị trí container trên bãi.
                       </span>
                     </div>
                   </div>
@@ -2549,10 +2432,18 @@ export default function BookingManagement() {
               )}
             </div>
 
-            <div className="flex justify-end pt-2">
+            <div className="flex justify-between items-center pt-3 border-t border-chalk">
+              <button
+                type="button"
+                onClick={() => openPaymentModal(selectedBooking)}
+                className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition-all flex items-center gap-2 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-sm">receipt_long</span>
+                <span>Xem Biên Lai Cước Điện Tử ({getBookingPaymentInfo(selectedBooking).amount.toLocaleString('vi-VN')}đ)</span>
+              </button>
               <button
                 onClick={closeBookingDetail}
-                className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white text-xs font-bold shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 transition-all cursor-pointer"
+                className="px-6 py-2.5 rounded-xl bg-slate-900 hover:bg-black text-white text-xs font-bold transition-all cursor-pointer"
               >
                 Đóng
               </button>
@@ -2830,7 +2721,7 @@ export default function BookingManagement() {
                       <div>
                         <h4 className="font-black text-emerald-900 text-sm">GIAO DỊCH ĐÃ THANH TOÁN THÀNH CÔNG</h4>
                         <p className="text-xs text-emerald-700">
-                          Hệ thống đã ghi nhận thanh toán phí cảng. Chuyến xe đủ điều kiện nhận vé e-Pass để vào cảng.
+                          Hệ thống đã ghi nhận thanh toán phí cảng. Chuyến xe đủ điều kiện để điều độ gọi vào cảng.
                         </p>
                       </div>
                     </div>
@@ -2854,7 +2745,7 @@ export default function BookingManagement() {
                         <span className="text-slate-400 text-[11px]">Trạng Thái Kế Toán Cảng:</span>
                         <p className="font-bold text-emerald-600 mt-0.5 flex items-center gap-1">
                           <span className="material-symbols-outlined text-sm">done_all</span>
-                          Đã Đối Soát & Xuất Vé
+                          Đã Đối Soát
                         </p>
                       </div>
                     </div>
@@ -2873,19 +2764,6 @@ export default function BookingManagement() {
                     </button>
 
                     <div className="flex items-center gap-2 w-full sm:w-auto">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowPaymentModal(false)
-                          setSelectedBooking(paymentBooking)
-                          setShowQrModal(true)
-                        }}
-                        className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <span className="material-symbols-outlined text-sm">qr_code_2</span>
-                        Xem Vé Vào Cổng
-                      </button>
-
                       <button
                         type="button"
                         onClick={() => setShowPaymentModal(false)}

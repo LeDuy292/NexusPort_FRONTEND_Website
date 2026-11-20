@@ -1,13 +1,18 @@
 import gateService from './gateService'
 import { createGatePassageSimulation, passageOpenSeconds } from './gatePassageSimulation'
 
-export const gateOpenSeconds = passageOpenSeconds(import.meta.env.VITE_GATE_OPEN_SECONDS)
+export const gateOpenSeconds = passageOpenSeconds(import.meta.env.VITE_GATE_OPEN_SECONDS || 10)
 
 // Scope recovery to the signed-in account. Keep the small pending cycle in this
 // tab across refreshes; image evidence is already persisted by verification.
 const accountKey = () => {
-  const user = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null')
-  return user?.id || user?.userId || user?.username || user?.email || 'anonymous'
+  try {
+    const raw = localStorage.getItem('user') || sessionStorage.getItem('user')
+    const user = raw && raw !== 'undefined' ? JSON.parse(raw) : null
+    return user?.id || user?.userId || user?.username || user?.email || 'anonymous'
+  } catch {
+    return 'anonymous'
+  }
 }
 let activeAccount
 let simulator

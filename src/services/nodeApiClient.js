@@ -11,7 +11,7 @@ const getToken = () => {
   }
 }
 
-const request = async (method, path, { params, body } = {}) => {
+const request = async (method, path, { params, body, signal } = {}) => {
   const url = new URL(`${NODE_API_URL}${path}`, window.location.origin)
   Object.entries(params || {}).forEach(([key, value]) => {
     if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value))
@@ -21,13 +21,15 @@ const request = async (method, path, { params, body } = {}) => {
   try {
     response = await fetch(url, {
       method,
+      signal,
       headers: {
         ...(!(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       ...(body !== undefined ? { body: body instanceof FormData ? body : JSON.stringify(body) } : {}),
     })
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error
     throw new Error('Không thể kết nối đến dịch vụ quản lý Container. Vui lòng thử lại sau.')
   }
 
@@ -60,7 +62,7 @@ const request = async (method, path, { params, body } = {}) => {
 }
 
 export default {
-  get: (path, params) => request('GET', path, { params }),
+  get: (path, params, { signal } = {}) => request('GET', path, { params, signal }),
   post: (path, body) => request('POST', path, { body }),
   postForm: (path, formData) => request('POST', path, { body: formData }),
   put: (path, body) => request('PUT', path, { body }),

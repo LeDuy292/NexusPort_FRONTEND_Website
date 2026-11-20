@@ -19,14 +19,14 @@ function makeDocSvg(type, title, text1, text2, color = '#0284c7') {
     <rect width="600" height="380" rx="16" fill="#f8fafc" stroke="#cbd5e1" stroke-width="3"/>
     <rect x="0" y="0" width="600" height="60" rx="16" fill="${color}"/>
     <rect x="0" y="40" width="600" height="20" fill="${color}"/>
-    <text x="300" y="38" font-family="Arial, sans-serif" font-size="18" font-weight="bold" fill="#ffffff" text-anchor="middle" letter-spacing="1">${title.toUpperCase()}</text>
+    <text x="300" y="38" font-family="'Inter', sans-serif" font-size="18" font-weight="bold" fill="#ffffff" text-anchor="middle" letter-spacing="1">${title.toUpperCase()}</text>
     <rect x="30" y="80" width="130" height="170" rx="10" fill="#e2e8f0" stroke="#94a3b8" stroke-width="2"/>
     <circle cx="95" cy="140" r="35" fill="#94a3b8"/>
     <ellipse cx="95" cy="220" rx="50" ry="25" fill="#94a3b8"/>
-    <text x="180" y="115" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#0f172a">${text1}</text>
-    <text x="180" y="150" font-family="Arial, sans-serif" font-size="14" fill="#334155">${text2}</text>
-    <text x="180" y="185" font-family="Arial, sans-serif" font-size="13" fill="#64748b">CƠ QUAN CẤP: BỘ GIAO THÔNG VẬN TẢI / BỘ CÔNG AN</text>
-    <text x="180" y="215" font-family="Arial, sans-serif" font-size="13" fill="#166534" font-weight="bold">✓ HỒ SƠ PHÁP LÝ HỢP LỆ THEO QUY ĐỊNH EPORT</text>
+    <text x="180" y="115" font-family="'Inter', sans-serif" font-size="16" font-weight="bold" fill="#0f172a">${text1}</text>
+    <text x="180" y="150" font-family="'Inter', sans-serif" font-size="14" fill="#334155">${text2}</text>
+    <text x="180" y="185" font-family="'Inter', sans-serif" font-size="13" fill="#64748b">CƠ QUAN CẤP: BỘ GIAO THÔNG VẬN TẢI / BỘ CÔNG AN</text>
+    <text x="180" y="215" font-family="'Inter', sans-serif" font-size="13" fill="#166534" font-weight="bold">✓ HỒ SƠ PHÁP LÝ HỢP LỆ THEO QUY ĐỊNH EPORT</text>
     <line x1="30" y1="270" x2="570" y2="270" stroke="#e2e8f0" stroke-width="2"/>
     <rect x="30" y="290" width="540" height="60" rx="8" fill="#f1f5f9"/>
     <text x="50" y="325" font-family="monospace" font-size="14" fill="#475569">MÃ XÁC THỰC: NXP-${Math.abs(text1.split('').reduce((a, b) => (a << 5) - a + b.charCodeAt(0), 0)).toString(16).toUpperCase()}</text>

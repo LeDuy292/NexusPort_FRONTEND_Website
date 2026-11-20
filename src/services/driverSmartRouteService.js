@@ -17,7 +17,7 @@ export const driverSmartRouteService = {
   confirmContainer: (containerId, bookingId, condition = 'OK', notes = '') => withTimeout(nodeApiClient.post(
     `/drivers/me/routes/${encodeURIComponent(containerId)}/confirm-container`, { bookingId, condition, notes },
   )),
-  monitor: () => withTimeout(nodeApiClient.get('/dispatcher/smart-routes')),
+  monitor: (bookingId, signal) => withTimeout(nodeApiClient.get('/dispatcher/smart-routes', { bookingId }, { signal })),
   updateCondition: (condition) => withTimeout(nodeApiClient.put('/dispatcher/smart-routes/conditions', condition)),
   gateLocations: () => withTimeout(nodeApiClient.get('/gate/locations')),
 }

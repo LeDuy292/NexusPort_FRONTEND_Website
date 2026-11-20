@@ -1,0 +1,82 @@
+/* ── Giao diện đồng nhất với các trang nghiệp vụ khác (thẻ trắng, viền chalk, bo 2xl, chữ carbon, nút cam) ── */
+.arrival-page{--dispatch-ink:#202020;--dispatch-muted:#64748b;--dispatch-border:#e8e8e8;--dispatch-accent:#ff682c;max-width:none;width:100%;padding:24px 32px;background:#f8fafc;min-height:100%;color:#202020;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+.arrival-page .arrival-header{background:#fff;border:1px solid #e8e8e8;border-radius:16px;padding:20px 24px;box-shadow:0 1px 2px rgba(15,23,42,.05);margin-bottom:20px;align-items:center}
+.arrival-page .arrival-header h1{font-size:26px;font-weight:800;letter-spacing:-.02em;color:#202020;margin:6px 0 4px}
+.arrival-page .arrival-header p{color:#64748b;font-size:13px;max-width:760px}
+.arrival-page .arrival-eyebrow{display:flex;align-items:center;flex-wrap:wrap;gap:8px;color:#64748b!important;font-size:11px;font-weight:600;letter-spacing:.02em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.arrival-page .arrival-badge{margin:0;background:#ffedd5;color:#9a3412;font-family:'Inter',sans-serif;font-weight:800;letter-spacing:.04em}
+.arrival-page .arrival-live{border:1px solid #e8e8e8;background:#f8fafc;color:#64748b;font-weight:700;font-size:12px;padding:7px 14px}
+.arrival-page .arrival-live.connected{background:#ecfdf5;color:#047857;border-color:#a7f3d0}
+.arrival-page .arrival-toolbar{border:1px solid #e8e8e8;border-radius:16px;box-shadow:0 1px 2px rgba(15,23,42,.05);padding:14px 20px}
+.arrival-page .arrival-toolbar label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:#64748b}
+.arrival-page button{border:1px solid #e2e8f0;border-radius:12px;color:#202020;font-weight:700;font-size:12px;background:#fff}
+.arrival-page button:hover:not(:disabled){background:#f5f5f5}
+.arrival-page input,.arrival-page textarea,.arrival-page select{border:1px solid #e8e8e8;background:#f5f5f5;border-radius:12px;font-weight:600;color:#202020}
+.arrival-page input:focus,.arrival-page textarea:focus,.arrival-page select:focus{outline:none;border-color:#ff682c}
+/* Thẻ số liệu giống StatCard */
+.arrival-page .arrival-counts{gap:16px}
+.arrival-page .arrival-counts>div{border:1px solid #e8e8e8;border-top:1px solid #e8e8e8;border-radius:16px;box-shadow:0 1px 2px rgba(15,23,42,.05);padding:16px 20px;position:relative;overflow:hidden}
+.arrival-page .arrival-counts>div:before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;background:#94a3b8}
+.arrival-page .arrival-counts .count-ready:before{background:#10b981}
+.arrival-page .arrival-counts .count-absent:before{background:#94a3b8}
+.arrival-page .arrival-counts .count-called:before{background:#ff682c}
+.arrival-page .arrival-counts>div>div{flex-direction:column;align-items:flex-start;gap:2px}
+.arrival-page .arrival-counts span{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#64748b}
+.arrival-page .arrival-counts strong{font-size:30px;font-weight:800;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#202020}
+.arrival-page .arrival-counts .arrival-stat-icon{text-transform:none;letter-spacing:0;font-size:24px;border-radius:12px}
+/* Sức chứa bãi */
+.arrival-page .dispatch-capacity{background:#fff;border:1px solid #e8e8e8;border-radius:16px;box-shadow:0 1px 2px rgba(15,23,42,.05);color:#475569;padding:16px 20px;font-size:12px}
+.arrival-page .dispatch-capacity strong{font-size:16px;font-weight:800;color:#202020}
+.arrival-page .dispatch-capacity-bar{flex:1 1 100%;height:8px;border-radius:999px;background:#e8f1ec;overflow:hidden}
+.arrival-page .dispatch-capacity-bar span{display:block;height:100%;border-radius:999px;background:#10b981}
+.arrival-page .dispatch-capacity-bar.busy span{background:#f59e0b}
+.arrival-page .dispatch-capacity-bar.full span{background:#ef4444}
+/* Danh sách xe + chi tiết */
+.arrival-page .arrival-queue,.arrival-page .arrival-detail{border:1px solid #e8e8e8;border-radius:16px;box-shadow:0 1px 2px rgba(15,23,42,.05)}
+.arrival-page .arrival-detail{border-top:1px solid #e8e8e8;padding:24px}
+.arrival-page .arrival-panel-heading{background:#fff;color:#202020;border-bottom:1px solid #e8e8e8;padding:16px 20px}
+.arrival-page .arrival-panel-heading h2{color:#202020;font-size:16px;font-weight:800}
+.arrival-page .arrival-panel-heading>div>span{color:#64748b;font-size:11px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.arrival-page .arrival-tabs{background:#f5f5f5;border:1px solid #e8e8e8;border-radius:12px;padding:4px;margin:16px 16px 0;gap:4px}
+.arrival-page .arrival-tabs button{border:0;background:transparent;color:#64748b;border-radius:9px;padding:7px 12px;font-size:12px;font-weight:700}
+.arrival-page .arrival-tabs button:hover:not(:disabled){background:#e8e8e8}
+.arrival-page .arrival-tabs button[aria-pressed=true]{background:#202020;color:#fff;border:0}
+.arrival-page .arrival-order{background:#f8fafc;border:1px solid #f1f5f9;border-radius:10px;padding:10px 12px;margin:12px 16px;line-height:1.6}
+.arrival-page .arrival-row{border:1px solid #e8e8e8;border-left:4px solid #cbd5e1;border-radius:12px;box-shadow:0 1px 2px rgba(15,23,42,.03);padding:14px 16px}
+.arrival-page .arrival-row:nth-child(even){background:#fff}
+.arrival-page .arrival-row:hover{background:#f8fafc}
+.arrival-page .arrival-row.selected{background:#fff7ed;border-color:#fdba74;border-left-color:#ff682c}
+.arrival-page .arrival-row.ready{border-left-color:#10b981}
+.arrival-page .arrival-row.called{border-left-color:#3b82f6}
+.arrival-page .arrival-row.acknowledged{border-left-color:#0d9488}
+.arrival-page .arrival-row strong{font-size:15px;font-weight:800;color:#202020;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.arrival-page .arrival-row small{color:#64748b}
+.arrival-page .arrival-status{border-radius:999px;padding:3px 10px;font-size:11px;font-weight:800;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
+.arrival-page .arrival-status.ready{background:#ecfdf5;color:#047857;border-color:#a7f3d0}
+.arrival-page .arrival-status.called{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
+.arrival-page .arrival-status.acknowledged{background:#f0fdfa;color:#0f766e;border-color:#99f6e4}
+.arrival-page .arrival-status.held{background:#fffbeb;color:#b45309;border-color:#fde68a}
+.arrival-page .arrival-detail-heading h2{font-size:22px;font-weight:800;letter-spacing:-.01em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.arrival-page .arrival-detail .arrival-eyebrow{font-family:'Inter',sans-serif}
+.arrival-page .arrival-facts{background:#f8fafc;border:1px solid #f1f5f9;border-radius:12px;padding:14px 16px}
+.arrival-page .arrival-facts dt{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;padding-top:2px}
+.arrival-page .arrival-facts dd{font-size:13px;font-weight:700;color:#202020}
+.arrival-page .arrival-cargo{border:1px solid #e8e8e8;border-radius:12px;padding:14px 16px}
+.arrival-page .arrival-cargo h3{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:#64748b}
+.arrival-page .arrival-message{background:#fff7ed;border:1px solid #fed7aa;border-left:4px solid #ff682c;border-radius:12px;color:#7c2d12;font-weight:600}
+.arrival-page .dispatch-intervention{border:1px solid #e8e8e8;border-radius:12px;padding:12px 14px;background:#fff}
+.arrival-page .dispatch-intervention summary{cursor:pointer;font-size:13px;font-weight:800;color:#202020}
+.arrival-page .arrival-call{background:#ff682c;border-color:#ff682c;color:#fff;font-weight:800;border-radius:12px;padding:11px 18px}
+.arrival-page .arrival-call:hover:not(:disabled){background:#e85a1f}
+.arrival-page .arrival-error{background:#fef2f2;border:1px solid #fecaca;color:#b91c1c;border-radius:12px;font-weight:600}
+.arrival-page .arrival-success{color:#047857;font-weight:700}
+.arrival-page .arrival-boundary{color:#64748b;font-size:11px;line-height:1.6}
+.arrival-page .dispatch-pagination button[aria-current=page]{background:#202020;color:#fff;border-color:#202020}
+.arrival-page .dispatch-no-selection>span{color:#ff682c;opacity:.55}
+@media(max-width:1000px){.arrival-page{padding:16px}}
+/* Bộ lọc danh sách xe: lưới 3 cột đều nhau, không bị xuống dòng lệch */
+.arrival-page .arrival-tabs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;background:transparent;border:0;border-radius:0;padding:0;margin:16px 16px 4px}
+.arrival-page .arrival-tabs button{display:flex;align-items:center;justify-content:center;width:100%;height:38px;padding:0 10px;border:1px solid #e8e8e8;border-radius:12px;background:#fff;color:#64748b;font-size:12.5px;font-weight:700;white-space:nowrap;transition:background .15s,border-color .15s,color .15s,box-shadow .15s}
+.arrival-page .arrival-tabs button:hover:not(:disabled){background:#fff7ed;border-color:#fdba74;color:#c2410c}
+.arrival-page .arrival-tabs button[aria-pressed=true]{background:#202020;border-color:#202020;color:#fff;box-shadow:0 2px 6px rgba(32,32,32,.25)}
+@media(max-width:420px){.arrival-page .arrival-tabs{grid-template-columns:repeat(2,minmax(0,1fr))}}

@@ -1,11 +1,13 @@
 import { useState } from 'react'
-import ShippingBadge from './ShippingBadge'
+import { Pill } from '../../../components/Containers/docUi'
+import { manifestStatusView } from '../manifestStatusView'
 import ShippingPagination from './ShippingPagination'
 import ManifestContainerList from './ManifestContainerList'
+import ManifestBillIssuance from './ManifestBillIssuance'
 import { formatManifestDate, manifestBills, manifestCounts } from '../utils/manifestView'
 
 const kg = value => `${Number(value || 0).toLocaleString('vi-VN')} kg`
-const button = 'rounded-xl border border-chalk bg-white px-3.5 py-2 text-xs font-bold text-carbon hover:bg-fog disabled:opacity-50'
+const button = 'rounded-xl bg-carbon px-3.5 py-2 text-xs font-bold text-white hover:bg-graphite disabled:opacity-50'
 
 function Information({ fields }) {
   return <dl className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">{fields.map(([label, value]) => <div key={label} className="min-w-0 rounded-xl border border-chalk bg-fog/50 p-3.5"><dt className="text-xs text-slate">{label}</dt><dd className="mt-1 break-words text-sm font-semibold text-carbon">{value || '—'}</dd></div>)}</dl>
@@ -48,10 +50,10 @@ export default function ManifestDrilldown({ manifest, billNumber, containerNumbe
   return <div className="space-y-5">
     <section className="space-y-5 rounded-2xl border border-chalk bg-white p-5 shadow-sm md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-chalk pb-4">
-        <div><p className="text-xs font-bold uppercase text-slate">Chi tiết bản khai</p><div className="mt-1 flex flex-wrap items-center gap-3"><h3 className="font-heading text-xl font-extrabold">{manifest.manifestNumber}</h3><ShippingBadge status={manifest.status} /></div></div>
+        <div><p className="text-xs font-bold uppercase text-slate">Chi tiết bản khai</p><div className="mt-1 flex flex-wrap items-center gap-3"><h3 className="font-heading text-xl font-extrabold">{manifest.manifestNumber}</h3><Pill tone={manifestStatusView(manifest).tone}>{manifestStatusView(manifest).label}</Pill></div></div>
         <div className="flex flex-wrap gap-2">
           {manifest.source === 'NODE_CORE' && manifest.status === 'DRAFT' && <button type="button" className={button} onClick={onEdit}>Sửa bản nháp</button>}
-          <button type="button" className={`${button} border-orange-200 bg-orange-50 text-orange-800`} onClick={onSend} disabled={acting || manifest.status === 'DRAFT'}>{acting ? 'Đang xử lý…' : manifest.sentToPortAt ? 'Gửi lại cho cảng' : 'Gửi cho cảng'}</button>
+          <button type="button" className={`${button} !bg-signal-orange hover:!opacity-90`} onClick={onSend} disabled={acting || manifest.status === 'DRAFT'}>{acting ? 'Đang xử lý…' : manifest.sentToPortAt ? 'Gửi lại cho cảng' : 'Gửi cho cảng'}</button>
           {manifest.sentToPortAt && <button type="button" className={button} onClick={onRecall} disabled={acting}>Thu hồi bản khai</button>}
         </div>
       </div>
@@ -76,5 +78,6 @@ export default function ManifestDrilldown({ manifest, billNumber, containerNumbe
         </tbody></table></div>
       <ShippingPagination currentPage={billPage} totalItems={bills.length} pageSize={10} onPageChange={setBillPage} itemName="vận đơn" />
     </section>
+    {manifest.source === 'NODE_CORE' && <ManifestBillIssuance manifest={manifest} />}
   </div>
 }

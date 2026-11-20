@@ -5,6 +5,8 @@ import ManifestComposer from './components/ManifestComposer'
 import ManifestImportDialog from './components/ManifestImportDialog'
 import ManifestDrilldown from './components/ManifestDrilldown'
 import ShippingBadge from './components/ShippingBadge'
+import { Pill } from '../../components/Containers/docUi'
+import { manifestStatusView } from './manifestStatusView'
 import ShippingPagination from './components/ShippingPagination'
 import { readManifestComposerSession } from './utils/manifestComposerSession'
 import { formatManifestDate, manifestCounts } from './utils/manifestView'
@@ -91,6 +93,7 @@ export default function ManifestManagementPage() {
       catch (e) { if (selectedManifest.source === 'NODE_CORE') throw e; result = await shippingLineApi.reconcileManifest(selectedManifest.id) }
       const sentToPortAt = result?.sentToPortAt || result?.data?.sentToPortAt || new Date().toISOString()
       manifestPortSyncService.saveSyncedManifest({ ...selectedManifest, sentToPortAt, status: 'SENT_TO_PORT' })
+      await manifestPortSyncService.fetchRemoteSyncedManifests().catch(() => {})
       setSuccessMsg('Đã gửi bản khai cho cảng.')
       loadData()
     } catch (e) { setError(formatApiErrorMessage(e, 'Không thể gửi bản khai.')) }
@@ -259,7 +262,7 @@ export default function ManifestManagementPage() {
                       <td className="py-3 px-3 text-right font-mono tabular-nums text-carbon whitespace-nowrap">{manifestCounts(mnf).containers}</td>
 
                       <td className="py-3 px-3 font-sans whitespace-nowrap">
-                        <ShippingBadge status={mnf.status} />
+                        {(() => { const view = manifestStatusView(mnf); return (<div className="space-y-1"><Pill tone={view.tone}>{view.label}</Pill>{view.hint && <span className="block text-[11px] text-slate">{view.hint}</span>}</div>) })()}
                       </td>
                       <td className="py-3 px-3 text-slate text-[11px] whitespace-nowrap">{formatManifestDate(mnf.createdAt || mnf.created_at)}</td>
                       <td className="py-3 px-3 text-center font-sans whitespace-nowrap">

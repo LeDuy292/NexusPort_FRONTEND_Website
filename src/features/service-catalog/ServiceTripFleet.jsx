@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AlertCircle, CalendarClock, Loader2, RefreshCw, Truck } from 'lucide-react'
 import BookingFleetDetails from '../../components/Containers/BookingFleetDetails'
+import { bookingService } from '../../services/bookingService'
 import { draftDateTime, draftError, serviceDraftsApi } from './serviceDraftsApi'
 import './serviceTripFleet.css'
 
@@ -25,11 +26,21 @@ export default function ServiceTripFleet({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [reload, setReload] = useState(0)
-  const start = instant(request.plannedAt)
-  const trips = request.lines.map(line => request.delivery.trips?.find(t => t.sourceContainerId === line.sourceContainerId) || {
-    sourceContainerId: line.sourceContainerId, appointmentStart: start,
-    appointmentEnd: start ? new Date(new Date(start).getTime() + 2 * 3600000).toISOString() : null,
-    truckId: null, driverId: null,
+  const defaultStartTime = new Date(Date.now() + 2 * 3600000).toISOString()
+  const start = instant(request.plannedAt) || defaultStartTime
+  const trips = request.lines.map(line => {
+    const existing = request.delivery.trips?.find(t => t.sourceContainerId === line.sourceContainerId)
+    const tripStart = existing?.appointmentStart || start
+    const tripEnd = existing?.appointmentEnd || new Date(new Date(tripStart).getTime() + 2 * 3600000).toISOString()
+    return {
+      sourceContainerId: line.sourceContainerId,
+      appointmentStart: tripStart,
+      appointmentEnd: tripEnd,
+      truckId: existing?.truckId || null,
+      driverId: existing?.driverId || null,
+      vehicle: existing?.vehicle || null,
+      driver: existing?.driver || null,
+    }
   })
   const body = { ...request, delivery: { ...request.delivery, trips } }
   const signature = JSON.stringify([request.flow, request.source, request.plannedAt, trips.map(t => [t.sourceContainerId, t.appointmentStart, t.appointmentEnd, t.truckId, t.driverId])])
@@ -46,6 +57,53 @@ export default function ServiceTripFleet({
     }
     setBusy(true)
     const timer = setTimeout(async () => {
+      const applyFallback = async (failure) => {
+        try {
+          const res = await bookingService.getAvailableResources()
+          if (cancelled || latest.current.signature !== signature) return
+          const trucks = res?.trucks || []
+          const drivers = res?.drivers || []
+          if (!trucks.length && !drivers.length) {
+            setOptions({})
+            setError(draftError(failure))
+            return
+          }
+          const byId = Object.fromEntries(latest.current.body.delivery.trips.map((trip, idx) => {
+            const truck = trucks.length ? trucks[idx % trucks.length] : null
+            const driver = (truck?.driverId && drivers.find(d => d.id === truck.driverId)) ||
+              (drivers.length ? drivers[idx % drivers.length] : null)
+            return [trip.sourceContainerId, {
+              sourceContainerId: trip.sourceContainerId,
+              trucks,
+              drivers,
+              recommendedTruckId: truck?.id || null,
+              recommendedDriverId: driver?.id || null,
+              message: res?.message || 'Đã tự động ghép xe và tài xế phụ trách cho container từ đội xe trong CSDL.',
+              unavailableReasons: res?.unavailableReasons || []
+            }]
+          }))
+          setOptions(byId)
+          latest.current.onTrips(latest.current.body.delivery.trips.map((trip) => {
+            const item = byId[trip.sourceContainerId]
+            const truck = item?.trucks.find(t => t.id === (trip.truckId || item.recommendedTruckId))
+            const driver = item?.drivers.find(d => d.id === (trip.driverId || item.recommendedDriverId))
+            return {
+              ...trip,
+              truckId: trip.truckId || item?.recommendedTruckId || null,
+              driverId: trip.driverId || item?.recommendedDriverId || null,
+              vehicle: trip.vehicle || truck || null,
+              driver: trip.driver || driver || null
+            }
+          }))
+          setError('')
+        } catch {
+          if (!cancelled && latest.current.signature === signature) {
+            setOptions({})
+            setError(draftError(failure))
+          }
+        }
+      }
+
       try {
         const result = await serviceDraftsApi.fleetOptions(latest.current.body)
         if (cancelled || latest.current.signature !== signature) return
@@ -58,7 +116,9 @@ export default function ServiceTripFleet({
             driver: item?.drivers.find(d => d.id === item.recommendedDriverId) || null }
         }))
       } catch (failure) {
-        if (!cancelled && latest.current.signature === signature) setError(draftError(failure))
+        if (!cancelled && latest.current.signature === signature) {
+          await applyFallback(failure)
+        }
       } finally { if (!cancelled && latest.current.signature === signature) setBusy(false) }
     }, 400)
     return () => { cancelled = true; clearTimeout(timer) }
@@ -99,8 +159,6 @@ export default function ServiceTripFleet({
       return <article className="esf-trip" key={trip.sourceContainerId}>
         <header><span className="esf-index">{String(index + 1).padStart(2, '0')}</span><div><h4>{containers[trip.sourceContainerId]?.containerNumber || `Container ${index + 1}`}</h4><small>Chuyến giao nhận · {containers[trip.sourceContainerId]?.typeCode || 'Container hàng'}</small></div><Truck size={21} /></header>
         <div className="epd-form-grid">
-          <label className="epd-field"><span>Bắt đầu chuyến <b className="epd-required">*</b></span><input aria-label={`Bắt đầu chuyến ${index + 1}`} type="datetime-local" value={local(trip.appointmentStart)} min={minDate || local(start)} max={maxDate || undefined} disabled={disabled} onChange={e => changeTime(trip.sourceContainerId, 'appointmentStart', e.target.value)} /></label>
-          <label className="epd-field"><span>Kết thúc chuyến <b className="epd-required">*</b></span><input aria-label={`Kết thúc chuyến ${index + 1}`} type="datetime-local" value={local(trip.appointmentEnd)} min={local(trip.appointmentStart)} max={maxDate || undefined} disabled={disabled} onChange={e => changeTime(trip.sourceContainerId, 'appointmentEnd', e.target.value)} /></label>
           <label className="epd-field"><span>Xe rảnh <b className="epd-required">*</b></span><select aria-label={`Xe chuyến ${index + 1}`} value={trip.truckId || ''} disabled={busy || disabled || !fleet} onChange={e => select(trip.sourceContainerId, 'truckId', e.target.value)}><option value="">Chọn xe trong khung giờ</option>{fleet?.trucks.filter(t => !others.some(x => x.truckId === t.id)).map(t => <option key={t.id} value={t.id}>{t.plateNumber} · {t.vehicleType}</option>)}</select></label>
           <label className="epd-field"><span>Tài xế rảnh <b className="epd-required">*</b></span><select aria-label={`Tài xế chuyến ${index + 1}`} value={trip.driverId || ''} disabled={busy || disabled || !fleet} onChange={e => select(trip.sourceContainerId, 'driverId', e.target.value)}><option value="">Chọn tài xế trong khung giờ</option>{fleet?.drivers.filter(d => !others.some(x => x.driverId === d.id)).map(d => <option key={d.id} value={d.id}>{d.fullName} · {d.phone || 'Chưa có SĐT'}</option>)}</select></label>
         </div>

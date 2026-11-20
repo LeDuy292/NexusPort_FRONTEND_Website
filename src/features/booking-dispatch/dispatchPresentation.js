@@ -1,7 +1,7 @@
 export const DISPATCH_STATUS = {
-  'not-arrived': 'Chưa xác nhận đến',
+  'not-arrived': 'Chưa đến cổng',
   arrived: 'Đã đến · chưa sẵn sàng',
-  ready: 'Sẵn sàng · chờ gọi',
+  ready: 'Đã đến cổng · chờ gọi',
   called: 'Đã gọi · chờ phản hồi',
   acknowledged: 'Tài xế đã nhận lệnh',
 }
@@ -10,8 +10,13 @@ export const stateOf = booking => booking.dispatch?.status === 'withdrawn'
   ? 'not-arrived' : booking.dispatch?.status || 'not-arrived'
 
 export const displayState = booking => booking.coordination?.isHeld ? 'held' : stateOf(booking)
+// Xe chỉ sẵn sàng cho điều độ khi tài xế đã xác nhận chuyến và báo đã đến cổng
+export const awaitingTrip = booking => stateOf(booking) === 'not-arrived' && booking.coordination?.tripConfirmed === false
 export const statusLabel = booking => booking.coordination?.isHeld
-  ? 'Điều độ yêu cầu chờ' : DISPATCH_STATUS[stateOf(booking)]
+  ? 'Điều độ yêu cầu chờ' : booking.dispatch?.action === 'gate_admitted'
+    ? 'Đã cấp lệnh tại cổng' : awaitingTrip(booking)
+      ? 'Chờ tài xế xác nhận chuyến' : DISPATCH_STATUS[stateOf(booking)]
+export const tripStepLabel = booking => booking.coordination?.tripConfirmed ? 'Đã xác nhận chuyến' : 'Chưa xác nhận chuyến'
 
 export const vietnamDate = value => new Intl.DateTimeFormat('sv-SE', {
   timeZone: 'Asia/Ho_Chi_Minh',

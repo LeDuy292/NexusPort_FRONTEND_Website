@@ -60,8 +60,13 @@ export default function DocumentViewerModal({
   const companyName = booking.company || booking.carrierName || 'CÔNG TY TNHH VẬN TẢI QUỐC TẾ NEXUSPORT'
   const driverName = booking.driverName || 'Nguyễn Văn A'
 
+  const isExportCargo = String(booking.direction || '').toUpperCase() === 'EXPORT' ||
+    String(booking.operation || booking.bookingType || '').toLowerCase().includes('dropoff') ||
+    String(booking.operation || booking.bookingType || '').toLowerCase().includes('hạ') ||
+    String(booking.operation || booking.bookingType || '').toLowerCase().includes('xuất')
+
   return (
-    <div className="fixed inset-0 bg-carbon/90 backdrop-blur-md z-[100] flex flex-col justify-between p-2 md:p-6 select-none animate-in fade-in duration-200">
+    <div className="fixed inset-0 bg-carbon/90 backdrop-blur-md z-[105] flex flex-col justify-between p-2 md:p-6 select-none animate-in fade-in duration-200">
       {/* Top Bar Header */}
       <div className="bg-slate-900/95 border border-slate-800 rounded-2xl px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 shadow-2xl text-white">
         <div className="flex items-center gap-3">
@@ -71,16 +76,20 @@ export default function DocumentViewerModal({
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-heading font-black text-sm md:text-base text-white tracking-wide">
-                {currentDoc.title || 'Chứng Từ Nghiệp Vụ Nhập Khẩu'}
+                {currentDoc.title || 'Chứng Từ Hồ Sơ'}
               </h3>
-              <span className="px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-bold">
-                ✓ HỢP LỆ / ĐÃ THẨM ĐỊNH
+              <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${(currentDoc.verificationStatus || currentDoc.status) === 'Pending'
+                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40'
+                }`}>
+                {(currentDoc.verificationStatus || currentDoc.status) === 'Pending' ? '⏳ CHỜ KIỂM DUYỆT' : '✓ HỢP LỆ / ĐÃ THẨM ĐỊNH'}
               </span>
             </div>
             <p className="text-xs text-slate-400 font-mono mt-0.5">
-              Số hiệu: <span className="text-amber-400 font-bold">{currentDoc.documentNumber || currentDoc.code || 'DOC-2026-NXP-01'}</span>
-              <span className="mx-2">•</span>
-              Nghiệp vụ: <span className="text-blue-300 font-bold">Hàng Nhập Khẩu (Import Cargo)</span>
+              {currentDoc.fileName || currentDoc.documentNumber || currentDoc.code
+                ? <>Tệp / Số hiệu: <span className="text-amber-400 font-bold">{currentDoc.fileName || currentDoc.documentNumber || currentDoc.code}</span><span className="mx-2">•</span></>
+                : null}
+              Nghiệp vụ: <span className="text-blue-300 font-bold">{isExportCargo ? 'Hàng Xuất Khẩu (Export Cargo)' : 'Hàng Nhập Khẩu (Import Cargo)'}</span>
             </p>
           </div>
         </div>
@@ -167,11 +176,19 @@ export default function DocumentViewerModal({
           }}
         >
           {currentDoc.fileUrl || currentDoc.fileReference ? (
-            <img
-              src={currentDoc.fileUrl || currentDoc.fileReference}
-              alt={currentDoc.title}
-              className="max-h-[75vh] max-w-[85vw] object-contain rounded-xl shadow-2xl border border-slate-700/50 bg-white"
-            />
+            (String(currentDoc.contentType || '').toLowerCase().includes('pdf') || /\.pdf(\?|$)/i.test(String(currentDoc.fileUrl || currentDoc.fileReference || ''))) ? (
+              <iframe
+                src={currentDoc.fileUrl || currentDoc.fileReference}
+                title={currentDoc.title || 'Tài liệu PDF'}
+                className="w-[82vw] max-w-4xl h-[75vh] rounded-xl shadow-2xl border border-slate-700/50 bg-white"
+              />
+            ) : (
+              <img
+                src={currentDoc.fileUrl || currentDoc.fileReference}
+                alt={currentDoc.title}
+                className="max-h-[75vh] max-w-[85vw] object-contain rounded-xl shadow-2xl border border-slate-700/50 bg-white"
+              />
+            )
           ) : (
             /* Render high-fidelity SVG/Vector Document View if no external image URL */
             <div className="w-[880px] max-w-[94vw] bg-white text-slate-900 rounded-2xl p-5 md:p-7 shadow-2xl border-2 border-slate-800 font-sans text-xs space-y-3.5 print:border-black">
@@ -393,7 +410,7 @@ export default function DocumentViewerModal({
       <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-2.5 flex items-center justify-between gap-3 text-white shadow-2xl">
         <div className="flex items-center gap-2 overflow-x-auto py-1">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1">
-            Danh mục chứng từ nhập khẩu:
+            {isExportCargo ? 'Danh mục chứng từ xuất khẩu:' : 'Danh mục chứng từ nhập khẩu:'}
           </span>
           {documents.map((doc, idx) => {
             const active = idx === currentIndex

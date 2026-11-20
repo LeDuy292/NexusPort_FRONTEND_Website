@@ -9,6 +9,7 @@ export const shippingLineApi = {
 
   // 2. Tàu & Chuyến tàu (Vessel & Voyage)
   getVessels: (search = '') => expressApiClient.get(`/shipping-line/vessels?search=${encodeURIComponent(search)}`),
+  createVessel: (payload) => expressApiClient.post('/shipping-line/vessels', payload),
   getVoyages: (params = {}) => {
     const query = new URLSearchParams(params).toString();
     return expressApiClient.get(`/shipping-line/voyages${query ? `?${query}` : ''}`);
@@ -39,8 +40,12 @@ export const shippingLineApi = {
     expressApiClient.post(`/shipping-line/manifests/${manifestId}/resolve-exception`, { recordId, ...updatedData }),
   reconcileManifest: (manifestId) => expressApiClient.post(`/shipping-line/manifests/${manifestId}/reconcile`),
   sendManifestToPort: (manifestId) => isNodeManifest(manifestId) ? nodeApiClient.post(`/shipping-line/manifests/${manifestId}/send-to-port`) : expressApiClient.post(`/shipping-line/manifests/${manifestId}/send-to-port`),
-  getSyncedManifests: () => expressApiClient.get('/shipping-line/manifests/port/synced'),
-  lookupContainerManifest: (containerNo) => expressApiClient.get(`/shipping-line/manifests/port/lookup/${containerNo}`),
+  getSyncedManifests: () => nodeApiClient.get('/shipping-line/manifests/port/synced'),
+  approveManifestAtPort: (manifestId) => nodeApiClient.post(`/shipping-line/manifests/port/approve/${manifestId}`),
+  resetManifestPendingAtPort: (manifestId) => nodeApiClient.post(`/shipping-line/manifests/port/reset-pending/${manifestId}`),
+  resetAllManifestsAtPort: () => nodeApiClient.post('/shipping-line/manifests/port/reset-all'),
+  savePortBookings: (manifestId, bookings) => nodeApiClient.post(`/shipping-line/manifests/port/bookings/${manifestId}`, { bookings }),
+  lookupContainerManifest: (containerNo) => nodeApiClient.get(`/shipping-line/manifests/container-lookup`, { containerNumber: containerNo }),
 
   // 4. Vận đơn (Bill of Lading - B/L) & Hướng dẫn gửi hàng (SI)
   getShippingInstructions: (params = {}) => {

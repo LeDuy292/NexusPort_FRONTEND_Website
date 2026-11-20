@@ -16,7 +16,7 @@
 .yard-design-preview .yard-layout-viewport { width:100%; height:clamp(640px,calc(100dvh - 305px),1080px); overflow:hidden; background:#f8fbfc; }
 .yard-design-preview .yard-layout-viewport.can-pan { cursor:grab; touch-action:none; }
 .yard-design-preview .yard-layout-viewport:fullscreen { height:100vh; width:100vw; background:#f8fbfc; }
-.yard-design-preview .yard-layout-drawing { display:block; height:100%; width:100%; font-family:Arial,sans-serif; }
+.yard-design-preview .yard-layout-drawing { display:block; height:100%; width:100%; font-family:'Inter',sans-serif; }
 .yard-design-preview .design-area-hit { cursor:pointer; outline:none; }
 .yard-design-preview .design-area-hit:hover>polygon { stroke:#274c5c; stroke-width:2; }
 .yard-design-preview .design-area-hit:focus-visible>polygon { stroke:#185b91; stroke-width:3; }

@@ -16,7 +16,7 @@ export default function RoleRoute({ allowedRoles }) {
 
   // Kiểm tra vai trò của người dùng (không phân biệt chữ hoa thường)
   const userRole = (user.role || '').trim().toLowerCase()
-  const hasAccess = allowedRoles.some(r => r.trim().toLowerCase() === userRole)
+  const hasAccess = allowedRoles.some(r => typeof r === 'string' && r.trim().toLowerCase() === userRole)
 
   if (!hasAccess) {
     return <Navigate to="/unauthorized" replace />

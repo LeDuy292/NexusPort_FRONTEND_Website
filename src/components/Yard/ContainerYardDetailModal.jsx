@@ -14,25 +14,80 @@ export default function ContainerYardDetailModal({
   if (!isOpen || !containerData) return null
 
   const isReserved = containerData.status === 'reserved'
-  const containerNo =
-    containerData.containerNumber ||
-    containerData.reservedContainerNumber ||
-    containerData.containerId ||
-    containerData.containerNo ||
-    'EMCU8361795'
+  const isInYard = containerData.status === 'in_yard' || containerData.status === 'IN_YARD'
+
+  // Trích xuất mã container thật (loại trừ các chuỗi tạm CONT, CONT-40, CONT-20)
+  const resolveContNo = () => {
+    const raw = containerData.containerNumber ||
+      containerData.reservedContainerNumber ||
+      containerData.containerId ||
+      containerData.containerNo;
+
+    if (raw && !['CONT', 'CONT-40', 'CONT-20', 'CONT ĐÃ GIỮ'].includes(String(raw).trim().toUpperCase())) {
+      return String(raw).trim().toUpperCase();
+    }
+    if (containerData.bookingDetails?.containerNumber && !['CONT', 'CONT-40', 'CONT-20'].includes(String(containerData.bookingDetails.containerNumber).trim().toUpperCase())) {
+      return String(containerData.bookingDetails.containerNumber).trim().toUpperCase();
+    }
+    const slotStr = containerData.slotCode || `${containerData.block || ''}.${containerData.bay || ''}.${containerData.row || ''}`;
+    const bayNum = Number(containerData.bay) || 2;
+    const rowNum = Number(containerData.row) || 1;
+
+    if (slotStr.includes('D01') && (slotStr.includes('.22.') || slotStr.includes('-22-') || bayNum === 22)) {
+      return 'NXPU9113795';
+    }
+    if (slotStr.includes('R') && (slotStr.includes('.01.') || slotStr.includes('-01-') || bayNum === 1)) {
+      return 'NXPU9113796';
+    }
+    if (bayNum === 1) return 'NXPU9113780';
+    if (bayNum === 2) return 'NXPU9113795';
+    if (bayNum === 6) return 'NXPU9465749';
+    if (bayNum === 10) return 'NXPU9465750';
+    if (bayNum === 14) return 'NXPU9465751';
+
+    const prefix = size === 20 ? 'TCLU' : 'EMCU';
+    return `${prefix}${8300000 + bayNum * 100 + rowNum}`;
+  };
+
+  const containerNo = resolveContNo();
+
+  const isDischarge = Boolean(
+    containerData.vesselName ||
+    containerData.blNumber ||
+    containerNo.startsWith('NXP') ||
+    containerData.operationType?.includes('Dỡ') ||
+    (containerData.block === 'D01' && (containerData.bay === '22' || containerData.bay === 22)) ||
+    (containerData.blockCode === 'D01' && (containerData.bay === '22' || containerData.bay === 22))
+  );
+
+  const statusLabel = isInYard
+    ? '🟢 ĐÃ DỠ TÀU & LƯU BÃI (IN YARD)'
+    : isReserved
+    ? '🟡 ĐÃ GIỮ CHỖ TRƯỚC (BOOKING)'
+    : isDischarge
+    ? '🟢 ĐÃ DỠ TÀU & LƯU BÃI (IN YARD)'
+    : '🟢 ĐANG LƯU BÃI (OCCUPIED)';
+
+  const gateStatusLabel = isReserved
+    ? 'CHỜ CHECK-IN CỔNG'
+    : isDischarge
+    ? 'DỠ TÀU VỀ BÃI (HOÀN TẤT)'
+    : 'ĐÃ GATE-IN & HẠ BÃI';
 
   const size = Number(containerData.containerLengthFt) || Number(containerData.size) || (String(containerData.containerType || '').includes('20') ? 20 : 40)
   const booking = containerData.bookingDetails || {}
 
-  const vehiclePlate = containerData.vehiclePlate || booking.licensePlate || '43C-091.22'
-  const driverName = containerData.driverName || booking.driverName || 'Nguyễn Văn Long'
-  const company = containerData.company || booking.company || 'Doanh Nghiệp Vận Tải Cảng Tiên Sa'
-  const bookingCode = containerData.bookingCode || booking.id || `BK-2026-${containerNo.slice(-4)}`
+  const vehiclePlate = containerData.vehiclePlate || booking.licensePlate || (isDischarge ? 'ITV-08 (Nội bộ cảng)' : '43C-091.22')
+  const driverName = containerData.driverName || booking.driverName || (isDischarge ? 'Nguyễn Văn Tuấn (Đội xe Cảng Tiên Sa)' : 'Nguyễn Văn Long')
+  const company = containerData.company || booking.company || (isDischarge ? 'Công Ty Cổ Phần Cảng Đà Nẵng (Xí nghiệp Cảng Tiên Sa)' : 'Doanh Nghiệp Vận Tải Cảng Tiên Sa')
+  const bookingCode = containerData.bookingCode || booking.id || (containerData.blNumber ? `BL-${containerData.blNumber}` : (isDischarge ? 'BL-DAT09' : `BK-2026-${containerNo.slice(-4)}`))
 
   // Hãng tàu theo tiền tố ISO cont
   const contPrefix = containerNo.slice(0, 4).toUpperCase()
   let shippingLine = 'EVERGREEN MARINE CORP. (EMC)'
-  if (contPrefix.startsWith('ONE') || contPrefix.startsWith('NYK')) {
+  if (contPrefix.startsWith('NXP')) {
+    shippingLine = 'EVERGREEN / NEXUS ALLIANCE (EMC - NXP)'
+  } else if (contPrefix.startsWith('ONE') || contPrefix.startsWith('NYK')) {
     shippingLine = 'OCEAN NETWORK EXPRESS (ONE VIETNAM)'
   } else if (contPrefix.startsWith('MSK') || contPrefix.startsWith('MAE')) {
     shippingLine = 'MAERSK LINE VIETNAM'
@@ -49,6 +104,10 @@ export default function ContainerYardDetailModal({
   const payloadWeight = is40 ? '24,630 kg' : '18,850 kg'
   const totalVGM = is40 ? '28,450 kg' : '21,100 kg'
   const maxGross = is40 ? '30,480 kg' : '24,000 kg'
+
+  const weightNum = parseFloat(String(totalVGM).replace(/[^0-9.]/g, '')) || 25000
+  const weightClass = weightNum > 20000 ? 'HEAVY (>20T)' : weightNum >= 12000 ? 'MEDIUM (12-20T)' : 'LIGHT (<12T)'
+  const weightBadgeColor = weightNum > 20000 ? 'bg-red-100 text-red-800 border-red-200' : weightNum >= 12000 ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-emerald-100 text-emerald-800 border-emerald-200'
 
   const blockCode = containerData.block || containerData.blockCode || 'A01'
   const bay = String(containerData.bay || 2).padStart(2, '0')
@@ -94,7 +153,7 @@ export default function ContainerYardDetailModal({
                       : 'bg-emerald-100 text-emerald-900 border border-emerald-300'
                   }`}
                 >
-                  {isReserved ? '🟡 ĐÃ GIỮ CHỖ TRƯỚC (GATE BOOKING)' : '🟢 ĐANG LƯU BÃI (OCCUPIED)'}
+                  {statusLabel}
                 </span>
                 <span className="text-[11px] font-black font-mono text-signal-orange bg-orange-50 border border-orange-200 px-2 py-0.5 rounded">
                   {size}FT {is40 ? 'HC (High Cube)' : 'GP (Tiêu chuẩn)'}
@@ -154,19 +213,6 @@ export default function ContainerYardDetailModal({
 
           <button
             type="button"
-            onClick={() => setActiveTab('booking')}
-            className={`px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer ${
-              activeTab === 'booking'
-                ? 'bg-carbon text-white shadow-xs'
-                : 'bg-fog text-slate hover:text-carbon hover:bg-chalk'
-            }`}
-          >
-            <span className="material-symbols-outlined text-base">local_shipping</span>
-            <span>Thông tin Điều phối & Xe</span>
-          </button>
-
-          <button
-            type="button"
             onClick={() => setActiveTab('documents')}
             className={`px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer ${
               activeTab === 'documents'
@@ -190,19 +236,6 @@ export default function ContainerYardDetailModal({
           >
             <span className="material-symbols-outlined text-base">photo_camera</span>
             <span>Ảnh Chụp Thực Tế & OCR</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab('history')}
-            className={`px-4 py-2 rounded-xl transition flex items-center gap-2 cursor-pointer ${
-              activeTab === 'history'
-                ? 'bg-carbon text-white shadow-xs'
-                : 'bg-fog text-slate hover:text-carbon hover:bg-chalk'
-            }`}
-          >
-            <span className="material-symbols-outlined text-base">history</span>
-            <span>Nhật ký Tác nghiệp TOS</span>
           </button>
         </div>
 
@@ -288,7 +321,38 @@ export default function ContainerYardDetailModal({
                     </div>
                     <div className="p-2.5 rounded-xl bg-fog border border-chalk">
                       <span className="text-[10px] text-slate block font-semibold">Số Chì (Seal):</span>
-                      <strong className="text-signal-orange font-mono font-extrabold">EMC-98231-SEAL</strong>
+                      <strong className="text-signal-orange font-mono font-extrabold">{containerData.sealNumber || (contPrefix.startsWith('NXP') ? 'EMC-98231-SEAL' : `${contPrefix}-77218-SEAL`)}</strong>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quy hoạch bãi theo Mục 4.5.1 */}
+                <div className="border border-chalk rounded-2xl p-4 bg-white space-y-2.5 shadow-2xs">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate font-mono flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm text-signal-orange">rule</span>
+                      QUY HOẠCH CHẤT XẾP BÃI (MỤC 4.5.1 TOS)
+                    </h4>
+                    <span className={`text-[10px] font-bold font-mono px-2 py-0.5 rounded border ${weightBadgeColor}`}>
+                      {weightClass}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate block font-semibold">Phân loại hàng:</span>
+                      <strong className="text-carbon font-mono">{containerData.cargoType || 'FCL (Nguyên cont)'}</strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate block font-semibold">Nguyên tắc trọng lượng:</span>
+                      <strong className="text-carbon">{tier <= 2 ? 'Nặng ở dưới (Tầng 1-2)' : 'Nhẹ ở trên (Tầng 3+)'}</strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate block font-semibold">Gom nhóm:</span>
+                      <strong className="text-carbon font-mono">{containerData.blNumber ? `Lô B/L: ${containerData.blNumber}` : isDischarge ? 'Gom theo Vận đơn' : 'Gom theo Hãng tàu'}</strong>
+                    </div>
+                    <div className="p-2 rounded-xl bg-slate-50 border border-slate-200">
+                      <span className="text-[10px] text-slate block font-semibold">Khu vực chuyên trách:</span>
+                      <strong className="text-carbon">{size === 40 ? 'Bay chẵn (40ft/45ft)' : 'Bay lẻ (20ft)'}</strong>
                     </div>
                   </div>
                 </div>
@@ -303,29 +367,33 @@ export default function ContainerYardDetailModal({
 
                   <div className="space-y-2 text-xs">
                     <div className="flex justify-between py-1.5 border-b border-chalk">
-                      <span className="text-slate">Mã Booking:</span>
-                      <strong className="font-mono text-carbon">{bookingCode}</strong>
+                      <span className="text-slate">{containerData.blNumber || isDischarge ? 'Mã Vận Đơn (B/L):' : 'Mã Booking:'}</span>
+                      <strong className="font-mono text-carbon">{containerData.blNumber || bookingCode}</strong>
                     </div>
+                    {(containerData.vesselName || isDischarge) && (
+                      <div className="flex justify-between py-1.5 border-b border-chalk">
+                        <span className="text-slate">Tàu Dỡ Hàng:</span>
+                        <strong className="text-carbon font-semibold">{containerData.vesselName || 'EVER GLORY'} ({containerData.voyageNumber || 'EG-2605W'})</strong>
+                      </div>
+                    )}
                     <div className="flex justify-between py-1.5 border-b border-chalk">
                       <span className="text-slate">Hãng tàu quản lý:</span>
                       <strong className="text-carbon truncate max-w-[180px]">{shippingLine}</strong>
                     </div>
                     <div className="flex justify-between py-1.5 border-b border-chalk">
-                      <span className="text-slate">Xe đầu kéo:</span>
-                      <strong className="font-mono text-signal-orange font-black">{vehiclePlate}</strong>
-                    </div>
-                    <div className="flex justify-between py-1.5 border-b border-chalk">
-                      <span className="text-slate">Tài xế vận hành:</span>
-                      <strong className="text-carbon">{driverName}</strong>
-                    </div>
-                    <div className="flex justify-between py-1.5 border-b border-chalk">
                       <span className="text-slate">Đơn vị vận tải:</span>
                       <strong className="text-carbon truncate max-w-[180px]">{company}</strong>
                     </div>
+                    {(containerData.equipmentCode || isDischarge) && (
+                      <div className="flex justify-between py-1.5 border-b border-chalk">
+                        <span className="text-slate">Cẩu bãi RTG:</span>
+                        <strong className="text-carbon font-mono">{containerData.equipmentCode || 'RTG-02'} ({containerData.operatorName || 'Võ Hoàng Nam'})</strong>
+                      </div>
+                    )}
                     <div className="flex justify-between py-1.5 border-b border-chalk">
-                      <span className="text-slate">Trạng thái Cổng:</span>
+                      <span className="text-slate">{isDischarge ? 'Trạng thái tác nghiệp:' : 'Trạng thái Cổng:'}</span>
                       <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">
-                        ĐỦ ĐIỀU KIỆN GATE-IN
+                        {gateStatusLabel}
                       </span>
                     </div>
                   </div>
@@ -353,61 +421,6 @@ export default function ContainerYardDetailModal({
                       <span className="material-symbols-outlined text-sm text-signal-orange">timeline</span>
                       Xem Lịch Sử Slot Này
                     </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: THÔNG TIN ĐIỀU PHỐI & PHƯƠNG TIỆN */}
-          {activeTab === 'booking' && (
-            <div className="space-y-4">
-              <div className="border border-chalk rounded-2xl p-5 bg-white space-y-4">
-                <h4 className="text-sm font-extrabold text-carbon flex items-center gap-2 border-b border-chalk pb-3">
-                  <span className="material-symbols-outlined text-signal-orange text-lg">local_shipping</span>
-                  CHI TIẾT XE ĐẦU KÉO & TÀI XẾ ĐĂNG KÝ VÀO CỔNG TIÊN SA
-                </h4>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-                  <div className="p-3.5 rounded-2xl bg-fog border border-chalk space-y-1">
-                    <span className="text-[10px] text-slate block font-bold uppercase">Phương Tiện Đầu Kéo</span>
-                    <strong className="text-base font-black font-mono text-carbon block">{vehiclePlate}</strong>
-                    <span className="text-[11px] text-slate">Nhãn hiệu: HYUNDAI XCIENT 440PS</span>
-                    <span className="text-[10px] text-emerald-700 font-bold block">✓ Đăng kiểm còn hạn đến 2027</span>
-                  </div>
-
-                  <div className="p-3.5 rounded-2xl bg-fog border border-chalk space-y-1">
-                    <span className="text-[10px] text-slate block font-bold uppercase">Tài Xế Điều Khiển</span>
-                    <strong className="text-base font-black text-carbon block">{driverName}</strong>
-                    <span className="text-[11px] font-mono text-slate">GPLX Hạng FC: 430198234812</span>
-                    <span className="text-[10px] text-emerald-700 font-bold block">✓ Đã huấn luyện an toàn cảng</span>
-                  </div>
-
-                  <div className="p-3.5 rounded-2xl bg-fog border border-chalk space-y-1">
-                    <span className="text-[10px] text-slate block font-bold uppercase">Doanh Nghiệp Vận Tải</span>
-                    <strong className="text-sm font-bold text-carbon block leading-tight">{company}</strong>
-                    <span className="text-[11px] text-slate">Mã số thuế: 0401892812</span>
-                    <span className="text-[10px] text-emerald-700 font-bold block">✓ Tài khoản liên kết hợp lệ</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs pt-2">
-                  <div className="p-3 rounded-xl bg-[#fafbfc] border border-chalk space-y-2">
-                    <span className="font-bold text-carbon text-xs block">Thời Gian & Lộ Trình</span>
-                    <div className="space-y-1 font-mono text-[11px] text-slate-700">
-                      <p>Thời gian đăng ký: <strong>05/11/2026 · 08:15:00</strong></p>
-                      <p>Khung giờ hẹn vào cổng (ETA): <strong className="text-signal-orange">Hôm nay lúc 09:30:00</strong></p>
-                      <p>Cổng vào chỉ định: <strong>Cổng số 2 (Gate In 02 - Làn xe có cân VGM)</strong></p>
-                    </div>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-[#fafbfc] border border-chalk space-y-2">
-                    <span className="font-bold text-carbon text-xs block">Trách Nhiệm & Giám Sát Cảng</span>
-                    <div className="space-y-1 font-mono text-[11px] text-slate-700">
-                      <p>Điều phối viên phê duyệt: <strong>dispatcher01 (Trực ban Điều độ)</strong></p>
-                      <p>Kiểm soát Barie tự động: <strong className="text-emerald-700">Sẵn sàng mở khi nhận diện biển số</strong></p>
-                      <p>Tác nghiệp bãi: <strong>Hạ bãi chờ xuất tàu (CY - CY)</strong></p>
-                    </div>
                   </div>
                 </div>
               </div>
@@ -613,75 +626,6 @@ export default function ContainerYardDetailModal({
                         <span>SEAL: <strong>EMC-SEAL-OK</strong></span>
                         <span className="text-emerald-400 font-bold">TÌNH TRẠNG: TỐT</span>
                       </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 5: NHẬT KÝ TÁC NGHIỆP TOS */}
-          {activeTab === 'history' && (
-            <div className="space-y-3">
-              <div className="border border-chalk rounded-2xl p-4 bg-white space-y-3">
-                <div className="flex items-center justify-between border-b border-chalk pb-2">
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate font-mono flex items-center gap-2">
-                    <span className="material-symbols-outlined text-signal-orange text-base">history</span>
-                    NHẬT KÝ VẬN HÀNH BÃI & THIẾT BỊ NÂNG HẠ (TOS AUDIT TRAIL)
-                  </h4>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose?.()
-                      onOpenHistory?.({
-                        mode: 'container',
-                        containerNo,
-                      })
-                    }}
-                    className="text-xs font-bold text-signal-orange hover:underline flex items-center gap-1 cursor-pointer"
-                  >
-                    Xem lịch sử nâng cao
-                    <span className="material-symbols-outlined text-sm">arrow_forward</span>
-                  </button>
-                </div>
-
-                <div className="space-y-2 text-xs font-mono">
-                  <div className="p-3 rounded-xl bg-fog border border-chalk flex items-start gap-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-signal-orange mt-1.5 flex-shrink-0 animate-ping"></span>
-                    <div className="flex-1">
-                      <div className="flex justify-between items-center">
-                        <strong className="text-carbon">Giữ chỗ vị trí bãi trước (Yard Pre-Allocation)</strong>
-                        <span className="text-[10px] text-slate">05/11/2026 · 08:30:15</span>
-                      </div>
-                      <p className="text-slate-600 text-[11px] mt-0.5">
-                        Điều phối viên chỉ định ô xếp: <strong>{slotCode}</strong>. Cont 40ft High Cube được cấp quyền vào bãi Tiên Sa.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-fog border border-chalk flex items-start gap-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 mt-1.5 flex-shrink-0"></span>
-                    <div className="flex-1">
-                      <div className="flex justify-between items-center">
-                        <strong className="text-carbon">Kiểm duyệt hồ sơ chứng từ Gate-In</strong>
-                        <span className="text-[10px] text-slate">05/11/2026 · 08:25:00</span>
-                      </div>
-                      <p className="text-slate-600 text-[11px] mt-0.5">
-                        Xác nhận 5/5 chứng từ pháp lý: Lệnh EIR, Tờ khai Hải quan luồng xanh, Cân VGM {totalVGM}, Sổ Đăng kiểm xe {vehiclePlate}, GPLX FC của tài xế {driverName}.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="p-3 rounded-xl bg-fog border border-chalk flex items-start gap-3">
-                    <span className="w-2.5 h-2.5 rounded-full bg-blue-600 mt-1.5 flex-shrink-0"></span>
-                    <div className="flex-1">
-                      <div className="flex justify-between items-center">
-                        <strong className="text-carbon">Tạo yêu cầu Gate Booking điện tử</strong>
-                        <span className="text-[10px] text-slate">05/11/2026 · 08:15:00</span>
-                      </div>
-                      <p className="text-slate-600 text-[11px] mt-0.5">
-                        Doanh nghiệp {company} đăng ký xe vào cảng Tiên Sa qua cổng thông tin NexusPort.
-                      </p>
                     </div>
                   </div>
                 </div>

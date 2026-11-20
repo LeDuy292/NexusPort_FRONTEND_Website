@@ -141,7 +141,7 @@ export default function ServiceSourceEmailPanel({ draftId, request, onVerified, 
           onClick={() => send(true)}
         >
           {busy ? <Loader2 size={14} className="epc-spin" /> : <RefreshCw size={14} />}
-          {remaining ? `Gửi lại sau ${remaining}s` : challenge ? 'Gửi lại mã' : 'Thử gửi mã'}
+          {remaining ? `Gửi lại sau ${remaining}s` : challenge ? 'Gửi lại mã' : 'Gửi mã xác thực'}
         </button>
       </div>
     </section>

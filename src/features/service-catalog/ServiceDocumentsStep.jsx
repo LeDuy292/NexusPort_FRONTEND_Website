@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import {
   AlertCircle,
   CheckCircle2,
@@ -16,7 +16,7 @@ import {
   UserCheck,
 } from 'lucide-react'
 import { bookingService } from '../../services/bookingService'
-import { serviceDraftsApi, draftError } from './serviceDraftsApi'
+import { draftError } from './serviceDraftsApi'
 
 export function ServiceDocumentsStep({
   draftId,
@@ -30,7 +30,6 @@ export function ServiceDocumentsStep({
 }) {
   const [uploading, setUploading] = useState({})
   const [error, setError] = useState('')
-  const [confirming, setConfirming] = useState(false)
   const fileInputRefs = useRef({})
 
   // Kiểm tra xem đơn có container lạnh hay không
@@ -107,24 +106,6 @@ export function ServiceDocumentsStep({
     })
   }
 
-  // Tự động đồng bộ xác nhận thông quan ngầm với Backend khi người dùng đã có giấy tờ hải quan
-  useEffect(() => {
-    const hasCustoms = documents.some(d => d.documentType === 'CustomsDeclaration')
-    if (hasCustoms && draftId && payload) {
-      let active = true
-      setConfirming(true)
-      serviceDraftsApi.confirmCustoms(draftId, payload)
-        .then(res => {
-          if (active && res?.confirmationScope) {
-            onConfirmedScope?.(res.confirmationScope)
-          }
-        })
-        .catch(() => {})
-        .finally(() => { if (active) setConfirming(false) })
-      return () => { active = false }
-    }
-  }, [documents, draftId, payload, onConfirmedScope])
-
   const handleUploadClick = specType => {
     if (fileInputRefs.current[specType]) {
       fileInputRefs.current[specType].click()
@@ -175,15 +156,6 @@ export function ServiceDocumentsStep({
       const nextDocs = [...documents.filter(d => d.documentType !== spec.type), newDoc]
       onChangeDocuments(nextDocs)
 
-      // Nếu là tờ khai hải quan, kích hoạt xác nhận thông quan ngay
-      if (spec.type === 'CustomsDeclaration' && draftId && payload) {
-        try {
-          const data = await serviceDraftsApi.confirmCustoms(draftId, payload)
-          if (data?.confirmationScope) {
-            onConfirmedScope?.(data.confirmationScope)
-          }
-        } catch (_) {}
-      }
     } catch (failure) {
       setError(draftError(failure))
     } finally {
@@ -368,12 +340,6 @@ export function ServiceDocumentsStep({
           </div>
         </div>
 
-        {confirming && (
-          <p className="epd-muted" style={{ marginTop: '12px', fontSize: '12px' }}>
-            <Loader2 size={13} className="epc-spin" style={{ display: 'inline', marginRight: '6px' }} />
-            Đang đồng bộ xác nhận thông quan điện tử...
-          </p>
-        )}
       </div>
     </section>
   )

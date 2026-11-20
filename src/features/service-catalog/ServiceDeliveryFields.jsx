@@ -21,26 +21,6 @@ export function CustomsStep({ draftId, payload, confirmed, onConfirmed, sampleMo
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
-  const [checking, setChecking] = useState(false)
-
-  // Tự động kiểm tra trạng thái Hải quan / Cờ Hold khi mở bước 4
-  useEffect(() => {
-    let active = true
-    async function autoCheck() {
-      if (sampleMode) return
-      setChecking(true)
-      try {
-        const data = await serviceDraftsApi.checkCustoms(draftId, payload)
-        if (active) setResult(data)
-      } catch (e) {
-        // bỏ qua lỗi kiểm tra ngầm nếu có
-      } finally {
-        if (active) setChecking(false)
-      }
-    }
-    autoCheck()
-    return () => { active = false }
-  }, [draftId, payload, sampleMode])
 
   const confirm = async () => {
     if (busy || confirmed) return
@@ -53,11 +33,16 @@ export function CustomsStep({ draftId, payload, confirmed, onConfirmed, sampleMo
       onConfirmed(data.confirmationScope)
     } catch (failure) {
       setError(draftError(failure))
-      setResult(null)
     } finally {
       setBusy(false)
     }
   }
+
+  useEffect(() => {
+    if (!confirmed && !busy && draftId && payload?.lines?.length > 0) {
+      confirm()
+    }
+  }, [confirmed, draftId])
 
   return (
     <section className="epd-stage" aria-label="Xác nhận thông quan">
@@ -65,31 +50,30 @@ export function CustomsStep({ draftId, payload, confirmed, onConfirmed, sampleMo
         <span>04</span>
         <div>
           <h3>Xác nhận điều kiện thông quan & giải phóng hàng ({flow === 'EXPORT' ? 'Hàng xuất' : 'Hàng nhập'})</h3>
-          <p>Hệ thống tự động đồng bộ kết quả hải quan và cờ Hold. Bấm xác nhận để hoàn tất chuyển sang khai báo giao nhận.</p>
+          <p>Xác nhận danh sách container để tiếp tục đăng ký. Cảng sẽ đối chiếu điều kiện giao nhận thực tế.</p>
         </div>
       </div>
       <div className="epd-customs-card">
         <ShieldCheck size={32} />
-        <h4>{confirmed ? 'Đã xác nhận thông quan' : 'Tự động kiểm tra điều kiện thông quan & Hold'}</h4>
+        <h4>{confirmed ? 'Đã xác nhận danh sách container' : 'Xác nhận thông tin thông quan'}</h4>
         <p>Xác nhận áp dụng cho toàn bộ container đang chọn trong hồ sơ. Khi đổi chứng từ hoặc danh sách container, bạn cần xác nhận lại.</p>
 
-        {checking && <div style={{ fontSize: '12px', color: '#64748b' }}><Loader2 size={14} className="epc-spin" style={{ display: 'inline', marginRight: '6px' }} />Đang kiểm tra cờ Hold và dữ liệu thông quan…</div>}
 
         {result && (
           <div role="status" style={{ textAlign: 'left', width: '100%', maxWidth: '480px', margin: '12px auto', background: '#f8fafc', padding: '12px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }}>
-            <div style={{ fontWeight: 600, marginBottom: '6px', color: '#166534' }}>Kết quả kiểm tra hải quan & cảng:</div>
+            <div style={{ fontWeight: 600, marginBottom: '6px', color: '#166534' }}>Container đã được khách hàng xác nhận:</div>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
               {(result.items || payload?.lines || []).map(item => (
                 <li key={item.sourceContainerId || item.containerNumber} style={{ padding: '4px 0', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between' }}>
                   <span>Cont: <strong>{item.containerNumber || 'Cont'}</strong></span>
-                  <span style={{ color: '#16a34a', fontWeight: 500 }}>✓ Đủ điều kiện qua khu vực giám sát</span>
+                  <span style={{ color: '#16a34a', fontWeight: 500 }}>✓ Đã xác nhận</span>
                 </li>
               ))}
             </ul>
           </div>
         )}
 
-        <p className="epd-muted">Dữ liệu được xác thực tự động với Hải quan VASSCM và phần mềm quản lý cảng NexusPort.</p>
+        <p className="epd-muted">Xác nhận này phục vụ đăng ký dịch vụ; không thay thế kết quả thông quan hoặc quyền qua cổng.</p>
         <button
           type="button"
           className="epc-button primary"
@@ -139,28 +123,22 @@ export function DeliveryFields({
         <span>04</span>
         <div>
           <h3>Khai báo giao nhận</h3>
-          <p>Lựa chọn phương tiện giao nhận (Xe hoặc Sà lan) và thông tin xuất hóa đơn.</p>
+          <p>Lựa chọn phương tiện giao nhận (Xe đầu kéo / Xe tải) và thông tin xuất hóa đơn.</p>
         </div>
       </div>
 
       <div className="epd-flow" role="group" aria-label="Phương tiện giao nhận">
-        {[
-          ['TRUCK', 'Xe đầu kéo / Xe tải', Truck],
-          ['BARGE', 'Sà lan', Anchor],
-        ].map(([value, title, Icon]) => (
-          <button
-            type="button"
-            key={value}
-            aria-pressed={mode === value}
-            onClick={() => onDelivery('transportMode', value)}
-          >
-            <Icon size={22} />
-            <span>
-              {title}
-              <small>{value === 'TRUCK' ? 'Giao nhận đường bộ (xe)' : 'Giao nhận đường thủy (sà lan)'}</small>
-            </span>
-          </button>
-        ))}
+        <button
+          type="button"
+          aria-pressed={true}
+          onClick={() => onDelivery('transportMode', 'TRUCK')}
+        >
+          <Truck size={22} />
+          <span>
+            Xe đầu kéo / Xe tải
+            <small>Giao nhận đường bộ (xe)</small>
+          </span>
+        </button>
       </div>
 
       <div className="epd-source-box">
@@ -169,75 +147,45 @@ export function DeliveryFields({
           <h4>Thông tin phương tiện</h4>
         </div>
         <div className="epd-form-grid">
-          {mode === 'TRUCK' ? (
-            <ServiceTripFleet
-              request={request}
-              containers={containers}
-              disabled={sampleMode}
-              minDate={autoSchedule?.minDate}
-              maxDate={autoSchedule?.maxDate}
-              scheduleNotice={autoSchedule?.notice}
-              onTrips={trips => onDelivery('trips', trips)}
-            />
-          ) : (
-            <>
-              <Field label="Tên sà lan" required>
-                <input
-                  aria-label="Tên sà lan"
-                  maxLength={150}
-                  value={delivery.bargeName}
-                  onChange={event => onDelivery('bargeName', event.target.value)}
-                  placeholder="Tên phương tiện sà lan"
-                />
-              </Field>
-              <Field label="Năm sà lan" required>
-                <input
-                  aria-label="Năm sà lan"
-                  type="number"
-                  min={1900}
-                  max={2200}
-                  value={delivery.bargeYear ?? ''}
-                  onChange={event => onDelivery('bargeYear', event.target.value ? Number(event.target.value) : null)}
-                  placeholder="Năm đóng / đăng kiểm"
-                />
-              </Field>
-              <Field label="Số chuyến sà lan" required>
-                <input
-                  aria-label="Số chuyến sà lan"
-                  maxLength={80}
-                  value={delivery.bargeVoyage}
-                  onChange={event => onDelivery('bargeVoyage', event.target.value)}
-                  placeholder="Số chuyến"
-                />
-              </Field>
-            </>
-          )}
+          <ServiceTripFleet
+            request={request}
+            containers={containers}
+            disabled={sampleMode}
+            minDate={autoSchedule?.minDate}
+            maxDate={autoSchedule?.maxDate}
+            scheduleNotice={autoSchedule?.notice}
+            onTrips={trips => onDelivery('trips', trips)}
+          />
 
-          <div className="epd-wide epd-expiry-wrapper">
-            <label className="epd-checkbox-inline">
-              <input
-                type="checkbox"
-                checked={hasExpiry}
-                onChange={event => toggleExpiry(event.target.checked)}
-              />
-              <span>Lệnh có hạn lệnh (tích chọn để thiết lập ngày hết hạn lệnh)</span>
-            </label>
-            {hasExpiry && (
-              <Field label={`Ngày hạn lệnh ${sourceExpiry ? `(Tối đa ${sourceExpiry})` : ''}`} required>
+          {flow !== 'EXPORT' && request?.flow !== 'EXPORT' && (
+            <div className="epd-wide epd-expiry-wrapper">
+              <label className="epd-checkbox-inline">
                 <input
-                  aria-label="Hạn lệnh giao nhận"
-                  type="date"
-                  max={sourceExpiry || undefined}
-                  value={delivery.orderValidUntil || ''}
-                  onChange={event => onDelivery('orderValidUntil', event.target.value)}
+                  type="checkbox"
+                  checked={hasExpiry}
+                  onChange={event => toggleExpiry(event.target.checked)}
                 />
-              </Field>
-            )}
-          </div>
+                <span>Lệnh có hạn lệnh (tích chọn để thiết lập ngày hết hạn lệnh)</span>
+              </label>
+              {hasExpiry && (
+                <Field label={`Ngày hạn lệnh ${sourceExpiry ? `(Tối đa ${sourceExpiry})` : ''}`} required>
+                  <input
+                    aria-label="Hạn lệnh giao nhận"
+                    type="date"
+                    max={sourceExpiry || undefined}
+                    value={delivery.orderValidUntil || ''}
+                    onChange={event => onDelivery('orderValidUntil', event.target.value)}
+                  />
+                </Field>
+              )}
+            </div>
+          )}
         </div>
-        <p className="epd-muted">
-          Nếu không chọn hạn điện lạnh và lưu bãi ở bước trước, thời gian sẽ tự lấy theo ngày “hạn lệnh” tại đây (hoặc hạn DO/eDO).
-        </p>
+        {flow !== 'EXPORT' && request?.flow !== 'EXPORT' && (
+          <p className="epd-muted">
+            Nếu không chọn hạn lưu bãi ở bước trước, thời gian sẽ tự lấy theo ngày “hạn lệnh” tại đây (hoặc hạn DO/eDO).
+          </p>
+        )}
       </div>
 
       <div className="epd-source-box">

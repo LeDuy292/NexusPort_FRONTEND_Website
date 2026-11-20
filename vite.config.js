@@ -12,9 +12,9 @@ export default defineConfig({
         changeOrigin: true,
         ws: true,
       },
-      // C# owns Booking/Gate/Identity; match before the broader Express prefix.
+      // C# owns Booking/Gate/Identity; chuyển tiếp qua Backend Express (:3001) để tới C# Core Railway
       '/api/v1': {
-        target: 'http://localhost:5000',
+        target: 'http://localhost:3001',
         changeOrigin: true,
       },
       // Chuyển tiếp /api/* (bao gồm cả /api/shipping) sang Backend Express (:3001)

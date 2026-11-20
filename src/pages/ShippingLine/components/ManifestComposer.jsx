@@ -1,21 +1,26 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ManifestContainerEditor from './ManifestContainerEditor'
 import ManifestContainerList from './ManifestContainerList'
 import ManifestConfirmDialog from './ManifestConfirmDialog'
 import { clearManifestComposerSession, saveManifestComposerSession } from '../utils/manifestComposerSession'
 import { shippingLineApi, formatApiErrorMessage } from '../api/shippingLineApi'
+import { importDocumentService } from '../../../services/importDocumentService'
 
 const blankContainer = () => ({ containerNumber: '', isoType: '', isoSizeType: '', sealNumber: '', grossWeightKg: '', commodity: '', isReefer: false, lookupStatus: 'idle' })
 const blankBill = () => ({ blNumber: '', shipper: '', consignee: '', containers: [] })
+// Bản khai xuất: chuyến rời Cảng Tiên Sa (cảng bốc). Bản khai nhập: chuyến đến Cảng Tiên Sa (cảng dỡ).
+const TIEN_SA = /TIÊN SA|TIEN SA|VNDAD/i
+export const voyageFitsDirection = (voyage, direction) =>
+  TIEN_SA.test(String(direction === 'IMPORT' ? voyage?.pod || '' : voyage?.pol || ''))
 const fieldClass = 'w-full border border-chalk rounded-lg px-3 py-2 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-orange-200'
 const buttonClass = 'px-3 py-2 rounded-lg border border-chalk text-sm font-semibold hover:bg-fog disabled:opacity-50'
 
 export default function ManifestComposer({ voyages, initialManifest, importedManifest, resumeSession, onClose, onSaved }) {
   const navigate = useNavigate()
   const [form, setForm] = useState(() => resumeSession?.form || importedManifest || initialManifest || {
-    requestKey: crypto.randomUUID(), voyageNumber: voyages[0]?.voyageNumber || '',
-    vesselName: voyages[0]?.vesselName || '', direction: 'EXPORT', bills: [],
+    requestKey: crypto.randomUUID(), voyageNumber: voyages.find(v => voyageFitsDirection(v, 'EXPORT'))?.voyageNumber || '',
+    vesselName: voyages.find(v => voyageFitsDirection(v, 'EXPORT'))?.vesselName || '', direction: 'EXPORT', bills: [],
   })
   const [editingBill, setEditingBill] = useState(() => resumeSession?.editingBill || null)
   const [billIndex, setBillIndex] = useState(resumeSession?.billIndex ?? null)
@@ -25,6 +30,14 @@ export default function ManifestComposer({ voyages, initialManifest, importedMan
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(Boolean(importedManifest || resumeSession))
   const [confirmation, setConfirmation] = useState(null)
+  // Người gửi / nhận hàng phải là công ty có tài khoản Transport Company trên hệ thống
+  const [companies, setCompanies] = useState([])
+  const [companyError, setCompanyError] = useState('')
+  useEffect(() => {
+    importDocumentService.listCompanies()
+      .then(list => setCompanies(Array.isArray(list) ? list : []))
+      .catch(() => setCompanyError('Không tải được danh sách công ty vận tải.'))
+  }, [])
   const update = (patch) => { setForm(f => ({ ...f, ...patch })); setDirty(true) }
   const openBill = (index = null) => {
     setBillIndex(index)
@@ -122,10 +135,23 @@ export default function ManifestComposer({ voyages, initialManifest, importedMan
           {editingBill ? (
             <form id="manifest-bill-form" onSubmit={saveBill} className="space-y-5">
               <div className="grid md:grid-cols-3 gap-4">
-                {[['blNumber', 'Số vận đơn (B/L)', 100], ['shipper', 'Người gửi hàng', 500], ['consignee', 'Người nhận hàng', 500]].map(([key, label, max]) => (
-                  <label key={key} className="text-sm font-semibold space-y-1 block">{label} *<input required maxLength={max} className={fieldClass} value={editingBill[key]} onChange={e => setEditingBill(b => ({ ...b, [key]: e.target.value }))} /></label>
-                ))}
+                <label className="text-sm font-semibold space-y-1 block">Số vận đơn (B/L) *<input required maxLength={100} className={fieldClass} value={editingBill.blNumber} onChange={e => setEditingBill(b => ({ ...b, blNumber: e.target.value }))} /></label>
+                {[['shipper', 'Người gửi hàng'], ['consignee', 'Người nhận hàng']].map(([key, label]) => {
+                  const current = editingBill[key]
+                  const known = companies.some(c => c.companyName === current)
+                  return (
+                    <label key={key} className="text-sm font-semibold space-y-1 block">{label} *
+                      <select required className={fieldClass} value={current} onChange={e => setEditingBill(b => ({ ...b, [key]: e.target.value }))}>
+                        <option value="">Chọn công ty vận tải</option>
+                        {current && !known && <option value={current}>{current} (chưa đăng ký, chọn lại)</option>}
+                        {companies.map(c => <option key={c.id} value={c.companyName}>{c.companyName}{c.taxCode ? ` · MST ${c.taxCode}` : ''}</option>)}
+                      </select>
+                    </label>
+                  )
+                })}
               </div>
+              {companyError && <p role="alert" className="text-xs text-red-700">{companyError}</p>}
+              {!companyError && companies.length === 0 && <p className="text-xs text-slate">Chưa có công ty nào có tài khoản Transport Company trên hệ thống.</p>}
               <div className="flex flex-wrap justify-between items-center gap-3"><div><h3 className="font-bold">Container trong vận đơn ({editingBill.containers.length})</h3><p className="mt-1 text-xs text-slate">10 container / trang · Chọn Sửa để xem và chỉnh thông tin chi tiết.</p></div>
                 <button type="button" className={buttonClass} onClick={() => openContainer()}>+ Thêm container</button></div>
               <ManifestContainerList containers={editingBill.containers} page={containerPage} onPageChange={setContainerPage} onEdit={openContainer} onRemove={removeContainer} />
@@ -135,9 +161,13 @@ export default function ManifestComposer({ voyages, initialManifest, importedMan
               <div className="grid md:grid-cols-2 gap-4">
                 <label className="text-sm font-semibold">Chuyến tàu *<select className={fieldClass} value={form.voyageNumber} onChange={e => { const v = voyages.find(v => v.voyageNumber === e.target.value); update({ voyageNumber: e.target.value, vesselName: v?.vesselName || '' }) }}><option value="">Chọn chuyến tàu</option>
                   {form.voyageNumber && !voyages.some(v => v.voyageNumber === form.voyageNumber) && <option value={form.voyageNumber}>{form.voyageNumber} · {form.vesselName}</option>}
-                  {voyages.map(v => <option key={v.id || v.voyageNumber} value={v.voyageNumber}>{v.voyageNumber} · {v.vesselName}</option>)}
+                  {voyages.filter(v => voyageFitsDirection(v, form.direction)).map(v => <option key={v.id || v.voyageNumber} value={v.voyageNumber}>{v.voyageNumber} · {v.vesselName} · {form.direction === 'IMPORT' ? `từ ${v.pol || '—'}` : `đi ${v.pod || '—'}`}</option>)}
                 </select></label>
-                <label className="text-sm font-semibold">Hướng khai<select className={fieldClass} value={form.direction} onChange={e => update({ direction: e.target.value })}><option value="EXPORT">Xuất khẩu</option><option value="IMPORT">Nhập khẩu</option></select></label>
+                <label className="text-sm font-semibold">Hướng khai<select className={fieldClass} value={form.direction} onChange={e => {
+                  const direction = e.target.value
+                  const current = voyages.find(v => v.voyageNumber === form.voyageNumber)
+                  update(current && voyageFitsDirection(current, direction) ? { direction } : { direction, voyageNumber: '', vesselName: '' })
+                }}><option value="EXPORT">Xuất khẩu</option><option value="IMPORT">Nhập khẩu</option></select></label>
               </div>
               <div className="flex justify-between items-center gap-3"><h3 className="font-bold">{form.bills.length} vận đơn · {total} container</h3><button type="button" className={buttonClass} onClick={() => openBill()}>+ Tạo thêm vận đơn</button></div>
               {!form.bills.length && <div className="p-8 text-center border border-dashed border-chalk rounded-xl text-slate">Thêm vận đơn, sau đó khai báo các container và hàng hóa trong vận đơn đó.</div>}

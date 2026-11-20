@@ -12,7 +12,14 @@ import React, { createContext, useContext, useState } from 'react'
 const StoreContext = createContext()
 
 export function StoreProvider({ children }) {
-  const [user, setUser] = useState(() => JSON.parse(localStorage.getItem('user')) || null)
+  const [user, setUser] = useState(() => {
+    try {
+      const raw = localStorage.getItem('user')
+      return raw && raw !== 'undefined' ? JSON.parse(raw) : null
+    } catch {
+      return null
+    }
+  })
   const [notifications, setNotifications] = useState([])
 
   const login = (userData) => {
