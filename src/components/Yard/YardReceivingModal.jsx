@@ -8,6 +8,7 @@ export default function YardReceivingModal({ task, isOpen, onClose, onSuccess, a
   const [isSealIntact, setIsSealIntact] = useState(true)
   const [condition, setCondition] = useState('Good') // Good, Damaged, Seal_Broken
   const [notes, setNotes] = useState('')
+  const [photos, setPhotos] = useState([]) // ảnh container (data URL đã nén), tối đa 4
   const [inspectorName, setInspectorName] = useState('Phạm Bãi Hàng')
   const [yardBlockCode, setYardBlockCode] = useState('')
   const [locationCoordinate, setLocationCoordinate] = useState('')
@@ -85,6 +86,10 @@ export default function YardReceivingModal({ task, isOpen, onClose, onSuccess, a
       setErrorMessage('Vui lòng nhập Mã Seal đối soát thực tế!')
       return
     }
+    if (!photos.length) {
+      setErrorMessage('Vui lòng chụp hoặc chọn ít nhất 1 ảnh container trước khi xác nhận đã nhận!')
+      return
+    }
 
     setLoading(true)
     setErrorMessage('')
@@ -104,7 +109,8 @@ export default function YardReceivingModal({ task, isOpen, onClose, onSuccess, a
         notes: notes.trim(),
         inspectorName: inspectorName.trim() || 'Yard Staff',
         yardBlockCode: yardBlockCode.trim() || selectedTask?.blockCode || 'A01',
-        locationCoordinate: locationCoordinate.trim() || selectedTask?.toLocation || 'A01-05-02-3'
+        locationCoordinate: locationCoordinate.trim() || selectedTask?.toLocation || 'A01-05-02-3',
+        photoImages: photos,
       }
 
       const res = await yardTaskService.receiveContainer(payload)
@@ -122,6 +128,38 @@ export default function YardReceivingModal({ task, isOpen, onClose, onSuccess, a
       setErrorMessage(msg)
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Nén ảnh về tối đa 1280px, JPEG 0.8 để gửi nhanh và nhẹ khi lưu lên S3.
+  const compressImage = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onerror = () => reject(new Error('Không đọc được ảnh.'))
+    reader.onload = () => {
+      const img = new Image()
+      img.onerror = () => reject(new Error('Ảnh không hợp lệ.'))
+      img.onload = () => {
+        const scale = Math.min(1, 1280 / Math.max(img.width, img.height))
+        const canvas = document.createElement('canvas')
+        canvas.width = Math.round(img.width * scale)
+        canvas.height = Math.round(img.height * scale)
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height)
+        resolve(canvas.toDataURL('image/jpeg', 0.8))
+      }
+      img.src = reader.result
+    }
+    reader.readAsDataURL(file)
+  })
+
+  const handlePhotos = async (event) => {
+    const files = Array.from(event.target.files || []).slice(0, 4 - photos.length)
+    event.target.value = ''
+    try {
+      const added = await Promise.all(files.map(compressImage))
+      setPhotos(prev => [...prev, ...added].slice(0, 4))
+      setErrorMessage('')
+    } catch (err) {
+      setErrorMessage(err.message)
     }
   }
 
@@ -353,6 +391,30 @@ export default function YardReceivingModal({ task, isOpen, onClose, onSuccess, a
                 <span className="text-xs">Mất Chì (Seal Broken)</span>
                 <span className="text-[10px] text-slate-400">Chì bị đứt / mất</span>
               </button>
+            </div>
+          </div>
+
+          {/* Ảnh container khi nhận */}
+          <div className="space-y-1.5">
+            <label className="text-slate-700 text-xs font-bold flex items-center gap-1.5">
+              <span className="material-symbols-outlined text-slate-500 text-sm">photo_camera</span>
+              Ảnh Container Khi Nhận * <span className="text-slate-400 font-normal">(tối đa 4 ảnh)</span>
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {photos.map((src, index) => (
+                <div key={index} className="relative w-20 h-20 rounded-lg overflow-hidden border border-slate-200">
+                  <img src={src} alt={`Ảnh container ${index + 1}`} className="w-full h-full object-cover" />
+                  <button type="button" onClick={() => setPhotos(prev => prev.filter((_, i) => i !== index))}
+                    className="absolute top-0.5 right-0.5 bg-slate-900/70 text-white rounded-full w-5 h-5 text-[11px] leading-5 cursor-pointer">×</button>
+                </div>
+              ))}
+              {photos.length < 4 && (
+                <label className="w-20 h-20 rounded-lg border border-dashed border-slate-300 flex flex-col items-center justify-center text-slate-500 text-[11px] cursor-pointer hover:bg-slate-50">
+                  <span className="material-symbols-outlined text-xl">add_a_photo</span>
+                  Thêm ảnh
+                  <input type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={handlePhotos} />
+                </label>
+              )}
             </div>
           </div>
 
