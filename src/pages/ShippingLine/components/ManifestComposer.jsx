@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import ManifestContainerEditor from './ManifestContainerEditor'
 import ManifestContainerList from './ManifestContainerList'
@@ -27,6 +27,9 @@ export default function ManifestComposer({ voyages, initialManifest, importedMan
   const [containerEditor, setContainerEditor] = useState(() => resumeSession?.containerEditor || null)
   const [containerPage, setContainerPage] = useState(resumeSession?.containerPage || 1)
   const [error, setError] = useState('')
+  const [blError, setBlError] = useState('')
+  const editingBillRef = useRef(null)
+  editingBillRef.current = editingBill
   const [saving, setSaving] = useState(false)
   const [dirty, setDirty] = useState(Boolean(importedManifest || resumeSession))
   const [confirmation, setConfirmation] = useState(null)
@@ -45,6 +48,7 @@ export default function ManifestComposer({ voyages, initialManifest, importedMan
     setContainerPage(1)
     setContainerEditor(null)
     setError('')
+    setBlError('')
   }
   const openContainer = (index = null) => setContainerEditor({ index, value: index === null ? blankContainer() : structuredClone(editingBill.containers[index]) })
   const saveContainer = (container) => {
@@ -82,8 +86,31 @@ export default function ManifestComposer({ voyages, initialManifest, importedMan
       navigate(`/shipping-line/containers?returnTo=manifest&containerNumber=${encodeURIComponent(number)}`)
     } catch { throw new Error('Không thể lưu tạm vận đơn trên trình duyệt. Vui lòng cho phép lưu trữ và thử lại.') }
   }
+  const validateBlNumber = (value) => {
+    const bl = value.trim().toUpperCase()
+    if (!bl) return 'Nhập số vận đơn.'
+    // Cùng quy tắc với bước phát hành vận đơn (blImport.service.js), để lỗi hiện ngay khi nhập
+    if (!/^[A-Z0-9][A-Z0-9\-/]{5,34}$/.test(bl.replace(/\s+/g, ''))) return 'Số vận đơn không hợp lệ: cần 6–35 ký tự gồm chữ, số, dấu - hoặc /.'
+    if (form.bills.some((b, i) => i !== billIndex && b.blNumber.trim().toUpperCase() === bl)) return 'Số vận đơn đã có trong bản khai.'
+    return ''
+  }
+  // Kiểm tra cục bộ trước, rồi hỏi backend xem số vận đơn đã dùng ở bản khai khác của tài khoản chưa
+  const checkBlNumber = async (value) => {
+    const local = validateBlNumber(value)
+    setBlError(local)
+    if (local) return
+    const bl = value.trim().toUpperCase()
+    try {
+      const res = await shippingLineApi.checkManifestBill(bl, initialManifest?.id)
+      if (res && res.available === false) setBlError(current => (editingBillRef.current?.blNumber.trim().toUpperCase() === bl ? 'Số vận đơn đã được sử dụng trong bản khai khác.' : current))
+    } catch {
+      // Không chặn người dùng nếu không kiểm tra được; backend vẫn kiểm tra lại khi lưu.
+    }
+  }
   const saveBill = (event) => {
     event.preventDefault()
+    const blProblem = validateBlNumber(editingBill.blNumber) || blError
+    if (blProblem) { setBlError(blProblem); return }
     if (!editingBill.containers.length) { setError('Thêm ít nhất một container vào vận đơn.'); return }
     const invalidIndex = editingBill.containers.findIndex(c => !c.containerId || !c.sealNumber?.trim() || !c.commodity?.trim() || !(Number(c.grossWeightKg) > 0 && Number(c.grossWeightKg) <= 36000))
     if (invalidIndex >= 0) {
@@ -135,7 +162,7 @@ export default function ManifestComposer({ voyages, initialManifest, importedMan
           {editingBill ? (
             <form id="manifest-bill-form" onSubmit={saveBill} className="space-y-5">
               <div className="grid md:grid-cols-3 gap-4">
-                <label className="text-sm font-semibold space-y-1 block">Số vận đơn (B/L) *<input required maxLength={100} className={fieldClass} value={editingBill.blNumber} onChange={e => setEditingBill(b => ({ ...b, blNumber: e.target.value }))} /></label>
+                <label className="text-sm font-semibold space-y-1 block">Số vận đơn (B/L) *<input required maxLength={100} aria-invalid={Boolean(blError)} aria-describedby={blError ? 'bl-number-error' : undefined} className={`${fieldClass} ${blError ? 'border-red-400' : ''}`} value={editingBill.blNumber} onChange={e => { const v = e.target.value; setEditingBill(b => ({ ...b, blNumber: v })); if (blError) setBlError(validateBlNumber(v)) }} onBlur={e => checkBlNumber(e.target.value)} />{blError && <span id="bl-number-error" role="alert" className="block text-xs font-medium text-red-600">{blError}</span>}</label>
                 {[['shipper', 'Người gửi hàng'], ['consignee', 'Người nhận hàng']].map(([key, label]) => {
                   const current = editingBill[key]
                   const known = companies.some(c => c.companyName === current)
