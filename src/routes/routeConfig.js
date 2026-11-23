@@ -47,10 +47,6 @@ export const routeConfig = [
     allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
-    path: '/shifting-fees',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.ADMINISTRATOR],
-  },
-  {
     path: '/import-documents',
     allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },

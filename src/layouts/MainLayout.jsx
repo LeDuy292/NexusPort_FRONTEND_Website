@@ -295,12 +295,6 @@ const sidebarItems = [
     roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
-    path: '/shifting-fees',
-    label: 'Phí Đảo Container',
-    icon: 'payments',
-    roles: [ROLES.TRANSPORT_COMPANY],
-  },
-  {
     path: '/import-documents',
     label: 'Chứng Từ Hàng Nhập',
     icon: 'inventory',
