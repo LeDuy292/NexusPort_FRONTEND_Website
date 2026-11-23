@@ -515,3 +515,9 @@
 .epo-payment-success-dialog .epc-button { width: 100%; justify-content: center; min-height: 45px; }
 @keyframes epo-payment-success-enter { from { opacity: 0; transform: translateY(12px) scale(.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
 @media (prefers-reduced-motion: reduce) { .epo-payment-success-dialog { animation: none; } }
+
+/* Hiển thị inline trong trang (không pop-up) */
+.epc-dialog.epc-inline { position: static; inset: auto; display: flex; flex-direction: column; width: 100%; max-width: none; max-height: none; margin: 0 0 20px; overflow: visible; border: 1px solid var(--ec-line); border-radius: 18px; box-shadow: 0 6px 24px #10213712; animation: none; }
+.epc-dialog.epc-inline.epd-dialog, .epc-dialog.epc-inline.epo-detail-dialog { width: 100%; max-height: none; overflow: visible; border-radius: 18px; }
+.epc-dialog.epc-inline .esr-scroll { max-height: none; }
+.epo-email-facts { margin-top: -4px; }

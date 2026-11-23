@@ -166,23 +166,6 @@ export default function DispatcherDashboard() {
           </div>
           <h2 className="font-heading text-3xl text-carbon font-extrabold mt-1">Trung tâm Điều phối Cảng NexusPort</h2>
         </div>
-
-        <div className="flex items-center gap-6 text-xs">
-          <div className="text-right">
-            <span className="text-slate block text-[10px] uppercase font-bold">CA LÀM VIỆC</span>
-            <strong className="text-carbon">Ca 1 (06:00 - 14:00)</strong>
-          </div>
-          
-          <div className="flex items-center gap-3 border-l border-chalk pl-6">
-            <div className="w-10 h-10 rounded-full bg-carbon text-white font-bold flex items-center justify-center text-sm shadow">
-              NH
-            </div>
-            <div>
-              <div className="font-bold text-carbon">Nguyễn Văn Hải</div>
-              <span className="text-slate text-[11px]">Trưởng ca Điều độ</span>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* NXP-063: unified dispatcher realtime status channel */}

@@ -75,13 +75,11 @@ export default function DispatchBoard() {
   const canDelay = ['ready', 'called', 'acknowledged'].includes(selectedState)
   return <div className="arrival-page">
     <header className="arrival-header">
-      <div><p className="arrival-eyebrow"><span className="arrival-badge">KHÔNG GIAN ĐIỀU ĐỘ</span> NexusPort · Cảng Tiên Sa, Đà Nẵng (VNDAD)</p><h1>Theo dõi & điều phối xe</h1>
-        <p>Tài xế xác nhận chuyến → báo đã đến cổng → điều độ gọi xe vào cổng → Gate In → làm hàng → Gate Out.</p></div>
+      <div><p className="arrival-eyebrow"><span className="arrival-badge">KHÔNG GIAN ĐIỀU ĐỘ</span></p><h1>Theo dõi & điều phối xe</h1></div>
       <span className={'arrival-live ' + (connected ? 'connected' : '')}>{connected ? '● Realtime đang kết nối' : '◌ Đang nối lại realtime'}</span>
     </header>
     <div className="arrival-toolbar">
       <label>Ngày hẹn <input type="date" value={date} disabled={busy} onChange={e => { setDate(e.target.value || dateToday()); setPage(1); changeSelection(null) }} /></label>
-      <button type="button" onClick={() => void reload()} disabled={loading && !error}>Làm mới</button>
     </div>
     {error && <div className="arrival-error" role="alert">Không tải được danh sách xe: {error} <button type="button" onClick={() => void reload()}>Thử lại</button></div>}
     <div className="arrival-counts">

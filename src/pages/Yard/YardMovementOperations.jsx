@@ -2659,10 +2659,7 @@ export default function YardMovementOperations() {
 
       {/* ── TIÊU ĐỀ & CHUYỂN TAB ── */}
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-4">
-        <div>
-          <h2 className="font-heading text-2xl font-extrabold text-slate-900">Lệnh Di Chuyển Container</h2>
-          <p className="text-sm text-slate-500 mt-0.5">Điều phối cẩu và xác nhận nhận container tại bãi</p>
-        </div>
+        <div />
         <button
           onClick={handleOpenCreateModal}
           className="px-5 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm rounded-xl shadow-sm shadow-orange-200 cursor-pointer flex items-center gap-2 self-start lg:self-auto"
@@ -2955,16 +2952,6 @@ export default function YardMovementOperations() {
                   </button>
                 ))}
               </div>
-
-              <button
-                onClick={loadTasks}
-                className="p-2 bg-slate-100 hover:bg-slate-200 rounded-2xl border border-slate-300 text-slate-700 cursor-pointer transition-all"
-                title="Tải lại dữ liệu"
-              >
-                <span className="material-symbols-outlined text-base">
-                  refresh
-                </span>
-              </button>
             </div>
           </div>
 

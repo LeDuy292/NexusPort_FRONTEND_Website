@@ -104,17 +104,7 @@ export default function YardReceiving() {
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-blue-900/60 via-indigo-900/40 to-slate-900 border border-blue-500/20 p-6 md:p-8 shadow-2xl backdrop-blur-xl">
         <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative z-10">
-          <div>
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-semibold uppercase tracking-wider mb-3">
-              <span>✨ Quy Trình Tiếp Nhận & Kiểm Tra Bãi</span>
-            </div>
-            <h1 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight flex items-center gap-3">
-              <span className="text-3xl">🛡️</span> Nhận Container Vào Bãi (Yard Receiving)
-            </h1>
-            <p className="text-slate-400 text-sm md:text-base mt-1 max-w-2xl">
-              Đối soát số hiệu Container ID, kiểm tra Chì Seal thực tế, đánh giá ngoại quan vỏ cont và xác nhận tiếp nhận vào tọa độ bãi lưu giữ.
-            </p>
-          </div>
+          <div />
 
           {/* Tab Navigation Switches */}
           <div className="flex bg-slate-900/80 p-1.5 rounded-2xl border border-slate-800 backdrop-blur-md">

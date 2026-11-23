@@ -293,19 +293,7 @@ export default function ServiceCatalogPage({ management = false }) {
   return (
     <div className={`epc ${motionPaused ? 'epc-motion-paused' : ''}`}>
       {management && <div className="epc-page-header">
-        <div>
-          <div className="epc-breadcrumb">
-            {management ? 'Quản trị' : 'Cổng doanh nghiệp'}
-            <span>/</span>
-            {management ? 'Danh mục dịch vụ & Biểu phí' : 'Đăng ký giao nhận'}
-          </div>
-          <h1>{management ? 'Danh mục & biểu phí' : 'Đăng Ký Giao Nhận (ePort)'}</h1>
-          <p>
-            {management
-              ? 'Quản lý danh mục dịch vụ và đơn giá theo từng thời gian áp dụng.'
-              : 'Hệ thống tiếp nhận và giải quyết thủ tục giao nhận container hàng xuất và nhập khẩu trực tuyến.'}
-          </p>
-        </div>
+        <div />
         {management ? (
           <button type="button" className="epc-button primary" onClick={() => setModal({ type: 'service' })}>
             <Plus size={18} />Thêm dịch vụ
@@ -404,6 +392,24 @@ export default function ServiceCatalogPage({ management = false }) {
           <CheckCircle2 size={18} />{notice}
           <button type="button" aria-label="Đóng thông báo" onClick={() => setNotice('')}><X size={16} /></button>
         </div>
+      )}
+
+      {/* Trạng thái tải / lỗi của tab Đăng ký dịch vụ (trước đây trang trống khi truy vấn danh mục thất bại) */}
+      {!management && activeSection === 'register' && query.isPending && (
+        <div className="epc-loading" aria-live="polite">
+          <Loader2 className="epc-spin" size={28} />
+          <p>Đang tải dịch vụ và biểu phí…</p>
+        </div>
+      )}
+      {!management && activeSection === 'register' && query.isError && (
+        <section className="epc-load-error">
+          <CircleHelp size={32} />
+          <h2>Chưa tải được danh mục dịch vụ</h2>
+          <p>{getError(query.error)}</p>
+          <button type="button" className="epc-button secondary" onClick={() => query.refetch()}>
+            <RefreshCw size={16} />Thử lại
+          </button>
+        </section>
       )}
 
       {/* PORTAL FOR TRANSPORT COMPANY: CHỈ HIỂN THỊ DUY NHẤT 2 DỊCH VỤ XUẤT VÀ NHẬP */}
@@ -507,7 +513,7 @@ export default function ServiceCatalogPage({ management = false }) {
       )}
 
       {/* ORDERS LIST SECTION: Danh sách đơn dịch vụ của doanh nghiệp */}
-      {canDraft && activeSection === 'orders' && (
+      {canDraft && activeSection === 'orders' && !selectedOrderId && (
         <section className="epo-worklist" aria-labelledby="epo-list-title">
           <div className="epo-worklist-heading">
             <div>
@@ -516,9 +522,6 @@ export default function ServiceCatalogPage({ management = false }) {
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <span className="epo-result-count">{ordersQuery.isSuccess ? `${ordersTotal} hồ sơ` : 'Đang kết nối'}</span>
-              <button type="button" className="epc-button secondary" disabled={ordersQuery.isFetching} onClick={refreshOrders}>
-                <RefreshCw size={15} className={ordersQuery.isFetching ? 'epc-spin' : ''} />Làm mới
-              </button>
             </div>
           </div>
           <div className="epo-filters">
@@ -608,7 +611,7 @@ export default function ServiceCatalogPage({ management = false }) {
       )}
 
       {/* ORDER DIALOGS */}
-      {selectedOrderId && <ServiceOrderDetail key={`${session}:${selectedOrderId}`} orderId={selectedOrderId} initialTab={params.has('orderId') || params.get('tab') === 'payments' ? 'payments' : 'information'} showPaymentSuccess={returnPaymentOrder === selectedOrderId} onPaymentSuccessShown={() => setReturnPaymentOrder(null)} onClose={() => chooseOrder(null)} onEdit={orderEditDraft} onReview={orderReviewDraft} />}
+      {selectedOrderId && <ServiceOrderDetail inline key={`${session}:${selectedOrderId}`} orderId={selectedOrderId} initialTab={params.has('orderId') || params.get('tab') === 'payments' ? 'payments' : 'information'} showPaymentSuccess={returnPaymentOrder === selectedOrderId} onPaymentSuccessShown={() => setReturnPaymentOrder(null)} onClose={() => chooseOrder(null)} onEdit={orderEditDraft} onReview={orderReviewDraft} />}
       {orderEditing && (
         catalogForOrders.isPending
           ? <div className="epo-loading-overlay" role="status"><Loader2 className="epc-spin" size={22} />Đang tải danh mục…<button type="button" onClick={() => setOrderEditing(null)}>Đóng</button></div>

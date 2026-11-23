@@ -331,11 +331,21 @@ export default function GateBookingRequests() {
       const rawBills = JSON.parse(localStorage.getItem('NEXUSPORT_PORT_BILLS') || '{}')
       const dismissedIds = new Set(JSON.parse(localStorage.getItem('NEXUSPORT_DISMISSED_BILLS') || '[]'))
       const list = []
+      // Mỗi lần duyệt booking sinh 2 loại hóa đơn: từng container (BILL-<mã>) và hóa đơn tổng của cả booking (BILL-<mã>-TOTAL).
+      // Đã có hóa đơn tổng thì ẩn hóa đơn từng container nằm trong đó để không hiện trùng.
+      const totalBills = Object.values(rawBills).filter(b => b && typeof b === 'object' && String(b.billNumber || '').endsWith('-TOTAL'))
+      const totalNumbers = new Set(totalBills.map(b => b.billNumber))
+      const coveredContainers = new Set(
+        totalBills.flatMap(b => (b.containers || []).map(c => String(c?.containerId || '').trim().toUpperCase())).filter(Boolean)
+      )
       Object.entries(rawBills).forEach(([k, b]) => {
         if (!b || typeof b !== 'object') return
         const billId = b.billNumber || b.reference || (k.startsWith('BILL-') ? k : `BILL-${k}`)
         if (!b.billNumber && !b.total && !b.totalFormatted) return
+        if (b.kind === 'ITEM') return
         if (dismissedIds.has(billId)) return
+        if (!String(billId).endsWith('-TOTAL') &&
+            (totalNumbers.has(`${billId}-TOTAL`) || coveredContainers.has(String(b.containerId || '').trim().toUpperCase()))) return
         if (list.some(item => item.id === billId || item.billNumber === b.billNumber)) return
 
         const isPaid = b.status === 'PAID' || b.paid === true
@@ -918,22 +928,6 @@ export default function GateBookingRequests() {
       }
 
     ]
-  }
-
-  // Refresh handler
-  const handleRefresh = async () => {
-    await manifestPortSyncService.fetchRemoteSyncedManifests().catch(() => { })
-    fetchBookings()
-    showToast('🔄 Đã cập nhật danh sách Yêu Cầu Lịch Hẹn Cổng mới nhất từ các Hãng xe!')
-  }
-
-  // Reset toàn bộ dữ liệu test về 0
-  const handleResetTestData = async () => {
-    if (window.confirm('Bạn có chắc muốn xóa toàn bộ bản khai tàu và container để test lại từ đầu không?')) {
-      await manifestPortSyncService.resetAllData().catch(() => { })
-      fetchBookings()
-      showToast('🗑️ Đã xóa sạch dữ liệu tàu & container về 0 để test từ đầu!')
-    }
   }
 
   const fetchBookings = async () => {
@@ -2507,6 +2501,8 @@ export default function GateBookingRequests() {
       const totalBillStr = `${totalBillToPush.toLocaleString('vi-VN')} VNĐ`
       const isGuid = (val) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(val || '').trim())
       const enrichedTargets = []
+      // Mỗi lần duyệt chỉ có MỘT hóa đơn: hóa đơn tổng của booking. Dòng chi tiết từng container mang cùng số hóa đơn này.
+      const totalBillNumber = `BILL-${selectedBooking.bookingCode || selectedBooking.id}-TOTAL`
 
       for (const targetBooking of targets) {
         const tCont = targetBooking.containerId
@@ -2560,7 +2556,8 @@ export default function GateBookingRequests() {
         const resolvedYardSlot = tSlot ? (tSlot.slotName || `Block ${tSlot.blockCode} · ${tSlot.bayDisplay || 'Bay 02'} · T${tSlot.tier || 1}-R${tSlot.row || 1}`) : (targetBooking.yardSlot || 'Đã cấp vị trí bãi')
         const targetFee = targetBooking.fee || (targetBooking.isReefer ? 669600 : 583200)
         const tPortBill = {
-          billNumber: `BILL-${targetBooking.bookingCode || targetBooking.id}`,
+          billNumber: totalBillNumber,
+          kind: 'ITEM', // dòng chi tiết của hóa đơn tổng, không hiển thị như một hóa đơn riêng
           bookingId: targetBooking.id,
           realId: targetBooking.realId || targetBooking.id,
           containerId: targetBooking.containerId,
@@ -2654,7 +2651,8 @@ export default function GateBookingRequests() {
 
       // Lưu 1 Bill Tổng duy nhất đại diện cho toàn bộ các container trong Booking
       const consolidatedBill = {
-        billNumber: `BILL-${selectedBooking.bookingCode || selectedBooking.id}-TOTAL`,
+        billNumber: totalBillNumber,
+        kind: 'TOTAL',
         bookingId: selectedBooking.id,
         vesselName: selectedBooking.vesselName || 'MAERSK MC-KINNEY MOLLER',
         voyageNumber: selectedBooking.voyageNumber || 'MM-2601S',
@@ -2674,7 +2672,7 @@ export default function GateBookingRequests() {
         approvedAt: nowIso,
         status: 'SENT_TO_CARRIER'
       }
-      storedBills[`BILL-${selectedBooking.bookingCode || selectedBooking.id}-TOTAL`] = consolidatedBill
+      storedBills[totalBillNumber] = consolidatedBill
 
       try {
         localStorage.setItem('NEXUSPORT_STORAGE_FEES', JSON.stringify(storedFees))
@@ -2691,7 +2689,7 @@ export default function GateBookingRequests() {
               requestId: crypto.randomUUID(),
               expectedVersion: eportDetailLive.version || targetEport.version || 1,
               status: 'APPROVED',
-              reference: `BILL-${selectedBooking.bookingCode || selectedBooking.id}-TOTAL`,
+              reference: totalBillNumber,
               total: totalBillToPush,
               currency: 'VND',
               reason: `Dispatcher đã duyệt toàn bộ ${enrichedTargets.length} container trong Booking và xuất 1 Bill Tổng duy nhất (${totalBillStr})`,
@@ -3018,36 +3016,7 @@ export default function GateBookingRequests() {
 
   // Render các Bảng Mới Chia Theo Ngày & Chuyến Tàu (tách từ Tàu đã được Cảng phê duyệt, lọc riêng theo từng Tàu hoặc Ngày được chọn)
   const renderManifestCompanyTables = () => {
-    if (manifestGeneratedBookings.length === 0) {
-      return (
-        <div className="bg-amber-50/70 border border-dashed border-amber-300 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-              <span className="material-symbols-outlined text-xl">calendar_month</span>
-            </div>
-            <div>
-              <h4 className="font-heading text-sm font-extrabold text-carbon">
-                Danh Sách Container Theo Ngày &amp; Chuyến Tàu (Chưa có tàu nào được phê duyệt)
-              </h4>
-              <p className="text-xs text-slate mt-0.5">
-                Khi bạn bấm vào nút <strong className="text-amber-800">"Chờ phê duyệt"</strong> trên chuyến tàu ở bảng <strong>Danh Sách Tàu</strong>, hệ thống sẽ tự động xếp từng container vào đúng khu vực bãi và phân nhóm theo ngày &amp; chuyến tàu tại đây.
-              </p>
-            </div>
-          </div>
-
-          {activeListType !== 'vessel' && (
-            <button
-              type="button"
-              onClick={() => setActiveListType('vessel')}
-              className="px-4 py-2 rounded-xl bg-signal-orange text-white font-extrabold text-xs hover:opacity-90 transition cursor-pointer shrink-0 flex items-center gap-1.5"
-            >
-              <span className="material-symbols-outlined text-base">directions_boat</span>
-              <span>Mở Danh Sách Tàu Để Duyệt</span>
-            </button>
-          )}
-        </div>
-      )
-    }
+    if (manifestGeneratedBookings.length === 0) return null
 
     const waitingTransportTotal = filteredBookings.filter(b => !isBookingTransportSubmitted(b)).length
     const readyForReviewTotal = filteredBookings.filter(b => isBookingTransportSubmitted(b) && (b.status === 'Pending' || b.status === 'Under Review' || b.status === 'WaitingTransport')).length
@@ -3447,39 +3416,6 @@ export default function GateBookingRequests() {
         </div>
       )}
 
-      {/* ── 1. HEADER & HERO THEO VIBE DỊCH VỤ ePORT ── */}
-      <div className="epc-page-header !mb-0">
-        <div>
-          <div className="epc-breadcrumb">
-            Cổng điều độ viên<span>/</span>Quản lý yêu cầu lịch hẹn cổng
-          </div>
-          <h1>Quản Lý Yêu Cầu Lịch Hẹn Cổng</h1>
-          <p>
-            Kiểm soát bản khai tàu e-Manifest, đối chiếu đơn dịch vụ ePort, cấp phép xe vận tải và tự động phân bổ vị trí bãi.
-          </p>
-        </div>
-
-        <div className="epc-page-actions flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleResetTestData}
-            className="epc-button secondary text-red-600 border-red-200 hover:bg-red-50 flex items-center gap-1.5"
-            title="Xóa toàn bộ bản khai tàu & booking để test lại từ đầu"
-          >
-            <span className="material-symbols-outlined text-base text-red-500">delete_sweep</span>
-            <span>Reset Dữ Liệu Test (Về 0)</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            className="epc-button secondary"
-          >
-            <span className="material-symbols-outlined text-base">refresh</span>
-            <span>Làm mới</span>
-          </button>
-        </div>
-      </div>
-
       <section className="epo-hero !mb-0" aria-labelledby="gate-hero-title">
         <div className="epo-hero-lines" aria-hidden="true" />
         <div className="epo-hero-copy">
@@ -3824,19 +3760,7 @@ export default function GateBookingRequests() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-chalk font-medium">
-                  {filteredVessels.length === 0 ? (
-                    <tr>
-                      <td colSpan="6" className="py-12 px-4 text-center">
-                        <div className="max-w-md mx-auto space-y-2">
-                          <span className="material-symbols-outlined text-4xl text-slate-300">directions_boat</span>
-                          <div className="text-sm font-bold text-slate-700">Chưa Có Bản Khai Nào Được Truyền Sang Cảng</div>
-                          <p className="text-xs text-slate-500 leading-relaxed">
-                            Vui lòng vào phân hệ <a href="/shipping-line/manifest" className="text-orange-600 font-bold underline">Hãng Tàu &gt; Quản Lý Bản Khai</a> và bấm nút <strong className="text-orange-600 font-mono">[Gửi dữ liệu cho cảng]</strong> để truyền thông tin tàu và container sang Cảng Tiên Sa.
-                          </p>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
+                  {filteredVessels.length === 0 ? null : (
                     pagedVessels.map(m => {
                       const isApproved = isManifestPermanentlyApproved(m) || m.portApprovalStatus === 'PORT_APPROVED' || m.status === 'PORT_APPROVED'
                       const vKey = m.manifestNumber || m.manifestId
@@ -3879,32 +3803,15 @@ export default function GateBookingRequests() {
                             </span>
                           </td>
 
-                          {/* 5. Trạng thái tàu (Dropdown trạng thái chuyến tàu: Đã cập cảng, Kế hoạch, Đang làm hàng...) */}
+                          {/* 5. Trạng thái tàu (chỉ xem) */}
                           <td className="py-2.5 px-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            <div className="relative inline-flex items-center">
-                              <select
-                                value={m.vesselStatus || 'BERTHED'}
-                                onChange={(e) => {
-                                  const newStatus = e.target.value
-                                  manifestPortSyncService.updateManifestVesselStatus(m.manifestId || m.manifestNumber, newStatus)
-                                  setManifestSyncVersion(v => v + 1)
-                                  showToast(`⚓ Đã cập nhật trạng thái tàu thành: ${VOYAGE_STATUS_LABELS[newStatus] || newStatus}`)
-                                }}
-                                title="Bấm để chọn chuyển đổi trạng thái chuyến tàu"
-                                className={`text-[11px] font-bold py-1 pl-3 pr-7 rounded-full border cursor-pointer appearance-none focus:outline-none transition-all shadow-2xs ${VOYAGE_STATUS_STYLES[m.vesselStatus || 'BERTHED'] || 'bg-emerald-50 text-emerald-700 border-emerald-300'
-                                  } hover:brightness-95`}
-                              >
-                                <option value="BERTHED">● Đã cập cảng</option>
-                                <option value="SCHEDULED">● Kế hoạch</option>
-                                <option value="OPERATING">● Đang làm hàng</option>
-                                <option value="IN_TRANSIT">● Đang hành trình</option>
-                                <option value="DEPARTED">● Đã rời cảng</option>
-                                <option value="COMPLETED">● Hoàn tất</option>
-                              </select>
-                              <span className="material-symbols-outlined text-xs absolute right-1.5 pointer-events-none opacity-60">
-                                expand_more
-                              </span>
-                            </div>
+                            {/* Trạng thái tàu do Hãng tàu cập nhật; Dispatcher chỉ xem */}
+                            <span
+                              title="Trạng thái do Hãng tàu cập nhật"
+                              className={`inline-flex items-center text-[11px] font-bold py-1 px-3 rounded-full border shadow-2xs ${VOYAGE_STATUS_STYLES[m.vesselStatus || 'BERTHED'] || 'bg-emerald-50 text-emerald-700 border-emerald-300'}`}
+                            >
+                              ● {VOYAGE_STATUS_LABELS[m.vesselStatus || 'BERTHED'] || m.vesselStatus}
+                            </span>
                           </td>
 
                           {/* 6. Thao tác: Lọc Cont + Xem Chi Tiết */}
@@ -4664,14 +4571,6 @@ export default function GateBookingRequests() {
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <span className="epo-result-count">{eportListTotal} hồ sơ</span>
-              <button
-                type="button"
-                className="epc-button secondary"
-                disabled={eportListLoading}
-                onClick={() => loadAllEportRequests()}
-              >
-                <RefreshCw size={15} className={eportListLoading ? 'epc-spin' : ''} />Làm mới
-              </button>
             </div>
           </div>
 

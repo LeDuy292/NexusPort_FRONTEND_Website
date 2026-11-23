@@ -89,7 +89,7 @@ const sidebarItems = [
     path: '/yard-staff/dashboard',
     label: 'Tổng Quan Khai Thác Bãi',
     icon: 'grid_view',
-    roles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER],
+    roles: [ROLES.YARD_OPERATOR],
   },
   {
     path: '/yard-staff/map',
@@ -101,7 +101,7 @@ const sidebarItems = [
     path: '/yard-staff/movement-operations',
     label: 'Lệnh Di Chuyển Container',
     icon: 'swap_horiz',
-    roles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER],
+    roles: [ROLES.YARD_OPERATOR],
   },
   {
     path: '/yard-staff/gate-out-preparation',
@@ -293,12 +293,6 @@ const sidebarItems = [
     roles: [ROLES.TRANSPORT_COMPANY],
   },
   {
-    path: '/carrier-profile',
-    label: 'Hồ Sơ Doanh Nghiệp',
-    icon: 'business',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
-  },
-  {
     path: '/users',
     label: 'Phân Quyền Vai Trò',
     icon: 'manage_accounts',
@@ -312,6 +306,27 @@ const sidebarItems = [
   },
 ]
 
+
+// Tên role hiển thị ở đầu mỗi trang (tiếng Việt)
+const ROLE_BADGES = {
+  [ROLES.SHIPPING_LINE]: 'HÃNG TÀU & VẬN TẢI BIỂN',
+  [ROLES.TRANSPORT_COMPANY]: 'CÔNG TY VẬN TẢI',
+  [ROLES.CARRIER_STAFF]: 'NHÂN VIÊN DOANH NGHIỆP',
+  [ROLES.DISPATCHER]: 'KHÔNG GIAN ĐIỀU ĐỘ',
+  [ROLES.YARD_OPERATOR]: 'KHAI THÁC BÃI',
+  [ROLES.GATE_OFFICER]: 'KIỂM SOÁT CỔNG',
+  [ROLES.ADMINISTRATOR]: 'QUẢN TRỊ HỆ THỐNG',
+}
+
+// Các trang tự dựng đầu trang riêng (kèm nút chức năng) hoặc không cần đầu trang: layout không vẽ khối đầu trang
+const PAGES_WITH_OWN_HEADER = new Set([
+  '/shipping-line/dashboard', '/shipping-line/voyages', '/shipping-line/manifest', '/shipping-line/import-documents', '/shipping-line/delivery-orders',
+  '/import-documents', '/my-bills', '/services',
+  '/gate/dashboard', '/gate/incidents', '/gate/history', '/gate/camera',
+  '/dispatch', '/dispatch-history', '/dispatcher/cameras',
+  // Trang không hiển thị khối đầu trang
+  '/dispatcher/gate-bookings',
+])
 
 export default function MainLayout({ previewUser = null }) {
   const navigate = useNavigate()
@@ -366,6 +381,9 @@ export default function MainLayout({ previewUser = null }) {
 
   // Lấy tiêu đề trang hiện tại
   const currentTitle = previewUser ? 'Bản Đồ Bãi' : (activeItem?.label || 'Cổng Quản trị')
+
+  const roleBadge = ROLE_BADGES[user.role]
+  const showPageHeader = !previewUser && Boolean(roleBadge && activeItem) && !PAGES_WITH_OWN_HEADER.has(location.pathname)
 
   if (user.role === ROLES.DRIVER) {
     return (
@@ -498,8 +516,22 @@ export default function MainLayout({ previewUser = null }) {
         </header>
 
         {/* CONTAINER CONTENT */}
-        <main className="flex-1 overflow-y-auto bg-slate-50 [scrollbar-gutter:stable]">
-          <Outlet />
+        <main className="flex-1 min-h-0 flex flex-col bg-slate-50 overflow-hidden">
+          {showPageHeader && (
+            <div className="px-6 md:px-8 pt-6 flex-shrink-0">
+              <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <span className="text-xs font-extrabold bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">{roleBadge}</span>
+                  <h2 className="font-heading text-2xl font-extrabold text-carbon mt-1">{currentTitle}</h2>
+                </div>
+                {/* Trang nào cần nút ở đầu trang thì gắn vào đây (createPortal) */}
+                <div id="page-header-actions" className="flex flex-wrap items-center gap-2.5" />
+              </div>
+            </div>
+          )}
+          <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable]">
+            <Outlet />
+          </div>
         </main>
       </div>
 

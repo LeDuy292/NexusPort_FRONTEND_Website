@@ -78,10 +78,7 @@ export default function CarrierStaffManagement() {
       
       {/* Header */}
       <div className="flex justify-between items-center bg-white rounded-xl p-6 border border-chalk shadow-sm">
-        <div>
-          <h2 className="font-heading text-2xl font-bold text-carbon">Quản lý Nhân viên</h2>
-          <p className="text-sm text-slate mt-1">Tạo và quản lý các tài khoản phụ cho công ty vận tải của bạn</p>
-        </div>
+        <div />
         <button
           onClick={() => setShowModal(true)}
           className="bg-carbon text-white font-bold py-2.5 px-6 rounded-lg shadow-md hover:bg-black transition flex items-center gap-2"

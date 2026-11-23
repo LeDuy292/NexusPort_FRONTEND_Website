@@ -7,22 +7,6 @@ export default function CarrierPortal() {
   return (
     <div className="p-8 w-full font-sans flex flex-col gap-6">
       
-      {/* Welcome Banner */}
-      <div className="bg-white rounded-xl p-8 border border-chalk shadow-sm space-y-4">
-        <div>
-          <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded uppercase">
-            Transport Company Portal
-          </span>
-          <h2 className="font-heading text-4xl text-carbon font-bold mt-2">
-            Chào buổi sáng, Oceanic Global Lines
-          </h2>
-          <p className="text-sm text-graphite mt-1">
-            3 đơn đặt chỗ đang hoạt động • 1 hóa đơn đang chờ thanh toán
-          </p>
-        </div>
-
-      </div>
-
       {/* Main Grid: Left 8 cols / Right 4 cols */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
@@ -183,13 +167,6 @@ export default function CarrierPortal() {
             </button>
 
 
-            <button
-              onClick={() => navigate('/carrier-profile')}
-              className="bg-white border border-chalk rounded-xl h-24 flex flex-col items-center justify-center gap-2 hover:bg-fog hover:shadow-md transition-all shadow-sm group"
-            >
-              <span className="material-symbols-outlined text-signal-orange group-hover:scale-110 transition-transform">business</span>
-              <span className="font-bold text-carbon text-xs">Hồ sơ doanh nghiệp</span>
-            </button>
           </div>
 
           {/* Notifications List */}

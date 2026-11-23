@@ -1,5 +1,6 @@
 import { ServiceTripSummary } from './ServiceTripFleet'
 import { useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, Download, FileText, Loader2, Printer, RefreshCw, X } from 'lucide-react'
 import CatalogDialog from './CatalogDialog'
@@ -71,7 +72,7 @@ async function printReceipt(paper, title) {
   } catch (error) { frame.remove(); throw error }
 }
 
-export function ServiceRegistrationReceipt({ orderId, onClose }) {
+export function ServiceRegistrationReceipt({ orderId, onClose, inline = false }) {
   const id = useId()
   const paperRef = useRef(null)
   const [working, setWorking] = useState('')
@@ -90,7 +91,7 @@ export function ServiceRegistrationReceipt({ orderId, onClose }) {
     } catch (failure) { setError(draftError(failure)); if (failure?.response?.status === 409) setChanged(true) }
     finally { setWorking('') }
   }
-  return <CatalogDialog className="epd-dialog esr-dialog" labelledBy={`${id}-title`} describedBy={`${id}-description`} onClose={() => { if (!working) onClose() }}>
+  return <CatalogDialog inline={inline} className="epd-dialog esr-dialog" labelledBy={`${id}-title`} describedBy={`${id}-description`} onClose={() => { if (!working) onClose() }}>
     <header className="epd-header"><div><span className="epc-eyebrow">NEXUSPORT / PHIẾU ĐĂNG KÝ</span><h2 id={`${id}-title`} tabIndex={-1} data-dialog-initial-focus>Phiếu đăng ký dịch vụ</h2><p id={`${id}-description`}>Xem trước phiếu A4, in hoặc tải PDF theo thông tin đã xác nhận.</p></div><button type="button" className="epc-icon-button" aria-label="Đóng phiếu đăng ký" disabled={!!working} onClick={onClose}><X size={21} /></button></header>
     <div className="esr-toolbar"><span><FileText size={16} />Khổ A4 · Tiếng Việt · VND</span><button type="button" className="epc-text-button" disabled={busy} onClick={refresh}><RefreshCw size={14} className={query.isFetching ? 'epc-spin' : ''} />Cập nhật trạng thái</button></div>
     {whole.isSuccess && <label className="esr-scope-picker"><span>Phạm vi in phiếu</span><select aria-label="Phạm vi in phiếu" value={selectedContainer} disabled={!!working} onChange={event => { setSelectedContainer(event.target.value); setError(''); setChanged(false) }}><option value="">Toàn bộ đơn đăng ký</option>{whole.data.containers.map(container => <option key={container.sourceContainerId} value={container.sourceContainerId}>Container {container.containerNumber}</option>)}</select><small>Chọn từng container để xem dịch vụ và phí tương ứng. Trạng thái thanh toán thuộc toàn đơn.</small></label>}
@@ -102,5 +103,7 @@ export function ServiceRegistrationReceipt({ orderId, onClose }) {
 
 export default function ServiceReceiptButton({ orderId, disabled = false }) {
   const [open, setOpen] = useState(false)
-  return <><button type="button" className="epc-button secondary" disabled={disabled} onClick={() => setOpen(true)} aria-haspopup="dialog"><Printer size={16} />Phiếu đăng ký</button>{open && <ServiceRegistrationReceipt orderId={orderId} onClose={() => setOpen(false)} />}</>
+  const slot = typeof document !== 'undefined' ? document.getElementById('epc-inline-slot') : null
+  const receipt = <ServiceRegistrationReceipt inline={!!slot} orderId={orderId} onClose={() => setOpen(false)} />
+  return <><button type="button" className="epc-button secondary" disabled={disabled} onClick={() => setOpen(true)} aria-haspopup="dialog"><Printer size={16} />Phiếu đăng ký</button>{open && (slot ? createPortal(receipt, slot) : receipt)}</>
 }

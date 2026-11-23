@@ -176,7 +176,7 @@ export const routeConfig = [
   },
   {
     path: '/yard-staff/movement-operations',
-    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+    allowedRoles: [ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
   },
   {
     path: '/yard-staff/gate-out-preparation',
@@ -185,10 +185,6 @@ export const routeConfig = [
   {
     path: '/yard-staff/container-detail',
     allowedRoles: [ROLES.YARD_OPERATOR, ROLES.ADMINISTRATOR],
-  },
-  {
-    path: '/carrier-profile',
-    allowedRoles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
   },
   {
     path: '/carrier-portal',

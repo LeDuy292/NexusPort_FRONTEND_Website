@@ -580,18 +580,7 @@ export default function UserRoleManagement() {
 
       {/* ── Page Header ── */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <span className="inline-flex items-center gap-1.5 text-xs font-bold bg-orange-100 text-orange-700 px-3 py-1 rounded-full uppercase tracking-wide">
-            <span className="material-symbols-outlined text-[14px]">admin_panel_settings</span>
-            Administrator Workspace
-          </span>
-          <h1 className="font-heading text-3xl md:text-4xl text-primary font-bold mt-2">
-            Quản lý Người dùng
-          </h1>
-          <p className="text-sm text-slate mt-1">
-            Phân quyền truy cập, tạo tài khoản và quản trị vai trò trong hệ thống NexusPort.
-          </p>
-        </div>
+        <div />
 
         <div className="flex items-center gap-3 w-full md:w-auto">
           {/* Search */}

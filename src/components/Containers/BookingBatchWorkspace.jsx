@@ -355,7 +355,7 @@ export default function BookingBatchWorkspace({ onSaved }) {
       {(busy || uploading) && <p role="status" className="text-sm">{uploading ? 'Đang tải chứng từ…' : 'Đang xử lý lô…'}</p>}
     </form>
     <section className="space-y-3 rounded-2xl border border-chalk bg-white p-5">
-      <div className="flex items-center justify-between"><h3 className="font-bold">Các Booking theo lô</h3><button type="button" className="text-sm underline" disabled={busy} onClick={reloadBatches}>Tải lại danh sách lô</button></div>
+      <div className="flex items-center justify-between"><h3 className="font-bold">Các Booking theo lô</h3></div>
       {!batches.length && <p className="text-sm text-slate-500">Chưa có lô ở trang này.</p>}
       {batches.map(batch => <button key={batch.id} type="button" disabled={busy} onClick={() => open(batch.id)} className="flex w-full flex-wrap justify-between gap-2 rounded-xl border p-3 text-left text-sm"><b>{batch.batchCode}</b><span>{batch.totalTrips} chuyến · Đã ra cổng {batch.completedTrips} · {labels[batch.status] || batch.status}</span></button>)}
       <div className="flex justify-end gap-3 text-sm"><button type="button" disabled={page === 1 || busy} onClick={() => setPage(value => value - 1)}>Trang trước</button><span>Trang {page}</span><button type="button" disabled={batches.length < 20 || busy} onClick={() => setPage(value => value + 1)}>Trang sau</button></div>

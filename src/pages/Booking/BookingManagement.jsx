@@ -1405,22 +1405,10 @@ export default function BookingManagement() {
       {/* ========================================================================= */}
       {/* HERO BANNER & ACTIONS - PHONG CÁCH NỀN SÁNG CAO CẤP (LIGHT THEME) */}
       {/* ========================================================================= */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-white via-slate-50 to-orange-50/40 text-carbon p-6 sm:p-8 border border-slate-200/90 shadow-sm">
-        {/* Soft atmospheric ambient glow */}
-        <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 bg-signal-orange/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="absolute bottom-0 left-1/4 -mb-12 w-80 h-80 bg-blue-400/10 rounded-full blur-3xl pointer-events-none"></div>
-
-        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-2.5">
-            <h1 className="text-2xl sm:text-3xl font-black font-heading text-carbon tracking-tight">
-              Quản Lý Lịch Hẹn & Điều Phối Bãi Thông Minh
-            </h1>
-          </div>
-
-        </div>
+      <div className="text-carbon">
 
         {/* METRICS / STATS RIBBON - SÁNG, TRONG TRẺO, TINH TẾ */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mt-6 pt-6 border-t border-slate-200/80">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
           <div className="bg-white/95 backdrop-blur-sm rounded-2xl p-4 border border-slate-200/80 shadow-2xs hover:border-indigo-300 hover:shadow-sm transition-all group">
             <div className="flex items-center justify-between text-slate-500 text-xs mb-1 font-semibold">
               <span>Tổng Lịch Hẹn</span>
@@ -1497,21 +1485,6 @@ export default function BookingManagement() {
           ))}
         </div>
 
-        <button
-          onClick={() => {
-            fetchBookings()
-            loadAvailableResources()
-            showNotification('Đã đồng bộ dữ liệu mới nhất từ CSDL!')
-          }}
-          disabled={loading || resourcesLoading}
-          className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:text-carbon hover:bg-fog border border-chalk transition-all cursor-pointer"
-          title="Tải lại dữ liệu"
-        >
-          <span className={`material-symbols-outlined text-sm ${loading ? 'animate-spin text-signal-orange' : ''}`}>
-            sync
-          </span>
-          <span>Làm mới</span>
-        </button>
       </div>
 
       {/* ========================================================================= */}
@@ -2602,8 +2575,8 @@ export default function BookingManagement() {
         const fallbackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(`00020101021238540010A0000007270124000697042201121903886688990208QRIBFTTA5303704540${pInfo.amount}5802VN62190815${transferContent}6304`)}`
 
         return (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
-            <div className="bg-paper border border-slate-200 rounded-3xl max-w-2xl w-full p-6 sm:p-7 shadow-2xl space-y-6 max-h-[92vh] overflow-y-auto animate-in zoom-in-95 duration-200">
+          <div className="w-full mt-6" ref={el => { if (el && !el.dataset.scrolled) { el.dataset.scrolled = '1'; el.scrollIntoView({ block: 'start', behavior: 'smooth' }) } }}>
+            <div className="bg-paper border border-slate-200 rounded-3xl w-full p-6 sm:p-7 shadow-sm space-y-6">
 
               {/* Header */}
               <div className="flex justify-between items-start border-b border-chalk pb-4">

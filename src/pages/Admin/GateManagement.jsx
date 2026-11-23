@@ -128,10 +128,7 @@ export default function GateManagement() {
 
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-carbon font-heading">Quản lý Gate</h2>
-          <p className="text-xs text-slate mt-1">Cấu hình các cổng kiểm soát container đầu vào/đầu ra, camera AI nhận dạng biển số xe, và thiết bị Barrier tự động.</p>
-        </div>
+        <div />
         <button
           onClick={() => setShowAddModal(true)}
           className="bg-signal-orange text-white text-xs font-bold px-4 py-2.5 rounded-lg hover:bg-orange-600 transition-colors shadow-md flex items-center justify-center gap-2 self-start md:self-auto"

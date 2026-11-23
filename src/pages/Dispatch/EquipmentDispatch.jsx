@@ -229,10 +229,7 @@ export default function EquipmentDispatch() {
 
       {/* 1. Header Control center title */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h2 className="font-heading text-4xl text-primary font-bold">Trung tâm Điều phối Cảng (Dispatch Center)</h2>
-          <p className="text-sm text-slate mt-1">Hệ thống giám sát, phân bổ bãi bốc xếp và điều phối xe đầu kéo theo thời gian thực.</p>
-        </div>
+        <div />
         <div className="flex gap-2">
           <button
             onClick={() => handleOpenDispatch(currentTruck)}

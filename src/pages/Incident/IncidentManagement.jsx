@@ -112,13 +112,7 @@ export default function IncidentManagement() {
 
       {/* Header */}
       <div className="flex justify-between items-center border-b border-chalk pb-4">
-        <div>
-          <span className="text-xs font-bold bg-red-100 text-red-700 px-2.5 py-0.5 rounded uppercase">
-            AI Operations & Safety
-          </span>
-          <h2 className="font-heading text-4xl text-carbon font-bold mt-1">Quản lý Sự cố & AI Cảnh báo</h2>
-          <p className="text-sm text-slate mt-1">Giám sát hình ảnh camera OCR AI, phát hiện tắc nghẽn và tiếp nhận sự cố kỹ thuật.</p>
-        </div>
+        <div />
 
         <div className="flex items-center gap-3 bg-white px-4 py-2 border border-chalk rounded-lg shadow-sm">
           <span className="w-2.5 h-2.5 rounded-full bg-signal-orange animate-ping"></span>

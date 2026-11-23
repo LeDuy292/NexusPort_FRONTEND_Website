@@ -120,14 +120,10 @@ export default function ManifestManagementPage() {
             <span className="text-xs font-extrabold bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">
               HÃNG TÀU &amp; VẬN TẢI BIỂN
             </span>
-            <span className="text-xs font-mono text-slate">NexusPort · Cảng Tiên Sa, Đà Nẵng (VNDAD)</span>
           </div>
           <h2 className="font-heading text-2xl md:text-3xl font-extrabold text-carbon">
             Quản Lý Bản Khai Hàng Hóa
           </h2>
-          <p className="text-xs text-slate mt-0.5">
-            Xem bản khai, vận đơn và thông tin hàng hóa theo từng bước.
-          </p>
         </div>
 
         {/* Action Controls */}
@@ -151,14 +147,6 @@ export default function ManifestManagementPage() {
           >
             <span className="material-symbols-outlined text-base">add</span>
             Tạo Bản Khai Mới
-          </button>
-
-          <button
-            onClick={loadData}
-            title="Tải lại dữ liệu"
-            className="w-9 h-9 bg-white border border-chalk rounded-xl flex items-center justify-center text-slate hover:text-carbon hover:bg-fog shadow-sm transition-colors cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-lg">refresh</span>
           </button>
         </div>
       </div>

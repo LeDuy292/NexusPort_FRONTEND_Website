@@ -335,17 +335,7 @@ export default function GateVerification() {
       {/* ── HEADER TỐI GIẢN (ĐÃ BỎ DROPDOWN LÀN XE THỪA) ── */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-4 md:p-5 shadow-xs flex flex-col gap-4">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <span className="material-symbols-outlined text-blue-600 text-2xl">badge</span>
-                Đối Chiếu Hồ Sơ Xe & Tài Xế
-              </h1>
-            </div>
-            <p className="text-xs text-slate-500 mt-1">
-              Kiểm tra, đối soát thông tin phương tiện và tài xế tại cổng.
-            </p>
-          </div>
+          <div />
 
           <div className="flex items-center gap-2.5">
             {/* Nhãn cố định cổng kiểm soát (1 làn vào / 1 làn ra) */}

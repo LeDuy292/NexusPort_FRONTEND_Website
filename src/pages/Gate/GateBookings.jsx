@@ -268,22 +268,6 @@ export default function GateBookings() {
     <div className="p-4 sm:p-6 md:p-8 w-full font-sans flex flex-col gap-6 bg-slate-50 min-h-screen text-slate-800">
       
       {/* ── HEADER ── */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center bg-white border border-slate-200 rounded-2xl p-5 md:p-6 shadow-sm gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-            <span className="text-xs font-bold bg-orange-100 text-orange-700 px-3 py-0.5 rounded-full uppercase tracking-wide">
-              CỔNG KIỂM SOÁT
-            </span>
-            <span className="text-xs text-slate-500 font-medium">Cảng Quốc Tế Tiên Sa · Đà Nẵng</span>
-          </div>
-          <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
-            Lịch Lịch Hẹn Cổng
-          </h1>
-          <p className="text-xs md:text-sm text-slate-500 mt-1">
-            Lịch hẹn theo ngày Việt Nam. Quyền vào cổng được cấp riêng khi điều độ gọi xe.
-          </p>
-        </div>
-      </div>
 
       <GateEntryOrders />
       {loadError&&<div role="alert" className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-4 text-sm">Không tải được lịch booking: {loadError}. <button type="button" onClick={()=>void loadBookings(true)} className="font-bold underline">Thử lại</button></div>}

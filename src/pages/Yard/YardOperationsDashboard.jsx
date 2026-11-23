@@ -749,49 +749,6 @@ export default function YardOperationsDashboard() {
         </div>
       )}
 
-      {/* ── 1. HEADER (Bố cục chuẩn Enterprise hiện đại) ── */}
-      <header className="bg-white border border-slate-200/90 rounded-2xl p-5 shadow-xs flex flex-col md:flex-row justify-between items-start md:items-center gap-4 relative overflow-hidden border-t-4 border-t-indigo-600 bg-gradient-to-r from-white via-white to-indigo-50/20">
-        <div>
-          <div className="flex items-center gap-2 mb-1.5 text-xs text-slate-500 font-medium">
-            <span className="flex items-center gap-1 text-slate-500">
-              <span className="material-symbols-outlined text-sm text-indigo-500">grid_view</span>
-              Quản Lý Bãi Container
-            </span>
-            <span className="text-slate-300">/</span>
-            <span className="text-indigo-800 font-semibold bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200/60">
-              Điều Hành Tác Nghiệp Hiện Trường
-            </span>
-          </div>
-          <h1 className="text-xl md:text-2xl font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <span>Bảng Điều Hành Khai Thác Bãi</span>
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Quy trình khép kín: Nhận lệnh Dispatcher → Gán cẩu RTG → Đối soát Seal → Nâng hạ container bãi.
-          </p>
-        </div>
-
-        {/* Right Side: Metadata & Refresh Action */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Shift info */}
-          <div className="px-3 py-1.5 bg-teal-50/80 border border-teal-200/80 rounded-xl text-xs font-semibold text-teal-900 flex items-center gap-1.5 shadow-2xs">
-            <span className="material-symbols-outlined text-sm text-teal-600">schedule</span>
-            <span>{activeShift}</span>
-          </div>
-
-          {/* Date info */}
-          <div className="px-3 py-1.5 bg-blue-50/80 border border-blue-200/80 rounded-xl text-xs font-semibold text-blue-900 flex items-center gap-1.5 shadow-2xs">
-            <span className="material-symbols-outlined text-sm text-blue-600">calendar_today</span>
-            <span className="font-mono">{todayDate}</span>
-          </div>
-
-          {/* Operator Profile */}
-          <div className="px-3 py-1.5 bg-violet-50/80 border border-violet-200/80 rounded-xl text-xs flex items-center gap-1.5 text-violet-900 font-medium shadow-2xs">
-            <span className="material-symbols-outlined text-sm text-violet-600">person</span>
-            <span className="font-bold">Phạm Bãi Hàng</span>
-            <span className="text-[11px] text-violet-600/80 font-normal">(Yard Staff)</span>
-          </div>
-        </div>
-      </header>
 
       {/* ── 2. KPI METRICS (5 Thẻ chỉ số sắc nét, màu sắc hài hòa) ── */}
       <section className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
@@ -982,16 +939,6 @@ export default function YardOperationsDashboard() {
             >
               <span className="material-symbols-outlined text-sm text-amber-300">qr_code_scanner</span>
               <span>Quét Tally Cầu Cảng</span>
-            </button>
-
-            {/* Refresh */}
-            <button
-              onClick={() => loadDischargePlans()}
-              disabled={loadingPlans}
-              title="Làm mới kế hoạch"
-              className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-slate-600 transition-colors cursor-pointer shadow-2xs"
-            >
-              <span className={`material-symbols-outlined text-base ${loadingPlans ? 'animate-spin' : ''}`}>sync</span>
             </button>
           </div>
         </div>

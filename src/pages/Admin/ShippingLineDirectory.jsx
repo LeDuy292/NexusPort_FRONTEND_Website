@@ -63,10 +63,6 @@ export default function ShippingLineDirectory() {
   const availableAccounts = accounts.filter(account => !account.shippingLineId || account.shippingLineId === form.id)
   return (
     <main className="space-y-5 p-6 lg:p-8">
-      <header>
-        <h1 className="font-heading text-3xl font-bold text-carbon">Danh mục hãng tàu</h1>
-        <p className="mt-2 text-sm text-slate">Quản lý tên đầy đủ, tên viết tắt, tiền tố BIC và tài khoản thuộc từng hãng.</p>
-      </header>
       {error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">{error}</p>}
       {notice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800">{notice}</p>}
       <div className="grid items-start gap-5 xl:grid-cols-2">

@@ -84,17 +84,7 @@ export default function CargoDeclaration() {
   return (
     <div className="flex min-h-screen flex-col gap-6 bg-slate-50 p-6 md:p-8">
       <header className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-chalk bg-white p-5 shadow-sm">
-        <div>
-          <p className="text-xs font-extrabold uppercase text-signal-orange">
-            Công ty vận tải
-          </p>
-          <h1 className="font-heading text-3xl font-extrabold text-carbon">
-            Bản khai hàng của công ty
-          </h1>
-          <p className="mt-1 text-sm text-slate">
-            Tìm các bản khai hàng của công ty theo số container để tiếp tục đặt lịch.
-          </p>
-        </div>
+        <div />
         <Link to="/containers" className="rounded-xl border border-chalk px-4 py-2 text-sm font-bold">Tra cứu lượt bãi</Link>
       </header>
       <form onSubmit={loadDeclarations} className="flex flex-wrap items-end gap-4 rounded-2xl border border-chalk bg-white p-5">

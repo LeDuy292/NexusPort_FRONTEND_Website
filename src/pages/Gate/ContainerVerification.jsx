@@ -820,12 +820,6 @@ export default function ContainerVerification() {
               <span>{loadingModelStatus ? 'Đang nạp AI...' : modelStatus?.isModelLoaded ? 'AI container.onnx: Sẵn Sàng' : 'AI: Chưa nạp'}</span>
             </span>
           </div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-            Quét & Kiểm Tra Xe Đến Cổng Theo Lịch Hẹn
-          </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Khi xe tới cổng, camera AI tự động quét nhận diện biển số & container, tự động tra cứu hồ sơ và kiểm tra đối soát 5 điều kiện thời gian thực.
-          </p>
         </div>
 
         {/* Cổng Vào / Cổng Ra + Đồng hồ */}

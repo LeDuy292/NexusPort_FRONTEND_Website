@@ -16,6 +16,31 @@ import yardDischargeService from './yardDischargeService'
 const STORAGE_KEY = 'nexusport_synced_manifests_v12'
 const GENERATED_BOOKINGS_KEY = 'nexusport_manifest_gate_bookings_v12'
 
+// ── Bộ nhớ đệm cục bộ ───────────────────────────────────────────────────────────────────────────
+// Nguồn chuẩn là SERVER (fetchRemoteSyncedManifests ghi đè lại toàn bộ). localStorage chỉ là bản đệm để hiển thị nhanh,
+// nên mọi thao tác đọc/ghi hai khóa này đi qua các hàm dưới đây (xử lý lỗi dữ liệu hỏng, đầy bộ nhớ ở một chỗ duy nhất).
+function readList(key) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || '[]')
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+function writeList(key, list) {
+  try {
+    localStorage.setItem(key, JSON.stringify(Array.isArray(list) ? list : []))
+    return true
+  } catch (err) {
+    console.warn(`Không ghi được bộ nhớ đệm ${key}:`, err)
+    return false
+  }
+}
+const readManifests = () => readList(STORAGE_KEY)
+const writeManifests = (list) => writeList(STORAGE_KEY, list)
+const readBookings = () => readList(GENERATED_BOOKINGS_KEY)
+const writeBookings = (list) => writeList(GENERATED_BOOKINGS_KEY, list)
+
 /**
  * Phân tích chuỗi tọa độ vị trí bãi thành cấu trúc chuẩn (Block, Bay, Row, Tier)
  */
@@ -486,8 +511,8 @@ function clearLocalSyncStorage() {
     }
   }
   localStorage.removeItem(PERMANENT_APPROVED_MANIFESTS_KEY)
-  localStorage.setItem(STORAGE_KEY, JSON.stringify([]))
-  localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify([]))
+  writeManifests([])
+  writeBookings([])
   localStorage.removeItem(ORDER_FLEET_KEY)
   localStorage.removeItem('NEXUSPORT_PORT_BILLS')
   localStorage.removeItem('NEXUSPORT_STORAGE_FEES')
@@ -641,8 +666,7 @@ export const manifestPortSyncService = {
 
     let rawBookings = []
     try {
-      rawBookings = JSON.parse(localStorage.getItem(GENERATED_BOOKINGS_KEY) || '[]')
-      if (!Array.isArray(rawBookings)) rawBookings = []
+      rawBookings = readBookings()
     } catch {
       rawBookings = []
     }
@@ -716,7 +740,7 @@ export const manifestPortSyncService = {
 
     if (bookingsChanged) {
       try {
-        localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(updatedRaw))
+        writeBookings(updatedRaw)
       } catch (e) {
         console.warn('Lỗi lưu generated gate bookings sau khi gỡ xe:', e)
       }
@@ -803,8 +827,7 @@ export const manifestPortSyncService = {
     let bookingsChanged = false
     const touchedManifests = new Set()
     try {
-      rawBookings = JSON.parse(localStorage.getItem(GENERATED_BOOKINGS_KEY) || '[]')
-      if (!Array.isArray(rawBookings)) rawBookings = []
+      rawBookings = readBookings()
     } catch {
       rawBookings = []
     }
@@ -881,7 +904,7 @@ export const manifestPortSyncService = {
 
     if (bookingsChanged) {
       try {
-        localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(rawBookings))
+        writeBookings(rawBookings)
       } catch (e) {
         console.warn('Lỗi lưu generated gate bookings:', e)
       }
@@ -1112,12 +1135,8 @@ export const manifestPortSyncService = {
       const res = await shippingLineApi.getSyncedManifests()
       const remoteList = Array.isArray(res) ? res : (res?.data || res?.items || [])
       if (Array.isArray(remoteList)) {
-        let existingLocal = this.getSyncedManifests()
-        let existingGenerated = []
-        try {
-          existingGenerated = JSON.parse(localStorage.getItem(GENERATED_BOOKINGS_KEY) || '[]')
-          if (!Array.isArray(existingGenerated)) existingGenerated = []
-        } catch {}
+        // Bản đệm cục bộ chỉ dùng để giữ lại booking chưa kịp đẩy lên server (xem finalGenerated bên dưới)
+        const existingGenerated = readBookings()
 
         const current = []
         const remoteGenerated = []
@@ -1142,16 +1161,8 @@ export const manifestPortSyncService = {
           }
         })
 
-        // 100% đồng bộ theo DB Deploy trên PostgreSQL - chỉ dùng local nếu DB rỗng hoàn toàn
-        if (remoteList.length === 0) {
-          existingLocal.forEach(localM => {
-            if (isManifestPermanentlyApproved(localM)) {
-              localM.portApprovalStatus = 'PORT_APPROVED'
-              localM.status = 'PORT_APPROVED'
-            }
-            current.push(localM)
-          })
-        }
+        // SERVER LÀ NGUỒN CHUẨN: server trả danh sách rỗng thì bộ đệm cục bộ cũng phải rỗng.
+        // (Trước đây "DB rỗng thì dùng lại bản cục bộ" khiến dữ liệu đã xóa trên server vẫn hiện lại từ trình duyệt.)
 
         // Luôn bảo lưu tuyệt đối trạng thái PORT_APPROVED
         current.forEach(m => {
@@ -1162,7 +1173,12 @@ export const manifestPortSyncService = {
           }
         })
 
-        let finalGenerated = remoteGenerated.length > 0 ? remoteGenerated : existingGenerated
+        // Booking: lấy theo server. Nếu server chưa có booking nào thì chỉ giữ lại booking cục bộ mà bản khai của nó còn tồn tại
+        // (booking mồ côi của bản khai đã bị xóa phía server được dọn đi).
+        const liveRefs = new Set(current.flatMap(m => [m.id, m.manifestId, m.manifestNumber]).filter(Boolean))
+        let finalGenerated = remoteGenerated.length > 0
+          ? remoteGenerated
+          : existingGenerated.filter(b => liveRefs.has(b.sourceManifestId) || liveRefs.has(b.sourceManifestNumber))
 
         // Đảm bảo mọi tàu đã PORT_APPROVED đều có generated bookings đầy đủ (tách theo từng công ty vận tải)
         current.forEach(m => {
@@ -1181,8 +1197,8 @@ export const manifestPortSyncService = {
         })
 
         // Lưu danh sách manifest trước rồi thay thế GENERATED_BOOKINGS_KEY trực tiếp từ PostgreSQL
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(current))
-        localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(finalGenerated))
+        writeManifests(current)
+        writeBookings(finalGenerated)
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('nexusport:manifest_synced', {
             detail: { type: 'REMOTE_FETCH_SYNC', count: current.length }
@@ -1225,12 +1241,12 @@ export const manifestPortSyncService = {
       return m
     })
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+      writeManifests(updated)
       const existingGenerated = this.getGeneratedGateBookings()
       const remaining = existingGenerated.filter(
         b => b.sourceManifestId !== manifestId && b.sourceManifestNumber !== recalledNumber && b.sourceManifestNumber !== manifestId
       )
-      localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(remaining))
+      writeBookings(remaining)
 
       // Đồng bộ tuần tự trạng thái về Pending rồi xóa generatedBookings trên PostgreSQL
       try {
@@ -1255,11 +1271,7 @@ export const manifestPortSyncService = {
    */
   getSyncedManifests() {
     try {
-      const stored = localStorage.getItem(STORAGE_KEY)
-      let parsed = stored ? JSON.parse(stored) : []
-      if (!Array.isArray(parsed)) {
-        parsed = []
-      }
+      let parsed = readManifests()
 
       // Tự động dọn dẹp các ID bản khai rác/thử nghiệm đã bị xóa khỏi PostgreSQL
       const beforeFilterLen = parsed.length
@@ -1285,7 +1297,7 @@ export const manifestPortSyncService = {
       })
 
       if (hasChanged) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(mapped))
+        writeManifests(mapped)
       }
       return mapped
     } catch (err) {
@@ -1301,36 +1313,19 @@ export const manifestPortSyncService = {
   getGeneratedGateBookings() {
     try {
       const allManifests = this.getSyncedManifests()
-      let raw = localStorage.getItem(GENERATED_BOOKINGS_KEY)
-      let parsed = raw ? JSON.parse(raw) : []
-      if (!Array.isArray(parsed)) parsed = []
+      let parsed = readBookings()
 
       // Lấy danh sách tàu đã được phê duyệt (PORT_APPROVED)
-      let approvedManifests = new Set(
+      const approvedManifests = new Set(
         allManifests
           .filter(m => m.portApprovalStatus === 'PORT_APPROVED' || m.status === 'PORT_APPROVED' || m.status === 'DISCHARGING')
           .map(m => m.manifestNumber || m.manifestId)
       )
 
-      // TỰ ĐỘNG PHÂN BỔ BÃI & ĐẶT CHỖ CHO CÁC TÀU NẾU CHƯA CÓ BOOKINGS
-      if (approvedManifests.size === 0 || parsed.length === 0) {
-        const toAutoApprove = allManifests.filter(m => m.status === 'SENT_TO_PORT' || m.status === 'PORT_APPROVED' || m.status === 'DISCHARGING' || !m.portApprovalStatus)
-        const targetList = toAutoApprove.length > 0 ? toAutoApprove : allManifests
-        targetList.forEach(m => {
-          try {
-            const mId = m.manifestId || m.id || m.manifestNumber
-            this.approveManifestByPort(mId, null, { silent: true })
-          } catch (e) {}
-        })
-        raw = localStorage.getItem(GENERATED_BOOKINGS_KEY)
-        parsed = raw ? JSON.parse(raw) : []
-        if (!Array.isArray(parsed)) parsed = []
-        approvedManifests = new Set(
-          this.getSyncedManifests()
-            .filter(m => m.portApprovalStatus === 'PORT_APPROVED' || m.status === 'PORT_APPROVED' || m.status === 'DISCHARGING')
-            .map(m => m.manifestNumber || m.manifestId)
-        )
-      }
+      // Hàm đọc này THUẦN: không tự duyệt bản khai hay sinh booking. Booking chỉ được sinh ở hai chỗ có chủ đích:
+      //  - fetchRemoteSyncedManifests: bản khai đã PORT_APPROVED trên server mà thiếu booking;
+      //  - approveManifestByPort: khi Dispatcher bấm duyệt.
+      // (Trước đây khối tự duyệt ở đây gọi approveManifestByPort, hàm này lại gọi ngược getGeneratedGateBookings => đệ quy vô hạn.)
 
       if (approvedManifests.size === 0 && parsed.length === 0) {
         return []
@@ -1505,7 +1500,7 @@ export const manifestPortSyncService = {
 
           if (hasBookingsMigrated) {
             try {
-              localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(enriched))
+              writeBookings(enriched)
             } catch (e) {}
           }
           return enriched
@@ -1516,84 +1511,6 @@ export const manifestPortSyncService = {
       return []
     },
 
-  _old_getGeneratedGateBookings() {
-    try {
-      const raw = localStorage.getItem(GENERATED_BOOKINGS_KEY)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        if (Array.isArray(parsed)) {
-          let dirty = false
-          const allReservations = yardReservationStore.getReservations()
-
-          const enriched = parsed.map((item, idx) => {
-            const contKey = (item.containerId || '').trim().toUpperCase()
-            const existingStoreRes = allReservations.find(
-              r => (r.containerId || r.containerNo || '').trim().toUpperCase() === contKey
-            )
-
-            // 1. Tự động tính toán vị trí chuẩn theo quy tắc Cảng Tiên Sa (Không dùng bãi đệm tạm thời)
-            let slot = item.autoYardSlot
-            if (!slot || !slot.blockCode || slot.isTemporaryBuffer || slot.allocationScore === 50) {
-              const opDirection = item.operation === 'Pickup' || item.direction === 'IMPORT' ? 'IMPORT' : 'EXPORT'
-              slot = computeAutoYardSlot(
-                {
-                  containerNumber: item.containerId || item.containerNumber,
-                  isoType: item.containerType || item.isoType,
-                  tempRequired: item.tempRequired,
-                  dgClass: item.dgClass,
-                  cargoDescription: item.cargoDescription,
-                  grossWeightKg: item.grossWeightKg || item.weight,
-                  isReefer: item.isReefer,
-                },
-                opDirection,
-                idx,
-                items
-              )
-              dirty = true
-            }
-
-            // 2. Nếu người dùng đã đổi vị trí trong yardReservationStore, ưu tiên vị trí mới nhất trong store
-            if (existingStoreRes && existingStoreRes.blockCode) {
-              if (
-                slot.blockCode !== existingStoreRes.blockCode ||
-                String(slot.bay) !== String(existingStoreRes.bay) ||
-                String(slot.row) !== String(existingStoreRes.row) ||
-                String(slot.tier) !== String(existingStoreRes.tier)
-              ) {
-                slot = {
-                  ...slot,
-                  ...existingStoreRes,
-                  zoneCode: (existingStoreRes.blockCode || 'A')[0],
-                }
-                dirty = true
-              }
-            } else if (contKey && slot?.blockCode) {
-              // 3. Nếu trong yardReservationStore chưa có, thêm vào để đếm số lượng vị trí đang chiếm trên bãi
-              yardReservationStore.addReservation({
-                ...slot,
-                containerId: item.containerId,
-                containerNo: item.containerId,
-                bookingCode: item.id,
-                company: item.company,
-                vesselName: item.vesselName,
-                voyageNumber: item.voyageNumber,
-              })
-            }
-
-            return dirty ? { ...item, autoYardSlot: slot } : item
-          })
-
-          if (dirty) {
-            localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(enriched))
-          }
-          return enriched
-        }
-      }
-    } catch (err) {
-      console.warn('Lỗi đọc generated gate bookings:', err)
-    }
-    return []
-  },
 
   /**
    * Cập nhật trạng thái của 1 Gate Booking được sinh từ Manifest (VD: khi Dispatcher duyệt/từ chối)
@@ -1604,7 +1521,7 @@ export const manifestPortSyncService = {
       const idx = current.findIndex(b => b.id === bookingId || b.realId === bookingId || b.containerId === bookingId)
       if (idx === -1) return Promise.resolve(false)
       current[idx] = { ...current[idx], ...updates }
-      localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(current))
+      writeBookings(current)
 
       // Đồng bộ trực tiếp lên cơ sở dữ liệu PostgreSQL Server qua shippingLineApi
       const allManifests = this.getSyncedManifests()
@@ -1708,7 +1625,7 @@ export const manifestPortSyncService = {
     })
 
     try {
-      localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(updated))
+      writeBookings(updated)
       if (updatedItem) {
         this.recordTransportSubmissionAlert({
           id: updatedItem.id,
@@ -1844,7 +1761,7 @@ export const manifestPortSyncService = {
     const updated = [newRecord, ...filtered]
 
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+      writeManifests(updated)
     } catch (e) {
       console.warn('Lỗi ghi local manifests:', e)
     }
@@ -1965,7 +1882,7 @@ export const manifestPortSyncService = {
     }
 
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+      writeManifests(updated)
     } catch (e) {
       console.warn(e)
     }
@@ -2152,7 +2069,7 @@ export const manifestPortSyncService = {
       })
 
       try {
-        localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify([...newGateBookings, ...filteredExisting]))
+        writeBookings([...newGateBookings, ...filteredExisting])
       } catch (e) {
         console.warn('Lỗi lưu generated gate bookings:', e)
       }
@@ -2200,7 +2117,7 @@ export const manifestPortSyncService = {
     })
 
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+      writeManifests(updated)
       const existingGenerated = this.getGeneratedGateBookings()
       const toRemove = existingGenerated.filter(
         b => b.sourceManifestId === manifestId || b.sourceManifestNumber === targetManifestNumber || b.sourceManifestNumber === manifestId
@@ -2211,7 +2128,7 @@ export const manifestPortSyncService = {
       const remaining = existingGenerated.filter(
         b => b.sourceManifestId !== manifestId && b.sourceManifestNumber !== targetManifestNumber && b.sourceManifestNumber !== manifestId
       )
-      localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(remaining))
+      writeBookings(remaining)
 
       // Đồng bộ tuần tự trạng thái về Pending rồi xóa generatedBookings trên PostgreSQL
       try {
@@ -2250,7 +2167,7 @@ export const manifestPortSyncService = {
       return m
     })
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+      writeManifests(updated)
     } catch (e) {
       console.warn(e)
     }
@@ -2282,7 +2199,7 @@ export const manifestPortSyncService = {
       return m
     })
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+      writeManifests(updated)
     } catch (e) {
       console.warn(e)
     }
@@ -2321,7 +2238,7 @@ export const manifestPortSyncService = {
     if (changed.length === 0) return []
 
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated))
+      writeManifests(updated)
     } catch (e) {
       console.warn(e)
     }
@@ -2418,8 +2335,7 @@ export const manifestPortSyncService = {
 
     // 3. CẬP NHẬT BÊN 2: DANH SÁCH CONTAINER THEO NGÀY & CHUYẾN TÀU (GENERATED_BOOKINGS_KEY)
     try {
-      const raw = localStorage.getItem(GENERATED_BOOKINGS_KEY)
-      const list = raw ? JSON.parse(raw) : []
+      const list = readBookings()
       if (Array.isArray(list)) {
         let changed = false
         const updatedList = list.map(b => {
@@ -2464,7 +2380,7 @@ export const manifestPortSyncService = {
           return b
         })
         if (changed) {
-          localStorage.setItem(GENERATED_BOOKINGS_KEY, JSON.stringify(updatedList))
+          writeBookings(updatedList)
         }
       }
     } catch (err) {
@@ -2504,7 +2420,7 @@ export const manifestPortSyncService = {
           return contChanged ? { ...m, isPreAllocated: true, containers: updatedContainers } : m
         })
         if (manifestChanged) {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedManifests))
+          writeManifests(updatedManifests)
         }
       }
     } catch (err) {

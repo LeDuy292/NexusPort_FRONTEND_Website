@@ -19,7 +19,6 @@ export default function DamageReport() {
       {/* Left Column */}
           <div className="w-full lg:w-1/3 flex flex-col gap-4">
             <header className="bg-white p-5 rounded-xl border border-[#e8e8e8]">
-              <h2 className="text-[22px] font-bold text-[#202020] mb-3">Báo cáo hư hỏng</h2>
               <div className="relative">
                 <input
                   type="text"

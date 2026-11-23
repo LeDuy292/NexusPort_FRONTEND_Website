@@ -145,14 +145,10 @@ export default function DeliveryOrderPage() {
             <span className="text-xs font-extrabold bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">
               HÃNG TÀU &amp; VẬN TẢI BIỂN
             </span>
-            <span className="text-xs font-mono text-slate">NexusPort · Cảng Tiên Sa, Đà Nẵng (VNDAD)</span>
           </div>
           <h2 className="font-heading text-2xl md:text-3xl font-extrabold text-carbon">
             Lệnh giao hàng điện tử (eDO)
           </h2>
-          <p className="text-xs text-slate mt-0.5">
-            Quản lý, phát hành và gia hạn lệnh giao hàng điện tử cho chủ hàng nhận container tại cổng cảng.
-          </p>
         </div>
 
         {/* Nút Hành Động - Cố định gọn gàng bên phải Header */}
@@ -163,14 +159,6 @@ export default function DeliveryOrderPage() {
           >
             <span className="material-symbols-outlined text-base">assignment_turned_in</span>
             <span>Cấp lệnh eDO mới</span>
-          </button>
-
-          <button
-            onClick={loadData}
-            title="Tải lại dữ liệu"
-            className="w-10 h-10 bg-white border border-chalk rounded-xl flex items-center justify-center text-slate hover:text-carbon hover:bg-fog shadow-sm transition-colors cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-lg">refresh</span>
           </button>
         </div>
       </div>

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { shippingLineApi, formatApiErrorMessage } from './api/shippingLineApi';
+import { manifestPortSyncService } from '../../services/manifestPortSyncService';
 import ShippingBadge from './components/ShippingBadge';
 import ShippingPagination from './components/ShippingPagination';
-import { manifestPortSyncService } from '../../services/manifestPortSyncService';
 import { buildVoyageNumber } from './utils/voyageNumber';
 
 const TIEN_SA_PORT = 'Cảng Tiên Sa, Đà Nẵng (VNDAD)';
@@ -170,7 +170,7 @@ export default function VesselVoyagePage() {
       const voyList = Array.isArray(voyagesRes) ? voyagesRes : (voyagesRes?.data || []);
       setVessels(vList);
       setVoyages(voyList);
-      // Đồng bộ ngay lập tức sang phân hệ Điều Độ Cảng (Cảng Tiên Sa)
+      // Đồng bộ ngay lập tức sang phân hệ Điều Độ Cảng (Cảng Tiên Sa): Dispatcher chỉ xem trạng thái do Hãng tàu đặt
       manifestPortSyncService.syncVoyages(voyList);
     } catch (err) {
       setError(formatApiErrorMessage(err, 'Lỗi tải dữ liệu chuyến tàu'));
@@ -359,14 +359,10 @@ export default function VesselVoyagePage() {
             <span className="text-xs font-extrabold bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">
               HÃNG TÀU &amp; VẬN TẢI BIỂN
             </span>
-            <span className="text-xs font-mono text-slate">NexusPort · Cảng Tiên Sa, Đà Nẵng (VNDAD)</span>
           </div>
           <h2 className="font-heading text-2xl md:text-3xl font-extrabold text-carbon">
             Quản lý tàu &amp; chuyến tàu
           </h2>
-          <p className="text-xs text-slate mt-0.5">
-            Theo dõi hành trình, kế hoạch cập cảng Tiên Sa và các mốc hạn chót giao nhận theo thời gian thực.
-          </p>
         </div>
 
         {/* Action Controls - Luôn Cố Định, Không Bị Mất Khi Đổi Tab */}
@@ -385,14 +381,6 @@ export default function VesselVoyagePage() {
           >
             <span className="material-symbols-outlined text-base">add</span>
             Tạo chuyến tàu mới
-          </button>
-
-          <button
-            onClick={loadData}
-            title="Tải lại dữ liệu"
-            className="w-9 h-9 bg-white border border-chalk rounded-xl flex items-center justify-center text-slate hover:text-carbon hover:bg-fog shadow-sm transition-colors cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-lg">refresh</span>
           </button>
         </div>
       </div>

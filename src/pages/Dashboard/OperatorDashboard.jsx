@@ -31,9 +31,6 @@ export default function OperatorDashboard() {
 
   return (
     <div className="p-8 w-full">
-      <h2 className="font-heading text-4xl text-primary mb-8 font-bold">
-        Tổng quan vận hành
-      </h2>
 
       {/* KPI ROW */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6 mb-6">

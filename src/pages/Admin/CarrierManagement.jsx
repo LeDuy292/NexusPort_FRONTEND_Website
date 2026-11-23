@@ -278,10 +278,7 @@ export default function CarrierManagement() {
 
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-carbon font-heading">Quản lý Hãng tàu & Vận tải</h2>
-          <p className="text-xs text-slate mt-1">Quản lý danh sách, trạng thái phê duyệt hãng tàu (Carrier) và cấp tài khoản đối tác vận tải (Transport Company).</p>
-        </div>
+        <div />
         <button
           onClick={() => setShowAddModal(true)}
           className="bg-signal-orange text-white text-xs font-bold px-4 py-2.5 rounded-lg hover:bg-orange-600 transition-colors shadow-md flex items-center justify-center gap-2 self-start md:self-auto"

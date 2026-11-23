@@ -100,7 +100,8 @@ export default function ServiceRegistrationReview({ draftId, onClose, onEdit, on
     onSuccess: async result => {
       setSavedRegistration(result)
       setAccepted(false)
-      try {
+      // Đồng bộ bộ đệm cục bộ chạy nền: không bắt người dùng chờ tải lại toàn bộ bản khai.
+      void (async () => { try {
         await manifestPortSyncService.fetchRemoteSyncedManifests().catch(() => {})
         manifestPortSyncService.saveAllOrderFleets(result)
         const cIds = [
@@ -109,7 +110,7 @@ export default function ServiceRegistrationReview({ draftId, onClose, onEdit, on
         ].filter(Boolean)
         const uniqueConts = Array.from(new Set(cIds.map(x => String(x).trim().toUpperCase())))
         const bkCodes = [result.sourceSnapshot?.bookingNumber, result.sourceSnapshot?.referenceNumber].filter(Boolean)
-        for (const c of uniqueConts) {
+        await Promise.all(uniqueConts.map(async c => {
           const cFleet = manifestPortSyncService.extractFleetFromOrder(result, c)
           if (cFleet) {
             const fleetKeys = uniqueConts.length === 1
@@ -132,10 +133,10 @@ export default function ServiceRegistrationReview({ draftId, onClose, onEdit, on
               ...(cFleet.documents ? { eportDocuments: cFleet.documents, documents: cFleet.documents } : {}),
             })
           }
-        }
+        }))
       } catch (e) {
         console.warn('Lỗi lưu fleet khi xác nhận đơn:', e)
-      }
+      } })()
       await client.invalidateQueries({ queryKey: serviceDraftKey, refetchType: 'none' })
       onRegistered?.(result)
     },

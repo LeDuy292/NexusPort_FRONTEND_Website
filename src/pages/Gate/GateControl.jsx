@@ -676,9 +676,6 @@ export default function GateControl() {
               {hwStatus?.esp32?.connected ? `ESP32 (${hwStatus.esp32.port}): Sẵn sàng` : 'ESP32: Đang kết nối...'}
             </span>
           </div>
-          <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
-            Cổng Kiểm Soát
-          </h1>
         </div>
 
         {/* Nút điều hướng Mode & Cổng kiểm soát */}

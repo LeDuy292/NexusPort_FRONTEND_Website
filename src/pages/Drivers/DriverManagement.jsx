@@ -718,21 +718,7 @@ export default function DriverManagement() {
 
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-chalk pb-6">
-          <div>
-            <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded uppercase">
-              Fleet & Workforce
-            </span>
-            <h2 className="font-heading text-4xl text-carbon font-bold mt-1">
-              {activeTab === 'drivers' && 'Quản lý Đội ngũ Tài xế'}
-              {activeTab === 'vehicles' && 'Quản lý Phương tiện'}
-              {activeTab === 'schedules' && 'Lịch trình Phương tiện'}
-            </h2>
-            <p className="text-sm text-slate mt-1">
-              {activeTab === 'drivers' && 'Giám sát và phân công công việc cho đội ngũ tài xế của công ty.'}
-              {activeTab === 'vehicles' && 'Quản lý danh sách phương tiện và trạng thái điều động của công ty.'}
-              {activeTab === 'schedules' && 'Theo dõi lộ trình và phân ca kíp cho các phương tiện đang hoạt động.'}
-            </p>
-          </div>
+          <div />
 
           <div className="flex flex-col items-end gap-3">
 

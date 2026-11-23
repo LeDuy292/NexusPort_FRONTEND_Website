@@ -739,33 +739,9 @@ export default function ReeferManagement() {
       {/* Thanh Tiêu Đề Doanh Nghiệp (Light Header) */}
       {/* Thanh Tiêu Đề Doanh Nghiệp (White & Orange Enterprise TOS Header) */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs p-5 md:p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-orange-700 bg-orange-50 px-2 py-0.5 rounded border border-orange-200">
-              Khu Vực Bãi Lạnh (Reefer Yard Operations)
-            </span>
-            <span className="text-slate-400 text-xs">•</span>
-            <span className="text-slate-500 text-xs font-medium">Cảng Quốc Tế NexusPort</span>
-          </div>
-          <h1 className="text-xl md:text-2xl font-bold text-slate-900 mt-1.5">
-            Quản Lý Cấp Điện Container Lạnh
-          </h1>
-          <p className="text-slate-500 text-sm mt-0.5">
-            Theo dõi ổ cắm điện 3 pha (380V), nhiệt độ bảo quản IoT và kiểm soát thời gian cấp điện container tại bãi.
-          </p>
-        </div>
+        <div />
 
         <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            onClick={loadData}
-            disabled={loading}
-            className="px-3.5 py-2 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs transition-colors flex items-center gap-1.5"
-          >
-            <svg className={`w-3.5 h-3.5 text-slate-500 ${loading ? 'animate-spin' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            <span>Làm mới</span>
-          </button>
           <button
             onClick={() => openModal('ALLOCATE_POWER')}
             className="px-4 py-2 rounded-lg bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold shadow-xs transition-colors flex items-center gap-1.5 active:scale-98"

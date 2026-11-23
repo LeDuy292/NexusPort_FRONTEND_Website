@@ -118,12 +118,6 @@ export default function GateHistory() {
             Lịch sử phương tiện lưu thông qua cổng cảng.
           </p>
         </div>
-        <button
-          onClick={loadHistory}
-          className="h-10 px-4 border border-slate-200 text-slate-700 rounded-xl font-bold text-xs hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
-        >
-          <span className="material-symbols-outlined text-sm">refresh</span>Làm Mới
-        </button>
       </div>
 
       {/* KPI mini row */}

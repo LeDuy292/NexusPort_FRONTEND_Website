@@ -37,13 +37,7 @@ export default function ReportsAnalytics() {
 
       {/* Header Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-chalk pb-6">
-        <div>
-          <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded uppercase">
-            Executive Analytics
-          </span>
-          <h2 className="font-heading text-4xl text-primary font-bold mt-1">Báo cáo & Phân tích Vận hành</h2>
-          <p className="text-sm text-slate mt-1">Tổng quan doanh thu cảng, lưu lượng bốc dỡ TEU và hiệu suất khai thác bến bãi.</p>
-        </div>
+        <div />
 
         <div className="flex flex-wrap items-center gap-4">
           {/* Date Filter Pills */}

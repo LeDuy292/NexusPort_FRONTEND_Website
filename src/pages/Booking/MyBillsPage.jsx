@@ -46,7 +46,6 @@ export default function MyBillsPage() {
         badge="Không gian doanh nghiệp vận tải"
         title="Vận đơn của tôi"
         subtitle="Các vận đơn hãng tàu đã phát hành cho công ty bạn, hàng xuất (bạn là chủ hàng) và hàng nhập (bạn là người nhận). Theo dõi container đã vào cảng, xếp tàu hay đã dỡ."
-        actions={<button type="button" className={btn} onClick={load}><span className="material-symbols-outlined text-base">refresh</span>Tải lại</button>}
       />
 
       <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">

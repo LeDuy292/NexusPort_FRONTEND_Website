@@ -319,10 +319,7 @@ export default function TransportCompanyManagement() {
 
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-carbon font-heading">Quản lý Transport Company</h2>
-          <p className="text-xs text-slate mt-1">Phê duyệt, quản lý hồ sơ và cấp tài khoản đăng nhập cho đơn vị vận tải container ngoại cảng.</p>
-        </div>
+        <div />
         <button
           onClick={() => setShowAddModal(true)}
           className="bg-signal-orange text-white text-xs font-bold px-4 py-2.5 rounded-lg hover:bg-orange-600 transition-colors shadow-md flex items-center justify-center gap-2 self-start md:self-auto"

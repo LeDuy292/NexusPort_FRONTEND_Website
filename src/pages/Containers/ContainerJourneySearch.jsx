@@ -94,10 +94,7 @@ export default function ContainerJourneySearch() {
   const input = (label, key, type = 'text') => <label className="space-y-2 text-xs font-bold text-slate"><span>{label}</span><input type={type} className={fieldClass} value={filters[key]} onChange={e => setFilters({ ...filters, [key]: e.target.value })} maxLength={key === 'containerNumber' ? 20 : 250} /></label>
   return <div className="space-y-4 p-6 lg:p-8">
     <header className="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h1 className="mt-2 font-heading text-3xl font-bold text-carbon">Tra cứu lượt bãi</h1>
-        <p className="mt-2 text-sm text-slate">Xem lịch dự kiến, thời gian vào ra thực tế và EIR đã phát hành của từng lượt bãi.</p>
-      </div>
+      <div />
       {relatedLink && <Link to={relatedLink[0]} className={`${actionClass} bg-white`}>{relatedLink[1]}</Link>}
     </header>
     <form onSubmit={e => { e.preventDefault(); search(filters) }} className="rounded-2xl border border-chalk bg-white p-5">

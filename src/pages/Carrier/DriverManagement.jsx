@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import driverService from "../../services/driverService";
 import FleetSchedule from "./FleetSchedule";
 import PrimaryButton from "../../components/PrimaryButton";
@@ -191,6 +192,8 @@ export default function DriverManagement() {
   const [toastMessage, setToastMessage] = useState("");
   const [zoomedImage, setZoomedImage] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [headerSlot, setHeaderSlot] = useState(null);
+  useEffect(() => { setHeaderSlot(document.getElementById('page-header-actions')) }, []);
   const [editMode, setEditMode] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedHistoryDriver, setSelectedHistoryDriver] = useState(null);
@@ -1028,30 +1031,7 @@ export default function DriverManagement() {
         </div>
       )}
 
-      {/* LEFT MAIN AREA */}
-      <div className="flex-1 space-y-6 w-full min-w-0 max-w-full">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-chalk pb-6">
-          <div>
-            <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded uppercase">
-              Fleet & Workforce
-            </span>
-            <h2 className="font-heading text-4xl text-carbon font-bold mt-1">
-              {activeTab === "drivers" && "Quản lý Đội ngũ Tài xế"}
-              {activeTab === "vehicles" && "Quản lý Phương tiện"}
-              {activeTab === "schedules" && "Lịch trình đội xe"}
-            </h2>
-            <p className="text-sm text-slate mt-1">
-              {activeTab === "drivers" &&
-                "Giám sát và phân công công việc cho đội ngũ tài xế của công ty."}
-              {activeTab === "vehicles" &&
-                "Quản lý danh sách phương tiện và trạng thái điều động của công ty."}
-              {activeTab === "schedules" &&
-                "Xem chuyến đã phân công, tìm tài xế và xe rảnh theo khung giờ."}
-            </p>
-          </div>
-
-          <div className="flex flex-col items-end gap-3">
+      {headerSlot && createPortal(<>
             {activeTab === "drivers" && (
               <PrimaryButton icon="person_add" size="sm"
                 onClick={() => {
@@ -1074,6 +1054,14 @@ export default function DriverManagement() {
                 Thêm Phương Tiện
               </PrimaryButton>
             )}
+      </>, headerSlot)}
+      {/* LEFT MAIN AREA */}
+      <div className="flex-1 space-y-6 w-full min-w-0 max-w-full">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-chalk pb-6">
+          <div />
+
+          <div className="flex flex-col items-end gap-3">
             {/* View Tabs */}
             <div className="flex bg-white rounded-lg p-1 border border-chalk shadow-sm text-xs font-bold">
               {["drivers", "vehicles", "schedules"].map((tab) => (

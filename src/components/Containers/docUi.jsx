@@ -35,11 +35,9 @@ export function PageHeader({ badge, title, subtitle, actions }) {
         {badge && (
           <div className="flex items-center gap-2 mb-1">
             <span className="text-xs font-extrabold bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">{badge}</span>
-            <span className="text-xs font-mono text-slate">NexusPort · Cảng Tiên Sa, Đà Nẵng (VNDAD)</span>
           </div>
         )}
         <h2 className="font-heading text-2xl font-extrabold text-carbon">{title}</h2>
-        {subtitle && <p className="text-xs text-slate mt-0.5 max-w-3xl">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2.5">{actions}</div>}
     </div>

@@ -584,14 +584,6 @@ export default function DriverTripDashboard() {
             <p className="text-xs text-blue-600 font-medium mt-0.5">{activeCount} chuyến đang thực hiện</p>
           )}
         </div>
-        <button
-          onClick={() => loadTrips(true)}
-          disabled={refreshing}
-          className="w-9 h-9 rounded-full bg-gray-100 hover:bg-gray-200 flex items-center justify-center text-gray-600 transition-colors disabled:opacity-50"
-          title="Làm mới"
-        >
-          <span className={refreshing ? 'animate-spin inline-block' : ''}>🔄</span>
-        </button>
       </div>
 
       {/* Filter Tabs */}

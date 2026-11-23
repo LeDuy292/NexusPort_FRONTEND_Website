@@ -346,10 +346,6 @@ export default function YardDesignPreview({ previewOnly = false, movement: movem
         {!embedded && (
           <header className="yard-page-heading">
             <div className="flex flex-col gap-2">
-              <div>
-                <h1>Bản đồ & Điều phối bãi Tiên Sa</h1>
-                <p>Cảng Tiên Sa · Giám sát, Tra cứu vị trí & Lệnh di chuyển container</p>
-              </div>
               <div className="flex items-center gap-2 mt-0.5">
                 <button
                   type="button"

@@ -2,11 +2,18 @@ import { useEffect, useRef } from 'react'
 
 // Native dialogs keep background controls inert, including when an admin form
 // is opened above the service workspace. Each layer restores its own focus.
-export default function CatalogDialog({ className = '', accent, labelledBy, describedBy, onClose, children }) {
+export default function CatalogDialog({ className = '', accent, labelledBy, describedBy, onClose, inline = false, children }) {
   const ref = useRef(null)
   const startedOutside = useRef(false)
 
+  // Chế độ inline: hiển thị ngay trong trang (không pop-up, không khóa nền)
   useEffect(() => {
+    if (!inline) return
+    ref.current?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  }, [inline])
+
+  useEffect(() => {
+    if (inline) return
     const dialog = ref.current
     const previousFocus = document.activeElement
     const page = document.querySelector('.epc-shell > div > main')
@@ -24,6 +31,8 @@ export default function CatalogDialog({ className = '', accent, labelledBy, desc
       target?.focus?.({ preventScroll: true })
     }
   }, [])
+
+  if (inline) return <section ref={ref} className={`epc-dialog epc-inline ${className}`} data-accent={accent} aria-labelledby={labelledBy} aria-describedby={describedBy}>{children}</section>
 
   return <dialog
     ref={ref}

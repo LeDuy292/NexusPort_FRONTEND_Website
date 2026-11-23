@@ -14,7 +14,6 @@ import DamageReport from './pages/Containers/DamageReport'
 import ContainerManagement from './pages/Containers/ContainerManagement'
 import ContainerRegistration from './pages/ShippingLine/ContainerRegistration'
 import ShippingLineDirectory from './pages/Admin/ShippingLineDirectory'
-import CarrierProfile from './pages/Ships/CarrierProfile'
 import EquipmentDispatch from './pages/Dispatch/EquipmentDispatch'
 
 // Import các trang hệ thống
@@ -153,7 +152,6 @@ function App() {
           
           {/* 1. Nhóm Doanh nghiệp vận tải (Transport Company) */}
           <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF, ROLES.ADMINISTRATOR]} />}>
-            <Route path="/carrier-profile" element={<CarrierProfile />} />
             <Route path="/carrier-portal" element={<CarrierPortal />} />
             <Route path="/booking" element={<BookingManagement />} />
             <Route path="/fleet" element={<VehicleManagement />} />

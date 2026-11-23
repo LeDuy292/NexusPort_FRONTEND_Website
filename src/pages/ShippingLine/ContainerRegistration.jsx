@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import ContainerEquipmentSearch from '../Containers/ContainerEquipmentSearch'
 import { containerService } from '../../services/containerService'
@@ -24,16 +25,17 @@ export default function ContainerRegistration() {
   const showEquipment = params.get('tab') === 'equipment'
   const tabClass = active => `rounded-xl border px-4 py-2 text-sm font-bold ${active ? 'border-signal-orange bg-orange-50 text-carbon' : 'border-chalk bg-white text-slate'}`
 
+  // Nút "Tra cứu lượt bãi" nằm trong thẻ tiêu đề do layout vẽ
+  const [headerSlot, setHeaderSlot] = useState(null)
+  useEffect(() => { setHeaderSlot(document.getElementById('page-header-actions')) }, [])
+
   return <div className="space-y-5 p-6 lg:p-8">
-    <header className="flex flex-wrap items-center justify-between gap-4">
-      <div>
-        <p className="text-xs font-bold uppercase text-signal-orange">Hãng tàu</p>
-        <h1 className="mt-2 font-heading text-3xl font-bold text-carbon">Khai báo container</h1>
-      </div>
-      {returningToManifest ? <button type="button" onClick={returnToManifest} className="rounded-xl border border-chalk bg-white px-4 py-2 text-sm font-bold">← Quay lại vận đơn đang khai báo</button>
-        : <Link to="/containers" className="rounded-xl border border-chalk bg-white px-4 py-2 text-sm font-bold">Tra cứu lượt bãi</Link>}
-    </header>
-    <nav aria-label="Khai báo container" className="flex flex-wrap gap-2">
+    {headerSlot && createPortal(
+      returningToManifest ? <button type="button" onClick={returnToManifest} className="rounded-xl border border-chalk bg-white px-4 py-2 text-sm font-bold">← Quay lại vận đơn đang khai báo</button>
+        : <Link to="/containers" className="rounded-xl border border-chalk bg-white px-4 py-2 text-sm font-bold">Tra cứu lượt bãi</Link>,
+      headerSlot,
+    )}
+    <nav aria-label="Khai báo container" className="flex flex-wrap gap-2 bg-white border border-chalk rounded-2xl p-5 shadow-sm">
       <Link to={tabLink(false)} className={tabClass(!showEquipment)} aria-current={showEquipment ? undefined : 'page'}>Đăng ký mới</Link>
       <Link to={tabLink(true)} className={tabClass(showEquipment)} aria-current={showEquipment ? 'page' : undefined}>Container của hãng</Link>
     </nav>

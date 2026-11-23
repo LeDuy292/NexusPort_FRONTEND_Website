@@ -66,10 +66,20 @@ export default function ManifestBillIssuance({ manifest }) {
       const result = unwrap(await apiClient.post(`/bl-imports/manifests/${manifest.id}/bills/${encodeURIComponent(issuing.blNumber)}/issue`, form))
       if (!alive.current) return
       const bookingText = result.undeclaredContainers?.length
-        ? ` Container chưa được chủ hàng khai báo nên chưa dùng được để khai báo ePort: ${result.undeclaredContainers.join(', ')}.`
+        ? ` Container chưa đăng ký thiết bị hoặc thiếu trọng lượng nên chưa dùng được để khai báo ePort: ${result.undeclaredContainers.join(', ')}.`
         : ''
       setNotice(`Đã phát hành vận đơn ${result.blNumber}.${bookingText} ${result.notified ? 'Đã gửi thông báo cho công ty.' : 'Chưa khớp được công ty nên chưa gửi thông báo.'}`)
       setIssuing(null); await load()
+    } catch (err) { if (alive.current) setError(errorText(err)) } finally { if (alive.current) setBusy('') }
+  }
+
+  const syncContainers = async blNumber => {
+    setBusy(`s-${blNumber}`); setError('')
+    try {
+      const result = unwrap(await apiClient.post(`/bl-imports/manifests/${manifest.id}/bills/${encodeURIComponent(blNumber)}/sync-containers`))
+      if (!alive.current) return
+      const left = result.undeclaredContainers?.length ? ` Chưa gắn được: ${result.undeclaredContainers.join(', ')} (chưa đăng ký thiết bị hoặc thiếu trọng lượng).` : ''
+      setNotice(`Đã đồng bộ container của vận đơn ${result.blNumber} sang ePort: thêm ${result.added} container.${left}`)
     } catch (err) { if (alive.current) setError(errorText(err)) } finally { if (alive.current) setBusy('') }
   }
 
@@ -98,10 +108,14 @@ export default function ManifestBillIssuance({ manifest }) {
                   <td className="py-3 px-3 font-mono font-bold text-carbon">{b.blNumber}</td>
                   <td className="py-3 px-3">{b.companyName || <span className="text-rose-700">Chưa là công ty đã đăng ký</span>}</td>
                   <td className="py-3 px-3"><Pill tone={b.issued ? 'green' : 'amber'}>{b.issued ? 'Đã phát hành' : 'Chưa phát hành'}</Pill></td>
-                  <td className="py-3 px-3 text-rose-700">{b.notes.length ? b.notes.join(' ') : <span className="text-slate">—</span>}</td>
+                  <td className="py-3 px-3 text-rose-700">
+                    {b.notes.length ? b.notes.join(' ') : (!b.warnings?.length && <span className="text-slate">—</span>)}
+                    {b.warnings?.length > 0 && <span className="mt-1 block font-medium text-amber-700">{b.warnings.join(' ')}</span>}
+                  </td>
                   <td className="py-3 px-3"><div className="flex flex-wrap gap-2">
                     {!b.issued && <button type="button" className={btnPrimary} disabled={!b.canIssue || Boolean(busy)} onClick={() => open(b)}>Phát hành</button>}
                     {b.issued && <button type="button" className={btnSoft} onClick={() => { setViewing(b); setIssuing(null) }}>Xem vận đơn</button>}
+                    {b.issued && data.direction !== 'IMPORT' && <button type="button" className={btn} disabled={Boolean(busy)} onClick={() => syncContainers(b.blNumber)}>{busy === `s-${b.blNumber}` ? 'Đang đồng bộ…' : 'Đồng bộ container'}</button>}
                     <button type="button" className={btn} disabled={Boolean(busy)} onClick={() => reconcile(b.blNumber)}>{busy === `r-${b.blNumber}` ? 'Đang đối chiếu…' : 'Đối chiếu cảng'}</button>
                   </div></td>
                 </tr>

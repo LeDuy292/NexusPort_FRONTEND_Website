@@ -302,19 +302,7 @@ export default function VehicleManagement() {
 
       {/* HEADER BAR */}
       <div className="flex justify-between items-center bg-white border border-chalk rounded-2xl p-5 shadow-sm">
-        <div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded uppercase">
-              QUẢN LÝ ĐỘI XE CẢNG TIÊN SA, ĐÀ NẴNG
-            </span>
-            <span className="flex items-center gap-1.5 text-xs font-bold text-green-600 bg-green-50 px-2.5 py-0.5 rounded-full border border-green-200">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>
-              🟢 GIÁM SÁT REALTIME
-            </span>
-          </div>
-          <h2 className="font-heading text-3xl text-carbon font-extrabold mt-1">Quản Lý Đội Xe</h2>
-          <p className="text-xs text-slate mt-0.5">Giám sát và theo dõi toàn bộ xe đầu kéo đường dài & xe đầu kéo nội bãi cảng.</p>
-        </div>
+        <div />
 
         {/* CTA + ADD VEHICLE BUTTON */}
         <button

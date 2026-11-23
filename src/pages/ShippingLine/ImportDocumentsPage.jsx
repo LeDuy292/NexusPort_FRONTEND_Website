@@ -104,7 +104,6 @@ export default function ImportDocumentsPage() {
         badge="Không gian doanh nghiệp hãng tàu"
         title="Hồ sơ hàng nhập"
         subtitle="Nhận pre-alert, đối chiếu B/L với manifest, gửi Arrival Notice, thu phí, kiểm quyền nhận hàng và phát hành D/O."
-        actions={<button type="button" className={btn} onClick={loadAll} title="Tải lại dữ liệu"><span className="material-symbols-outlined text-base">refresh</span>Tải lại</button>}
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">

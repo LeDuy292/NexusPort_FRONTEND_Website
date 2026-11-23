@@ -348,10 +348,7 @@ export default function BillingChargesManagement() {
 
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-extrabold text-carbon font-heading">Billing & Thanh toán</h2>
-          <p className="text-xs text-slate mt-1">Lập hóa đơn dịch vụ cảng cảng biển, cấu hình đơn giá nâng hạ container, thu phí cắm reefer, và theo dõi công nợ quá hạn.</p>
-        </div>
+        <div />
         <div className="flex gap-2">
           <button
             onClick={() => setShowCreateModal(true)}
