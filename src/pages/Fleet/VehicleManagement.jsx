@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import vehicleService from '../../services/vehicleService'
 import driverService from '../../services/driverService'
+import Select from '../../components/ui/Select'
 
 export default function VehicleManagement() {
   const [vehicleTypeFilter, setVehicleTypeFilter] = useState('All') // 'All' | 'ROAD_TRUCK' | 'YARD_TRACTOR'
@@ -302,19 +303,7 @@ export default function VehicleManagement() {
 
       {/* HEADER BAR */}
       <div className="flex justify-between items-center bg-white border border-chalk rounded-2xl p-5 shadow-sm">
-        <div>
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded uppercase">
-              QUẢN LÝ ĐỘI XE CẢNG TIÊN SA, ĐÀ NẴNG
-            </span>
-            <span className="flex items-center gap-1.5 text-xs font-bold text-green-600 bg-green-50 px-2.5 py-0.5 rounded-full border border-green-200">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-ping"></span>
-              🟢 GIÁM SÁT REALTIME
-            </span>
-          </div>
-          <h2 className="font-heading text-3xl text-carbon font-extrabold mt-1">Quản Lý Đội Xe</h2>
-          <p className="text-xs text-slate mt-0.5">Giám sát và theo dõi toàn bộ xe đầu kéo đường dài & xe đầu kéo nội bãi cảng.</p>
-        </div>
+        <div />
 
         {/* CTA + ADD VEHICLE BUTTON */}
         <button
@@ -411,7 +400,7 @@ export default function VehicleManagement() {
           </div>
 
           {/* Status Filter Dropdown */}
-          <select
+          <Select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
             className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-xs font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
@@ -423,10 +412,10 @@ export default function VehicleManagement() {
             <option value="Handling">🟡 Đang cẩu dỡ (Handling)</option>
             <option value="Delayed">🔴 Bị trễ hạn (Delayed)</option>
             <option value="Maintenance">🔧 Bảo trì (Maintenance)</option>
-          </select>
+          </Select>
 
           {/* Location Filter Dropdown */}
-          <select
+          <Select
             value={locationFilter}
             onChange={e => setLocationFilter(e.target.value)}
             className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-xs font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
@@ -436,7 +425,7 @@ export default function VehicleManagement() {
             <option value="Khối bãi">Khối bãi (Block A-F)</option>
             <option value="Road">Tuyến đường nội bộ</option>
             <option value="Bảo Trì">Xưởng bảo trì</option>
-          </select>
+          </Select>
 
         </div>
 
@@ -598,7 +587,7 @@ export default function VehicleManagement() {
                 ) : (
                   <div className="bg-fog p-4 rounded-2xl border border-chalk space-y-3">
                     <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Chọn Tài Xế Phụ Trách</label>
-                    <select
+                    <Select
                       value={editDriverId}
                       onChange={e => setEditDriverId(e.target.value)}
                       className="w-full p-3 bg-white border border-chalk rounded-xl font-bold text-carbon text-xs focus:outline-none focus:border-signal-orange focus:ring-0"
@@ -607,7 +596,7 @@ export default function VehicleManagement() {
                       {availableDrivers.map(d => (
                         <option key={d.id} value={d.id}>{d.fullName} - {d.phone}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 )}
               </div>
@@ -733,14 +722,14 @@ export default function VehicleManagement() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Loại Xe (Vehicle Type) *</label>
-                  <select
+                  <Select
                     value={newVehicle.type}
                     onChange={e => setNewVehicle({ ...newVehicle, type: e.target.value })}
                     className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
                   >
                     <option value="ROAD_TRUCK">🚚 Xe Đầu Kéo Đường Dài</option>
                     <option value="YARD_TRACTOR">🚜 Xe Đầu Kéo Nội Bãi</option>
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
@@ -757,7 +746,7 @@ export default function VehicleManagement() {
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Tài Xế Phụ Trách</label>
-                  <select
+                  <Select
                     value={newVehicle.driverId}
                     onChange={e => setNewVehicle({ ...newVehicle, driverId: e.target.value })}
                     className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
@@ -768,7 +757,7 @@ export default function VehicleManagement() {
                         {d.fullName}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
 
                 <div className="relative">
@@ -802,7 +791,7 @@ export default function VehicleManagement() {
 
                 <div className="col-span-2">
                   <label className="block text-[11px] font-bold text-slate font-sans uppercase mb-1">Trạng Thái Ban Đầu</label>
-                  <select
+                  <Select
                     value={newVehicle.status}
                     onChange={e => setNewVehicle({ ...newVehicle, status: e.target.value })}
                     className="w-full p-3 bg-fog border border-chalk rounded-xl font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
@@ -810,7 +799,7 @@ export default function VehicleManagement() {
                     <option value="Available">🟢 Sẵn sàng (Available)</option>
                     <option value="Assigned">🔵 Đã chỉ định (Assigned)</option>
                     <option value="Maintenance">🔧 Bảo trì (Maintenance)</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
             </div>

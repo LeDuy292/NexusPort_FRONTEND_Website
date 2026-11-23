@@ -162,22 +162,6 @@ export default function ContainerFlow() {
 
   const filters = ['Tất cả', 'Chưa vào bãi', 'Đang trong bãi', 'Quá hạn lưu bãi', 'Đã rời bãi']
   return <div className="p-6 w-full font-sans flex flex-col gap-6 relative">
-    <div className="flex flex-col gap-4 bg-white border border-chalk rounded-2xl p-5 shadow-sm lg:flex-row lg:justify-between lg:items-center">
-      <div>
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded uppercase">ĐIỀU HÀNH BÃI</span>
-          <span className="flex items-center gap-1.5 text-xs font-bold text-green-600 bg-green-50 px-2.5 py-0.5 rounded-full border border-green-200">
-            <span className="w-2 h-2 rounded-full bg-green-500"></span> DỮ LIỆU HỆ THỐNG
-          </span>
-        </div>
-        <h1 className="font-heading text-3xl text-carbon font-extrabold mt-1">Luồng Container Trong Bãi</h1>
-        <p className="text-xs text-slate mt-0.5">Theo dõi vị trí ô bãi, lượt vào/ra thực tế và thời hạn lưu bãi.</p>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        <button onClick={() => reload(page)} disabled={loading} className="h-10 px-4 bg-white border border-chalk text-carbon rounded-xl font-bold text-xs hover:bg-fog disabled:opacity-50">{loading ? 'ĐANG TẢI…' : 'LÀM MỚI DỮ LIỆU'}</button>
-        <button onClick={() => navigate('/yard-staff/movement-operations')} className="h-10 px-4 bg-carbon text-white rounded-xl font-bold text-xs hover:bg-black flex items-center gap-2"><span className="material-symbols-outlined text-base">swap_horiz</span>LỆNH DI CHUYỂN</button>
-      </div>
-    </div>
 
     {error && <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</div>}
 
@@ -262,7 +246,6 @@ export default function ContainerFlow() {
               {selectedTasks.length === 0 && <p className="text-xs text-slate">Chưa có lệnh liên quan đến container này.</p>}
             </div>
           </>}
-          <button onClick={() => navigate('/yard-staff/movement-operations')} className="w-full h-10 bg-signal-orange text-white rounded-xl font-bold text-xs hover:opacity-95">MỞ QUẢN LÝ LỆNH DI CHUYỂN →</button>
         </section>
 
         <section className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-3">

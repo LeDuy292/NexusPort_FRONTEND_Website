@@ -1,153 +1,52 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useEffect } from 'react'
+import apiClient from '../../services/apiClient'
 
-// ─── MOCK DATA ─────────────────────────────────────────────────────────────────
-const MOCK_DISPATCHES = [
-  {
-    id: 'DSP-20260811-001', time: '08:42', date: 'Hôm nay',
-    vehicle: 'TRK-001', vehiclePlate: '43C-123.45',
-    driver: 'Nguyễn Văn A', driverId: 'DRV-001',
-    container: 'MSCU1234567', taskType: 'PORT_PICKUP', taskLabel: 'Lấy Container',
-    origin: 'Cổng A – Tiên Sa', destination: 'Kho Lạnh Hòa Cầm',
-    dispatcher: 'Dispatcher 01',
-    status: 'COMPLETED',
-    dispatchTime: '08:42', startTime: '08:43', arrivalTime: '08:46', completionTime: '08:52',
-    duration: '10 phút', waitTime: '3 phút',
-    gateBooking: 'GB-20260811-001',
-    timeline: [
-      { time: '08:42', event: 'Tạo lệnh điều phối' },
-      { time: '08:43', event: 'Xe bắt đầu di chuyển' },
-      { time: '08:46', event: 'Xe đến điểm nhận hàng' },
-      { time: '08:47', event: 'Bắt đầu bốc xếp container' },
-      { time: '08:52', event: 'Hoàn thành nhiệm vụ' },
-    ]
-  },
-  {
-    id: 'DSP-20260811-002', time: '09:10', date: 'Hôm nay',
-    vehicle: 'YTR-003', vehiclePlate: 'YT-003',
-    driver: 'Võ Thị F', driverId: 'DRV-006',
-    container: 'MSCU7788990', taskType: 'YARD_MOVE', taskLabel: 'Nội bãi',
-    origin: 'Khối bãi A – A01-02', destination: 'Khu cẩu RTG-01',
-    dispatcher: 'Dispatcher 01',
-    status: 'COMPLETED',
-    dispatchTime: '09:10', startTime: '09:11', arrivalTime: '09:14', completionTime: '09:18',
-    duration: '8 phút', waitTime: '2 phút',
-    gateBooking: 'N/A (Nội bãi)',
-    timeline: [
-      { time: '09:10', event: 'Tạo lệnh điều phối' },
-      { time: '09:11', event: 'Xe đầu kéo nội bãi khởi động' },
-      { time: '09:14', event: 'Đến vị trí Khối bãi A' },
-      { time: '09:15', event: 'Kết nối đầu kéo với container' },
-      { time: '09:18', event: 'Container đến RTG-01 – Hoàn thành' },
-    ]
-  },
-  {
-    id: 'DSP-20260811-003', time: '09:55', date: 'Hôm nay',
-    vehicle: 'TRK-008', vehiclePlate: '15C-882.19',
-    driver: 'Phạm Văn D', driverId: 'DRV-004',
-    container: 'EVER991203', taskType: 'DELIVERY', taskLabel: 'Giao Container',
-    origin: 'Kho Liên Chiểu', destination: 'Cảng Tiên Sa – Bến B',
-    dispatcher: 'Dispatcher 02',
-    status: 'DELAYED',
-    dispatchTime: '09:55', startTime: '09:58', arrivalTime: '10:30', completionTime: '—',
-    duration: '35+ phút', waitTime: '8 phút',
-    gateBooking: 'GB-20260811-002',
-    timeline: [
-      { time: '09:55', event: 'Tạo lệnh điều phối' },
-      { time: '09:58', event: 'Xe bắt đầu di chuyển' },
-      { time: '10:12', event: '⚠ Phát hiện tắc đường QL14B' },
-      { time: '10:30', event: 'Xe đến cổng cảng (trễ 15 phút)' },
-    ]
-  },
-  {
-    id: 'DSP-20260811-004', time: '10:20', date: 'Hôm nay',
-    vehicle: 'TRK-003', vehiclePlate: '43A-567.90',
-    driver: 'Trần Văn B', driverId: 'DRV-002',
-    container: 'MSCU4455667', taskType: 'PORT_PICKUP', taskLabel: 'Lấy Container',
-    origin: 'Cổng B – Tiên Sa', destination: 'Depot Liên Chiểu',
-    dispatcher: 'Dispatcher 01',
-    status: 'IN_PROGRESS',
-    dispatchTime: '10:20', startTime: '10:21', arrivalTime: '—', completionTime: '—',
-    duration: 'Đang chạy', waitTime: '1 phút',
-    gateBooking: 'GB-20260811-003',
-    timeline: [
-      { time: '10:20', event: 'Tạo lệnh điều phối' },
-      { time: '10:21', event: 'Xe khởi hành từ bãi đậu' },
-      { time: '10:24', event: 'Xe qua cổng kiểm soát (Gate B)' },
-    ]
-  },
-  {
-    id: 'DSP-20260811-005', time: '11:05', date: 'Hôm nay',
-    vehicle: 'TRK-012', vehiclePlate: '92C-445.11',
-    driver: 'Lê Văn C', driverId: 'DRV-003',
-    container: 'MSCU9900112', taskType: 'DELIVERY', taskLabel: 'Giao Container',
-    origin: 'Kho An Đồn', destination: 'Cảng Tiên Sa – Bến A',
-    dispatcher: 'Dispatcher 02',
-    status: 'CANCELLED',
-    dispatchTime: '11:05', startTime: '—', arrivalTime: '—', completionTime: '—',
-    duration: '—', waitTime: '—',
-    gateBooking: 'GB-20260811-004',
-    timeline: [
-      { time: '11:05', event: 'Tạo lệnh điều phối' },
-      { time: '11:06', event: '❌ Lệnh bị hủy – Container đã được dỡ sớm' },
-    ]
-  },
-  {
-    id: 'DSP-20260810-021', time: '14:30', date: 'Hôm qua',
-    vehicle: 'TRK-001', vehiclePlate: '43C-123.45',
-    driver: 'Nguyễn Văn A', driverId: 'DRV-001',
-    container: 'MSCU3311009', taskType: 'PORT_PICKUP', taskLabel: 'Lấy Container',
-    origin: 'Cổng A – Tiên Sa', destination: 'Kho Hòa Cầm',
-    dispatcher: 'Dispatcher 01',
-    status: 'COMPLETED',
-    dispatchTime: '14:30', startTime: '14:31', arrivalTime: '14:38', completionTime: '14:45',
-    duration: '15 phút', waitTime: '4 phút',
-    gateBooking: 'GB-20260810-009',
-    timeline: [
-      { time: '14:30', event: 'Tạo lệnh điều phối' },
-      { time: '14:31', event: 'Xe khởi hành' },
-      { time: '14:38', event: 'Đến điểm nhận' },
-      { time: '14:45', event: 'Hoàn thành' },
-    ]
-  },
-  {
-    id: 'DSP-20260810-019', time: '12:15', date: 'Hôm qua',
-    vehicle: 'YTR-005', vehiclePlate: 'YT-005',
-    driver: 'Võ Thị F', driverId: 'DRV-006',
-    container: 'MSCU5577889', taskType: 'YARD_MOVE', taskLabel: 'Nội bãi',
-    origin: 'Khối bãi C – C03-01', destination: 'Khối bãi F – F01-02',
-    dispatcher: 'Dispatcher 03',
-    status: 'COMPLETED',
-    dispatchTime: '12:15', startTime: '12:16', arrivalTime: '12:19', completionTime: '12:24',
-    duration: '9 phút', waitTime: '1 phút',
-    gateBooking: 'N/A (Nội bãi)',
-    timeline: [
-      { time: '12:15', event: 'Tạo lệnh điều phối' },
-      { time: '12:16', event: 'Xe nội bãi khởi động' },
-      { time: '12:19', event: 'Đến Khối C' },
-      { time: '12:24', event: 'Hoàn thành – Container ở F01-02' },
-    ]
-  },
-  {
-    id: 'DSP-20260810-015', time: '09:00', date: 'Hôm qua',
-    vehicle: 'TRK-008', vehiclePlate: '15C-882.19',
-    driver: 'Hoàng Văn E', driverId: 'DRV-005',
-    container: 'MSCU2200334', taskType: 'PORT_PICKUP', taskLabel: 'Lấy Container',
-    origin: 'Cổng A – Tiên Sa', destination: 'Depot Bắc Mỹ An',
-    dispatcher: 'Dispatcher 02',
-    status: 'DELAYED',
-    dispatchTime: '09:00', startTime: '09:02', arrivalTime: '09:45', completionTime: '10:00',
-    duration: '60 phút', waitTime: '20 phút',
-    gateBooking: 'GB-20260810-007',
-    timeline: [
-      { time: '09:00', event: 'Tạo lệnh điều phối' },
-      { time: '09:02', event: 'Xe khởi hành' },
-      { time: '09:25', event: '⚠ Xe hỏng lốp tại QL1A' },
-      { time: '09:40', event: 'Sửa chữa tại chỗ hoàn tất' },
-      { time: '09:45', event: 'Xe đến cảng (trễ 30 phút)' },
-      { time: '10:00', event: 'Hoàn thành nhiệm vụ' },
-    ]
-  },
-]
+// ─── DỮ LIỆU THẬT từ API /booking-dispatch/history ─────────────────────────────
+const VN_TZ = 'Asia/Ho_Chi_Minh'
+const dayKey = (v) => new Intl.DateTimeFormat('en-CA', { timeZone: VN_TZ, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(v))
+const hhmm = (v) => (v ? new Intl.DateTimeFormat('vi-VN', { timeZone: VN_TZ, hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(v)) : '—')
+const dayDiff = (v) => Math.round((new Date(dayKey(new Date())) - new Date(dayKey(v))) / 86400000)
+const dateLabel = (v) => {
+  const diff = dayDiff(v)
+  if (diff === 0) return 'Hôm nay'
+  if (diff === 1) return 'Hôm qua'
+  return new Intl.DateTimeFormat('vi-VN', { timeZone: VN_TZ, day: '2-digit', month: '2-digit', year: 'numeric' }).format(new Date(v))
+}
+const minutes = (ms) => (ms == null || ms < 0 ? null : Math.max(1, Math.round(ms / 60000)))
+const minText = (ms) => { const m = minutes(ms); return m == null ? '—' : m + ' phút' }
+
+function toRow(item) {
+  const finished = item.completionAt || item.status === 'CANCELLED'
+  const spanMs = item.completionAt && item.dispatchAt ? new Date(item.completionAt) - new Date(item.dispatchAt) : null
+  return {
+    id: item.id,
+    time: hhmm(item.at),
+    date: dateLabel(item.at),
+    dayDiff: dayDiff(item.at),
+    vehicle: item.plate || '—',
+    vehiclePlate: item.kind === 'YARD_MOVE' ? 'Xe nội bãi' : 'Xe qua cổng',
+    driver: item.driverName || '—',
+    driverId: '—',
+    container: item.container || '—',
+    taskType: item.kind,
+    taskLabel: TASK_TYPE_CFG[item.kind]?.label || item.kind,
+    origin: item.origin || '—',
+    destination: item.destination || '—',
+    dispatcher: item.dispatcher || '—',
+    status: item.status,
+    dispatchTime: hhmm(item.dispatchAt),
+    startTime: hhmm(item.startAt),
+    arrivalTime: hhmm(item.arrivalAt),
+    completionTime: hhmm(item.completionAt),
+    duration: spanMs != null ? minText(spanMs) : (finished ? '—' : 'Đang thực hiện'),
+    waitTime: minText(item.waitMs),
+    gateBooking: item.gateBooking || 'N/A (Nội bãi)',
+    waitMs: item.waitMs,
+    callMs: item.callMs,
+    timeline: (item.timeline || []).map((t) => ({ time: hhmm(t.at), event: t.event })),
+  }
+}
+
 
 // ─── CONFIG ────────────────────────────────────────────────────────────────────
 const STATUS_CFG = {
@@ -159,7 +58,7 @@ const STATUS_CFG = {
 
 const TASK_TYPE_CFG = {
   PORT_PICKUP: { label: 'Lấy Container',  color: 'bg-orange-50 text-orange-800 border-orange-300' },
-  DELIVERY:    { label: 'Giao Container', color: 'bg-purple-50 text-purple-800 border-purple-300' },
+  DELIVERY:    { label: 'Hạ Container',  color: 'bg-purple-50 text-purple-800 border-purple-300' },
   YARD_MOVE:   { label: 'Nội bãi',        color: 'bg-teal-50 text-teal-800 border-teal-300' },
 }
 
@@ -182,7 +81,19 @@ export default function DispatchHistory() {
   const [drawerItem, setDrawerItem]     = useState(null)
   const [currentPage, setCurrentPage]   = useState(1)
   const [toast, setToast]               = useState('')
+  const [rows, setRows]                 = useState([])
+  const [loading, setLoading]           = useState(true)
+  const [loadError, setLoadError]       = useState('')
   const PAGE_SIZE = 6
+
+  useEffect(() => {
+    let alive = true
+    apiClient.get('/booking-dispatch/history', { params: { days: 30 } })
+      .then((res) => { if (alive) setRows((res.data?.data?.items || []).map(toRow)) })
+      .catch((e) => { if (alive) setLoadError(e?.response?.data?.message || e.message || 'Không tải được lịch sử điều phối') })
+      .finally(() => { if (alive) setLoading(false) })
+    return () => { alive = false }
+  }, [])
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2800) }
 
@@ -190,7 +101,7 @@ export default function DispatchHistory() {
 
   // KPIs
   const kpi = useMemo(() => {
-    const all = MOCK_DISPATCHES
+    const all = rows
     const success = all.filter(d => d.status === 'COMPLETED').length
     return {
       total:      all.length,
@@ -198,15 +109,17 @@ export default function DispatchHistory() {
       delayed:    all.filter(d => d.status === 'DELAYED').length,
       cancelled:  all.filter(d => d.status === 'CANCELLED').length,
       inProgress: all.filter(d => d.status === 'IN_PROGRESS').length,
-      successRate: Math.round((success / all.length) * 100) + '%',
+      successRate: (all.length ? Math.round((success / all.length) * 100) : 0) + '%',
     }
-  }, [])
+  }, [rows])
 
   // Filtered list
   const filtered = useMemo(() => {
-    let list = [...MOCK_DISPATCHES]
-    if (dateFilter === 'TODAY')     list = list.filter(d => d.date === 'Hôm nay')
-    if (dateFilter === 'YESTERDAY') list = list.filter(d => d.date === 'Hôm qua')
+    let list = [...rows]
+    if (dateFilter === 'TODAY')     list = list.filter(d => d.dayDiff === 0)
+    if (dateFilter === 'YESTERDAY') list = list.filter(d => d.dayDiff === 1)
+    if (dateFilter === 'LAST7')     list = list.filter(d => d.dayDiff >= 0 && d.dayDiff < 7)
+    if (dateFilter === 'LAST30')    list = list.filter(d => d.dayDiff >= 0 && d.dayDiff < 30)
     if (statusFilter !== 'ALL') list = list.filter(d => d.status === statusFilter)
     if (taskFilter !== 'ALL')   list = list.filter(d => d.taskType === taskFilter)
     if (vehicleFilter) list = list.filter(d => d.vehicle.toLowerCase().includes(vehicleFilter.toLowerCase()) || d.vehiclePlate.toLowerCase().includes(vehicleFilter.toLowerCase()))
@@ -217,21 +130,21 @@ export default function DispatchHistory() {
       d.gateBooking.toLowerCase().includes(q)
     )
     return list
-  }, [search, dateFilter, statusFilter, taskFilter, vehicleFilter])
+  }, [rows, search, dateFilter, statusFilter, taskFilter, vehicleFilter])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paginated  = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
 
   // Performance metrics
   const perf = useMemo(() => {
-    const completed = MOCK_DISPATCHES.filter(d => d.status === 'COMPLETED')
+    const avg = (list) => (list.length ? minText(list.reduce((x, y) => x + y, 0) / list.length) : '—')
     return {
-      avgDispatch: '6.4 phút',
-      avgWait: '4.2 phút',
-      completionRate: '89%',
-      delayed: kpi.delayed,
+      avgDispatch: avg(rows.map(d => d.callMs).filter(v => v != null && v >= 0)),
+      avgWait: avg(rows.map(d => d.waitMs).filter(v => v != null && v >= 0)),
+      completionRate: kpi.successRate,
+      delayed: rows.filter(d => d.dayDiff === 0 && d.status === 'DELAYED').length,
     }
-  }, [kpi])
+  }, [rows, kpi])
 
   const handleExportCSV = () => {
     const headers = 'Mã Lệnh,Giờ,Xe,Tài xế,Container,Loại,Xuất phát,Điểm đến,Dispatcher,Trạng thái\n'
@@ -256,14 +169,12 @@ export default function DispatchHistory() {
       )}
 
       {/* ── HEADER ── */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-chalk rounded-2xl p-5 shadow-sm">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded uppercase tracking-wider">Dispatcher Workspace</span>
-            <span className="text-[10px] text-slate font-mono">NexusPort · Cảng Tiên Sa · Đà Nẵng</span>
+            <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded uppercase tracking-wider">KHÔNG GIAN ĐIỀU ĐỘ</span>
           </div>
           <h2 className="font-heading text-3xl text-carbon font-extrabold mt-0.5">Lịch Sử Điều Phối</h2>
-          <p className="text-xs text-slate mt-0.5">Xem lại toàn bộ lịch sử lệnh điều phối xe và container. Dữ liệu lịch sử chỉ đọc.</p>
         </div>
         <button onClick={handleExportCSV}
           className="h-11 px-5 bg-white border border-chalk text-carbon rounded-xl font-extrabold text-xs hover:border-signal-orange hover:text-signal-orange transition-all shadow-sm flex items-center gap-2 flex-shrink-0">
@@ -382,8 +293,8 @@ export default function DispatchHistory() {
                   <tr><td colSpan={8} className="py-16 text-center">
                     <div className="flex flex-col items-center gap-3 text-slate">
                       <span className="material-symbols-outlined text-[48px] opacity-30">history</span>
-                      <div className="font-bold text-carbon text-sm">Không tìm thấy kết quả nào</div>
-                      <p className="text-xs">Thử thay đổi bộ lọc ngày hoặc từ khoá.</p>
+                      <div className="font-bold text-carbon text-sm">{loading ? 'Đang tải lịch sử điều phối…' : loadError ? 'Không tải được lịch sử điều phối' : 'Không tìm thấy kết quả nào'}</div>
+                      <p className="text-xs">{loadError || (rows.length === 0 && !loading ? 'Chưa có lệnh điều phối nào trong 30 ngày qua.' : 'Thử thay đổi bộ lọc ngày hoặc từ khoá.')}</p>
                     </div>
                   </td></tr>
                 ) : paginated.map(d => (
@@ -459,8 +370,8 @@ export default function DispatchHistory() {
           <div className="bg-white rounded-xl border border-chalk shadow-sm p-4 space-y-3">
             <div className="text-[10px] font-bold text-slate uppercase tracking-wider">Phân Bổ Trạng Thái</div>
             {Object.entries(STATUS_CFG).map(([status, cfg]) => {
-              const count = MOCK_DISPATCHES.filter(d => d.status === status).length
-              const pct = Math.round((count / MOCK_DISPATCHES.length) * 100)
+              const count = rows.filter(d => d.status === status).length
+              const pct = rows.length ? Math.round((count / rows.length) * 100) : 0
               return (
                 <div key={status} className="space-y-1">
                   <div className="flex justify-between text-[11px]">

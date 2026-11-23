@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { INITIAL_OPERATION_PLAN } from '../../data/vesselOperationPlanData'
+import Select from '../../components/ui/Select'
 
 export default function VesselOperationPlan() {
   const [plan, setPlan] = useState(INITIAL_OPERATION_PLAN)
@@ -428,10 +429,10 @@ export default function VesselOperationPlan() {
             <form onSubmit={handleAddCrane} className="space-y-3 text-xs">
               <div>
                 <label className="block text-[10px] font-extrabold text-slate-600 uppercase mb-1">Mã Cẩu Bờ (QC)</label>
-                <select value={newCrane.crane} onChange={e => setNewCrane(p => ({ ...p, crane: e.target.value }))}
+                <Select value={newCrane.crane} onChange={e => setNewCrane(p => ({ ...p, crane: e.target.value }))}
                   className="w-full p-2.5 bg-slate-100 border border-slate-300 rounded-xl font-bold">
                   {['Cẩu Bờ QC-01', 'Cẩu Bờ QC-02', 'Cẩu Bờ QC-03', 'Cẩu Bờ QC-04', 'Cẩu Bờ QC-05'].map(c => <option key={c}>{c}</option>)}
-                </select>
+                </Select>
               </div>
               <div>
                 <label className="block text-[10px] font-extrabold text-slate-600 uppercase mb-1">Hầm Tàu (Hatch)</label>

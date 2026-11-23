@@ -1,5 +1,6 @@
 import { ServiceTripSummary } from './ServiceTripFleet'
 import { useId, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery } from '@tanstack/react-query'
 import { AlertCircle, Download, FileText, Loader2, Printer, RefreshCw, X } from 'lucide-react'
 import CatalogDialog from './CatalogDialog'
@@ -9,6 +10,7 @@ import { orderStatusLabels, paymentStateLabel, serviceOrderKey, serviceOrdersApi
 import printStyles from './serviceReceiptPrint.css?inline'
 import './serviceReceiptPrint.css'
 import './serviceReceipt.css'
+import Select from '../../components/ui/Select'
 
 const date = value => value ? new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(value)) : '—'
 const number = value => value == null ? '—' : new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 }).format(value)
@@ -71,7 +73,7 @@ async function printReceipt(paper, title) {
   } catch (error) { frame.remove(); throw error }
 }
 
-export function ServiceRegistrationReceipt({ orderId, onClose }) {
+export function ServiceRegistrationReceipt({ orderId, onClose, inline = false }) {
   const id = useId()
   const paperRef = useRef(null)
   const [working, setWorking] = useState('')
@@ -90,10 +92,10 @@ export function ServiceRegistrationReceipt({ orderId, onClose }) {
     } catch (failure) { setError(draftError(failure)); if (failure?.response?.status === 409) setChanged(true) }
     finally { setWorking('') }
   }
-  return <CatalogDialog className="epd-dialog esr-dialog" labelledBy={`${id}-title`} describedBy={`${id}-description`} onClose={() => { if (!working) onClose() }}>
+  return <CatalogDialog inline={inline} className="epd-dialog esr-dialog" labelledBy={`${id}-title`} describedBy={`${id}-description`} onClose={() => { if (!working) onClose() }}>
     <header className="epd-header"><div><span className="epc-eyebrow">NEXUSPORT / PHIẾU ĐĂNG KÝ</span><h2 id={`${id}-title`} tabIndex={-1} data-dialog-initial-focus>Phiếu đăng ký dịch vụ</h2><p id={`${id}-description`}>Xem trước phiếu A4, in hoặc tải PDF theo thông tin đã xác nhận.</p></div><button type="button" className="epc-icon-button" aria-label="Đóng phiếu đăng ký" disabled={!!working} onClick={onClose}><X size={21} /></button></header>
     <div className="esr-toolbar"><span><FileText size={16} />Khổ A4 · Tiếng Việt · VND</span><button type="button" className="epc-text-button" disabled={busy} onClick={refresh}><RefreshCw size={14} className={query.isFetching ? 'epc-spin' : ''} />Cập nhật trạng thái</button></div>
-    {whole.isSuccess && <label className="esr-scope-picker"><span>Phạm vi in phiếu</span><select aria-label="Phạm vi in phiếu" value={selectedContainer} disabled={!!working} onChange={event => { setSelectedContainer(event.target.value); setError(''); setChanged(false) }}><option value="">Toàn bộ đơn đăng ký</option>{whole.data.containers.map(container => <option key={container.sourceContainerId} value={container.sourceContainerId}>Container {container.containerNumber}</option>)}</select><small>Chọn từng container để xem dịch vụ và phí tương ứng. Trạng thái thanh toán thuộc toàn đơn.</small></label>}
+    {whole.isSuccess && <label className="esr-scope-picker"><span>Phạm vi in phiếu</span><Select aria-label="Phạm vi in phiếu" value={selectedContainer} disabled={!!working} onChange={event => { setSelectedContainer(event.target.value); setError(''); setChanged(false) }}><option value="">Toàn bộ đơn đăng ký</option>{whole.data.containers.map(container => <option key={container.sourceContainerId} value={container.sourceContainerId}>Container {container.containerNumber}</option>)}</Select><small>Chọn từng container để xem dịch vụ và phí tương ứng. Trạng thái thanh toán thuộc toàn đơn.</small></label>}
     {error && <div className="esr-export-error" role="alert"><AlertCircle size={18} /><div>{error}{changed && <button type="button" className="epc-text-button" onClick={refresh}>Tải lại bản xem trước</button>}</div></div>}
     <div className="esr-scroll" aria-busy={busy}>{query.isPending ? <div className="epd-loading" role="status"><Loader2 size={24} className="epc-spin" />Đang chuẩn bị phiếu…</div> : query.isError ? <div className="epd-empty"><AlertCircle size={32} /><h3>Chưa mở được phiếu</h3><p role="alert">{draftError(query.error)}</p><button type="button" className="epc-button secondary" onClick={refresh}><RefreshCw size={16} />Thử lại</button></div> : <ReceiptPaper receipt={query.data} paperRef={paperRef} />}</div>
     <footer className="epd-footer esr-footer"><span>Trạng thái được ghi tại thời điểm xuất phiếu.</span><div><button type="button" className="epc-button secondary" disabled={busy || changed || !query.isSuccess} onClick={() => exportReceipt('print')}>{working === 'print' ? <Loader2 size={16} className="epc-spin" /> : <Printer size={16} />}In phiếu</button><button type="button" className="epc-button primary" disabled={busy || changed || !query.isSuccess} onClick={() => exportReceipt('pdf')}>{working === 'pdf' ? <Loader2 size={16} className="epc-spin" /> : <Download size={16} />}Tải PDF</button></div></footer>
@@ -102,5 +104,7 @@ export function ServiceRegistrationReceipt({ orderId, onClose }) {
 
 export default function ServiceReceiptButton({ orderId, disabled = false }) {
   const [open, setOpen] = useState(false)
-  return <><button type="button" className="epc-button secondary" disabled={disabled} onClick={() => setOpen(true)} aria-haspopup="dialog"><Printer size={16} />Phiếu đăng ký</button>{open && <ServiceRegistrationReceipt orderId={orderId} onClose={() => setOpen(false)} />}</>
+  const slot = typeof document !== 'undefined' ? document.getElementById('epc-inline-slot') : null
+  const receipt = <ServiceRegistrationReceipt inline={!!slot} orderId={orderId} onClose={() => setOpen(false)} />
+  return <><button type="button" className="epc-button secondary" disabled={disabled} onClick={() => setOpen(true)} aria-haspopup="dialog"><Printer size={16} />Phiếu đăng ký</button>{open && (slot ? createPortal(receipt, slot) : receipt)}</>
 }

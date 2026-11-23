@@ -5,6 +5,7 @@ import { bookingService } from '../../services/bookingService'
 import BookingSourcePicker from './BookingSourcePicker'
 import BookingFleetDetails from './BookingFleetDetails'
 import { bookingWindow, suggestedBookingWindow, sourceOperation, retainAvailableFleet } from '../../features/booking-dispatch/bookingPlanning'
+import Select from '../ui/Select'
 
 const inputClass = 'w-full rounded-xl border border-chalk bg-fog px-4 py-2.5 text-xs outline-none focus:border-signal-orange focus:bg-white focus:ring-0 transition-all font-medium'
 const selectClass = 'w-full rounded-xl border border-chalk bg-fog px-3 py-2.5 text-xs outline-none focus:border-signal-orange focus:bg-white focus:ring-0 transition-all font-medium cursor-pointer'
@@ -1056,7 +1057,7 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext }
 
                     <div>
                       <label className="block text-[11px] font-bold text-slate-600 mb-1">Loại Container (ISO) *</label>
-                      <select
+                      <Select
                         value={op.containerIsoSize || ''}
                         disabled
                         className={selectClass}
@@ -1065,7 +1066,7 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext }
                         {CONTAINER_ISO_SIZES.map(sz => (
                           <option key={sz.value} value={sz.value}>{sz.label}</option>
                         ))}
-                      </select>
+                      </Select>
                     </div>
 
                     <div>
@@ -1093,7 +1094,7 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext }
 
                     <div>
                       <label className="block text-[11px] font-bold text-slate-600 mb-1">Phân Loại Hàng Hóa</label>
-                      <select
+                      <Select
                         value={op.cargoType}
                         disabled
                         className={selectClass}
@@ -1105,7 +1106,7 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext }
                         <option value="Oversized">Hàng Quá Khổ Quá Tải</option>
                         <option value="Perishable">Hàng dễ hư hỏng</option>
                         <option value="Overweight">Hàng quá tải</option>
-                      </select>
+                      </Select>
                     </div>
                   </div>
 
@@ -1565,7 +1566,7 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext }
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1.5">Biển Số Xe Đầu Kéo *</label>
-                  <select
+                  <Select
                     required
                     disabled={loading || !currentFleet.trucks.length}
                     value={form.truckId}
@@ -1582,7 +1583,7 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext }
                         {truck.plateNumber} - {truck.status === 'Active' || truck.status === 'active' || !truck.status ? 'Sẵn sàng' : truck.status}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
@@ -1600,7 +1601,7 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext }
 
                 <div>
                   <label className="block text-xs font-bold text-slate-600 mb-1.5">Tài Xế Phụ Trách *</label>
-                  <select
+                  <Select
                     required
                     disabled={loading || !currentFleet.drivers.length}
                     value={form.driverId}
@@ -1613,7 +1614,7 @@ export default function ContainerBookingForm({ onSaved, onClose, exportContext }
                         {driver.fullName} ({driver.phone || driver.licenseClass || ''})
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               </div>
             </div>

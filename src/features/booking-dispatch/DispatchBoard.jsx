@@ -8,6 +8,7 @@ import './dispatchTheme.css'
 import { SmartRouteDetail } from './SmartRouteMonitor'
 import DispatchJourney from './JourneyTimeline'
 import { formatPlateNumber } from '../../utils/format'
+import Select from '../../components/ui/Select'
 
 const dateToday = () => vietnamDate(new Date())
 
@@ -75,13 +76,11 @@ export default function DispatchBoard() {
   const canDelay = ['ready', 'called', 'acknowledged'].includes(selectedState)
   return <div className="arrival-page">
     <header className="arrival-header">
-      <div><p className="arrival-eyebrow"><span className="arrival-badge">KHÔNG GIAN ĐIỀU ĐỘ</span> NexusPort · Cảng Tiên Sa, Đà Nẵng (VNDAD)</p><h1>Theo dõi & điều phối xe</h1>
-        <p>Tài xế xác nhận chuyến → báo đã đến cổng → điều độ gọi xe vào cổng → Gate In → làm hàng → Gate Out.</p></div>
+      <div><p className="arrival-eyebrow"><span className="arrival-badge">KHÔNG GIAN ĐIỀU ĐỘ</span></p><h1>Theo dõi & điều phối xe</h1></div>
       <span className={'arrival-live ' + (connected ? 'connected' : '')}>{connected ? '● Realtime đang kết nối' : '◌ Đang nối lại realtime'}</span>
     </header>
     <div className="arrival-toolbar">
       <label>Ngày hẹn <input type="date" value={date} disabled={busy} onChange={e => { setDate(e.target.value || dateToday()); setPage(1); changeSelection(null) }} /></label>
-      <button type="button" onClick={() => void reload()} disabled={loading && !error}>Làm mới</button>
     </div>
     {error && <div className="arrival-error" role="alert">Không tải được danh sách xe: {error} <button type="button" onClick={() => void reload()}>Thử lại</button></div>}
     <div className="arrival-counts">
@@ -149,7 +148,7 @@ export default function DispatchBoard() {
           {routeError && <div className="arrival-error" role="alert">{routeError} <button type="button" onClick={() => void reload()}>Thử lại</button></div>}
           {selected.group !== 'queue' && !route && !routesLoading && !routeError &&
             <p className="arrival-muted">Chưa có lộ trình container cho chuyến này.</p>}
-          {routes.length > 1 && <label className="dispatch-container-picker">Container<select value={route?.containerId || ''} onChange={event => setContainerId(event.target.value)}>{routes.map(item => <option key={item.containerId} value={item.containerId}>{item.containerNumber}</option>)}</select></label>}
+          {routes.length > 1 && <label className="dispatch-container-picker">Container<Select value={route?.containerId || ''} onChange={event => setContainerId(event.target.value)}>{routes.map(item => <option key={item.containerId} value={item.containerId}>{item.containerNumber}</option>)}</Select></label>}
           {route && <SmartRouteDetail selected={route} error={routeError} />}
           {selected.group === 'queue' && <>
           <div className="arrival-detail-tools"><span className={'arrival-status ' + displayState(selected)}>{statusLabel(selected)}</span>

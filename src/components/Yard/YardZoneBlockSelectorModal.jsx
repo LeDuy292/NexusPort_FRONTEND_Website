@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
+import apiClient from '../../services/apiClient'
 import { yardReservationStore } from '../../services/yardReservationStore'
 import tienSaLayout from '../../features/yard-design/tienSaLayout.json'
 
@@ -120,17 +121,27 @@ export default function YardZoneBlockSelectorModal({
     })
   }, [])
 
-  // Đếm số container đang lưu thực tế từ yardReservationStore theo từng Block
-  const blockOccupancy = useMemo(() => {
-    const res = yardReservationStore.getReservationsSync()
-    const counts = {}
-    res.forEach(r => {
-      const b = (r.blockCode || r.block || '').trim().toUpperCase()
-      if (b) {
-        counts[b] = (counts[b] || 0) + 1
-      }
-    })
-    return counts
+  // Hiện trạng bãi THẬT: số ô đang có container / đã giữ chỗ trên từng block (từ sơ đồ bãi)
+  const [liveStats, setLiveStats] = useState(null)
+  useEffect(() => {
+    if (!isOpen) return undefined
+    let alive = true
+    apiClient.get('/yard/layout')
+      .then((res) => {
+        if (!alive) return
+        const stats = {}
+        ;(res.data?.data?.slots || []).forEach((sl) => {
+          const code = String(sl.block || '').toUpperCase()
+          if (!code) return
+          const st = (stats[code] ||= { total: 0, used: 0, containers: 0 })
+          st.total += 1
+          if (sl.containerNumber || sl.status === 'occupied' || sl.status === 'reserved') st.used += 1
+          if (sl.containerNumber) st.containers += 1
+        })
+        setLiveStats(stats)
+      })
+      .catch(() => { if (alive) setLiveStats(null) })
+    return () => { alive = false }
   }, [isOpen])
 
   // Lấy các block thuộc phân khu đang chọn (ví dụ Khu A có A01, A02, A03, A04)
@@ -293,9 +304,10 @@ export default function YardZoneBlockSelectorModal({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
             {blocksInSelectedZone.map(b => {
-              const occupied = blockOccupancy[b.blockCode] || 0
-              const capacity = b.capacity || (b.bayModules * b.maxRows * b.maxTiers) || 672
-              const freeSlots = Math.max(0, capacity - occupied)
+              const live = liveStats ? liveStats[String(b.blockCode).toUpperCase()] : null
+              const capacity = live?.total || b.capacity || (b.bayModules * b.maxRows * b.maxTiers) || 672
+              const occupied = live ? live.used : null
+              const freeSlots = occupied == null ? null : Math.max(0, capacity - occupied)
 
               return (
                 <div
@@ -308,12 +320,12 @@ export default function YardZoneBlockSelectorModal({
                         Block {b.blockCode}
                       </span>
                       <span className="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono font-bold text-[11px]">
-                        {freeSlots} slot trống
+                        {freeSlots == null ? 'Đang tải…' : `${freeSlots.toLocaleString('vi-VN')} ô trống`}
                       </span>
                     </div>
 
                     <p className="text-xs text-slate-500 mt-1.5 font-medium">
-                      Sức chứa: {capacity} TEU · Đang lưu: {occupied} Cont
+                      Tổng {capacity.toLocaleString('vi-VN')} ô · Đang dùng {occupied == null ? '—' : occupied.toLocaleString('vi-VN')}
                     </p>
                   </div>
 

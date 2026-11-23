@@ -3,6 +3,20 @@ import { Link, useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { ROLES, YARD_VISIT_READERS } from '../routes/routeConfig'
 import NotificationCenter from '../components/NotificationCenter'
 
+// Menu của Administrator: chỉ các trang quản trị hệ thống. Các trang tác nghiệp của vai trò khác (điều phối, bãi, cổng, hãng tàu, doanh nghiệp vận tải) được ẩn khỏi menu.
+const ADMIN_MENU_PATHS = new Set([
+  '/dashboard',            // Tổng quan toàn hệ thống
+  '/reports',              // Báo cáo & phân tích
+  '/incidents',            // Theo dõi sự cố
+  '/users',                // Tài khoản & phân quyền vai trò
+  '/admin/carriers',       // Đối tác (doanh nghiệp vận tải)
+  '/admin/shipping-lines', // Danh mục hãng tàu
+  '/admin/gates',          // Cổng bãi
+  '/admin/equipment',      // Thiết bị
+  '/admin/service-catalog',// Danh mục dịch vụ & biểu phí
+  '/admin/billing',        // Billing & thanh toán
+])
+
 const OVERVIEW_PATHS = new Set(['/carrier-portal', '/dashboard', '/yard-staff/dashboard', '/gate/dashboard', '/shipping-line/dashboard'])
 
 // Danh sách các mục trong Sidebar tương ứng với các route
@@ -83,13 +97,19 @@ const sidebarItems = [
     icon: 'history',
     roles: [ROLES.DISPATCHER],
   },
+  {
+    path: '/dispatcher/yard-incidents',
+    label: 'Sự Cố Bãi',
+    icon: 'report_problem',
+    roles: [ROLES.DISPATCHER],
+  },
 
   // ── YARD OPERATOR / STAFF (Nhân Viên & Điều Hành Bãi) ─────────
   {
     path: '/yard-staff/dashboard',
     label: 'Tổng Quan Khai Thác Bãi',
     icon: 'grid_view',
-    roles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER],
+    roles: [ROLES.YARD_OPERATOR],
   },
   {
     path: '/yard-staff/map',
@@ -101,7 +121,7 @@ const sidebarItems = [
     path: '/yard-staff/movement-operations',
     label: 'Lệnh Di Chuyển Container',
     icon: 'swap_horiz',
-    roles: [ROLES.YARD_OPERATOR, ROLES.DISPATCHER],
+    roles: [ROLES.YARD_OPERATOR],
   },
   {
     path: '/yard-staff/gate-out-preparation',
@@ -293,12 +313,6 @@ const sidebarItems = [
     roles: [ROLES.TRANSPORT_COMPANY],
   },
   {
-    path: '/carrier-profile',
-    label: 'Hồ Sơ Doanh Nghiệp',
-    icon: 'business',
-    roles: [ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF],
-  },
-  {
     path: '/users',
     label: 'Phân Quyền Vai Trò',
     icon: 'manage_accounts',
@@ -312,6 +326,27 @@ const sidebarItems = [
   },
 ]
 
+
+// Tên role hiển thị ở đầu mỗi trang (tiếng Việt)
+const ROLE_BADGES = {
+  [ROLES.SHIPPING_LINE]: 'HÃNG TÀU & VẬN TẢI BIỂN',
+  [ROLES.TRANSPORT_COMPANY]: 'CÔNG TY VẬN TẢI',
+  [ROLES.CARRIER_STAFF]: 'NHÂN VIÊN DOANH NGHIỆP',
+  [ROLES.DISPATCHER]: 'KHÔNG GIAN ĐIỀU ĐỘ',
+  [ROLES.YARD_OPERATOR]: 'KHAI THÁC BÃI',
+  [ROLES.GATE_OFFICER]: 'KIỂM SOÁT CỔNG',
+  [ROLES.ADMINISTRATOR]: 'QUẢN TRỊ HỆ THỐNG',
+}
+
+// Các trang tự dựng đầu trang riêng (kèm nút chức năng) hoặc không cần đầu trang: layout không vẽ khối đầu trang
+const PAGES_WITH_OWN_HEADER = new Set([
+  '/shipping-line/dashboard', '/shipping-line/voyages', '/shipping-line/manifest', '/shipping-line/import-documents', '/shipping-line/delivery-orders',
+  '/import-documents', '/my-bills', '/services', '/yard-staff/gate-out-preparation',
+  '/gate/dashboard', '/gate/incidents', '/gate/history', '/gate/camera',
+  '/dispatch', '/dispatch-history', '/dispatcher/cameras',
+  // Trang không hiển thị khối đầu trang
+  '/dispatcher/gate-bookings',
+])
 
 export default function MainLayout({ previewUser = null }) {
   const navigate = useNavigate()
@@ -351,10 +386,12 @@ export default function MainLayout({ previewUser = null }) {
     navigate('/login')
   }
 
-  // Lọc các sidebar items được phép hiển thị với vai trò người dùng hiện tại (Administrator thấy tất cả để kiểm thử)
+  // Lọc các sidebar items theo vai trò (Administrator chỉ thấy các trang quản trị trong ADMIN_MENU_PATHS)
   const visibleItems = sidebarItems.filter(item => previewUser
     ? item.path === '/yard'
-    : item.roles.includes(user.role) || (user.role === ROLES.ADMINISTRATOR && item.showForAdmin !== false))
+    : user.role === ROLES.ADMINISTRATOR
+      ? item.roles.includes(ROLES.ADMINISTRATOR) && ADMIN_MENU_PATHS.has(item.path)
+      : item.roles.includes(user.role))
   // Các trang tổng quan luôn nằm đầu menu; thứ tự còn lại giữ nguyên
   const allowedItems = [...visibleItems.filter(item => OVERVIEW_PATHS.has(item.path)), ...visibleItems.filter(item => !OVERVIEW_PATHS.has(item.path))]
 
@@ -366,6 +403,9 @@ export default function MainLayout({ previewUser = null }) {
 
   // Lấy tiêu đề trang hiện tại
   const currentTitle = previewUser ? 'Bản Đồ Bãi' : (activeItem?.label || 'Cổng Quản trị')
+
+  const roleBadge = ROLE_BADGES[user.role]
+  const showPageHeader = !previewUser && Boolean(roleBadge && activeItem) && !PAGES_WITH_OWN_HEADER.has(location.pathname)
 
   if (user.role === ROLES.DRIVER) {
     return (
@@ -498,8 +538,22 @@ export default function MainLayout({ previewUser = null }) {
         </header>
 
         {/* CONTAINER CONTENT */}
-        <main className="flex-1 overflow-y-auto bg-slate-50 [scrollbar-gutter:stable]">
-          <Outlet />
+        <main className="flex-1 min-h-0 flex flex-col bg-slate-50 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable]">
+          {showPageHeader && (
+            <div className="px-6 md:px-8 pt-6 ">
+              <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
+                <div>
+                  <span className="text-xs font-extrabold bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">{roleBadge}</span>
+                  <h2 className="font-heading text-2xl font-extrabold text-carbon mt-1">{currentTitle}</h2>
+                </div>
+                {/* Trang nào cần nút ở đầu trang thì gắn vào đây (createPortal) */}
+                <div id="page-header-actions" className="flex flex-wrap items-center gap-2.5" />
+              </div>
+            </div>
+          )}
+            <Outlet />
+          </div>
         </main>
       </div>
 

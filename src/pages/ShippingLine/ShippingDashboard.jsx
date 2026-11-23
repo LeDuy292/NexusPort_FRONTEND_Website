@@ -95,16 +95,6 @@ export default function ShippingDashboard() {
       <PageHeader
         badge="Không gian Hãng tàu"
         title={`Tổng Quan Hoạt Động${data?.line ? ` · ${data.line.short_name}` : ''}`}
-        subtitle="Chiều xuất: chuyến tàu → bản khai → phát hành vận đơn → chủ hàng khai báo ePort theo số vận đơn. Chiều nhập: pre-alert → thông báo hàng đến → giải phóng hàng → lệnh giao hàng."
-        actions={(
-          <>
-            {data?.generatedAt && <span className="text-[11px] font-mono text-slate">Cập nhật {when(data.generatedAt)}</span>}
-            <button type="button" onClick={load} disabled={loading} className={btnSoft}>
-              <span className="material-symbols-outlined text-base">refresh</span>
-              {loading ? 'Đang tải...' : 'Tải lại'}
-            </button>
-          </>
-        )}
       />
 
       {error && <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-xs font-semibold text-rose-800">{error}</div>}

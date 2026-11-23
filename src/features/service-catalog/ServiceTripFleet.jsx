@@ -4,6 +4,7 @@ import BookingFleetDetails from '../../components/Containers/BookingFleetDetails
 import { bookingService } from '../../services/bookingService'
 import { draftDateTime, draftError, serviceDraftsApi } from './serviceDraftsApi'
 import './serviceTripFleet.css'
+import Select from '../../components/ui/Select'
 
 const instant = value => value && Number.isFinite(new Date(value).getTime()) ? new Date(value).toISOString() : null
 const local = value => {
@@ -159,8 +160,8 @@ export default function ServiceTripFleet({
       return <article className="esf-trip" key={trip.sourceContainerId}>
         <header><span className="esf-index">{String(index + 1).padStart(2, '0')}</span><div><h4>{containers[trip.sourceContainerId]?.containerNumber || `Container ${index + 1}`}</h4><small>Chuyến giao nhận · {containers[trip.sourceContainerId]?.typeCode || 'Container hàng'}</small></div><Truck size={21} /></header>
         <div className="epd-form-grid">
-          <label className="epd-field"><span>Xe rảnh <b className="epd-required">*</b></span><select aria-label={`Xe chuyến ${index + 1}`} value={trip.truckId || ''} disabled={busy || disabled || !fleet} onChange={e => select(trip.sourceContainerId, 'truckId', e.target.value)}><option value="">Chọn xe trong khung giờ</option>{fleet?.trucks.filter(t => !others.some(x => x.truckId === t.id)).map(t => <option key={t.id} value={t.id}>{t.plateNumber} · {t.vehicleType}</option>)}</select></label>
-          <label className="epd-field"><span>Tài xế rảnh <b className="epd-required">*</b></span><select aria-label={`Tài xế chuyến ${index + 1}`} value={trip.driverId || ''} disabled={busy || disabled || !fleet} onChange={e => select(trip.sourceContainerId, 'driverId', e.target.value)}><option value="">Chọn tài xế trong khung giờ</option>{fleet?.drivers.filter(d => !others.some(x => x.driverId === d.id)).map(d => <option key={d.id} value={d.id}>{d.fullName} · {d.phone || 'Chưa có SĐT'}</option>)}</select></label>
+          <label className="epd-field"><span>Xe rảnh <b className="epd-required">*</b></span><Select aria-label={`Xe chuyến ${index + 1}`} value={trip.truckId || ''} disabled={busy || disabled || !fleet} onChange={e => select(trip.sourceContainerId, 'truckId', e.target.value)}><option value="">Chọn xe trong khung giờ</option>{fleet?.trucks.filter(t => !others.some(x => x.truckId === t.id)).map(t => <option key={t.id} value={t.id}>{t.plateNumber} · {t.vehicleType}</option>)}</Select></label>
+          <label className="epd-field"><span>Tài xế rảnh <b className="epd-required">*</b></span><Select aria-label={`Tài xế chuyến ${index + 1}`} value={trip.driverId || ''} disabled={busy || disabled || !fleet} onChange={e => select(trip.sourceContainerId, 'driverId', e.target.value)}><option value="">Chọn tài xế trong khung giờ</option>{fleet?.drivers.filter(d => !others.some(x => x.driverId === d.id)).map(d => <option key={d.id} value={d.id}>{d.fullName} · {d.phone || 'Chưa có SĐT'}</option>)}</Select></label>
         </div>
         {fleet && <p className={trip.truckId && trip.driverId ? 'esf-ready' : 'esf-unavailable'}>{fleet.message}{(!trip.truckId || !trip.driverId) && fleet.unavailableReasons?.length > 0 && ` ${fleet.unavailableReasons.join(' ')}`}</p>}
         <details className="esf-details"><summary>Xem thông tin xe và tài xế phụ trách</summary><BookingFleetDetails vehicle={trip.vehicle} driver={trip.driver} /></details>

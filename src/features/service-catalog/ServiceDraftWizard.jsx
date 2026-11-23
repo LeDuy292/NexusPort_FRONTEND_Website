@@ -37,6 +37,7 @@ import { labels } from './catalogApi'
 import { draftDateTime, draftError, draftSession, serviceDraftKey, serviceDraftsApi } from './serviceDraftsApi'
 import { serviceOrdersApi } from './serviceOrdersApi'
 import { manifestPortSyncService } from '../../services/manifestPortSyncService'
+import Select from '../../components/ui/Select'
 
 const blankSource = () => {
   const d = new Date()
@@ -417,8 +418,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     const raw = overrideCode || step1ImportInput || form.source.referenceNumber || form.source.bookingNumber || ''
     const cleanInput = String(raw).trim().toUpperCase()
     if (!cleanInput) {
-      setStep1ImportError('Vui lòng nhập số eDO hoặc số vận đơn nhập khẩu!')
-      return setFeedback('Vui lòng nhập số eDO hoặc số vận đơn nhập khẩu!')
+      setStep1ImportError('Vui lòng nhập số vận đơn (B/L) nhập khẩu!')
+      return setFeedback('Vui lòng nhập số vận đơn (B/L) nhập khẩu!')
     }
 
     const norm = str => String(str || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
@@ -535,28 +536,25 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       })
     })
 
-    // 2. Tìm kiếm chính xác trong danh sách HÀNG NHẬP TRƯỚC
-    let matchedImport = importCandidates.find(item => {
-      const edoNorm = norm(item.edoNumber)
-      const bNumNorm = norm(item.bookingNumber)
-      const aliases = (item.aliases || []).map(a => norm(a))
-
-      return (
-        Boolean(cleanNorm) && (
-          edoNorm === cleanNorm ||
-          bNumNorm === cleanNorm ||
-          aliases.some(a => a === cleanNorm)
-        )
-      )
-    })
+    // 2. Chỉ tra cứu theo SỐ VẬN ĐƠN (B/L): không nhận số eDO, mã booking, mã chuyến hay số container
+    const importBlsOf = item => [item.blNumber, ...(item.containers || []).map(c => c.blNumber)].map(norm).filter(Boolean)
+    let matchedImport = importCandidates.find(item => Boolean(cleanNorm) && importBlsOf(item).includes(cleanNorm))
 
     let matchedApi = null
     if (!matchedImport) {
-      matchedApi = (sources.data?.items || []).find(item => {
-        const ref = norm(item.referenceNumber)
-        const bNum = norm(item.bookingNumber)
-        return Boolean(cleanNorm) && ((ref && ref === cleanNorm) || (bNum && bNum === cleanNorm))
-      })
+      matchedApi = (sources.data?.items || []).find(item => Boolean(cleanNorm) && norm(item.blNumber) === cleanNorm)
+    }
+
+    // Người dùng nhập số eDO / booking thay vì B/L: báo rõ để nhập đúng loại mã
+    if (!matchedImport && !matchedApi) {
+      const looksLikeEdoOrBooking =
+        importCandidates.some(item => norm(item.edoNumber) === cleanNorm || (item.bookingNumber && norm(item.bookingNumber) === cleanNorm)) ||
+        (sources.data?.items || []).some(item => norm(item.referenceNumber) === cleanNorm || (item.bookingNumber && norm(item.bookingNumber) === cleanNorm))
+      if (looksLikeEdoOrBooking) {
+        const msg = `'${cleanInput}' là số eDO hoặc mã booking. Hàng nhập chỉ nhận số vận đơn (B/L), vui lòng nhập số vận đơn.`
+        setStep1ImportError(msg)
+        return setFeedback(msg)
+      }
     }
 
     // 3. Nếu KHÔNG tìm thấy trong hàng nhập, mới kiểm tra xem có phải mã HÀNG XUẤT thực sự không
@@ -577,7 +575,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       })
 
       if (isExportMatch) {
-        const msg = `Mã '${cleanInput}' là vận đơn thuộc luồng HÀNG XUẤT (${isExportMatch.vesselName || 'Tàu xuất'} - ${isExportMatch.voyageNumber || ''}), không hợp lệ cho Đăng ký Giao hàng nhập (eDO)! Vui lòng nhập đúng số eDO hoặc mã Booking nhập khẩu.`
+        const msg = `Mã '${cleanInput}' là vận đơn thuộc luồng HÀNG XUẤT (${isExportMatch.vesselName || 'Tàu xuất'} - ${isExportMatch.voyageNumber || ''}), không hợp lệ cho Đăng ký Giao hàng nhập! Vui lòng nhập đúng số vận đơn (B/L) hàng nhập.`
         setStep1ImportError(msg)
         return setFeedback(msg)
       }
@@ -585,23 +583,22 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
     let matched = matchedImport
     if (!matched && !matchedApi) {
-      const msg = `Không tìm thấy lệnh eDO hoặc mã Booking nhập khẩu '${cleanInput}'! Vui lòng kiểm tra lại mã.`
+      const msg = `Không tìm thấy số vận đơn (B/L) nhập khẩu '${cleanInput}'! Vui lòng kiểm tra lại số vận đơn.`
       setStep1ImportError(msg)
       return setFeedback(msg)
     }
 
     const finalMatched = matchedApi || matched
-    const isEdo = cleanInput.startsWith('EDO')
-    const isBk = cleanInput.startsWith('BK')
-    const resolvedEdo = isEdo ? cleanInput : (finalMatched?.edoNumber || (matchedApi?.referenceNumber || `EDO-${cleanInput}`))
-    const resolvedBooking = isBk ? cleanInput : (finalMatched?.bookingNumber || (matchedApi?.bookingNumber || ''))
+    const resolvedEdo = finalMatched?.edoNumber || matchedApi?.referenceNumber || `EDO-${cleanInput}`
+    const resolvedBooking = finalMatched?.bookingNumber || matchedApi?.bookingNumber || ''
     const resolvedVessel = finalMatched?.vesselName || 'MAERSK MC-KINNEY MOLLER'
     const resolvedVoyage = finalMatched?.voyageNumber || 'MM-2601S'
     const resolvedShipping = finalMatched?.shippingLine || 'Maersk Line'
     const resolvedValidUntil = finalMatched?.validUntil || '2026-11-30'
     const resolvedDepot = finalMatched?.emptyReturnDepot || 'Depot Cảng Tiên Sa'
     const resolvedPod = finalMatched?.dischargePort || 'VNDAD (Cảng Tiên Sa)'
-    const resolvedBl = finalMatched?.blNumber || (finalMatched?.containers?.[0]?.blNumber) || ''
+    // Số vận đơn chính là mã người dùng vừa nhập và đã khớp ở trên (bản khai có thể chứa nhiều vận đơn)
+    const resolvedBl = cleanInput
 
     const importData = {
       edoNumber: resolvedEdo,
@@ -1355,6 +1352,43 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     return set
   }, [paidGateBookingContainers, ordersListQuery.data])
 
+  // Vận đơn hàng xuất đã đặt xong và thanh toán đủ container thì không đưa vào ô chọn vận đơn nữa
+  const selectableSourceItems = useMemo(() => {
+    const items = sources.data?.items || []
+    if (form.flow !== 'EXPORT' || items.length === 0) return items
+    const norm = str => String(str || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    let gateBookings = []
+    try { gateBookings = manifestPortSyncService.getGeneratedGateBookings() || [] } catch { gateBookings = [] }
+    const paidOrders = (ordersListQuery.data?.items || []).filter(order =>
+      order.flow === 'EXPORT' && (
+        ['PAID', 'SUCCEEDED', 'Paid'].includes(order.paymentStatus) || order.isPaid ||
+        ['COMPLETED', 'APPROVED'].includes(order.status)
+      ))
+    return items.filter(item => {
+      const bl = norm(item.blNumber || item.bookingNumber)
+      const total = Number(item.containerCount) || 0
+      if (!bl || total <= 0) return true
+      const booked = new Set()
+      gateBookings.forEach(b => {
+        const isPaid = b.paymentStatus === 'Paid' || b.paymentStatus === 'PAID' || b.portBillPaid === true ||
+          (b.portBill && (b.portBill.status === 'PAID' || b.portBill.status === 'Paid'))
+        if (isPaid && norm(b.cargoDeclarationId || b.blNumber || b.billOfLading) === bl) {
+          const no = String(b.containerId || b.containerNumber || '').toUpperCase().trim()
+          if (no) booked.add(no)
+        }
+      })
+      let bookedWithoutDetail = 0
+      paidOrders.forEach(order => {
+        const orderBl = norm(order.source?.blNumber || order.source?.referenceNumber)
+        if (orderBl !== bl && !norm(order.sourceLabel).includes(bl)) return
+        const lines = (order.lines || []).map(l => String(l.declaration?.containerNumber || l.containerNumber || '').toUpperCase().trim()).filter(Boolean)
+        if (lines.length) lines.forEach(no => booked.add(no))
+        else bookedWithoutDetail += Number(order.containerCount) || 0
+      })
+      return booked.size + bookedWithoutDetail < total
+    })
+  }, [sources.data?.items, form.flow, ordersListQuery.data, manifestSyncVersion])
+
   const rawContainersForBl = useMemo(() => {
     const currentBl = (form.source.blNumber || step2BlInput || '').trim().toUpperCase()
     const currentBookingNo = (form.source.referenceNumber || '').trim().toUpperCase()
@@ -1386,6 +1420,13 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       })
     }
 
+    // Container chỉ thuộc vận đơn đang chọn khi chính B/L của nó khớp; nếu nó không ghi B/L thì chỉ nhận
+    // khi nguồn chứa nó (fallbackBl) là đúng vận đơn này. Không lấy theo tên tàu hay theo "toàn bộ container của tài khoản".
+    const sameBl = (c, fallbackBl = '') => {
+      const own = norm(c.blNumber || c.billOfLading || '')
+      return own ? own === blNorm : Boolean(fallbackBl) && norm(fallbackBl) === blNorm
+    }
+
     if (form.flow === 'EXPORT') {
       // 1. Quét allExportManifests
       for (const m of allExportManifests) {
@@ -1395,15 +1436,12 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         const aliases = (m.bookingAliases || []).map(a => norm(a))
         const matchesBk = bkNorm && (mBkNorm === bkNorm || mIdNorm === bkNorm || aliases.includes(bkNorm))
         const matchesBl = blNorm && mBlNorm === blNorm
-        const matchesVessel = norm(m.vesselName) === norm(form.source.vesselName) && (
-          !form.source.voyageNumber || norm(m.voyageNumber) === norm(form.source.voyageNumber)
-        )
 
         // Kiểm tra trong bills nếu có
         if (Array.isArray(m.bills)) {
           m.bills.forEach(b => {
             const bBlNorm = norm(b.blNumber || '')
-            if (bBlNorm === blNorm || (matchesBk && !bBlNorm) || (matchesVessel && !bBlNorm)) {
+            if (bBlNorm === blNorm || (matchesBk && !bBlNorm)) {
               (b.containers || []).forEach(c => addCont(c, b.blNumber || m.blNumber, m))
             }
           })
@@ -1412,10 +1450,10 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         // Kiểm tra trong containers / records của m
         const contList = m.containers || m.records || []
         const hasMatchingCont = contList.some(c => norm(c.blNumber || '') === blNorm)
-        if (matchesBl || hasMatchingCont || matchesBk || matchesVessel) {
+        if (matchesBl || hasMatchingCont || matchesBk) {
           contList.forEach(c => {
             const cBlNorm = norm(c.blNumber || '')
-            if (cBlNorm === blNorm || (matchesBl && !cBlNorm) || (matchesBk && (!cBlNorm || cBlNorm === blNorm)) || (matchesVessel && !cBlNorm)) {
+            if (cBlNorm === blNorm || (matchesBl && !cBlNorm) || (matchesBk && !cBlNorm)) {
               addCont(c, c.blNumber || m.blNumber, m)
             }
           })
@@ -1431,12 +1469,11 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         const mBkNorm = norm(m.bookingNumber || '')
         const matchesBk = bkNorm && mBkNorm === bkNorm
         const matchesBl = blNorm && mBlNorm === blNorm
-        const matchesVessel = norm(m.vesselName) === norm(form.source.vesselName)
 
         if (Array.isArray(m.bills)) {
           m.bills.forEach(b => {
             const bBlNorm = norm(b.blNumber || '')
-            if (bBlNorm === blNorm || matchesBl || (matchesBk && !bBlNorm) || (matchesVessel && !bBlNorm)) {
+            if (bBlNorm === blNorm || (matchesBl && !bBlNorm) || (matchesBk && !bBlNorm)) {
               (b.containers || []).forEach(c => addCont(c, b.blNumber || m.blNumber, m))
             }
           })
@@ -1445,7 +1482,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         const contList = m.records || m.containers || []
         contList.forEach(c => {
           const cBlNorm = norm(c.blNumber || '')
-          if (cBlNorm === blNorm || matchesBl || (matchesBk && (!cBlNorm || cBlNorm === blNorm)) || (matchesVessel && !cBlNorm)) {
+          if (cBlNorm === blNorm || (matchesBl && !cBlNorm) || (matchesBk && !cBlNorm)) {
             addCont(c, c.blNumber || m.blNumber, m)
           }
         })
@@ -1475,7 +1512,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       // 4. Quét qua containers từ backend API (containers.data?.items hoặc eligibleContainers)
       const apiConts = containers.data?.items || eligibleContainers || []
       if (Array.isArray(apiConts) && apiConts.length > 0) {
-        apiConts.forEach(c => {
+        // API xuất đã lọc theo booking đang chọn (dòng trả về không có blNumber) nên nhận theo bookingId; còn lại phải khớp B/L
+        apiConts.filter(c => (form.source.bookingId && c.bookingId === form.source.bookingId) || sameBl(c)).forEach(c => {
           addCont({
             containerNumber: c.containerNumber || c.containerNo || c.id,
             typeCode: c.typeCode || c.isoCode || c.isoType || '40HC',
@@ -1491,7 +1529,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
       // 5. Quét qua containers từ step1VesselInfo nếu có
       if (Array.isArray(step1VesselInfo?.containers) && step1VesselInfo.containers.length > 0) {
-        step1VesselInfo.containers.forEach(c => {
+        step1VesselInfo.containers.filter(c => sameBl(c, step1VesselInfo.blNumber)).forEach(c => {
           addCont(c, step1VesselInfo.blNumber || currentBl)
         })
       }
@@ -1520,7 +1558,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         if (Array.isArray(m.bills)) {
           m.bills.forEach(b => {
             const bBlNorm = norm(b.blNumber || '')
-            if (bBlNorm === blNorm || isManifestMatch) {
+            if (bBlNorm === blNorm || (isManifestMatch && !bBlNorm)) {
               (b.containers || []).forEach(c => addCont(c, b.blNumber || m.blNumber, m))
             }
           })
@@ -1532,7 +1570,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         if (isManifestMatch || hasMatchingCont) {
           contList.forEach(c => {
             const cBlNorm = norm(c.blNumber || '')
-            if (cBlNorm === blNorm || isManifestMatch || (!cBlNorm && hasMatchingCont)) {
+            if (cBlNorm === blNorm || (isManifestMatch && !cBlNorm)) {
               addCont(c, c.blNumber || m.blNumber, m)
             }
           })
@@ -1572,7 +1610,9 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       // 4. Quét qua containers từ backend API
       const apiImportConts = containers.data?.items || eligibleContainers || []
       if (Array.isArray(apiImportConts) && apiImportConts.length > 0) {
-        apiImportConts.forEach(c => {
+        // Container hàng nhập thuộc vận đơn khi khớp B/L, hoặc khi cùng lệnh eDO đang khai báo (visit_reference)
+        const edoNorm = norm(form.source.referenceNumber)
+        apiImportConts.filter(c => sameBl(c) || (edoNorm && norm(c.edoNumber) === edoNorm)).forEach(c => {
           addCont({
             containerNumber: c.containerNumber || c.containerNo || c.id,
             typeCode: c.typeCode || c.isoCode || c.isoType || '40HC',
@@ -1587,7 +1627,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       }
 
       if (Array.isArray(step1ImportInfo?.containers) && step1ImportInfo.containers.length > 0) {
-        step1ImportInfo.containers.forEach(c => {
+        step1ImportInfo.containers.filter(c => sameBl(c, step1ImportInfo.blNumber)).forEach(c => {
           addCont(c, step1ImportInfo.blNumber || currentBl)
         })
       }
@@ -2232,7 +2272,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     if (step === 0 && form.flow === 'IMPORT') {
       const hasImport = Boolean(form.source.referenceNumber?.trim() || step1ImportInput.trim())
       if (!hasImport || !step1ImportConfirmed) {
-        return setFeedback('Vui lòng nhập số eDO hoặc số vận đơn và bấm nút "Kiểm tra" trước khi tiếp tục!')
+        return setFeedback('Vui lòng nhập số vận đơn (B/L) và bấm nút "Kiểm tra" trước khi tiếp tục!')
       }
       const missing = []
       if (!form.source.referenceNumber?.trim()) missing.push('Số eDO')
@@ -2566,10 +2606,10 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '12px', borderBottom: '1px solid #e2e8f0', flexWrap: 'gap', gap: '8px' }}>
                         <div>
                           <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 600, color: '#0f172a' }}>
-                            Khai báo Lệnh giao nhận hàng nhập (eDO)
+                            Khai báo vận đơn hàng nhập (B/L)
                           </h4>
                           <p style={{ margin: '3px 0 0', fontSize: '12px', color: '#64748b' }}>
-                            Nhập số eDO hoặc mã Booking nhập khẩu để tra cứu dữ liệu chuyến tàu do hãng tàu cung cấp
+                            Nhập số vận đơn (B/L) nhập khẩu để tra cứu dữ liệu chuyến tàu do hãng tàu cung cấp
                           </p>
                         </div>
                         <span style={{
@@ -2589,11 +2629,11 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                       {!step1ImportConfirmed ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '640px' }}>
                           <label style={{ fontSize: '13px', fontWeight: 500, color: '#334155' }}>
-                            Số eDO hoặc Mã Booking nhập khẩu <span style={{ color: '#dc2626' }}>*</span>
+                            Số vận đơn (B/L) nhập khẩu <span style={{ color: '#dc2626' }}>*</span>
                           </label>
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <input
-                              aria-label="Số eDO hoặc số vận đơn nhập khẩu"
+                              aria-label="Số vận đơn (B/L) nhập khẩu"
                               maxLength={100}
                               required
                               value={step1ImportInput}
@@ -2606,7 +2646,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                   handleConfirmImportEdo()
                                 }
                               }}
-                              placeholder="Nhập số eDO hoặc số vận đơn"
+                              placeholder="Nhập số vận đơn (B/L)"
                               style={{
                                 flex: 1,
                                 height: '38px',
@@ -2749,7 +2789,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                           <label style={{ fontSize: '13px', fontWeight: 500, color: '#334155' }}>
                             Số vận đơn (B/L) hàng xuất <span style={{ color: '#dc2626' }}>*</span>
                           </label>
-                          <select
+                          <Select
                             aria-label="Chọn vận đơn của doanh nghiệp"
                             value=""
                             onChange={event => {
@@ -2758,7 +2798,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                               setStep1BookingInput(code)
                               handleConfirmExportBooking(code)
                             }}
-                            disabled={sources.isFetching || !(sources.data?.items || []).length}
+                            disabled={sources.isFetching || !selectableSourceItems.length}
                             style={{
                               height: '38px', padding: '0 10px', border: '1px solid #cbd5e1', borderRadius: '6px',
                               fontSize: '13px', color: '#0f172a', background: '#ffffff',
@@ -2767,16 +2807,16 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                             <option value="">
                               {sources.isFetching
                                 ? 'Đang tải booking của doanh nghiệp…'
-                                : (sources.data?.items || []).length
-                                  ? `Chọn vận đơn của doanh nghiệp (${sources.data.items.length})`
-                                  : 'Chưa có vận đơn nào đủ điều kiện đăng ký dịch vụ'}
+                                : selectableSourceItems.length
+                                  ? `Chọn vận đơn của doanh nghiệp (${selectableSourceItems.length})`
+                                  : 'Chưa có vận đơn nào còn container để đăng ký dịch vụ'}
                             </option>
-                            {(sources.data?.items || []).map(item => (
+                            {selectableSourceItems.map(item => (
                               <option key={item.id} value={item.blNumber || item.bookingNumber}>
                                 {item.blNumber || item.bookingNumber} · {item.vesselName} / {item.voyageNumber} · {item.containerCount} cont
                               </option>
                             ))}
-                          </select>
+                          </Select>
                           <span style={{ color: '#64748b', fontSize: '12px' }}>
                             Chọn vận đơn từ danh sách để tự động tra cứu thông tin chuyến tàu và container từ hãng tàu.
                           </span>
@@ -4075,6 +4115,11 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                 <SummaryItem label="Chứng từ nguồn">{sourceLabel}</SummaryItem>
                 <SummaryItem label="Số lượng cont">
                   <span className="epd-summary-count">{form.lines.length.toString().padStart(2, '0')}</span>
+                  {availableContainersForBl.length > 0 && (
+                    <small style={{ display: 'block', marginTop: '4px', fontSize: '12px', color: '#64748b', fontWeight: 500 }}>
+                      đã chọn / {availableContainersForBl.length} container thuộc vận đơn
+                    </small>
+                  )}
                 </SummaryItem>
                 <SummaryItem label="Thanh toán">Trực tuyến VietQR</SummaryItem>
               </dl>

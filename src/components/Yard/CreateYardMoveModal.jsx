@@ -7,6 +7,7 @@ import {
   INITIAL_YARD_TRACTORS,
   INITIAL_YARD_DRIVERS,
 } from '../../data/yardMoveData'
+import Select from '../ui/Select'
 
 export default function CreateYardMoveModal({
   isOpen,
@@ -340,7 +341,7 @@ export default function CreateYardMoveModal({
                     )}
                   </div>
 
-                  <select
+                  <Select
                     value={selectedContainerId}
                     onChange={e => setSelectedContainerId(e.target.value)}
                     className="w-full h-10 px-3 border border-chalk rounded-lg text-xs font-mono font-bold text-carbon bg-white focus:outline-none focus:border-signal-orange"
@@ -350,7 +351,7 @@ export default function CreateYardMoveModal({
                         {c.id} ({c.size} • {c.currentLocation.block} / {c.currentLocation.bay}) {c.hasActiveMove ? '⚠ Đang di chuyển' : ''}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
 
                 {/* Pre-selected Container Summary Display */}
@@ -420,7 +421,7 @@ export default function CreateYardMoveModal({
                   <label className="block text-[10px] font-bold text-slate uppercase mb-1.5">
                     Khối Bãi Đích
                   </label>
-                  <select
+                  <Select
                     value={destBlock}
                     onChange={e => handleBlockChange(e.target.value)}
                     className="w-full h-10 px-3 border border-chalk rounded-xl font-bold text-carbon bg-fog focus:outline-none focus:border-signal-orange"
@@ -430,7 +431,7 @@ export default function CreateYardMoveModal({
                         {b.code} ({b.name.split('–')[1] || b.name})
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
 
                 {/* 2. Vị trí Bay Đích */}
@@ -438,7 +439,7 @@ export default function CreateYardMoveModal({
                   <label className="block text-[10px] font-bold text-slate uppercase mb-1.5">
                     Vị trí Bay Đích
                   </label>
-                  <select
+                  <Select
                     value={destBay}
                     onChange={e => handleBayChange(e.target.value)}
                     className="w-full h-10 px-3 border border-chalk rounded-xl font-bold text-carbon bg-fog focus:outline-none focus:border-signal-orange"
@@ -453,7 +454,7 @@ export default function CreateYardMoveModal({
                         {b.code} — {b.label}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
 
                 {/* 3. Hàng (Row) */}
@@ -461,7 +462,7 @@ export default function CreateYardMoveModal({
                   <label className="block text-[10px] font-bold text-slate uppercase mb-1.5">
                     Hàng (Row)
                   </label>
-                  <select
+                  <Select
                     value={destRow}
                     onChange={e => setDestRow(e.target.value)}
                     className="w-full h-10 px-3 border border-chalk rounded-xl font-bold text-carbon bg-fog focus:outline-none focus:border-signal-orange font-mono"
@@ -471,7 +472,7 @@ export default function CreateYardMoveModal({
                         Row {r}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
 
                 {/* 4. Tầng (Tier) */}
@@ -479,7 +480,7 @@ export default function CreateYardMoveModal({
                   <label className="block text-[10px] font-bold text-slate uppercase mb-1.5">
                     Tầng (Tier)
                   </label>
-                  <select
+                  <Select
                     value={destTier}
                     onChange={e => setDestTier(e.target.value)}
                     className="w-full h-10 px-3 border border-chalk rounded-xl font-bold text-carbon bg-fog focus:outline-none focus:border-signal-orange font-mono"
@@ -496,7 +497,7 @@ export default function CreateYardMoveModal({
                           Tier {s.tier} {s.status === 'OCCUPIED' ? '🔴 (Đã chiếm)' : '🟢 (Trống)'}
                         </option>
                       ))}
-                  </select>
+                  </Select>
                 </div>
 
               </div>
@@ -538,7 +539,7 @@ export default function CreateYardMoveModal({
                   </span>
                 </div>
 
-                <select
+                <Select
                   value={selectedTractorId}
                   onChange={e => setSelectedTractorId(e.target.value)}
                   className="w-full h-10 px-3 border border-chalk rounded-xl text-xs font-mono font-bold text-carbon bg-fog focus:outline-none focus:border-signal-orange"
@@ -554,7 +555,7 @@ export default function CreateYardMoveModal({
                       {t.id} — {t.statusLabel} ({t.location})
                     </option>
                   ))}
-                </select>
+                </Select>
 
                 {/* Selected Tractor Details Card */}
                 {selectedTractor ? (
@@ -597,7 +598,7 @@ export default function CreateYardMoveModal({
                   </span>
                 </div>
 
-                <select
+                <Select
                   value={selectedDriverId}
                   onChange={e => setSelectedDriverId(e.target.value)}
                   className="w-full h-10 px-3 border border-chalk rounded-xl text-xs font-bold text-carbon bg-fog focus:outline-none focus:border-signal-orange"
@@ -613,7 +614,7 @@ export default function CreateYardMoveModal({
                       {d.name} — {d.statusLabel} ({d.shift})
                     </option>
                   ))}
-                </select>
+                </Select>
 
                 {/* Selected Driver Details Card */}
                 {selectedDriver ? (

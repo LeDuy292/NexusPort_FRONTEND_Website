@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { shippingLineApi, formatApiErrorMessage } from '../api/shippingLineApi';
+import Select from '../../../components/ui/Select'
 
 export default function EdoIssueModal({ isOpen, initialBlNumber = '', onClose, onSuccess }) {
   const [blNumber, setBlNumber] = useState(initialBlNumber);
@@ -604,7 +605,7 @@ export default function EdoIssueModal({ isOpen, initialBlNumber = '', onClose, o
                       <label className="block text-[11px] font-bold text-carbon uppercase mb-1">
                         Nơi Trả Vỏ Container Rỗng *
                       </label>
-                      <select
+                      <Select
                         value={emptyReturnDepot}
                         onChange={(e) => setEmptyReturnDepot(e.target.value)}
                         className="w-full px-3 py-2 bg-fog border border-chalk rounded-xl text-carbon font-bold focus:outline-none focus:border-signal-orange focus:ring-0 text-xs cursor-pointer"
@@ -612,7 +613,7 @@ export default function EdoIssueModal({ isOpen, initialBlNumber = '', onClose, o
                         {defaultDepots.map(depot => (
                           <option key={depot} value={depot}>{depot}</option>
                         ))}
-                      </select>
+                      </Select>
                       <span className="text-[10px] text-slate mt-0.5 block">Hãng tàu chỉ định bãi hạ vỏ</span>
                     </div>
                   </div>

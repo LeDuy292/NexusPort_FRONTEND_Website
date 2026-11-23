@@ -128,16 +128,7 @@ export default function YardOperations() {
 
       {/* Header Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-chalk pb-6">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-bold bg-green-100 text-green-700 px-2.5 py-0.5 rounded uppercase">
-              Yard Operations Suite
-            </span>
-            <span className="text-xs text-slate font-mono">Role: Yard Operator</span>
-          </div>
-          <h2 className="font-heading text-3xl text-carbon font-extrabold mt-1">Vận Hành Bãi — Lệnh Di Chuyển Bãi</h2>
-          <p className="text-sm text-slate mt-1">Lập kế hoạch dịch chuyển container nội bãi, phân công xe đầu kéo bãi & tài xế bãi.</p>
-        </div>
+        <div />
 
         {/* Action Button & Search */}
         <div className="flex items-center gap-3">

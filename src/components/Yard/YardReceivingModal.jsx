@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import yardTaskService from '../../services/yardTaskService'
+import Select from '../ui/Select'
 
 export default function YardReceivingModal({ task, isOpen, onClose, onSuccess, allTasks = [] }) {
   const [selectedTask, setSelectedTask] = useState(task || null)
@@ -249,7 +250,7 @@ export default function YardReceivingModal({ task, isOpen, onClose, onSuccess, a
                 className="flex-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-slate-900 font-mono font-bold text-xs uppercase focus:outline-none focus:border-slate-500 focus:bg-white"
               />
               {allTasks && allTasks.length > 0 && (
-                <select
+                <Select
                   value={containerInput}
                   onChange={e => handleContainerSelect(e.target.value)}
                   className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-700 font-mono text-xs focus:outline-none focus:border-slate-500"
@@ -260,7 +261,7 @@ export default function YardReceivingModal({ task, isOpen, onClose, onSuccess, a
                       {t.containerNo} ({t.taskCode} - {t.blockCode})
                     </option>
                   ))}
-                </select>
+                </Select>
               )}
             </div>
 

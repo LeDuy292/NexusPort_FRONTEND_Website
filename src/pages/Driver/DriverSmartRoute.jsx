@@ -7,6 +7,7 @@ import {
   routeDestination,
 } from "../../utils/smartRoutePresentation";
 import "./DriverSmartRoute.css";
+import Select from '../../components/ui/Select'
 
 const routeKey = (route) => `${route.bookingId}:${route.containerId}`;
 const time = (value) =>
@@ -280,7 +281,7 @@ export default function DriverSmartRoute({
         {!containerId && !containerNumber && routes.length > 1 && (
           <label className="smart-route-position">
             Chuyến / container
-            <select
+            <Select
               value={route ? routeKey(route) : ""}
               onChange={(event) => selectRoute(event.target.value)}
               disabled={busy}
@@ -292,7 +293,7 @@ export default function DriverSmartRoute({
                   {item.bookingCode || item.bookingId.slice(0, 8)}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         )}
         {route && (
@@ -381,7 +382,7 @@ export default function DriverSmartRoute({
                     </ol>
                     <label className="smart-route-position">
                       Tính lại từ vị trí xe đã tới
-                      <select
+                      <Select
                         value={currentNodeId || navigation.origin?.id || ""}
                         disabled={busy}
                         onChange={(event) => {
@@ -395,7 +396,7 @@ export default function DriverSmartRoute({
                             {point.label}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                     </label>
                   </>
                 )}
@@ -441,7 +442,7 @@ export default function DriverSmartRoute({
                     <div className="smart-route-form">
                       <label>
                         Tình trạng container
-                        <select
+                        <Select
                           className="smart-route-select"
                           disabled={busy}
                           value={condition}
@@ -454,7 +455,7 @@ export default function DriverSmartRoute({
                             Hư hỏng · Cần kiểm tra
                           </option>
                           <option value="ISSUE">Có vấn đề khác</option>
-                        </select>
+                        </Select>
                       </label>
                       <label>
                         Ghi chú

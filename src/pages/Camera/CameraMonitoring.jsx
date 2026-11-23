@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import Select from '../../components/ui/Select'
 
 // ─── MOCK DATA ─────────────────────────────────────────────────────────────────
 const INITIAL_CAMERAS = [
@@ -433,20 +434,12 @@ export default function CameraMonitoring() {
       )}
 
       {/* ── HEADER ── */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-chalk rounded-2xl p-5 shadow-sm">
         <div>
           <div className="flex items-center gap-2 mb-1">
-            <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded uppercase tracking-wider">Dispatcher Workspace</span>
-            <span className="text-[10px] text-slate font-mono">NexusPort · Cảng Tiên Sa · Đà Nẵng</span>
+            <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded uppercase tracking-wider">KHÔNG GIAN ĐIỀU ĐỘ</span>
           </div>
           <h2 className="font-heading text-3xl text-carbon font-extrabold mt-0.5">Giám Sát Camera</h2>
-          <p className="text-xs text-slate mt-0.5">Theo dõi trực tiếp các khu vực quan trọng tại cảng và bãi container.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex flex-col items-end gap-1">
-            <LiveBadge />
-            <span className="text-[10px] text-slate font-mono">Cập nhật: {clock}</span>
-          </div>
         </div>
       </div>
 
@@ -488,13 +481,13 @@ export default function CameraMonitoring() {
         </div>
 
         {/* Status filter */}
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+        <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
           className="h-9 px-3 border border-chalk rounded-lg text-xs text-carbon bg-fog focus:outline-none focus:border-signal-orange">
           <option value="ALL">Tất cả trạng thái</option>
           <option value="ONLINE">🟢 Online</option>
           <option value="WARNING">🟡 Cảnh báo</option>
           <option value="OFFLINE">🔴 Offline</option>
-        </select>
+        </Select>
 
         <span className="text-[11px] text-slate ml-auto">{filtered.length} camera</span>
       </div>

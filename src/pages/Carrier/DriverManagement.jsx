@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import driverService from "../../services/driverService";
 import FleetSchedule from "./FleetSchedule";
 import PrimaryButton from "../../components/PrimaryButton";
@@ -7,6 +8,7 @@ import vehicleService from "../../services/vehicleService";
 import { bookingService } from "../../services/bookingService";
 
 import { resolveMediaUrl } from "../../utils/mediaUtils";
+import Select from '../../components/ui/Select'
 
 const DRIVER_DOCUMENTS = ["idCardFrontUrl", "idCardBackUrl", "licenseImageUrl", "licenseBackImageUrl"];
 const DRIVER_ACCOUNT = ["userId", "username", "email", "accountActive", "invitationPending", "emailVerified", "emailVerifiedAt", "invitationExpiresAt", "activeBookingCode", "carrierName"];
@@ -191,6 +193,8 @@ export default function DriverManagement() {
   const [toastMessage, setToastMessage] = useState("");
   const [zoomedImage, setZoomedImage] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [headerSlot, setHeaderSlot] = useState(null);
+  useEffect(() => { setHeaderSlot(document.getElementById('page-header-actions')) }, []);
   const [editMode, setEditMode] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedHistoryDriver, setSelectedHistoryDriver] = useState(null);
@@ -1028,30 +1032,7 @@ export default function DriverManagement() {
         </div>
       )}
 
-      {/* LEFT MAIN AREA */}
-      <div className="flex-1 space-y-6 w-full min-w-0 max-w-full">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-chalk pb-6">
-          <div>
-            <span className="text-xs font-bold bg-orange-100 text-orange-700 px-2.5 py-0.5 rounded uppercase">
-              Fleet & Workforce
-            </span>
-            <h2 className="font-heading text-4xl text-carbon font-bold mt-1">
-              {activeTab === "drivers" && "Quản lý Đội ngũ Tài xế"}
-              {activeTab === "vehicles" && "Quản lý Phương tiện"}
-              {activeTab === "schedules" && "Lịch trình đội xe"}
-            </h2>
-            <p className="text-sm text-slate mt-1">
-              {activeTab === "drivers" &&
-                "Giám sát và phân công công việc cho đội ngũ tài xế của công ty."}
-              {activeTab === "vehicles" &&
-                "Quản lý danh sách phương tiện và trạng thái điều động của công ty."}
-              {activeTab === "schedules" &&
-                "Xem chuyến đã phân công, tìm tài xế và xe rảnh theo khung giờ."}
-            </p>
-          </div>
-
-          <div className="flex flex-col items-end gap-3">
+      {headerSlot && createPortal(<>
             {activeTab === "drivers" && (
               <PrimaryButton icon="person_add" size="sm"
                 onClick={() => {
@@ -1074,6 +1055,14 @@ export default function DriverManagement() {
                 Thêm Phương Tiện
               </PrimaryButton>
             )}
+      </>, headerSlot)}
+      {/* LEFT MAIN AREA */}
+      <div className="flex-1 space-y-6 w-full min-w-0 max-w-full">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-chalk pb-6">
+          <div />
+
+          <div className="flex flex-col items-end gap-3">
             {/* View Tabs */}
             <div className="flex bg-white rounded-lg p-1 border border-chalk shadow-sm text-xs font-bold">
               {["drivers", "vehicles", "schedules"].map((tab) => (
@@ -1305,7 +1294,7 @@ export default function DriverManagement() {
               </div>
 
               <div className="flex gap-2 w-full xl:w-auto">
-                <select
+                <Select
                   value={vehicleStatusFilter}
                   onChange={(e) => setVehicleStatusFilter(e.target.value)}
                   className="px-3 py-2 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none cursor-pointer flex-1 xl:w-40 focus:ring-0"
@@ -1314,13 +1303,13 @@ export default function DriverManagement() {
                   <option value="active">Sẵn sàng</option>
                   <option value="inactive">Đã chỉ định</option>
                   <option value="maintenance">Bảo trì</option>
-                </select>
+                </Select>
 
-                <select className="px-3 py-2 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none cursor-pointer flex-1 xl:w-32 focus:ring-0">
+                <Select className="px-3 py-2 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none cursor-pointer flex-1 xl:w-32 focus:ring-0">
                   <option value="ALL">Tất cả Vị trí</option>
                   <option value="GATE">Cổng</option>
                   <option value="YARD">Bãi</option>
-                </select>
+                </Select>
               </div>
             </div>
           </div>
@@ -1851,7 +1840,7 @@ export default function DriverManagement() {
                     <label className="block text-[10px] font-bold text-slate uppercase mb-1">
                       Trạng Thái
                     </label>
-                    <select
+                    <Select
                       value={vehicleEditData.status}
                       onChange={(e) =>
                         setVehicleEditData((f) => ({
@@ -1864,7 +1853,7 @@ export default function DriverManagement() {
                       <option value="active">Sẵn sàng (Active)</option>
                       <option value="inactive">Đã phân công (Inactive)</option>
                       <option value="maintenance">Bảo trì (Maintenance)</option>
-                    </select>
+                    </Select>
                   </div>
 
                   <div className="relative">
@@ -2044,7 +2033,7 @@ export default function DriverManagement() {
                       TÀI XẾ PHỤ TRÁCH
                     </h4>
                     <form onSubmit={handleAssignDriver} className="flex gap-2">
-                      <select
+                      <Select
                         value={driverAssignForm}
                         onChange={(e) => setDriverAssignForm(e.target.value)}
                         className="flex-1 h-10 px-3 border border-chalk rounded-md text-xs text-carbon focus:border-carbon outline-none focus:ring-0"
@@ -2072,7 +2061,7 @@ export default function DriverManagement() {
                                 : ""}
                             </option>
                           ))}
-                      </select>
+                      </Select>
                       <PrimaryButton icon="assignment_ind" size="sm"
                         type="submit"
                         disabled={driverAssignForm === selectedVehicle.driverId}
@@ -2418,7 +2407,7 @@ export default function DriverManagement() {
                           <label className="block text-[10px] font-bold text-slate uppercase mb-1.5 tracking-wider">
                             Trạng Thái
                           </label>
-                          <select
+                          <Select
                             value={editForm.status}
                             onChange={(e) =>
                               setEditForm((f) => ({
@@ -2433,7 +2422,7 @@ export default function DriverManagement() {
                                 {cfg.label}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         </div>
 
                         <div className="col-span-2 border-t border-chalk mt-1 pt-3"></div>

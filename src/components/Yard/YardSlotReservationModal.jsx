@@ -3,6 +3,8 @@ import { padPosition } from '../../features/yard-design/positions'
 import { yardReservationStore } from '../../services/yardReservationStore'
 import { manifestPortSyncService } from '../../services/manifestPortSyncService'
 import tienSaLayout from '../../features/yard-design/tienSaLayout.json'
+import Select from '../ui/Select'
+import apiClient from '../../services/apiClient'
 
 export default function YardSlotReservationModal({
   isOpen,
@@ -25,6 +27,17 @@ export default function YardSlotReservationModal({
       planning: a.planning || { bayModules: 28, rows: 6, tiers: 4 }
     }))
   }, [])
+
+  // Hiện trạng bãi THẬT: tải sơ đồ bãi mỗi lần mở để biết ô nào đang có container / đã giữ chỗ
+  const [liveSlots, setLiveSlots] = useState(null)
+  useEffect(() => {
+    if (!isOpen) return undefined
+    let alive = true
+    apiClient.get('/yard/layout')
+      .then((res) => { if (alive) setLiveSlots(res.data?.data?.slots || []) })
+      .catch(() => { if (alive) setLiveSlots(null) })
+    return () => { alive = false }
+  }, [isOpen])
 
   // State Block đang được chọn để tương tác 2D
   const [activeBlock, setActiveBlock] = useState(block)
@@ -73,7 +86,8 @@ export default function YardSlotReservationModal({
   // 1. TẬP HỢP TOÀN BỘ CÁC CONTAINER ĐANG CÓ MẶT TẠI BLOCK NÀY (ĐỂ HIỂN THỊ RÕ RÀNG VÀ TRÁNH VA CHẠM)
   const existingYardContainers = useMemo(() => {
     if (!isOpen) return []
-    const allStoreReservations = yardReservationStore.getReservationsSync()
+    // Khi đã có dữ liệu bãi thật thì không dùng bản giữ chỗ lưu cục bộ (có thể đã cũ)
+    const allStoreReservations = liveSlots ? [] : yardReservationStore.getReservationsSync()
 
     // 1.1 Các container KHÁC đã được giữ chỗ trước tại Block này
     const otherReservations = allStoreReservations.filter((r) => {
@@ -108,7 +122,10 @@ export default function YardSlotReservationModal({
     })
 
     // 1.2 Các container đang lưu bãi (occupied) từ API Backend của Block này
-    const backendOccupied = (block?.slots || []).filter((s) => {
+    const sourceSlots = liveSlots
+      ? liveSlots.filter((s) => String(s.block || '').toUpperCase() === String(currentBlockCode).toUpperCase())
+      : (block?.slots || [])
+    const backendOccupied = sourceSlots.filter((s) => {
       const isBusy = s.status && s.status !== 'empty' && (s.status === 'occupied' || s.status === 'reserved' || s.containerNumber)
       if (!isBusy) return false
       // Không tính container của chính booking hiện tại
@@ -138,7 +155,7 @@ export default function YardSlotReservationModal({
 
     // Gộp và ưu tiên reservation mới nhất
     return [...syntheticReservations, ...backendOccupied]
-  }, [isOpen, currentBlockCode, currentContId, currentBookId, block?.slots])
+  }, [isOpen, currentBlockCode, currentContId, currentBookId, block?.slots, liveSlots])
 
   // Khi mở Modal: tự động lấy vị trí hiện tại đã lưu của container này để hiển thị chuẩn xác (chỉ khởi tạo khi mở hoặc đổi block, không reset khi re-render)
   useEffect(() => {
@@ -441,7 +458,7 @@ export default function YardSlotReservationModal({
             <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/90 px-3 py-1.5 rounded-xl shadow-2xs">
               <span className="material-symbols-outlined text-sm text-orange-600">location_on</span>
               <span className="text-xs font-bold text-slate-700">Khu Bãi:</span>
-              <select
+              <Select
                 value={currentBlockCode}
                 onChange={(e) => {
                   const targetCode = e.target.value
@@ -459,7 +476,7 @@ export default function YardSlotReservationModal({
                     Block {b.blockCode} {b.zone ? `· Khu ${b.zone}` : ''}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <button

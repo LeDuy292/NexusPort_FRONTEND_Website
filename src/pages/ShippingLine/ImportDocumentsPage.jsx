@@ -3,6 +3,7 @@ import importDocumentService from '../../services/importDocumentService'
 import ImportDocumentTimeline from '../../components/Containers/ImportDocumentTimeline'
 import PostIssuancePanel from '../../components/Containers/PostIssuancePanel'
 import { btn, btnPrimary, card as box, Info, PageHeader, StatCard, Pill, EmptyState, SectionTitle, inputCls } from '../../components/Containers/docUi'
+import Select from '../../components/ui/Select'
 
 const field = inputCls
 const when = value => (value ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—')
@@ -104,7 +105,6 @@ export default function ImportDocumentsPage() {
         badge="Không gian doanh nghiệp hãng tàu"
         title="Hồ sơ hàng nhập"
         subtitle="Nhận pre-alert, đối chiếu B/L với manifest, gửi Arrival Notice, thu phí, kiểm quyền nhận hàng và phát hành D/O."
-        actions={<button type="button" className={btn} onClick={loadAll} title="Tải lại dữ liệu"><span className="material-symbols-outlined text-base">refresh</span>Tải lại</button>}
       />
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -175,9 +175,9 @@ export default function ImportDocumentsPage() {
                   <h3 className="font-heading text-base font-extrabold text-carbon">1. Đối chiếu và gửi Arrival Notice</h3>
                   <div className="flex flex-wrap items-end gap-2">
                     <label className="min-w-[14rem] flex-1 text-sm"><span className="text-xs text-slate-500">Transport company của người nhận</span>
-                      <select className={field} value={companyId} onChange={e => setCompanyId(e.target.value)}>
+                      <Select className={field} value={companyId} onChange={e => setCompanyId(e.target.value)}>
                         <option value="">Chọn công ty</option>{companies.map(c => <option key={c.id} value={c.id}>{c.companyName}{c.taxCode ? ` · ${c.taxCode}` : ''}</option>)}
-                      </select></label>
+                      </Select></label>
                     <button type="button" className={btn} disabled={busy || !companyId || companyId === d.consigneeCompanyId} onClick={() => act(() => importDocumentService.assignConsignee(d.id, companyId), 'Đã gắn Transport company.')}>Gắn</button>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -212,9 +212,9 @@ export default function ImportDocumentsPage() {
                   <h3 className="text-sm font-bold text-amber-900">B/L lệch manifest, chờ đầu xuất trả lời</h3>
                   <ul className="space-y-1 text-sm">{(d.mismatch || []).map(m => <li key={m.field}><span className="font-mono text-xs font-semibold">{m.field}</span>: B/L <strong>{String(m.blValue ?? '—')}</strong> ≠ manifest <strong>{String(m.manifestValue ?? '—')}</strong></li>)}</ul>
                   <p className="text-xs text-amber-900">Không tự sửa. Gửi yêu cầu kiểm tra cho đầu xuất rồi ghi lại nội dung trả lời bên dưới.</p>
-                  <select className={field} value={replyAnswer} onChange={e => setReplyAnswer(e.target.value)}>
+                  <Select className={field} value={replyAnswer} onChange={e => setReplyAnswer(e.target.value)}>
                     <option value="CORRECTED">Đầu xuất đã sửa B/L</option><option value="CONFIRMED_AS_IS">Đầu xuất xác nhận B/L đúng, giữ nguyên</option>
-                  </select>
+                  </Select>
                   {replyAnswer === 'CORRECTED' && (
                     <div className="space-y-2">
                       <input className={field} placeholder="Shipper" value={corrected.shipper} onChange={e => setCorrected(p => ({ ...p, shipper: e.target.value }))} />

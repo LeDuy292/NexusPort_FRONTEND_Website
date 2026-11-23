@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   getGateOutRequests,
   getGateOutRequestById,
@@ -19,6 +20,7 @@ import {
 } from '../../services/yardGateOutService'
 import ElectronicEirReceiptModal from '../../components/Yard/ElectronicEirReceiptModal'
 import { yardReservationStore } from '../../services/yardReservationStore'
+import Select from '../../components/ui/Select'
 
 // ─── DANH MỤC THIẾT BỊ NÂNG HẠ BÃI TIÊN SA ────────────────────────────────────
 const AVAILABLE_EQUIPMENTS = [
@@ -339,8 +341,8 @@ function YardStackVisualizer({
               id: targetContainerId || matchedReservation?.containerNo,
               tier: parsedTargetTier,
               isTarget: true,
-              carrier: carrier || matchedReservation?.carrier || 'Chủ hàng / Hãng tàu',
-              weight: weight || '24,000 KG',
+              carrier: carrier || matchedReservation?.carrier || '—',
+              weight: weight || '—',
               note: null,
             }
           }
@@ -727,7 +729,7 @@ function StrictUnstackModal({
               <div className="grid grid-cols-2 gap-2">
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
                   <div className="text-[10px] text-slate-500">Tài xế vận hành:</div>
-                  <select
+                  <Select
                     value={selectedOperator}
                     onChange={(e) => setSelectedOperator(e.target.value)}
                     className="w-full text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded-lg p-1.5"
@@ -735,7 +737,7 @@ function StrictUnstackModal({
                     <option value="Trần Văn Hùng (Bậc 5/7)">Trần Văn Hùng (Bậc 5/7)</option>
                     <option value="Lê Văn Nam (Bậc 6/7)">Lê Văn Nam (Bậc 6/7)</option>
                     <option value="Nguyễn Văn Tú (Bậc 4/7)">Nguyễn Văn Tú (Bậc 4/7)</option>
-                  </select>
+                  </Select>
                 </div>
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
                   <div className="text-[10px] text-slate-500">Kênh bộ đàm điều độ:</div>
@@ -991,7 +993,7 @@ function ExceptionModal({ isOpen, onClose, onSubmit, submitting, defaultType }) 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="text-xs font-semibold text-slate-700 block mb-1.5">Loại ngoại lệ / sự cố</label>
-            <select
+            <Select
               value={type}
               onChange={e => setType(e.target.value)}
               className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-orange-500/20 focus:border-orange-500 cursor-pointer"
@@ -1000,7 +1002,7 @@ function ExceptionModal({ isOpen, onClose, onSubmit, submitting, defaultType }) 
               <option value="SEAL_MISMATCH">Sai lệch số chì / seal — Chì đứt, mất hoặc sai số so với e-D/O</option>
               <option value="DAMAGE_FOUND">Phát hiện hư hại vỏ container ngoài biên bản tiếp nhận</option>
               <option value="EDO_HELD">Tạm dừng giao cont theo yêu cầu của hãng tàu hoặc hải quan</option>
-            </select>
+            </Select>
           </div>
 
           <div>
@@ -1087,8 +1089,8 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
       mapByTier.set(tier, {
         id: r.containerId,
         tier,
-        carrier: r.carrier || r.carrier_name || 'Chủ hàng / Hãng tàu',
-        weight: r.weight || r.weight_kg || '24,000 KG',
+        carrier: r.carrier || r.carrier_name || '—',
+        weight: r.weight || r.weight_kg || '—',
         isTarget,
         status: 'occupied',
         note: isUpper ? 'Cont chắn (Cần đảo chuyển)' : null,
@@ -1113,8 +1115,8 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
       mapByTier.set(targetTier, {
         id: currentReq.containerId,
         tier: targetTier,
-        carrier: currentReq.carrier || 'Chủ hàng / Hãng tàu',
-        weight: currentReq.weight || '24,000 KG',
+        carrier: currentReq.carrier || '—',
+        weight: currentReq.weight || '—',
         isTarget: true,
         status: 'occupied',
         note: null,
@@ -1186,6 +1188,10 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
     return validateIso6346(currentReq.containerId)
   }, [currentReq.containerId])
 
+  const navigate = useNavigate()
+  // Container bị chắn: chuyển sang trang Lệnh Di Chuyển Container để thực hiện đảo
+  const goRelocate = () => navigate(`/yard-staff/movement-operations?container=${encodeURIComponent(currentReq.containerId || '')}`)
+
   const runEligibilityCheck = useCallback(async () => {
     try {
       setCheckingEligibility(true)
@@ -1197,7 +1203,10 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
       })
       setEligibility(res)
       if (!res.eligible) {
-        showToast(res.rejectionReason || 'Phương tiện chưa đủ điều kiện xuất cổng.')
+        // Báo rõ điều kiện nào chưa đạt (trong 5 điều kiện)
+        const names = { edoValid: 'e-D/O hiệu lực', paymentValid: 'Cước phí & hoá đơn', timeSlotValid: 'Khung giờ hẹn', vehicleDriverValid: 'Xe & tài xế', containerReady: 'Vị trí bãi' }
+        const failed = Object.entries(res.checks || {}).filter(([, v]) => v && v.pass === false).map(([k]) => names[k]).filter(Boolean)
+        showToast(`Chưa đạt ${failed.length}/5 điều kiện${failed.length ? `: ${failed.join(', ')}` : ''}. ${res.rejectionReason || ''}`.trim())
       }
     } catch {
       setEligibility({
@@ -1257,7 +1266,9 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
 
   // Tự động kiểm tra 5 điều kiện khi mở container
   useEffect(() => {
-    if (request?.containerId) {
+    // Container đã ra cổng (hoàn thành) thì không kiểm tra lại 5 điều kiện
+    const finished = request && (request.status === 'COMPLETED' || request.status === 'HOÀN THÀNH' || request.status === 'GATED_OUT' || (request.flowStep || 0) >= 5)
+    if (request?.containerId && !finished) {
       runEligibilityCheck()
     }
   }, [request?.containerId, runEligibilityCheck])
@@ -1282,7 +1293,7 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
             statusCode: data?.statusCode || prev.statusCode,
             eirReferenceNo: data?.eirReferenceNo || prev.eirReferenceNo,
           }))
-          showToast(`[Realtime Live] Tiến trình container ${currentReq.containerId} chuyển sang bước ${Number(newStep) + 1}!`)
+          showToast(`Tiến trình container ${currentReq.containerId} chuyển sang bước ${Number(newStep) + 1}!`)
         }
       },
       onCraneDispatched: (data) => {
@@ -1299,7 +1310,7 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
             status: 'ĐANG THỰC HIỆN',
             statusCode: 'IN_PROGRESS',
           }))
-          showToast(`[Realtime Live] Cẩu RTG (${data?.rtgCrane || 'RTG-05'}) đã nhận lệnh tiếp cận ô bãi!`)
+          showToast(`Cẩu RTG (${data?.rtgCrane || 'RTG-05'}) đã nhận lệnh tiếp cận ô bãi!`)
         }
       },
       onContainerReady: (data) => {
@@ -1316,7 +1327,7 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
             slotStatus: 'Available',
             eirReferenceNo: data?.eirReferenceNo || prev.eirReferenceNo,
           }))
-          showToast(`[Realtime Live] Container ${currentReq.containerId} đã gắp lên xe & sẵn sàng xuất cổng!`)
+          showToast(`Container ${currentReq.containerId} đã gắp lên xe & sẵn sàng xuất cổng!`)
         }
       },
       onContainerGatedOut: (data) => {
@@ -1331,7 +1342,7 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
             status: 'HOÀN THÀNH',
             statusCode: 'COMPLETED',
           }))
-          showToast(`[Realtime Live] Container ${currentReq.containerId} đã hoàn tất ra cổng thành công!`)
+          showToast(`Container ${currentReq.containerId} đã hoàn tất ra cổng thành công!`)
         }
       },
     })
@@ -1664,38 +1675,13 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
           <span>Quay lại bảng điều độ</span>
         </button>
 
-        <div className="flex items-center gap-2">
-          <button
-            onClick={runEligibilityCheck}
-            disabled={checkingEligibility}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-sm">{checkingEligibility ? 'sync' : 'verified_user'}</span>
-            {checkingEligibility ? 'Đang kiểm tra...' : 'Kiểm tra lại 5 điều kiện'}
-          </button>
-        </div>
       </div>
 
       {/* ── TOP HERO CARD CHUẨN DOANH NGHIỆP ── */}
       <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="px-3 py-1 rounded-lg text-xs font-bold bg-orange-50 text-orange-700 border border-orange-200">
-                {currentReq.carrier || 'Hapag-Lloyd'}
-              </span>
-              <span className="text-xs text-slate-400">·</span>
-              <span className="text-xs font-semibold text-slate-600">Tàu: <strong>{currentReq.vessel || 'NEXUS CARRIER'}</strong> · {currentReq.voyage || 'V.2026'}</span>
-              <span className="text-xs text-slate-400">·</span>
-              <span className="text-xs font-semibold text-slate-600">Booking: <strong className="font-mono text-slate-800">{currentReq.booking || currentReq.bookingCode}</strong></span>
-              <span className="text-xs text-slate-400">·</span>
-              <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${isoValidation.valid ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}>
-                {isoValidation.valid ? 'ISO 6346: Hợp lệ' : 'ISO 6346: Cảnh báo'}
-              </span>
-            </div>
-
-            <div className="flex items-baseline gap-3 flex-wrap pt-1">
+          <div className="space-y-1.5">
+            <div className="flex items-baseline gap-3 flex-wrap">
               <h1 className="text-3xl font-extrabold text-slate-900 font-mono tracking-tight">
                 {currentReq.containerId}
               </h1>
@@ -1704,21 +1690,18 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
                 <span className="material-symbols-outlined text-sm">{STATUS_CFG[currentReq.status]?.icon}</span>
                 {STATUS_CFG[currentReq.status]?.label || currentReq.status}
               </span>
-              {currentReq.slotStatus === 'Available' && (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Vị trí bãi: Đã giải phóng
-                </span>
+              {!isoValidation.valid && (
+                <span className="px-2 py-0.5 rounded text-[11px] font-semibold border bg-rose-50 text-rose-700 border-rose-200">ISO 6346: Cảnh báo</span>
               )}
+            </div>
+            <div className="text-xs font-semibold text-slate-500">
+              Booking: <strong className="font-mono text-slate-800">{currentReq.booking || currentReq.bookingCode}</strong>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl px-5 py-3 text-right">
-              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Vị trí ô bãi chỉ định</div>
-              <div className="text-xl font-black text-slate-900 font-mono mt-0.5">{currentReq.position}</div>
-              <div className="text-[11px] text-slate-500 font-medium">Khu {currentReq.block} · Bay {currentReq.bay} · Row {currentReq.row || '01'} · Tầng {currentReq.tier}</div>
-            </div>
+          <div className="bg-slate-50 border border-slate-200/80 rounded-2xl px-5 py-3 text-right">
+            <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Vị trí ô bãi</div>
+            <div className="text-xl font-black text-slate-900 font-mono mt-0.5">{currentReq.position}</div>
           </div>
         </div>
       </div>
@@ -1732,10 +1715,6 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
               <h2 className="text-xs font-black text-slate-800 uppercase tracking-wider">
                 Tiến trình điều hành bãi (5 bước chuẩn TOS Cảng Tiên Sa)
               </h2>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
-                Đồng bộ Realtime (Live)
-              </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
               {flowStep === 0 && 'Bước 1/5: Đang kiểm tra 5 điều kiện cổng vào & tính hợp lệ của lệnh giao nhận'}
@@ -1813,7 +1792,7 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
       </div>
 
       {/* ── KIỂM TRA 5 ĐIỀU KIỆN CỔNG VÀO (REAL-TIME AUDIT) ── */}
-      {eligibility && (
+      {eligibility && eligibility.status !== 'ALREADY_GATED_OUT' && !(currentReq.status === 'COMPLETED' || currentReq.status === 'HOÀN THÀNH' || currentReq.status === 'GATED_OUT' || (currentReq.flowStep || 0) >= 5) && (
         <div className={`border rounded-2xl p-5 shadow-xs transition-all ${eligibility.eligible ? 'bg-emerald-50/40 border-emerald-200' : 'bg-rose-50/60 border-rose-200'
           }`}>
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
@@ -1872,7 +1851,7 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
               </span>
               <button
                 type="button"
-                onClick={() => setShowUnstackWorkflowModal(true)}
+                onClick={goRelocate}
                 disabled={submitting}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 text-slate-950 transition-colors shadow-2xs cursor-pointer disabled:opacity-50"
               >
@@ -1899,15 +1878,15 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
               </span>
             </div>
 
-            {/* Thẻ Camera ANPR Cổng vào mô phỏng (Light Theme) */}
+            {/* Thẻ ghi nhận xe qua cổng vào (dữ liệu thật) */}
             <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 flex items-center justify-between shadow-2xs">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-orange-50 border border-orange-200 flex items-center justify-center text-orange-600">
                   <span className="material-symbols-outlined text-xl">videocam</span>
                 </div>
                 <div>
-                  <div className="text-[10px] font-mono text-orange-700 font-bold uppercase tracking-wider">ANPR Live Cam · Làn 01 Cổng A</div>
-                  <div className="text-xs font-mono text-slate-700 mt-0.5">Biển số: <strong className="text-slate-900 font-black">{currentReq.truck || currentReq.truckPlate}</strong> · Độ khớp OCR: 99.4%</div>
+                  <div className="text-[10px] font-mono text-orange-700 font-bold uppercase tracking-wider">Xe đã qua cổng vào · {currentReq.gateName || currentReq.gate || 'Cổng vào'}</div>
+                  <div className="text-xs font-mono text-slate-700 mt-0.5">Biển số: <strong className="text-slate-900 font-black">{currentReq.truck || currentReq.truckPlate}</strong></div>
                 </div>
               </div>
               <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -1979,8 +1958,8 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
               carrier={currentReq.carrier}
               weight={currentReq.weight}
               isDone={currentReq.status === 'COMPLETED' || currentReq.status === 'HOÀN THÀNH' || (currentReq.flowStep || 0) >= 5}
-              onNavigateYardMap={() => setActiveTab('yard_map')}
-              onOpenUnstack={() => setShowUnstackWorkflowModal(true)}
+              onNavigateYardMap={() => navigate('/yard-staff/map')}
+              onOpenUnstack={goRelocate}
             />
 
             {/* THÔNG TIN THIẾT BỊ NÂNG HẠ */}
@@ -1990,14 +1969,14 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
                   <div className="text-[11px] text-slate-500 font-medium">Thiết bị nâng hạ chỉ định</div>
                   <div className="flex items-center gap-1.5 mt-0.5">
                     <span className="px-1.5 py-0.5 bg-orange-100 text-orange-800 rounded font-mono text-[10px] font-bold">
-                      {currentReq.equipmentType === 'ReachStacker' || !currentReq.equipmentType ? 'Reach Stacker' : currentReq.equipmentType}
+                      {currentReq.equipmentType || ((currentReq.equipmentCode || currentReq.rtgCrane) ? 'Thiết bị' : 'Chưa phân công')}
                     </span>
-                    <strong className="text-base font-bold text-slate-900">{currentReq.equipmentCode || currentReq.rtgCrane || 'RS-01'}</strong>
+                    <strong className="text-base font-bold text-slate-900">{currentReq.equipmentCode || currentReq.rtgCrane || '—'}</strong>
                   </div>
                 </div>
                 <div className="text-right">
                   <div className="text-[11px] text-slate-500 font-medium">Người vận hành thiết bị</div>
-                  <div className="text-sm font-semibold text-slate-800 mt-0.5">{currentReq.equipmentOperator || currentReq.rtgOperator || 'Trần Văn Hùng'}</div>
+                  <div className="text-sm font-semibold text-slate-800 mt-0.5">{currentReq.equipmentOperator || currentReq.rtgOperator || '—'}</div>
                 </div>
               </div>
 
@@ -2005,7 +1984,7 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
               {flowStep <= 1 && (
                 <div className="pt-2 border-t border-slate-200/60 flex items-center gap-2">
                   <span className="text-[11px] text-slate-500 font-medium whitespace-nowrap">Đổi thiết bị:</span>
-                  <select
+                  <Select
                     value={currentReq.equipmentCode || currentReq.rtgCrane || 'RS-01'}
                     onChange={(e) => {
                       const sel = AVAILABLE_EQUIPMENTS.find(eq => eq.code === e.target.value)
@@ -2029,7 +2008,7 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
                         {eq.name} — {eq.operator} ({eq.radio})
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
               )}
             </div>
@@ -2133,11 +2112,6 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                   Tình trạng vỏ container:
-                  {isEirLocked && (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-800 bg-amber-100/70 px-2 py-0.5 rounded-md border border-amber-300">
-                      <span className="material-symbols-outlined text-xs">lock</span> Đã khóa
-                    </span>
-                  )}
                 </span>
                 <div className="inline-flex rounded-xl bg-slate-100 p-1 border border-slate-200">
                   <button
@@ -2185,9 +2159,9 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
                     <div>
                       <label className="text-[11px] font-semibold text-slate-600 block mb-1">
                         Mức độ tổn thương:
-                        {isEirLocked && <span className="text-amber-700 ml-1 font-normal">(Đã khóa)</span>}
+                        
                       </label>
-                      <select
+                      <Select
                         value={damageSeverity}
                         disabled={isEirLocked}
                         onChange={e => setDamageSeverity(e.target.value)}
@@ -2199,12 +2173,12 @@ function GateOutDetailView({ request, onBack, onUpdateSuccess, showToast, allReq
                         <option value="Nhẹ">Nhẹ — Trầy xước bề mặt sơn</option>
                         <option value="Vừa">Vừa — Móp méo dưới 10cm</option>
                         <option value="Nặng">Nặng — Rách thủng hoặc biến dạng khung</option>
-                      </select>
+                      </Select>
                     </div>
                     <div>
                       <label className="text-[11px] font-semibold text-slate-600 block mb-1">
                         Mô tả vết hư hại:
-                        {isEirLocked && <span className="text-amber-700 ml-1 font-normal">(Đã khóa)</span>}
+                        
                       </label>
                       <input
                         type="text"
@@ -2578,7 +2552,7 @@ function PaginationBar({ currentPage, totalItems, pageSize, onPageChange, onPage
         {onPageSizeChange && (
           <div className="flex items-center gap-1.5 pl-3 border-l border-slate-200">
             <span className="text-slate-400">Số lượng:</span>
-            <select
+            <Select
               value={pageSize}
               onChange={(e) => {
                 onPageSizeChange(Number(e.target.value))
@@ -2589,7 +2563,7 @@ function PaginationBar({ currentPage, totalItems, pageSize, onPageChange, onPage
               {pageSizeOptions.map(opt => (
                 <option key={opt} value={opt}>{opt} cont / trang</option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
       </div>
@@ -2671,7 +2645,7 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
   const [vesselFilter, setVesselFilter] = useState('ALL')
   const [cargoTypeFilter, setCargoTypeFilter] = useState('ALL') // 'ALL' | 'REEFER' | 'IMO' | 'DRY'
   const [outboundSortBy, setOutboundSortBy] = useState('LOADING_SEQ') // 'LOADING_SEQ' | 'URGENCY' | 'BLOCKING' | 'POD'
-  const [activeTab, setActiveTab] = useState('dispatch') // 'dispatch' | 'yard_map' | 'eir_ledger'
+  const [activeTab, setActiveTab] = useState('dispatch') // 'dispatch' | 'eir_ledger'
   const [viewMode, setViewMode] = useState('grid') // 'grid' | 'table'
   const [search, setSearch] = useState('')
   const [sideViewMode, setSideViewMode] = useState('working') // 'working' (đang làm) | 'completed' (đã xuất cổng)
@@ -2941,7 +2915,6 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
   const [showHoldModal, setShowHoldModal] = useState(false)
   const [targetHoldItem, setTargetHoldItem] = useState(null)
   const [holdReason, setHoldReason] = useState('CustomsHold')
-  const [showRulesExpanded, setShowRulesExpanded] = useState(false)
 
   // Thao tác nghiệp vụ Chiều Nhập (Tích hợp API và DB thực tế)
   const handleInboundUnstack = async (id, e) => {
@@ -3394,60 +3367,6 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
         </div>
       </div>
 
-      {/* ── 5 QUY TẮC NGHIỆP VỤ CHUẨN BỊ BÃI (TOS GOLDEN RULES) ── */}
-      <div className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-xs">
-        <div className="flex items-center justify-between cursor-pointer" onClick={() => setShowRulesExpanded(!showRulesExpanded)}>
-          <div className="flex items-center gap-2">
-            <span className="material-symbols-outlined text-amber-500">verified</span>
-            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-              5 Quy Tắc Nghiệp Vụ Chuẩn Bị Container
-            </span>
-            <span className="text-[10px] font-semibold bg-orange-50 text-orange-700 px-2 py-0.5 rounded-full border border-orange-200">
-              Chuẩn Điều Độ TOS
-            </span>
-          </div>
-          <button type="button" className="text-xs font-bold text-orange-600 hover:text-orange-700 inline-flex items-center gap-1 cursor-pointer">
-            {showRulesExpanded ? 'Thu gọn quy tắc' : 'Xem chi tiết 5 quy tắc nghiệp vụ'}
-            <span className="material-symbols-outlined text-sm">{showRulesExpanded ? 'expand_less' : 'expand_more'}</span>
-          </button>
-        </div>
-
-        {showRulesExpanded && (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 mt-4 pt-3 border-t border-slate-100 text-xs text-slate-600">
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
-              <strong className="text-slate-900 block font-bold">1. Tối thiểu đảo chuyển & Khóa ô tạm</strong>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                Chấm điểm ưu tiên ô tạm cùng khu bãi, không nằm đè container có lịch lấy/xếp trong ngày. Khóa <strong>SlotReservation</strong> chống chiếm chỗ.
-              </p>
-            </div>
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
-              <strong className="text-slate-900 block font-bold">2. Container lạnh di chuyển</strong>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                Tạm ngắt điện di chuyển trong dwell timer (30–45 phút) để không báo động giả; cảnh báo khẩn cấp nếu quá hạn chưa cắm điện lại.
-              </p>
-            </div>
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
-              <strong className="text-slate-900 block font-bold">3. Cảnh báo trễ tiến độ</strong>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                Gần đến giờ hẹn hoặc giờ xếp tàu mà chưa bấm hoàn tất, tự động đẩy lệnh lên đầu danh sách ưu tiên của khu bãi & báo điều độ.
-              </p>
-            </div>
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
-              <strong className="text-slate-900 block font-bold">4. Cờ giữ / Hủy phút chót</strong>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                Nhận cờ giữ (Hold), hủy e-D/O, khách hủy lịch, hoặc shut-out tàu: Tự động hủy lệnh chuẩn bị đang mở, giải phóng khóa ô tạm & hạ trạng thái container quay về Trong bãi / Bị giữ.
-              </p>
-            </div>
-            <div className="bg-slate-50 p-3 rounded-xl border border-slate-100 space-y-1">
-              <strong className="text-slate-900 block font-bold">5. Chính sách phí đảo chuyển</strong>
-              <p className="text-[11px] text-slate-500 leading-relaxed">
-                Miễn phí khi đảo chuyển theo quy hoạch chuẩn bãi; Tính phí Chủ hàng / Hãng tàu khi phát sinh đổi lịch, hủy lịch hoặc cắt rớt tàu phút chót.
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
       {/* ── GIAO DIỆN CHÍNH THEO CHIỀU LÀM HÀNG ── */}
       {directionMode === 'outbound' ? (
         <div className="space-y-6">
@@ -3546,7 +3465,7 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
               {/* Sắp xếp theo thứ tự làm hàng */}
               <div className="flex items-center gap-2 self-start lg:self-auto">
                 <span className="text-xs font-semibold text-slate-500">Sắp xếp:</span>
-                <select
+                <Select
                   value={outboundSortBy}
                   onChange={e => setOutboundSortBy(e.target.value)}
                   className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-orange-500 cursor-pointer"
@@ -3555,7 +3474,7 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
                   <option value="URGENCY">⚡ Mức độ ưu tiên dọn đường (Lead time 180m trước)</option>
                   <option value="BLOCKING">📦 Cont bị đè nhiều nhất (Cần giải phóng sớm)</option>
                   <option value="POD">🌐 Cảng dỡ hàng (POD)</option>
-                </select>
+                </Select>
               </div>
             </div>
 
@@ -3852,7 +3771,6 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
             <div className="flex items-center gap-2">
               {[
                 { id: 'dispatch', label: 'Bảng Điều Độ Giao Nhận', icon: 'view_kanban', count: requests.length },
-                { id: 'yard_map', label: 'Sơ Đồ Bãi & Thiết Bị RS', icon: 'grid_view', count: AVAILABLE_EQUIPMENTS.length },
                 { id: 'eir_ledger', label: 'Sổ Cái Biên Bản e-EIR', icon: 'menu_book', count: requests.filter(r => r.eirReferenceNo || r.flowStep >= 4).length },
               ].map(tab => {
                 const isActive = activeTab === tab.id
@@ -4167,103 +4085,6 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
             </div>
           )}
 
-          {/* ── NỘI DUNG TAB 2: SƠ ĐỒ BÃI & THIẾT BỊ NÂNG HẠ ── */}
-          {activeTab === 'yard_map' && (
-            <div className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {AVAILABLE_EQUIPMENTS.map(eq => (
-                  <div key={eq.id} className="bg-white border border-slate-200/80 rounded-2xl p-5 shadow-xs space-y-3">
-                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-10 h-10 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center font-bold">
-                          <span className="material-symbols-outlined text-xl">forklift</span>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-slate-900">{eq.name}</h4>
-                          <div className="text-[11px] text-slate-500 font-mono">Kênh đàm: {eq.radio}</div>
-                        </div>
-                      </div>
-                      <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        {eq.status}
-                      </span>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                        <span className="text-[10px] text-slate-400 block font-medium">Tài xế vận hành</span>
-                        <strong className="text-slate-800">{eq.operator}</strong>
-                        <div className="text-[10px] text-slate-500 mt-0.5">{eq.phone}</div>
-                      </div>
-                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
-                        <span className="text-[10px] text-slate-400 block font-medium">Tải trọng cẩu</span>
-                        <strong className="text-orange-700">{eq.capacity}</strong>
-                        <div className="text-[10px] text-slate-500 mt-0.5">Reach Stacker</div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Layout Bản Đồ Bãi Tiên Sa */}
-              <div className="bg-white border border-slate-200/80 rounded-2xl p-6 shadow-xs space-y-4">
-                <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                  <div>
-                    <h3 className="text-sm font-bold text-slate-900">Quy hoạch phân khu bãi container Cảng Tiên Sa</h3>
-                    <p className="text-xs text-slate-500">Giám sát vị trí lưu trữ container theo khu vực chuyên dụng.</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <a
-                      href="/yard/map"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold rounded-xl shadow-xs transition cursor-pointer"
-                    >
-                      <span className="material-symbols-outlined text-sm">map</span>
-                      Mở Sơ Đồ Bãi 2D Trực Quan
-                    </a>
-                    <span className="px-3 py-1 bg-orange-50 text-orange-700 border border-orange-200 text-xs font-bold rounded-lg">
-                      Hệ thống TOS Live
-                    </span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                    <div className="text-orange-700 font-bold uppercase text-[11px] tracking-wider">Khu A — Bãi Container Xuất Khẩu</div>
-                    <p className="text-slate-600">Quy hoạch các container hàng khô đã hoàn tất thủ tục hải quan sẵn sàng xếp lên tàu.</p>
-                    <div className="text-[11px] text-orange-700 font-mono font-bold">
-                      {workingRequests.filter(r => (r.block || r.position || '').toUpperCase().includes('A')).length} container đang lưu bãi
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                    <div className="text-emerald-700 font-bold uppercase text-[11px] tracking-wider">Khu B — Bãi Giao Nhận & Đệm Tạm</div>
-                    <p className="text-slate-600">Vùng đệm tiếp nhận container nhập khẩu giao cho xe khách đến nhận hàng.</p>
-                    <div className="text-[11px] text-emerald-700 font-mono font-bold">
-                      {workingRequests.filter(r => (r.block || r.position || '').toUpperCase().includes('B')).length} container đang tác nghiệp
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                    <div className="text-purple-700 font-bold uppercase text-[11px] tracking-wider">Khu C — Bãi Lưu Kho Vỏ / Tổng Hợp</div>
-                    <p className="text-slate-600">Khu bãi tổng hợp vỏ và hàng nhập chuyển cảng Tiên Sa.</p>
-                    <div className="text-[11px] text-purple-700 font-mono font-bold">
-                      {workingRequests.filter(r => (r.block || r.position || '').toUpperCase().includes('C')).length} container đang lưu bãi
-                    </div>
-                  </div>
-
-                  <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
-                    <div className="text-cyan-700 font-bold uppercase text-[11px] tracking-wider">Khu D — Bãi Container Lạnh (Reefer)</div>
-                    <p className="text-slate-600">Khu cắm điện lạnh 380V/440V, kiểm soát nhiệt độ tự động qua hệ thống Scada.</p>
-                    <div className="text-[11px] text-cyan-700 font-mono font-bold">
-                      {workingRequests.filter(r => (r.block || r.position || '').toUpperCase().includes('D')).length} container đang cắm điện
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
           {/* ── NỘI DUNG TAB 3: SỔ CÁI BIÊN BẢN e-EIR ĐIỆN TỬ ── */}
           {activeTab === 'eir_ledger' && (
             <div className="bg-white border border-slate-200/80 rounded-2xl overflow-hidden shadow-xs">
@@ -4295,11 +4116,11 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
                     {paginatedEir.map(r => (
                       <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="p-3.5 pl-5 font-mono font-bold text-orange-700">
-                          {r.eirReferenceNo || `EIR-OUT-20260812-${r.code?.slice(-4) || '0001'}`}
+                          {r.eirReferenceNo || '—'}
                         </td>
                         <td className="p-3.5 font-mono font-bold text-slate-900">{r.containerId}</td>
                         <td className="p-3.5 font-mono text-slate-800">{r.truck || r.truckPlate} · {r.driver || r.driverName}</td>
-                        <td className="p-3.5 font-mono text-purple-900 font-bold">{r.sealNumber || 'UL6824219'}</td>
+                        <td className="p-3.5 font-mono text-purple-900 font-bold">{r.sealNumber || '—'}</td>
                         <td className="p-3.5">
                           <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
                             {r.condition || 'Tốt'}
@@ -4495,7 +4316,7 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
 
             <div className="space-y-1.5 text-xs">
               <label className="block text-slate-700 font-bold">Chọn xe đầu kéo nội bộ (Terminal Tractor):</label>
-              <select
+              <Select
                 value={selectedYardTruck}
                 onChange={e => setSelectedYardTruck(e.target.value)}
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 cursor-pointer"
@@ -4503,7 +4324,7 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
                 <option value="TRK-TERMINAL-01">TRK-TERMINAL-01 · Tài xế: Lê Đình Nam · Sẵn sàng</option>
                 <option value="TRK-TERMINAL-02">TRK-TERMINAL-02 · Tài xế: Nguyễn Văn Hưng · Sẵn sàng</option>
                 <option value="TRK-TERMINAL-03">TRK-TERMINAL-03 · Tài xế: Phạm Quốc Bảo · Sẵn sàng</option>
-              </select>
+              </Select>
             </div>
 
             <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-3">
@@ -4565,7 +4386,7 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
 
               <div>
                 <label className="block text-slate-700 font-bold mb-1">Lý do áp cờ giữ hoặc hủy lệnh:</label>
-                <select
+                <Select
                   value={holdReason}
                   onChange={e => setHoldReason(e.target.value)}
                   className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 cursor-pointer"
@@ -4575,7 +4396,7 @@ function GateOutListView({ requests, loading, onSelect, onRefresh, showToast }) 
                   <option value="ShutOut">Hãng tàu cắt rớt tàu (Shut-Out) — Quá tải hoặc đổi lịch bay plan</option>
                   <option value="CustomerCancel">Chủ hàng hủy lịch hẹn rút cont phút chót</option>
                   <option value="EdoRevoked">Hủy lệnh giao hàng điện tử e-D/O</option>
-                </select>
+                </Select>
               </div>
 
               <div className="bg-slate-50 p-3 rounded-xl border border-slate-200 text-[11px] text-slate-600 space-y-1">
@@ -4653,6 +4474,9 @@ export default function ContainerGateOutPreparation() {
 
   useEffect(() => {
     fetchRequests()
+    // Tự cập nhật để xe vừa qua cổng vào hiện ngay trong danh sách lệnh
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') fetchRequests() }, 15000)
+    return () => clearInterval(timer)
   }, [fetchRequests])
 
   useEffect(() => {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react'
 import gateService from '../../services/gateService'
+import Select from '../../components/ui/Select'
 
 export default function GateHistory() {
   const [historyLogs, setHistoryLogs] = useState([])
@@ -118,12 +119,6 @@ export default function GateHistory() {
             Lịch sử phương tiện lưu thông qua cổng cảng.
           </p>
         </div>
-        <button
-          onClick={loadHistory}
-          className="h-10 px-4 border border-slate-200 text-slate-700 rounded-xl font-bold text-xs hover:bg-slate-100 flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
-        >
-          <span className="material-symbols-outlined text-sm">refresh</span>Làm Mới
-        </button>
       </div>
 
       {/* KPI mini row */}
@@ -162,7 +157,7 @@ export default function GateHistory() {
             ['Kết quả', resultFilter, setResultFilter, ['All', 'Passed', 'Rejected', 'Pending']],
             ['Làn cổng', gateFilter, setGateFilter, ['All', 'Cổng Vào', 'Cổng Ra']],
           ].map(([label, val, setter, opts]) => (
-            <select
+            <Select
               key={label}
               value={val}
               onChange={(e) => setter(e.target.value)}
@@ -171,7 +166,7 @@ export default function GateHistory() {
               {opts.map((o) => (
                 <option key={o}>{o === 'All' ? `${label}: Tất cả` : o === 'CHECK-IN' ? 'Vào cổng' : o === 'CHECK-OUT' ? 'Ra cổng' : o === 'Passed' ? 'Hợp lệ' : o === 'Rejected' ? 'Từ chối' : o === 'Pending' ? 'Chờ duyệt' : o}</option>
               ))}
-            </select>
+            </Select>
           ))}
           <span className="text-xs text-slate-500 self-center">{filtered.length} bản ghi</span>
         </div>

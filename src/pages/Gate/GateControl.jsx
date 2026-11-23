@@ -6,6 +6,7 @@ import gateService from '../../services/gateService'
 import { gateOpenSeconds, getGatePassageSimulation } from '../../services/gatePassageSimulationService'
 import { driverSmartRouteService } from '../../services/driverSmartRouteService'
 import { formatPlateNumber, normalizePlate } from '../../utils/format'
+import Select from '../../components/ui/Select'
 
 const DEFAULT_GATES = [
   { id: 'gate-in-01', code: 'GATE_IN', name: 'Cổng Vào', gateType: 'gate_in', isActive: true },
@@ -676,9 +677,6 @@ export default function GateControl() {
               {hwStatus?.esp32?.connected ? `ESP32 (${hwStatus.esp32.port}): Sẵn sàng` : 'ESP32: Đang kết nối...'}
             </span>
           </div>
-          <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight">
-            Cổng Kiểm Soát
-          </h1>
         </div>
 
         {/* Nút điều hướng Mode & Cổng kiểm soát */}
@@ -1524,7 +1522,7 @@ export default function GateControl() {
             <div className="space-y-3.5 text-xs font-bold">
               <div>
                 <label className="block text-slate-700 uppercase text-[10px] mb-1">Loại sự cố *</label>
-                <select
+                <Select
                   value={incidentType}
                   onChange={(e) => setIncidentType(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-amber-500"
@@ -1538,7 +1536,7 @@ export default function GateControl() {
                   <option value="Xe tải hỏng hóc gây ùn tắc tại cổng">Xe tải hỏng hóc gây ùn tắc tại cổng</option>
                   <option value="Lỗi thiết bị nhận diện camera / cảm biến">Lỗi thiết bị nhận diện camera / cảm biến</option>
                   <option value="Khác">Lý do khác</option>
-                </select>
+                </Select>
               </div>
 
               <div>

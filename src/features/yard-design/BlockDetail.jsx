@@ -1,5 +1,6 @@
 import {useLayoutEffect,useRef,useState} from 'react'
 import {padPosition,slotAddress,slotCoveringModule} from './positions'
+import Select from '../../components/ui/Select'
 
 export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,onOpenHistory,onOpenContainerDetail,focusPosition}){
  const gridViewport=useRef(null)
@@ -185,43 +186,20 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
                   row
                 }));
                 if (hasContainer) {
-                  const resolvedContNo = (contNumber && !['CONT', 'CONT-40', 'CONT-20', 'CONT ĐÃ GIỮ'].includes(String(contNumber).trim().toUpperCase()))
-                    ? contNumber
-                    : (stored?.bookingDetails?.containerNumber ||
-                       (area.code === 'D01' && (displayBay === 22 || Number(stored?.bay) === 22) ? 'NXPU9113795' :
-                        area.code === 'D01' && (displayBay === 2 || Number(stored?.bay) === 2) ? 'NXPU9113795' :
-                        area.code === 'D01' && (displayBay === 6 || Number(stored?.bay) === 6) ? 'NXPU9465749' :
-                        area.code === 'D01' && (displayBay === 10 || Number(stored?.bay) === 10) ? 'NXPU9465750' :
-                        area.code === 'D01' && (displayBay === 14 || Number(stored?.bay) === 14) ? 'NXPU9465751' :
-                        area.code === 'R' && (displayBay === 1 || Number(stored?.bay) === 1) ? 'NXPU9113796' :
-                        (stored?.containerLengthFt === 40 || span === 2 ? `EMCU${8300000 + displayBay * 100 + row}` : `TCLU${4800000 + displayBay * 100 + row}`)));
-
-                  const isD01Discharge = (area.code === 'D01' && (displayBay === 22 || Number(stored?.bay) === 22)) || resolvedContNo === 'NXPU9113795';
-                  const isR01Discharge = (area.code === 'R' && (displayBay === 1 || Number(stored?.bay) === 1)) || resolvedContNo === 'NXPU9113796';
-
-                  const realVehiclePlate = stored?.vehiclePlate || stored?.bookingDetails?.licensePlate || 
-                    (isD01Discharge ? 'ITV-08 (Nội bộ cảng)' : isR01Discharge ? 'ITV-04 (Xe bến bãi)' : '43C-091.22');
-
-                  const realDriverName = stored?.driverName || stored?.bookingDetails?.driverName || 
-                    (isD01Discharge ? 'Nguyễn Văn Tuấn (Đội xe Cảng Tiên Sa)' : isR01Discharge ? 'Trần Quốc Bảo (Tổ trung chuyển)' : 'Nguyễn Văn Long');
-
-                  const realCompany = stored?.company || stored?.bookingDetails?.company || 
-                    (isD01Discharge || isR01Discharge ? 'Công Ty Cổ Phần Cảng Đà Nẵng (Xí nghiệp Cảng Tiên Sa)' : 'Doanh Nghiệp Vận Tải Cảng Tiên Sa');
-
-                  const realBlNumber = isD01Discharge ? 'BL-DAT09' : isR01Discharge ? 'BL-DAT10' : stored?.blNumber;
-                  const realVesselName = isD01Discharge || isR01Discharge ? 'EVER GLORY' : stored?.vesselName;
-                  const realVoyage = isD01Discharge || isR01Discharge ? 'EG-2605W' : stored?.voyageNumber;
+                  // Chỉ dùng dữ liệu thật của ô: không tự suy ra số container / xe / tài xế theo vị trí
+                  const isRealNo = contNumber && !['CONT', 'CONT-40', 'CONT-20', 'CONT ĐÃ GIỮ'].includes(String(contNumber).trim().toUpperCase())
+                  const resolvedContNo = isRealNo ? contNumber : (stored?.bookingDetails?.containerNumber || '')
 
                   onOpenContainerDetail?.({
                     ...stored,
                     containerNumber: resolvedContNo,
                     reservedContainerNumber: resolvedContNo,
-                    vehiclePlate: realVehiclePlate,
-                    driverName: realDriverName,
-                    company: realCompany,
-                    blNumber: realBlNumber,
-                    vesselName: realVesselName,
-                    voyageNumber: realVoyage,
+                    vehiclePlate: stored?.vehiclePlate || stored?.bookingDetails?.licensePlate || '',
+                    driverName: stored?.driverName || stored?.bookingDetails?.driverName || '',
+                    company: stored?.company || stored?.bookingDetails?.company || '',
+                    blNumber: stored?.blNumber,
+                    vesselName: stored?.vesselName,
+                    voyageNumber: stored?.voyageNumber,
                     block: area.code,
                     blockCode: area.code,
                     row,
@@ -361,7 +339,7 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
       )}
     </div>
     </div><div className="yard-position-controls">    {<div className="yard-size-switch" role="group" aria-label="Kích thước container">{[20,40].map(value=><button type="button" key={value} disabled={value===40&&bayModules<2} aria-pressed={size===value} onClick={()=>chooseSize(value)}>{value}ft</button>)}</div>}
-    <label className="yard-tier-select">Chọn tier<select aria-label="Chọn tier" value={selection.tier} onChange={event=>setSelection(current=>({...current,tier:Number(event.target.value)}))}>{Array.from({length:tiers},(_,i)=><option key={i+1} value={i+1}>Tier {i+1}</option>)}</select></label>
+    <label className="yard-tier-select">Chọn tier<Select aria-label="Chọn tier" value={selection.tier} onChange={event=>setSelection(current=>({...current,tier:Number(event.target.value)}))}>{Array.from({length:tiers},(_,i)=><option key={i+1} value={i+1}>Tier {i+1}</option>)}</Select></label>
 </div><div>    <div className="yard-tier-profile" aria-label="Mặt cắt tầng">
       {Array.from({length:tiers},(_,i)=>tiers-i).map(tier => {
         const tierSlot = inventorySlots?.find(s => 

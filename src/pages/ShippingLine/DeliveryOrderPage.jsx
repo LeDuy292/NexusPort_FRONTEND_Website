@@ -5,6 +5,7 @@ import ShippingBadge from './components/ShippingBadge';
 import ShippingPagination from './components/ShippingPagination';
 import EdoIssueModal from './components/EdoIssueModal';
 import EdoPreviewModal from './components/EdoPreviewModal';
+import Select from '../../components/ui/Select'
 
 export default function DeliveryOrderPage() {
   const [activeTab, setActiveTab] = useState('EDO_LIST'); // EDO_LIST, GATE_VERIFY
@@ -145,14 +146,10 @@ export default function DeliveryOrderPage() {
             <span className="text-xs font-extrabold bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">
               HÃNG TÀU &amp; VẬN TẢI BIỂN
             </span>
-            <span className="text-xs font-mono text-slate">NexusPort · Cảng Tiên Sa, Đà Nẵng (VNDAD)</span>
           </div>
           <h2 className="font-heading text-2xl md:text-3xl font-extrabold text-carbon">
             Lệnh giao hàng điện tử (eDO)
           </h2>
-          <p className="text-xs text-slate mt-0.5">
-            Quản lý, phát hành và gia hạn lệnh giao hàng điện tử cho chủ hàng nhận container tại cổng cảng.
-          </p>
         </div>
 
         {/* Nút Hành Động - Cố định gọn gàng bên phải Header */}
@@ -163,14 +160,6 @@ export default function DeliveryOrderPage() {
           >
             <span className="material-symbols-outlined text-base">assignment_turned_in</span>
             <span>Cấp lệnh eDO mới</span>
-          </button>
-
-          <button
-            onClick={loadData}
-            title="Tải lại dữ liệu"
-            className="w-10 h-10 bg-white border border-chalk rounded-xl flex items-center justify-center text-slate hover:text-carbon hover:bg-fog shadow-sm transition-colors cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-lg">refresh</span>
           </button>
         </div>
       </div>
@@ -229,7 +218,7 @@ export default function DeliveryOrderPage() {
 
             <div className="flex items-center gap-2 w-full sm:w-auto font-bold shrink-0">
               <span className="text-slate uppercase text-[10px]">Trạng thái:</span>
-              <select
+              <Select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-xs font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
@@ -239,7 +228,7 @@ export default function DeliveryOrderPage() {
                 <option value="PENDING">Chờ xử lý</option>
                 <option value="EXPIRED">Đã hết hiệu lực</option>
                 <option value="CANCELLED">Đã hủy</option>
-              </select>
+              </Select>
             </div>
           </div>
         )}

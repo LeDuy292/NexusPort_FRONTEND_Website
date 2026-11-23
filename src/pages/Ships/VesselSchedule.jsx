@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { vesselScheduleData } from '../../data/vesselScheduleData'
+import Select from '../../components/ui/Select'
 
 // ── CONSTANTS & VIETNAMESE STATUSES ────────────────────────────
 const STATUS_CONFIG = {
@@ -236,10 +237,10 @@ export default function VesselSchedule() {
             ['Loại Hàng', cargoFilter, setCargoFilter, ['All', ...CARGO_TYPES]],
             ['Cầu Cảng', berthFilter, setBerthFilter, ['All', 'Chưa gán cầu', ...BERTHS]],
           ].map(([label, val, setter, opts]) => (
-            <select key={label} value={val} onChange={e => setter(e.target.value)}
+            <Select key={label} value={val} onChange={e => setter(e.target.value)}
               className="px-3.5 py-2 bg-slate-100 border border-slate-300 rounded-xl text-slate-900 focus:outline-none focus:border-slate-900">
               {opts.map(o => <option key={o} value={o}>{o === 'All' ? `${label}: Tất cả` : o}</option>)}
-            </select>
+            </Select>
           ))}
           <span className="text-xs text-slate-600 self-center ml-auto font-mono">{filtered.length} tàu phù hợp</span>
         </div>
@@ -477,10 +478,10 @@ export default function VesselSchedule() {
 
                     <div>
                       <label className="block text-[10px] font-extrabold text-slate-600 uppercase mb-1">Loại Tàu Container</label>
-                      <select value={form.vesselType} onChange={e => setField('vesselType', e.target.value)}
+                      <Select value={form.vesselType} onChange={e => setField('vesselType', e.target.value)}
                         className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-slate-900">
                         {['Tàu Container Mẹ (Mother Vessel)', 'Tàu Container Chuyên Dụng', 'Tàu Gom (Feeder Vessel)'].map(t => <option key={t}>{t}</option>)}
-                      </select>
+                      </Select>
                     </div>
                   </div>
                 </div>
@@ -514,10 +515,10 @@ export default function VesselSchedule() {
                   <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-[10px] font-extrabold text-slate-600 uppercase mb-1">Loại Hàng Container</label>
-                      <select value={form.cargoType} onChange={e => setField('cargoType', e.target.value)}
+                      <Select value={form.cargoType} onChange={e => setField('cargoType', e.target.value)}
                         className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-300 rounded-xl text-xs font-bold text-slate-900 focus:outline-none focus:border-slate-900">
                         {CARGO_TYPES.map(t => <option key={t}>{t}</option>)}
-                      </select>
+                      </Select>
                     </div>
                     <div>
                       <label className="block text-[10px] font-extrabold text-slate-600 uppercase mb-1">Tổng Container (TEU) *</label>

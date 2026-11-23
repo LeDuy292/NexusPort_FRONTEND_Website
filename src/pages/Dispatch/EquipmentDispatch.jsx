@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import Select from '../../components/ui/Select'
 
 /**
  * 🗺️ CẤU HÌNH TỌA ĐỘ VÀ KHU VỰC CẢNG (PORT ZONES DICTIONARY)
@@ -229,10 +230,7 @@ export default function EquipmentDispatch() {
 
       {/* 1. Header Control center title */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h2 className="font-heading text-4xl text-primary font-bold">Trung tâm Điều phối Cảng (Dispatch Center)</h2>
-          <p className="text-sm text-slate mt-1">Hệ thống giám sát, phân bổ bãi bốc xếp và điều phối xe đầu kéo theo thời gian thực.</p>
-        </div>
+        <div />
         <div className="flex gap-2">
           <button
             onClick={() => handleOpenDispatch(currentTruck)}
@@ -657,7 +655,7 @@ export default function EquipmentDispatch() {
                 </div>
                 <div>
                   <label className="block text-[10px] font-bold uppercase text-slate tracking-wider mb-1">Ưu tiên</label>
-                  <select
+                  <Select
                     value={dispatchForm.priority}
                     onChange={e => setDispatchForm({ ...dispatchForm, priority: e.target.value })}
                     className="w-full h-10 border border-[#828282] rounded px-2 text-sm font-semibold bg-white"
@@ -665,7 +663,7 @@ export default function EquipmentDispatch() {
                     <option value="Thường">Thường</option>
                     <option value="Cao">Cao</option>
                     <option value="Khẩn cấp">Khẩn cấp</option>
-                  </select>
+                  </Select>
                 </div>
               </div>
 
@@ -700,7 +698,7 @@ export default function EquipmentDispatch() {
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <span className="text-[9px] font-semibold text-slate">Block</span>
-                    <select
+                    <Select
                       value={dispatchForm.destZoneId}
                       onChange={e => setDispatchForm({ ...dispatchForm, destZoneId: e.target.value })}
                       className="w-full h-9 border border-chalk rounded px-1.5 text-xs bg-white mt-0.5 font-bold text-carbon"
@@ -709,7 +707,7 @@ export default function EquipmentDispatch() {
                       <option value="BLOCK_B">Block B</option>
                       <option value="BLOCK_C">Block C</option>
                       <option value="BLOCK_D">Block D</option>
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <span className="text-[9px] font-semibold text-slate">Dãy (Row)</span>

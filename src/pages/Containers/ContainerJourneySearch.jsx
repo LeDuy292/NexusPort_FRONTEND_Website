@@ -3,6 +3,7 @@ import { useRef, useState } from 'react'
 import { Link, useOutletContext } from 'react-router-dom'
 import { containerService } from '../../services/containerService'
 import { CONTAINER_TRANSPORT_ROLES, ROLES, YARD_VISIT_OPERATORS } from '../../routes/routeConfig'
+import Select from '../../components/ui/Select'
 
 const fieldClass = 'w-full rounded-xl border border-chalk bg-fog px-3.5 py-2.5 text-sm outline-none focus:ring-0 focus:border-signal-orange focus:bg-white'
 const time = value => value ? new Date(value).toLocaleString('vi-VN') : '—'
@@ -94,10 +95,7 @@ export default function ContainerJourneySearch() {
   const input = (label, key, type = 'text') => <label className="space-y-2 text-xs font-bold text-slate"><span>{label}</span><input type={type} className={fieldClass} value={filters[key]} onChange={e => setFilters({ ...filters, [key]: e.target.value })} maxLength={key === 'containerNumber' ? 20 : 250} /></label>
   return <div className="space-y-4 p-6 lg:p-8">
     <header className="flex flex-wrap items-center justify-between gap-3">
-      <div>
-        <h1 className="mt-2 font-heading text-3xl font-bold text-carbon">Tra cứu lượt bãi</h1>
-        <p className="mt-2 text-sm text-slate">Xem lịch dự kiến, thời gian vào ra thực tế và EIR đã phát hành của từng lượt bãi.</p>
-      </div>
+      <div />
       {relatedLink && <Link to={relatedLink[0]} className={`${actionClass} bg-white`}>{relatedLink[1]}</Link>}
     </header>
     <form onSubmit={e => { e.preventDefault(); search(filters) }} className="rounded-2xl border border-chalk bg-white p-5">
@@ -107,10 +105,10 @@ export default function ContainerJourneySearch() {
         {canReadPrivate && input('Khách hàng / chủ hàng', 'customerName')}
         <label className="space-y-2 text-xs font-bold text-slate">
           <span>Trạng thái lượt bãi</span>
-          <select className={fieldClass} value={filters.visitStatus} onChange={e => setFilters({ ...filters, visitStatus: e.target.value })}>
+          <Select className={fieldClass} value={filters.visitStatus} onChange={e => setFilters({ ...filters, visitStatus: e.target.value })}>
             <option value="">Tất cả</option>
             {Object.entries(statusName).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
+          </Select>
         </label>
         {input('Từ ngày', 'dateFrom', 'date')}{input('Đến ngày', 'dateTo', 'date')}
         <button disabled={loading} className="rounded-xl bg-signal-orange px-5 py-3 text-sm font-bold text-white disabled:opacity-50">{loading ? 'Đang tìm…' : 'Tìm kiếm'}</button>
@@ -163,7 +161,7 @@ export default function ContainerJourneySearch() {
         </div>)}
         {!selected.bookings?.length && <p className="text-sm text-slate">Chưa có lịch hẹn để hiển thị.</p>}
       </div>
-      {canGateOut && selected.visitStatus==='active' && (selected.bookings||[]).some(b=>b.bookingType==='pickup'&&b.status==='completed') && <section className="my-4 rounded-xl border border-chalk p-4"><h3 className="font-bold">Xác nhận container ra khỏi cổng</h3><p className="my-2 text-xs text-slate">Chỉ thực hiện sau khi đã đối chiếu xe và giao nhận thực tế. Xác nhận sẽ kết thúc lượt bãi và phát hành biên nhận xuất.</p><button onClick={prepareGateOut} className="rounded-lg border border-chalk px-3 py-2 text-sm">Chọn cổng ra</button>{gates.length>0 && <div className="mt-3 flex flex-wrap gap-2"><select aria-label="Cổng ra" className={fieldClass} value={gateId} onChange={e=>setGateId(e.target.value)}><option value="">Chọn cổng</option>{gates.map(g=><option key={g.id} value={g.id}>{g.code} · {g.name}</option>)}</select>{(selected.bookings||[]).filter(b=>b.bookingType==='pickup'&&b.status==='completed').map(b=><button disabled={loading||!gateId} key={b.id} onClick={()=>completeGateOut(b.id)} className="rounded-lg bg-signal-orange px-4 py-2 text-sm font-bold text-white disabled:opacity-40">Xác nhận ra cổng · {b.bookingCode}</button>)}</div>}{gateNotice&&<p role="alert" className="mt-2 text-sm text-red-700">{gateNotice}</p>}</section>}
+      {canGateOut && selected.visitStatus==='active' && (selected.bookings||[]).some(b=>b.bookingType==='pickup'&&b.status==='completed') && <section className="my-4 rounded-xl border border-chalk p-4"><h3 className="font-bold">Xác nhận container ra khỏi cổng</h3><p className="my-2 text-xs text-slate">Chỉ thực hiện sau khi đã đối chiếu xe và giao nhận thực tế. Xác nhận sẽ kết thúc lượt bãi và phát hành biên nhận xuất.</p><button onClick={prepareGateOut} className="rounded-lg border border-chalk px-3 py-2 text-sm">Chọn cổng ra</button>{gates.length>0 && <div className="mt-3 flex flex-wrap gap-2"><Select aria-label="Cổng ra" className={fieldClass} value={gateId} onChange={e=>setGateId(e.target.value)}><option value="">Chọn cổng</option>{gates.map(g=><option key={g.id} value={g.id}>{g.code} · {g.name}</option>)}</Select>{(selected.bookings||[]).filter(b=>b.bookingType==='pickup'&&b.status==='completed').map(b=><button disabled={loading||!gateId} key={b.id} onClick={()=>completeGateOut(b.id)} className="rounded-lg bg-signal-orange px-4 py-2 text-sm font-bold text-white disabled:opacity-40">Xác nhận ra cổng · {b.bookingCode}</button>)}</div>}{gateNotice&&<p role="alert" className="mt-2 text-sm text-red-700">{gateNotice}</p>}</section>}
       {selected.receipts?.length ? <details open={showEir || undefined} className="my-4">
         <summary className="cursor-pointer font-bold">Biên nhận giao nhận (EIR) · {selected.receipts.length}</summary>
         <div className="mt-3 space-y-2">

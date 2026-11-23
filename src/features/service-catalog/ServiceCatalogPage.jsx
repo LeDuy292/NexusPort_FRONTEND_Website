@@ -16,6 +16,7 @@ import './serviceDrafts.css'
 import './serviceRegistrations.css'
 import './serviceDelivery.css'
 import './serviceOrders.css'
+import Select from '../../components/ui/Select'
 
 const iconMap = { container: Container, truck: Truck, plug: PlugZap, move: ArrowLeftRight, clock: Clock3, scale: Scale }
 const directionIcons = { ALL: Layers3, EXPORT: Container, IMPORT: Truck, BOTH: PlugZap }
@@ -55,10 +56,10 @@ function ServiceForm({ service, onClose, onSaved }) {
         <Field label="Mã dịch vụ"><input required maxLength={40} pattern="[A-Z][A-Z0-9_]{2,39}" value={form.code} disabled={!!service} onChange={e => update('code', e.target.value.toUpperCase())} placeholder="VD: REEFER_POWER" /></Field>
         <Field label="Tên dịch vụ"><input required maxLength={100} value={form.name} onChange={e => update('name', e.target.value)} placeholder="Tên hiển thị cho khách hàng" /></Field>
         <Field label="Mô tả ngắn" wide><textarea required maxLength={600} rows={3} value={form.description} onChange={e => update('description', e.target.value)} /></Field>
-        <Field label="Luồng hàng"><select value={form.direction} onChange={e => update('direction', e.target.value)}><Options values={{ EXPORT: 'Hàng xuất', IMPORT: 'Hàng nhập', BOTH: 'Cả hai chiều / tại bãi' }} /></select></Field>
-        <Field label="Đơn vị tính" hint={service?.tariffs?.length ? 'Đơn vị được giữ cố định khi đã có lịch sử giá.' : null}><select value={form.unit} disabled={!!service?.tariffs?.length} onChange={e => update('unit', e.target.value)}><Options values={labels.unit} /></select></Field>
-        <Field label="Biểu tượng"><select value={form.icon} onChange={e => update('icon', e.target.value)}><Options values={{ container: 'Container', truck: 'Xe giao nhận', plug: 'Cấp điện', move: 'Di chuyển', clock: 'Thời gian', scale: 'Cân' }} /></select></Field>
-        <Field label="Trạng thái cung cấp"><select value={String(form.isActive)} onChange={e => update('isActive', e.target.value === 'true')}><option value="true">Đang cung cấp</option><option value="false">Tạm ngừng</option></select></Field>
+        <Field label="Luồng hàng"><Select value={form.direction} onChange={e => update('direction', e.target.value)}><Options values={{ EXPORT: 'Hàng xuất', IMPORT: 'Hàng nhập', BOTH: 'Cả hai chiều / tại bãi' }} /></Select></Field>
+        <Field label="Đơn vị tính" hint={service?.tariffs?.length ? 'Đơn vị được giữ cố định khi đã có lịch sử giá.' : null}><Select value={form.unit} disabled={!!service?.tariffs?.length} onChange={e => update('unit', e.target.value)}><Options values={labels.unit} /></Select></Field>
+        <Field label="Biểu tượng"><Select value={form.icon} onChange={e => update('icon', e.target.value)}><Options values={{ container: 'Container', truck: 'Xe giao nhận', plug: 'Cấp điện', move: 'Di chuyển', clock: 'Thời gian', scale: 'Cân' }} /></Select></Field>
+        <Field label="Trạng thái cung cấp"><Select value={String(form.isActive)} onChange={e => update('isActive', e.target.value === 'true')}><option value="true">Đang cung cấp</option><option value="false">Tạm ngừng</option></Select></Field>
         <Field label="Điều kiện sử dụng" hint="Mỗi dòng là một điều kiện. Tối đa 12 dòng, 240 ký tự mỗi dòng." wide><textarea required rows={5} value={form.conditions.join('\n')} onChange={e => update('conditions', e.target.value.split('\n'))} /></Field>
         <label className="epc-checkbox wide"><input type="checkbox" checked={form.requiresApproval} onChange={e => update('requiresApproval', e.target.checked)} />Yêu cầu điều độ phê duyệt</label>
       </div>
@@ -74,8 +75,8 @@ function TariffForm({ service, today, onClose, onSaved }) {
   return <Modal title="Thêm biểu phí" description={service.name} onClose={onClose}>
     <form onSubmit={e => { e.preventDefault(); save.mutate() }}>
       <div className="epc-form-grid">
-        <Field label="Kích thước container"><select value={form.size} onChange={e => update('size', e.target.value)}><Options values={labels.size} /></select></Field>
-        <Field label="Nhóm tính giá"><select value={form.equipment} onChange={e => update('equipment', e.target.value)}><Options values={labels.equipment} /></select></Field>
+        <Field label="Kích thước container"><Select value={form.size} onChange={e => update('size', e.target.value)}><Options values={labels.size} /></Select></Field>
+        <Field label="Nhóm tính giá"><Select value={form.equipment} onChange={e => update('equipment', e.target.value)}><Options values={labels.equipment} /></Select></Field>
         <Field label={`Đơn giá (VND / ${labels.unit[service.unit]})`} wide><div className="epc-money-input"><input type="number" required min="0" max="999999999999" step="1" value={form.amount} onChange={e => update('amount', e.target.value)} placeholder="Nhập đơn giá đã được phê duyệt" /><span>VND</span></div></Field>
         <Field label="Áp dụng từ"><input type="date" required value={form.effectiveFrom} onChange={e => update('effectiveFrom', e.target.value)} /></Field>
         <Field label="Đến hết ngày" hint="Để trống nếu chưa giới hạn ngày kết thúc."><input type="date" min={form.effectiveFrom} value={form.effectiveTo} onChange={e => update('effectiveTo', e.target.value)} /></Field>
@@ -293,19 +294,7 @@ export default function ServiceCatalogPage({ management = false }) {
   return (
     <div className={`epc ${motionPaused ? 'epc-motion-paused' : ''}`}>
       {management && <div className="epc-page-header">
-        <div>
-          <div className="epc-breadcrumb">
-            {management ? 'Quản trị' : 'Cổng doanh nghiệp'}
-            <span>/</span>
-            {management ? 'Danh mục dịch vụ & Biểu phí' : 'Đăng ký giao nhận'}
-          </div>
-          <h1>{management ? 'Danh mục & biểu phí' : 'Đăng Ký Giao Nhận (ePort)'}</h1>
-          <p>
-            {management
-              ? 'Quản lý danh mục dịch vụ và đơn giá theo từng thời gian áp dụng.'
-              : 'Hệ thống tiếp nhận và giải quyết thủ tục giao nhận container hàng xuất và nhập khẩu trực tuyến.'}
-          </p>
-        </div>
+        <div />
         {management ? (
           <button type="button" className="epc-button primary" onClick={() => setModal({ type: 'service' })}>
             <Plus size={18} />Thêm dịch vụ
@@ -404,6 +393,24 @@ export default function ServiceCatalogPage({ management = false }) {
           <CheckCircle2 size={18} />{notice}
           <button type="button" aria-label="Đóng thông báo" onClick={() => setNotice('')}><X size={16} /></button>
         </div>
+      )}
+
+      {/* Trạng thái tải / lỗi của tab Đăng ký dịch vụ (trước đây trang trống khi truy vấn danh mục thất bại) */}
+      {!management && activeSection === 'register' && query.isPending && (
+        <div className="epc-loading" aria-live="polite">
+          <Loader2 className="epc-spin" size={28} />
+          <p>Đang tải dịch vụ và biểu phí…</p>
+        </div>
+      )}
+      {!management && activeSection === 'register' && query.isError && (
+        <section className="epc-load-error">
+          <CircleHelp size={32} />
+          <h2>Chưa tải được danh mục dịch vụ</h2>
+          <p>{getError(query.error)}</p>
+          <button type="button" className="epc-button secondary" onClick={() => query.refetch()}>
+            <RefreshCw size={16} />Thử lại
+          </button>
+        </section>
       )}
 
       {/* PORTAL FOR TRANSPORT COMPANY: CHỈ HIỂN THỊ DUY NHẤT 2 DỊCH VỤ XUẤT VÀ NHẬP */}
@@ -507,7 +514,7 @@ export default function ServiceCatalogPage({ management = false }) {
       )}
 
       {/* ORDERS LIST SECTION: Danh sách đơn dịch vụ của doanh nghiệp */}
-      {canDraft && activeSection === 'orders' && (
+      {canDraft && activeSection === 'orders' && !selectedOrderId && (
         <section className="epo-worklist" aria-labelledby="epo-list-title">
           <div className="epo-worklist-heading">
             <div>
@@ -516,9 +523,6 @@ export default function ServiceCatalogPage({ management = false }) {
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <span className="epo-result-count">{ordersQuery.isSuccess ? `${ordersTotal} hồ sơ` : 'Đang kết nối'}</span>
-              <button type="button" className="epc-button secondary" disabled={ordersQuery.isFetching} onClick={refreshOrders}>
-                <RefreshCw size={15} className={ordersQuery.isFetching ? 'epc-spin' : ''} />Làm mới
-              </button>
             </div>
           </div>
           <div className="epo-filters">
@@ -528,25 +532,25 @@ export default function ServiceCatalogPage({ management = false }) {
             </div>
             <label>
               <span className="epc-sr-only">Trạng thái đơn</span>
-              <select value={orderStatus} onChange={e => orderChangeFilter(setOrderStatus, e.target.value)}>
+              <Select value={orderStatus} onChange={e => orderChangeFilter(setOrderStatus, e.target.value)}>
                 <option value="">Mọi trạng thái đơn</option>
                 {Object.entries(orderStatusLabels).map(([v, l]) => <option value={v} key={v}>{l}</option>)}
-              </select>
+              </Select>
             </label>
             <label>
               <span className="epc-sr-only">Trạng thái thanh toán</span>
-              <select value={orderPaymentStatus} onChange={e => orderChangeFilter(setOrderPaymentStatus, e.target.value)}>
+              <Select value={orderPaymentStatus} onChange={e => orderChangeFilter(setOrderPaymentStatus, e.target.value)}>
                 <option value="">Mọi thanh toán</option>
                 {['UNPAID', 'PENDING', 'PAID', 'FAILED', 'NOT_REQUIRED'].map(v => <option key={v} value={v}>{paymentStatusLabels[v]}</option>)}
-              </select>
+              </Select>
             </label>
             <label>
               <span className="epc-sr-only">Luồng hàng</span>
-              <select value={orderFlow} onChange={e => orderChangeFilter(setOrderFlow, e.target.value)}>
+              <Select value={orderFlow} onChange={e => orderChangeFilter(setOrderFlow, e.target.value)}>
                 <option value="">Mọi luồng hàng</option>
                 <option value="EXPORT">Hàng xuất</option>
                 <option value="IMPORT">Hàng nhập</option>
-              </select>
+              </Select>
             </label>
           </div>
           {ordersQuery.isPending ? (
@@ -608,7 +612,7 @@ export default function ServiceCatalogPage({ management = false }) {
       )}
 
       {/* ORDER DIALOGS */}
-      {selectedOrderId && <ServiceOrderDetail key={`${session}:${selectedOrderId}`} orderId={selectedOrderId} initialTab={params.has('orderId') || params.get('tab') === 'payments' ? 'payments' : 'information'} showPaymentSuccess={returnPaymentOrder === selectedOrderId} onPaymentSuccessShown={() => setReturnPaymentOrder(null)} onClose={() => chooseOrder(null)} onEdit={orderEditDraft} onReview={orderReviewDraft} />}
+      {selectedOrderId && <ServiceOrderDetail inline key={`${session}:${selectedOrderId}`} orderId={selectedOrderId} initialTab={params.has('orderId') || params.get('tab') === 'payments' ? 'payments' : 'information'} showPaymentSuccess={returnPaymentOrder === selectedOrderId} onPaymentSuccessShown={() => setReturnPaymentOrder(null)} onClose={() => chooseOrder(null)} onEdit={orderEditDraft} onReview={orderReviewDraft} />}
       {orderEditing && (
         catalogForOrders.isPending
           ? <div className="epo-loading-overlay" role="status"><Loader2 className="epc-spin" size={22} />Đang tải danh mục…<button type="button" onClick={() => setOrderEditing(null)}>Đóng</button></div>
@@ -670,7 +674,7 @@ export default function ServiceCatalogPage({ management = false }) {
                   onChange={event => setSearch(event.target.value)}
                 />
               </div>
-              <select
+              <Select
                 className="epc-status-filter"
                 aria-label="Lọc trạng thái dịch vụ"
                 value={status}
@@ -679,7 +683,7 @@ export default function ServiceCatalogPage({ management = false }) {
                 <option value="ALL">Mọi trạng thái</option>
                 <option value="ACTIVE">Đang cung cấp</option>
                 <option value="PAUSED">Tạm ngừng</option>
-              </select>
+              </Select>
             </div>
             <div className="epc-layout">
               <section className="epc-catalog" aria-labelledby="epc-catalog-heading">

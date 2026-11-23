@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import apiClient from '../../../services/apiClient'
 import { btn, btnPrimary, btnSoft, card, Info, Pill, SectionTitle, inputCls, labelCls, theadCls, thCls } from '../../../components/Containers/docUi'
+import Select from '../../../components/ui/Select'
 
 const unwrap = res => res.data?.data ?? res.data
 const errorText = err => err?.response?.data?.message || err?.message || 'Không thể xử lý yêu cầu.'
@@ -66,10 +67,20 @@ export default function ManifestBillIssuance({ manifest }) {
       const result = unwrap(await apiClient.post(`/bl-imports/manifests/${manifest.id}/bills/${encodeURIComponent(issuing.blNumber)}/issue`, form))
       if (!alive.current) return
       const bookingText = result.undeclaredContainers?.length
-        ? ` Container chưa được chủ hàng khai báo nên chưa dùng được để khai báo ePort: ${result.undeclaredContainers.join(', ')}.`
+        ? ` Container chưa đăng ký thiết bị hoặc thiếu trọng lượng nên chưa dùng được để khai báo ePort: ${result.undeclaredContainers.join(', ')}.`
         : ''
       setNotice(`Đã phát hành vận đơn ${result.blNumber}.${bookingText} ${result.notified ? 'Đã gửi thông báo cho công ty.' : 'Chưa khớp được công ty nên chưa gửi thông báo.'}`)
       setIssuing(null); await load()
+    } catch (err) { if (alive.current) setError(errorText(err)) } finally { if (alive.current) setBusy('') }
+  }
+
+  const syncContainers = async blNumber => {
+    setBusy(`s-${blNumber}`); setError('')
+    try {
+      const result = unwrap(await apiClient.post(`/bl-imports/manifests/${manifest.id}/bills/${encodeURIComponent(blNumber)}/sync-containers`))
+      if (!alive.current) return
+      const left = result.undeclaredContainers?.length ? ` Chưa gắn được: ${result.undeclaredContainers.join(', ')} (chưa đăng ký thiết bị hoặc thiếu trọng lượng).` : ''
+      setNotice(`Đã đồng bộ container của vận đơn ${result.blNumber} sang ePort: thêm ${result.added} container.${left}`)
     } catch (err) { if (alive.current) setError(errorText(err)) } finally { if (alive.current) setBusy('') }
   }
 
@@ -98,10 +109,14 @@ export default function ManifestBillIssuance({ manifest }) {
                   <td className="py-3 px-3 font-mono font-bold text-carbon">{b.blNumber}</td>
                   <td className="py-3 px-3">{b.companyName || <span className="text-rose-700">Chưa là công ty đã đăng ký</span>}</td>
                   <td className="py-3 px-3"><Pill tone={b.issued ? 'green' : 'amber'}>{b.issued ? 'Đã phát hành' : 'Chưa phát hành'}</Pill></td>
-                  <td className="py-3 px-3 text-rose-700">{b.notes.length ? b.notes.join(' ') : <span className="text-slate">—</span>}</td>
+                  <td className="py-3 px-3 text-rose-700">
+                    {b.notes.length ? b.notes.join(' ') : (!b.warnings?.length && <span className="text-slate">—</span>)}
+                    {b.warnings?.length > 0 && <span className="mt-1 block font-medium text-amber-700">{b.warnings.join(' ')}</span>}
+                  </td>
                   <td className="py-3 px-3"><div className="flex flex-wrap gap-2">
                     {!b.issued && <button type="button" className={btnPrimary} disabled={!b.canIssue || Boolean(busy)} onClick={() => open(b)}>Phát hành</button>}
                     {b.issued && <button type="button" className={btnSoft} onClick={() => { setViewing(b); setIssuing(null) }}>Xem vận đơn</button>}
+                    {b.issued && data.direction !== 'IMPORT' && <button type="button" className={btn} disabled={Boolean(busy)} onClick={() => syncContainers(b.blNumber)}>{busy === `s-${b.blNumber}` ? 'Đang đồng bộ…' : 'Đồng bộ container'}</button>}
                     <button type="button" className={btn} disabled={Boolean(busy)} onClick={() => reconcile(b.blNumber)}>{busy === `r-${b.blNumber}` ? 'Đang đối chiếu…' : 'Đối chiếu cảng'}</button>
                   </div></td>
                 </tr>
@@ -117,8 +132,8 @@ export default function ManifestBillIssuance({ manifest }) {
           <h4 className="font-mono text-sm font-extrabold text-carbon">Phát hành {issuing.blNumber}</h4>
           <BillSummary bill={issuing} voyageNumber={data.voyageNumber} />
           <div className="grid gap-4 sm:grid-cols-2">
-            <label><span className={labelCls}>Hình thức B/L *</span><select className={inputCls} value={form.blType} onChange={e => setForm({ ...form, blType: e.target.value })}>{blTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label><span className={labelCls}>Điều kiện cước *</span><select className={inputCls} value={form.freightTerms} onChange={e => setForm({ ...form, freightTerms: e.target.value })}><option value="Prepaid">Trả trước (Prepaid)</option><option value="Collect">Trả sau (Collect)</option></select></label>
+            <label><span className={labelCls}>Hình thức B/L *</span><Select className={inputCls} value={form.blType} onChange={e => setForm({ ...form, blType: e.target.value })}>{blTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></label>
+            <label><span className={labelCls}>Điều kiện cước *</span><Select className={inputCls} value={form.freightTerms} onChange={e => setForm({ ...form, freightTerms: e.target.value })}><option value="Prepaid">Trả trước (Prepaid)</option><option value="Collect">Trả sau (Collect)</option></Select></label>
             <label><span className={labelCls}>Bên thông báo</span><input className={inputCls} value={form.notifyParty} onChange={e => setForm({ ...form, notifyParty: e.target.value })} placeholder="Để trống nếu giống người nhận" /></label>
           </div>
           <p className="text-xs text-slate">Thông báo sẽ gửi cho {issuing.companyName}. {data.direction === 'EXPORT' ? 'Sau khi phát hành, chủ hàng dùng số vận đơn này để khai báo dịch vụ hạ bãi trên ePort.' : ''}</p>

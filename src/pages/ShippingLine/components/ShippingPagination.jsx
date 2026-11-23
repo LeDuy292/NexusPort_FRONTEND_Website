@@ -1,4 +1,5 @@
 import React from 'react';
+import Select from '../../../components/ui/Select'
 
 export default function ShippingPagination({
   currentPage = 1,
@@ -41,7 +42,7 @@ export default function ShippingPagination({
         {onPageSizeChange && (
           <div className="flex items-center gap-1.5 pl-2 border-l border-chalk">
             <span className="text-[11px] text-slate">Số dòng:</span>
-            <select
+            <Select
               value={pageSize}
               onChange={(e) => {
                 const newSize = Number(e.target.value);
@@ -55,7 +56,7 @@ export default function ShippingPagination({
                   {opt} / trang
                 </option>
               ))}
-            </select>
+            </Select>
           </div>
         )}
       </div>
