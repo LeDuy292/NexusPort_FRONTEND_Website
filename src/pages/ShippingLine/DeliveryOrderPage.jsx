@@ -5,6 +5,7 @@ import ShippingBadge from './components/ShippingBadge';
 import ShippingPagination from './components/ShippingPagination';
 import EdoIssueModal from './components/EdoIssueModal';
 import EdoPreviewModal from './components/EdoPreviewModal';
+import Select from '../../components/ui/Select'
 
 export default function DeliveryOrderPage() {
   const [activeTab, setActiveTab] = useState('EDO_LIST'); // EDO_LIST, GATE_VERIFY
@@ -217,7 +218,7 @@ export default function DeliveryOrderPage() {
 
             <div className="flex items-center gap-2 w-full sm:w-auto font-bold shrink-0">
               <span className="text-slate uppercase text-[10px]">Trạng thái:</span>
-              <select
+              <Select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-xs font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
@@ -227,7 +228,7 @@ export default function DeliveryOrderPage() {
                 <option value="PENDING">Chờ xử lý</option>
                 <option value="EXPIRED">Đã hết hiệu lực</option>
                 <option value="CANCELLED">Đã hủy</option>
-              </select>
+              </Select>
             </div>
           </div>
         )}

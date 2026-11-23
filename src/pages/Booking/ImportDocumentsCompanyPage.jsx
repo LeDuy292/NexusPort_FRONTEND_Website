@@ -4,6 +4,7 @@ import exportBookingService from '../../services/exportBookingService'
 import ImportDocumentTimeline from '../../components/Containers/ImportDocumentTimeline'
 import PostIssuancePanel from '../../components/Containers/PostIssuancePanel'
 import { btn, btnPrimary, card as box, PageHeader, StatCard, Pill, EmptyState, SectionTitle, inputCls } from '../../components/Containers/docUi'
+import Select from '../../components/ui/Select'
 
 const field = inputCls
 const when = value => (value ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—')
@@ -169,7 +170,7 @@ export default function ImportDocumentsCompanyPage() {
 
                   <form className={`${box} space-y-3`} onSubmit={e => { e.preventDefault(); act(() => importDocumentService.requestAmendment(d.id, { noticeVersion: d.noticeVersion, reason: amend.reason, changes: [{ field: amend.field, newValue: amend.value }] }), 'Đã gửi yêu cầu sửa cho hãng tàu.') }}>
                     <h3 className="font-heading text-base font-extrabold text-carbon">Yêu cầu sửa thông tin</h3>
-                    <select className={field} value={amend.field} onChange={e => setAmend(p => ({ ...p, field: e.target.value }))}>{AMEND_FIELDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
+                    <Select className={field} value={amend.field} onChange={e => setAmend(p => ({ ...p, field: e.target.value }))}>{AMEND_FIELDS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
                     <input className={field} placeholder="Nội dung đúng" value={amend.value} onChange={e => setAmend(p => ({ ...p, value: e.target.value }))} />
                     <textarea className={field} rows={2} placeholder="Lý do sửa" value={amend.reason} onChange={e => setAmend(p => ({ ...p, reason: e.target.value }))} />
                     <p className="text-xs text-slate-500">Thông tin trên B/L do đầu xuất sửa và cần shipper xác nhận. Thông tin hành chính được cập nhật trực tiếp.</p>

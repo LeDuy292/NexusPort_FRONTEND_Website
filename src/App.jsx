@@ -52,6 +52,8 @@ import VehicleManagement from './pages/Fleet/VehicleManagement'
 import ContainerFlow from './pages/Containers/ContainerFlow'
 import DispatcherDriverManagement from './pages/Drivers/DriverManagement'
 import DispatchHistory from './pages/Dispatch/DispatchHistory'
+import YardIncidents from './pages/Dispatch/YardIncidents'
+import ShiftingFeesPage from './pages/Booking/ShiftingFeesPage'
 import CameraMonitoring from './pages/Camera/CameraMonitoring'
 import GateBookingRequests from './pages/Dispatch/GateBookingRequests'
 
@@ -171,6 +173,7 @@ function App() {
             <Route path="/container-flow" element={<ContainerFlow />} />
             <Route path="/dispatcher/drivers" element={<DispatcherDriverManagement />} />
             <Route path="/dispatch-history" element={<DispatchHistory />} />
+            <Route path="/dispatcher/yard-incidents" element={<YardIncidents />} />
             <Route path="/dispatcher/cameras" element={<CameraMonitoring />} />
           </Route>
 
@@ -184,6 +187,7 @@ function App() {
           <Route element={<RoleRoute allowedRoles={[ROLES.TRANSPORT_COMPANY, ROLES.CARRIER_STAFF]} />}>
             <Route path="/import-documents" element={<ImportDocumentsCompanyPage />} />
             <Route path="/my-bills" element={<MyBillsPage />} />
+            <Route path="/shifting-fees" element={<ShiftingFeesPage />} />
           </Route>
           <Route element={<RoleRoute allowedRoles={[ROLES.SHIPPING_LINE, ROLES.ADMINISTRATOR]} />}>
             <Route path="/shipping-line" element={<Navigate to="/shipping-line/dashboard" replace />} />

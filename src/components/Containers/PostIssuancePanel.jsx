@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import importDocumentService from '../../services/importDocumentService'
 import exportBookingService from '../../services/exportBookingService'
 import { btn, btnPrimary, card, inputCls, SectionTitle } from './docUi'
+import Select from '../ui/Select'
 
 const typeLabels = { LOI_RELEASE: 'LOI nhận hàng không cần B/L gốc', CHANGE_CONSIGNEE: 'Đổi consignee', CHANGE_POD: 'Đổi cảng dỡ', SCHEDULE_CHANGE: 'Đổi lịch tàu' }
 const statusLabels = { PENDING: 'Chờ xử lý', APPROVED: 'Đã chấp nhận', REJECTED: 'Bị từ chối', CANCELLED: 'Đã rút' }
@@ -59,9 +60,9 @@ export default function PostIssuancePanel({ file, mode, onChanged }) {
 
       {mode === 'company' && !closed && (
         <div className="space-y-2 rounded-xl border border-chalk bg-fog/50 p-3">
-          <select className={input} value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
+          <Select className={input} value={form.type} onChange={e => setForm({ ...form, type: e.target.value })}>
             {['LOI_RELEASE', 'CHANGE_CONSIGNEE', 'CHANGE_POD'].map(t => <option key={t} value={t}>{typeLabels[t]}</option>)}
-          </select>
+          </Select>
           {form.type === 'CHANGE_CONSIGNEE' && <input className={input} placeholder="Tên consignee mới" value={form.newConsignee} onChange={e => setForm({ ...form, newConsignee: e.target.value })} />}
           {form.type === 'CHANGE_POD' && <input className={input} placeholder="Cảng dỡ mới (trong cảng này)" value={form.newPod} onChange={e => setForm({ ...form, newPod: e.target.value })} />}
           <textarea className={input} rows={2} placeholder="Lý do" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })} />

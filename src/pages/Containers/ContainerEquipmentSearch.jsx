@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { containerService } from '../../services/containerService'
 import ShippingPagination from '../ShippingLine/components/ShippingPagination'
+import Select from '../../components/ui/Select'
 
 const emptyFilters = {
   containerNumber: '', prefix: '', containerTypeId: '', isoSizeType: '',
@@ -89,10 +90,10 @@ export default function ContainerEquipmentSearch() {
   const select = (key, label, options) => (
     <label className="space-y-2 text-xs font-bold text-slate">
       <span>{label}</span>
-      <select className={inputClass} value={filters[key]} onChange={event => update(key, event.target.value)}>
+      <Select className={inputClass} value={filters[key]} onChange={event => update(key, event.target.value)}>
         <option value="">Tất cả</option>
         {options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
-      </select>
+      </Select>
     </label>
   )
 

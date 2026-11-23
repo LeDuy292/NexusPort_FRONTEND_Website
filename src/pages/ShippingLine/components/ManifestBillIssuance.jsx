@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import apiClient from '../../../services/apiClient'
 import { btn, btnPrimary, btnSoft, card, Info, Pill, SectionTitle, inputCls, labelCls, theadCls, thCls } from '../../../components/Containers/docUi'
+import Select from '../../../components/ui/Select'
 
 const unwrap = res => res.data?.data ?? res.data
 const errorText = err => err?.response?.data?.message || err?.message || 'Không thể xử lý yêu cầu.'
@@ -131,8 +132,8 @@ export default function ManifestBillIssuance({ manifest }) {
           <h4 className="font-mono text-sm font-extrabold text-carbon">Phát hành {issuing.blNumber}</h4>
           <BillSummary bill={issuing} voyageNumber={data.voyageNumber} />
           <div className="grid gap-4 sm:grid-cols-2">
-            <label><span className={labelCls}>Hình thức B/L *</span><select className={inputCls} value={form.blType} onChange={e => setForm({ ...form, blType: e.target.value })}>{blTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-            <label><span className={labelCls}>Điều kiện cước *</span><select className={inputCls} value={form.freightTerms} onChange={e => setForm({ ...form, freightTerms: e.target.value })}><option value="Prepaid">Trả trước (Prepaid)</option><option value="Collect">Trả sau (Collect)</option></select></label>
+            <label><span className={labelCls}>Hình thức B/L *</span><Select className={inputCls} value={form.blType} onChange={e => setForm({ ...form, blType: e.target.value })}>{blTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></label>
+            <label><span className={labelCls}>Điều kiện cước *</span><Select className={inputCls} value={form.freightTerms} onChange={e => setForm({ ...form, freightTerms: e.target.value })}><option value="Prepaid">Trả trước (Prepaid)</option><option value="Collect">Trả sau (Collect)</option></Select></label>
             <label><span className={labelCls}>Bên thông báo</span><input className={inputCls} value={form.notifyParty} onChange={e => setForm({ ...form, notifyParty: e.target.value })} placeholder="Để trống nếu giống người nhận" /></label>
           </div>
           <p className="text-xs text-slate">Thông báo sẽ gửi cho {issuing.companyName}. {data.direction === 'EXPORT' ? 'Sau khi phát hành, chủ hàng dùng số vận đơn này để khai báo dịch vụ hạ bãi trên ePort.' : ''}</p>

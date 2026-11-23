@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import gateService from '../../services/gateService'
 import { normalizePlate, formatPlateNumber } from '../../utils/format'
+import Select from '../../components/ui/Select'
 
 // Thuật toán kiểm tra số kiểm tra container chuẩn quốc tế ISO 6346
 const validateIso6346 = (containerNumber) => {
@@ -1379,7 +1380,7 @@ export default function ContainerVerification() {
 
               <div>
                 <label className="block text-slate-600 font-bold mb-1">Lý Do Từ Chối / Ngoại Lệ:</label>
-                <select
+                <Select
                   value={incidentType}
                   onChange={(e) => setIncidentType(e.target.value)}
                   className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-bold text-slate-900 focus:outline-none focus:border-rose-500"
@@ -1392,7 +1393,7 @@ export default function ContainerVerification() {
                   <option value="Lệnh lấy hàng chưa thanh toán hoặc e-DO bị giữ">Lệnh lấy hàng chưa thanh toán hoặc e-DO bị giữ</option>
                   <option value="Xe sai hoặc tài xế sai so với lệnh">Xe sai hoặc tài xế sai so với lệnh</option>
                   <option value="Lý do khác">Lý do khác</option>
-                </select>
+                </Select>
               </div>
 
               <div>

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { bookingService } from '../../services/bookingService'
 import { bookingWindow, sourceOperation } from '../../features/booking-dispatch/bookingPlanning'
 import BookingFleetDetails from './BookingFleetDetails'
+import Select from '../ui/Select'
 
 const input = 'w-full rounded-xl border border-chalk bg-white px-3 py-2 text-sm'
 const labels = { Pending: 'Chờ xử lý', AwaitingAssignment: 'Chờ phân công', InProgress: 'Đang thực hiện', PartiallyCompleted: 'Hoàn thành một phần', Completed: 'Hoàn tất', Canceled: 'Đã hủy', Ready: 'Đã phân công', Approved: 'Đã duyệt', CheckedIn: 'Đã vào cổng', Rejected: 'Đã từ chối', Expired: 'Hết hạn' }
@@ -32,7 +33,7 @@ const documentView = (spec, direction) => ({
   DangerousGoodsDeclaration: { title: 'Khai Báo Hàng Nguy Hiểm (IMO)', icon: 'warning' },
 }[spec.documentType] || { title: spec.nameVi, icon: 'description' })
 
-export default function BookingBatchWorkspace({ onSaved }) {
+export default function BookingBatchWorkspace({ onSaved, exportContext = null }) {
   const navigate = useNavigate()
   const [direction, setDirection] = useState('Dropoff')
   const [options, setOptions] = useState([])
@@ -249,7 +250,7 @@ export default function BookingBatchWorkspace({ onSaved }) {
       <div><h3 className="text-lg font-bold">Booking theo lô</h3><p className="text-sm text-slate-600">Cùng loại hàng, cùng bộ hồ sơ. Mỗi container có chuyến xe, tài xế, giờ hẹn và lượt qua cổng riêng.</p></div>
       <fieldset disabled={busy || uploading} className="space-y-5 disabled:opacity-70">
         <div className="max-w-md">
-          <label className="text-sm font-semibold">Nghiệp vụ<select aria-label="Nghiệp vụ của lô" className={input} value={direction} onChange={event => { invalidate(); setDirection(event.target.value) }}><option value="Dropoff">Giao container vào cảng</option><option value="Pickup">Nhận container ra cảng</option></select></label>
+          <label className="text-sm font-semibold">Nghiệp vụ<Select aria-label="Nghiệp vụ của lô" className={input} value={direction} onChange={event => { invalidate(); setDirection(event.target.value) }}><option value="Dropoff">Giao container vào cảng</option><option value="Pickup">Nhận container ra cảng</option></Select></label>
         </div>
         <div role="group" aria-label="Container trong lô" className="space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2"><h4 className="font-bold">Chọn container theo nhóm</h4>{trips.length > 0 && <button type="button" className="text-sm font-semibold underline" onClick={() => selectSources([])}>Bỏ chọn tất cả</button>}</div>
@@ -303,14 +304,14 @@ export default function BookingBatchWorkspace({ onSaved }) {
               <label className="text-sm">Ngày<input required aria-label={`Ngày chuyến ${index + 1}`} type="date" className={input} value={trip.date} onChange={event => patchTrip(index, { date: event.target.value }, true)} /></label>
               <label className="text-sm">Từ<input required aria-label={`Giờ bắt đầu chuyến ${index + 1}`} type="time" className={input} value={trip.start} onChange={event => patchTrip(index, { start: event.target.value }, true)} /></label>
               <label className="text-sm">Đến<input required aria-label={`Giờ kết thúc chuyến ${index + 1}`} type="time" className={input} value={trip.end} onChange={event => patchTrip(index, { end: event.target.value }, true)} /></label>
-              <label className="text-sm">Xe đầu kéo<select aria-label={`Xe chuyến ${index + 1}`} disabled={!fleet} className={input} value={trip.truckId} onChange={event => {
+              <label className="text-sm">Xe đầu kéo<Select aria-label={`Xe chuyến ${index + 1}`} disabled={!fleet} className={input} value={trip.truckId} onChange={event => {
                 const truckId = event.target.value, truck = trucks.find(row => row.id === truckId)
                 const driverId = drivers.some(row => row.id === truck?.driverId) ? truck.driverId : trip.driverId
                 const trailer = recommendation.trailerSuggestions?.find(row => row.truckId === truckId)?.trailerNumber || ''
                 const trailerNumber = reservedByOther(index, 'trailerNumber', trailer) ? '' : trailer
                 patchTrip(index, truckId ? { truckId, driverId, trailerNumber } : { truckId: '', driverId: '', trailerNumber: '' })
-              }}><option value="">{fleet && !trucks.length ? 'Chưa có xe rảnh trong khung giờ' : 'Chọn xe rảnh'}</option>{trucks.map(truck => <option key={truck.id} value={truck.id}>{truck.plateNumber} · {truck.currentLocation || truck.vehicleType}</option>)}</select></label>
-              <label className="text-sm">Tài xế<select aria-label={`Tài xế chuyến ${index + 1}`} disabled={!fleet} className={input} value={trip.driverId} onChange={event => patchTrip(index, event.target.value ? { driverId: event.target.value } : { truckId: '', driverId: '', trailerNumber: '' })}><option value="">{fleet && !drivers.length ? 'Chưa có tài xế rảnh trong khung giờ' : 'Chọn tài xế rảnh'}</option>{drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.fullName}{driver.phone ? ` · ${driver.phone}` : ''}</option>)}</select></label>
+              }}><option value="">{fleet && !trucks.length ? 'Chưa có xe rảnh trong khung giờ' : 'Chọn xe rảnh'}</option>{trucks.map(truck => <option key={truck.id} value={truck.id}>{truck.plateNumber} · {truck.currentLocation || truck.vehicleType}</option>)}</Select></label>
+              <label className="text-sm">Tài xế<Select aria-label={`Tài xế chuyến ${index + 1}`} disabled={!fleet} className={input} value={trip.driverId} onChange={event => patchTrip(index, event.target.value ? { driverId: event.target.value } : { truckId: '', driverId: '', trailerNumber: '' })}><option value="">{fleet && !drivers.length ? 'Chưa có tài xế rảnh trong khung giờ' : 'Chọn tài xế rảnh'}</option>{drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.fullName}{driver.phone ? ` · ${driver.phone}` : ''}</option>)}</Select></label>
               <label className="text-sm">Rơ-moóc<input aria-label={`Rơ-moóc chuyến ${index + 1}`} maxLength={50} className={input} value={trip.trailerNumber} onChange={event => patchTrip(index, { trailerNumber: event.target.value.toUpperCase() })} /><span className="mt-1 block text-xs text-slate-500">{trip.trailerNumber && recommendation?.trailerSuggestions?.some(row => row.truckId === trip.truckId && row.trailerNumber === trip.trailerNumber) ? 'Gợi ý từ lịch sử xe; kiểm tra đúng moóc đang sử dụng.' : 'Chưa có gợi ý phù hợp; nhập biển theo hồ sơ moóc thực tế.'}</span></label>
               {cold && <label className="text-sm">Nhiệt độ (°C)<input required type="number" step="0.5" aria-label={`Nhiệt độ chuyến ${index + 1}`} className={input} value={trip.temperature} onChange={event => patchTrip(index, { temperature: event.target.value })} /></label>}
               {cold && direction === 'Dropoff' && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={trip.power} disabled={!(trip.source.requiredPowerKw > 0)} onChange={event => patchTrip(index, { power: event.target.checked })} />Yêu cầu cấp điện ({trip.source.requiredPowerKw || 0} kW)</label>}

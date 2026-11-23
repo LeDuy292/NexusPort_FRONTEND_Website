@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import yardReceivingService from '../../services/yardReceivingService';
+import Select from '../../components/ui/Select'
 
 export default function YardReceiving() {
   const [activeTab, setActiveTab] = useState('create'); // 'create' | 'history'
@@ -256,7 +257,7 @@ export default function YardReceiving() {
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
                     Khu Vực Block Bãi
                   </label>
-                  <select
+                  <Select
                     value={yardBlockCode}
                     onChange={(e) => setYardBlockCode(e.target.value)}
                     className="w-full bg-slate-950/80 border border-slate-700/80 rounded-2xl px-4 py-3 text-sm text-slate-100 focus:border-blue-500 focus:outline-none"
@@ -264,7 +265,7 @@ export default function YardReceiving() {
                     <option value="A01">Block A01 (Khu Cont Hàng Outbound)</option>
                     <option value="B02">Block B02 (Khu Cont Rỗng Inbound)</option>
                     <option value="C03">Block C03 (Khu Cont Lạnh Reefer)</option>
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
@@ -441,7 +442,7 @@ export default function YardReceiving() {
             {/* Filter by Block */}
             <div className="flex items-center gap-2">
               <label className="text-xs text-slate-400 whitespace-nowrap">Lọc theo Block:</label>
-              <select
+              <Select
                 value={filterBlock}
                 onChange={(e) => setFilterBlock(e.target.value)}
                 className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none"
@@ -450,7 +451,7 @@ export default function YardReceiving() {
                 <option value="A01">Block A01</option>
                 <option value="B02">Block B02</option>
                 <option value="C03">Block C03</option>
-              </select>
+              </Select>
             </div>
           </div>
 

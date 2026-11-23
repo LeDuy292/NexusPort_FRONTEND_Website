@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { gateIncidentsData } from '../../data/gateOfficerData'
+import Select from '../../components/ui/Select'
 
 const SEVERITY_STYLE = {
   Low: 'bg-slate-100 text-slate-800 border-slate-300',
@@ -111,10 +112,10 @@ export default function GateIncidents() {
           ['Mức độ', severityFilter, setSeverityFilter, ['All', 'Low', 'Medium', 'High', 'Critical']],
           ['Làn cổng', gateFilter, setGateFilter, ['All', 'Cổng Vào', 'Cổng Ra']],
         ].map(([label, val, setter, opts]) => (
-          <select key={label} value={val} onChange={e => setter(e.target.value)}
+          <Select key={label} value={val} onChange={e => setter(e.target.value)}
             className="px-3.5 py-2 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange">
             {opts.map(o => <option key={o} value={o}>{o === 'All' ? `${label}: Tất cả` : o === 'Pending' ? 'Chờ xử lý' : o === 'Under Review' ? 'Đang xem xét' : o === 'Resolved' ? 'Đã giải quyết' : o === 'Rejected' ? 'Từ chối' : o === 'Low' ? 'Thấp' : o === 'Medium' ? 'Trung bình' : o === 'High' ? 'Cao' : o === 'Critical' ? 'Khẩn cấp' : o}</option>)}
-          </select>
+          </Select>
         ))}
       </div>
 
@@ -232,31 +233,31 @@ export default function GateIncidents() {
                 ))}
                 <div>
                   <label className="block text-slate uppercase text-[10px] mb-1">Làn cổng</label>
-                  <select value={createForm.gate} onChange={e => setCreateForm(p => ({ ...p, gate: e.target.value }))}
+                  <Select value={createForm.gate} onChange={e => setCreateForm(p => ({ ...p, gate: e.target.value }))}
                     className="w-full px-3.5 py-2 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange">
                     {['GATE-01', 'GATE-02'].map(g => <option key={g}>{g}</option>)}
-                  </select>
+                  </Select>
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate uppercase text-[10px] mb-1">Loại Sự Cố *</label>
-                  <select required value={createForm.type} onChange={e => setCreateForm(p => ({ ...p, type: e.target.value }))}
+                  <Select required value={createForm.type} onChange={e => setCreateForm(p => ({ ...p, type: e.target.value }))}
                     className="w-full px-3.5 py-2.5 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange">
                     <option value="">-- Chọn loại sự cố --</option>
                     {['Sai lệch biển số xe', 'Sai lệch tài xế', 'Sai lệch container', 'Đăng ký không hợp lệ', 'Hết hạn đăng ký',
                       'Ngoài khung giờ tiếp cận', 'Bằng lái không hợp lệ', 'Số chì niêm phong không khớp', 'Xe chưa đăng ký', 'Khác'].map(t => (
                       <option key={t}>{t}</option>
                     ))}
-                  </select>
+                  </Select>
                 </div>
                 <div>
                   <label className="block text-slate uppercase text-[10px] mb-1">Mức Độ Nghiêm Trọng</label>
-                  <select value={createForm.severity} onChange={e => setCreateForm(p => ({ ...p, severity: e.target.value }))}
+                  <Select value={createForm.severity} onChange={e => setCreateForm(p => ({ ...p, severity: e.target.value }))}
                     className="w-full px-3.5 py-2.5 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange">
                     {[['Low', 'Thấp'], ['Medium', 'Trung bình'], ['High', 'Cao'], ['Critical', 'Khẩn cấp']].map(([s, l]) => <option key={s} value={s}>{l}</option>)}
-                  </select>
+                  </Select>
                 </div>
               </div>
 

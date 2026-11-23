@@ -27,6 +27,7 @@ import '../../features/service-catalog/serviceRegistrations.css'
 import '../../features/service-catalog/serviceOrders.css'
 import ShippingPagination from '../ShippingLine/components/ShippingPagination'
 import { resolveMediaUrl } from '../../utils/mediaUtils'
+import Select from '../../components/ui/Select'
 
 const VOYAGE_STATUS_STYLES = {
   SCHEDULED: 'bg-slate-100 text-slate-700 border-slate-300',
@@ -3628,7 +3629,7 @@ export default function GateBookingRequests() {
 
 
 
-              <select
+              <Select
                 value={operationFilter}
                 onChange={e => setOperationFilter(e.target.value)}
                 className="h-9 px-3 bg-fog/60 hover:bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange cursor-pointer"
@@ -3636,9 +3637,9 @@ export default function GateBookingRequests() {
                 <option value="All">Mọi nghiệp vụ</option>
                 <option value="Pickup">Lấy cont (Pickup)</option>
                 <option value="Delivery">Hạ cont (Delivery)</option>
-              </select>
+              </Select>
 
-              <select
+              <Select
                 value={selectedVesselFilter}
                 onChange={e => setSelectedVesselFilter(e.target.value)}
                 className="h-9 px-3 bg-fog/60 hover:bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange max-w-[220px] truncate cursor-pointer"
@@ -3650,9 +3651,9 @@ export default function GateBookingRequests() {
                     🚢 {v.label}
                   </option>
                 ))}
-              </select>
+              </Select>
 
-              <select
+              <Select
                 value={dateFilter}
                 onChange={e => setDateFilter(e.target.value)}
                 className="h-9 px-3 bg-fog/60 hover:bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange cursor-pointer"
@@ -3664,7 +3665,7 @@ export default function GateBookingRequests() {
                     📅 {d}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
           </div>
 
@@ -4594,7 +4595,7 @@ export default function GateBookingRequests() {
             </div>
             <label>
               <span className="epc-sr-only">Trạng thái đơn</span>
-              <select
+              <Select
                 value={eportListStatus}
                 onChange={(e) => {
                   setEportListStatus(e.target.value)
@@ -4607,11 +4608,11 @@ export default function GateBookingRequests() {
                   .map(([val, label]) => (
                     <option key={val} value={val}>{label}</option>
                   ))}
-              </select>
+              </Select>
             </label>
             <label>
               <span className="epc-sr-only">Trạng thái thanh toán</span>
-              <select
+              <Select
                 value={eportListPaymentStatus}
                 onChange={(e) => {
                   setEportListPaymentStatus(e.target.value)
@@ -4622,11 +4623,11 @@ export default function GateBookingRequests() {
                 {['UNPAID', 'PENDING', 'PAID', 'FAILED', 'NOT_REQUIRED'].map((val) => (
                   <option key={val} value={val}>{paymentStatusLabels[val] || val}</option>
                 ))}
-              </select>
+              </Select>
             </label>
             <label>
               <span className="epc-sr-only">Luồng hàng</span>
-              <select
+              <Select
                 value={eportListFlow}
                 onChange={(e) => {
                   setEportListFlow(e.target.value)
@@ -4636,7 +4637,7 @@ export default function GateBookingRequests() {
                 <option value="">Mọi luồng hàng</option>
                 <option value="EXPORT">Hàng xuất</option>
                 <option value="IMPORT">Hàng nhập</option>
-              </select>
+              </Select>
             </label>
           </form>
 
@@ -5483,7 +5484,7 @@ export default function GateBookingRequests() {
             <div className="space-y-3 text-xs font-bold">
               <div>
                 <label className="block text-slate uppercase text-[10px] mb-1">Lý do từ chối *</label>
-                <select
+                <Select
                   value={rejectionReason}
                   onChange={e => setRejectionReason(e.target.value)}
                   className="w-full px-3.5 py-2.5 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-red-500 font-bold"
@@ -5496,7 +5497,7 @@ export default function GateBookingRequests() {
                   <option value="Chưa duyệt bản khai hàng hóa">Chưa duyệt khai báo hàng hóa / Manifest</option>
                   <option value="Cổng quá tải hoặc sai khung giờ">Cổng yêu cầu đã đầy dung lượng / Sai khung giờ hẹn</option>
                   <option value="Lý do khác">Lý do khác</option>
-                </select>
+                </Select>
               </div>
 
               <div>

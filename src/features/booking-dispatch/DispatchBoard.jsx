@@ -8,6 +8,7 @@ import './dispatchTheme.css'
 import { SmartRouteDetail } from './SmartRouteMonitor'
 import DispatchJourney from './JourneyTimeline'
 import { formatPlateNumber } from '../../utils/format'
+import Select from '../../components/ui/Select'
 
 const dateToday = () => vietnamDate(new Date())
 
@@ -147,7 +148,7 @@ export default function DispatchBoard() {
           {routeError && <div className="arrival-error" role="alert">{routeError} <button type="button" onClick={() => void reload()}>Thử lại</button></div>}
           {selected.group !== 'queue' && !route && !routesLoading && !routeError &&
             <p className="arrival-muted">Chưa có lộ trình container cho chuyến này.</p>}
-          {routes.length > 1 && <label className="dispatch-container-picker">Container<select value={route?.containerId || ''} onChange={event => setContainerId(event.target.value)}>{routes.map(item => <option key={item.containerId} value={item.containerId}>{item.containerNumber}</option>)}</select></label>}
+          {routes.length > 1 && <label className="dispatch-container-picker">Container<Select value={route?.containerId || ''} onChange={event => setContainerId(event.target.value)}>{routes.map(item => <option key={item.containerId} value={item.containerId}>{item.containerNumber}</option>)}</Select></label>}
           {route && <SmartRouteDetail selected={route} error={routeError} />}
           {selected.group === 'queue' && <>
           <div className="arrival-detail-tools"><span className={'arrival-status ' + displayState(selected)}>{statusLabel(selected)}</span>

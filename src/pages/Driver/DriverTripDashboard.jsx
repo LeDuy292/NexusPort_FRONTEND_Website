@@ -13,6 +13,7 @@ import {
 } from '../../services/tripService'
 import { subscribeDriverTripEvents } from '../../services/driverRealtimeService'
 import DriverYardNavigation from './DriverYardNavigation'
+import Select from '../../components/ui/Select'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const STATUS_CONFIG = {
@@ -360,7 +361,7 @@ function TripDetail({ trip, onBack, onTripUpdated, onOpenNavigation }) {
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-amber-900 mb-1">Tình trạng Container:</label>
-                <select
+                <Select
                   value={containerCondition}
                   onChange={e => setContainerCondition(e.target.value)}
                   className="w-full bg-white border border-amber-300 rounded-lg px-2.5 py-1.5 text-xs outline-none focus:ring-1 focus:ring-amber-500"
@@ -369,7 +370,7 @@ function TripDetail({ trip, onBack, onTripUpdated, onOpenNavigation }) {
                   <option value="Nguyên chì - Trầy xước nhẹ">Nguyên chì - Trầy xước nhẹ</option>
                   <option value="Móp góc bãi">Móp góc bãi</option>
                   <option value="Rách chì / Cần kiểm tra lại">Rách chì / Cần kiểm tra lại</option>
-                </select>
+                </Select>
               </div>
               <div>
                 <label className="block text-[11px] font-medium text-amber-900 mb-1">Nhân viên / Người nhận tại bãi:</label>

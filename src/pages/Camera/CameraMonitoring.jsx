@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react'
+import Select from '../../components/ui/Select'
 
 // ─── MOCK DATA ─────────────────────────────────────────────────────────────────
 const INITIAL_CAMERAS = [
@@ -480,13 +481,13 @@ export default function CameraMonitoring() {
         </div>
 
         {/* Status filter */}
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+        <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
           className="h-9 px-3 border border-chalk rounded-lg text-xs text-carbon bg-fog focus:outline-none focus:border-signal-orange">
           <option value="ALL">Tất cả trạng thái</option>
           <option value="ONLINE">🟢 Online</option>
           <option value="WARNING">🟡 Cảnh báo</option>
           <option value="OFFLINE">🔴 Offline</option>
-        </select>
+        </Select>
 
         <span className="text-[11px] text-slate ml-auto">{filtered.length} camera</span>
       </div>

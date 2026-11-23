@@ -292,7 +292,7 @@ export default function CarrierManagement() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-2 relative overflow-hidden">
           <span className="text-[10px] font-bold text-slate uppercase tracking-wider block">TỔNG ĐỐI TÁC</span>
-          <div className="text-3xl font-extrabold text-carbon font-mono">{kpis.total}</div>
+          <div className="text-3xl font-extrabold text-carbon tabular-nums">{kpis.total}</div>
           <div className="text-[10px] text-green-600 font-bold flex items-center gap-1">
             <span className="material-symbols-outlined text-xs">trending_up</span>
             +12% so với tháng trước
@@ -304,7 +304,7 @@ export default function CarrierManagement() {
 
         <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-2 relative overflow-hidden">
           <span className="text-[10px] font-bold text-slate uppercase tracking-wider block">ĐANG HOẠT ĐỘNG</span>
-          <div className="text-3xl font-extrabold text-green-600 font-mono">{kpis.active}</div>
+          <div className="text-3xl font-extrabold text-green-600 tabular-nums">{kpis.active}</div>
           <div className="text-[10px] text-slate font-medium">Tài khoản kết nối trực tiếp</div>
           <div className="absolute right-4 bottom-4 text-green-500/10">
             <span className="material-symbols-outlined text-4xl">task_alt</span>
@@ -313,7 +313,7 @@ export default function CarrierManagement() {
 
         <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-2 relative overflow-hidden">
           <span className="text-[10px] font-bold text-slate uppercase tracking-wider block">CHỜ PHÊ DUYỆT</span>
-          <div className="text-3xl font-extrabold text-signal-orange font-mono">{kpis.pending}</div>
+          <div className="text-3xl font-extrabold text-signal-orange tabular-nums">{kpis.pending}</div>
           <div className="text-[10px] text-slate font-medium">Cần xử lý phê duyệt tài khoản</div>
           <div className="absolute right-4 bottom-4 text-orange-500/10">
             <span className="material-symbols-outlined text-4xl">pending</span>
@@ -322,7 +322,7 @@ export default function CarrierManagement() {
 
         <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm space-y-2 relative overflow-hidden">
           <span className="text-[10px] font-bold text-slate uppercase tracking-wider block">BỊ KHÓA</span>
-          <div className="text-3xl font-extrabold text-red-600 font-mono">{kpis.locked}</div>
+          <div className="text-3xl font-extrabold text-red-600 tabular-nums">{kpis.locked}</div>
           <div className="text-[10px] text-slate font-medium">Vô hiệu hóa truy cập hệ thống</div>
           <div className="absolute right-4 bottom-4 text-red-500/10">
             <span className="material-symbols-outlined text-4xl">lock</span>
@@ -364,7 +364,7 @@ export default function CarrierManagement() {
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs border-collapse">
             <thead>
-              <tr className="bg-fog border-b border-chalk font-mono font-bold text-slate text-[10px] uppercase">
+              <tr className="bg-fog border-b border-chalk tabular-nums font-bold text-slate text-[10px] uppercase">
                 <th className="px-6 py-4">Tên Công ty</th>
                 <th className="px-6 py-4">Mã số thuế</th>
                 <th className="px-6 py-4">Người liên hệ</th>
@@ -387,9 +387,9 @@ export default function CarrierManagement() {
                       <div className="text-[10px] text-slate mt-0.5 truncate max-w-[200px]" title={carrier.address}>{carrier.address}</div>
                     </div>
                   </td>
-                  <td className="px-6 py-4 font-mono font-bold text-slate">{carrier.code}</td>
+                  <td className="px-6 py-4 tabular-nums font-bold text-slate">{carrier.code}</td>
                   <td className="px-6 py-4 font-semibold text-carbon">{carrier.contact}</td>
-                  <td className="px-6 py-4 font-mono text-slate">
+                  <td className="px-6 py-4 tabular-nums text-slate">
                     <div className="font-bold text-carbon">{carrier.email}</div>
                     <div className="text-[10px] mt-0.5">{carrier.phone}</div>
                   </td>
@@ -403,7 +403,7 @@ export default function CarrierManagement() {
                       {carrier.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 font-mono text-slate">{carrier.regDate}</td>
+                  <td className="px-6 py-4 tabular-nums text-slate">{carrier.regDate}</td>
                   <td className="px-6 py-4 text-right space-x-2" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => openDetailModal(carrier)}
@@ -487,11 +487,11 @@ export default function CarrierManagement() {
 
               {/* Profile Card Summary */}
               <div className="flex items-center gap-4 bg-fog p-4 rounded-xl border border-chalk">
-                <div className="w-12 h-12 rounded-xl bg-carbon text-white flex items-center justify-center text-xl font-bold font-mono">
+                <div className="w-12 h-12 rounded-xl bg-carbon text-white flex items-center justify-center text-xl font-bold tabular-nums">
                   {selectedCarrier.code}
                 </div>
                 <div className="flex-1">
-                  <div className="text-xs text-slate font-mono">ID: {selectedCarrier.id}</div>
+                  <div className="text-xs text-slate tabular-nums">ID: {selectedCarrier.id}</div>
                   {isEditingDetail ? (
                     <div className="mt-1 flex items-center gap-2">
                       <span className="text-xs font-bold whitespace-nowrap">Tên Cty:</span>
@@ -521,17 +521,17 @@ export default function CarrierManagement() {
                     {isEditingDetail ? (
                       <input
                         type="text"
-                        className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full font-mono uppercase focus:outline-none focus:border-signal-orange mt-1 font-bold"
+                        className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full tabular-nums uppercase focus:outline-none focus:border-signal-orange mt-1 font-bold"
                         value={editFormData.taxCode || ''}
                         onChange={(e) => setEditFormData({ ...editFormData, taxCode: e.target.value.toUpperCase() })}
                       />
                     ) : (
-                      <span className="font-mono font-semibold text-carbon">{selectedCarrier.code}</span>
+                      <span className="tabular-nums font-semibold text-carbon">{selectedCarrier.code}</span>
                     )}
                   </div>
                   <div>
                     <span className="text-slate block">Ngày tham gia:</span>
-                    <span className="font-mono font-semibold text-carbon">{selectedCarrier.regDate}</span>
+                    <span className="tabular-nums font-semibold text-carbon">{selectedCarrier.regDate}</span>
                   </div>
 
                   <div className="col-span-2">
@@ -574,12 +574,12 @@ export default function CarrierManagement() {
                     {isEditingDetail ? (
                       <input
                         type="text"
-                        className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full font-mono focus:outline-none focus:border-signal-orange mt-1"
+                        className="bg-white border border-chalk rounded px-2 py-1 text-xs w-full tabular-nums focus:outline-none focus:border-signal-orange mt-1"
                         value={editFormData.phone || ''}
                         onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
                       />
                     ) : (
-                      <span className="font-mono font-semibold text-carbon">{selectedCarrier.phone}</span>
+                      <span className="tabular-nums font-semibold text-carbon">{selectedCarrier.phone}</span>
                     )}
                   </div>
 
@@ -597,12 +597,12 @@ export default function CarrierManagement() {
                           <input
                             type="email"
                             required
-                            className="bg-white border border-chalk rounded-lg p-2 text-xs w-full font-mono focus:outline-none focus:border-signal-orange font-bold text-carbon"
+                            className="bg-white border border-chalk rounded-lg p-2 text-xs w-full tabular-nums focus:outline-none focus:border-signal-orange font-bold text-carbon"
                             value={editFormData.email || ''}
                             onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
                           />
                         ) : (
-                          <div className="font-mono font-bold text-sm text-carbon bg-white p-2 rounded-lg border border-chalk">
+                          <div className="tabular-nums font-bold text-sm text-carbon bg-white p-2 rounded-lg border border-chalk">
                             {selectedCarrier.email}
                           </div>
                         )}
@@ -613,7 +613,7 @@ export default function CarrierManagement() {
                         <span className="material-symbols-outlined text-signal-orange text-base flex-shrink-0 mt-0.5">lock</span>
                         <div className="text-[11px] leading-relaxed">
                           <strong className="text-carbon font-bold block">Mật khẩu bảo mật cá nhân:</strong>
-                          Tài khoản ban đầu được cấp với mật khẩu hệ thống mặc định (<code className="bg-fog px-1.5 py-0.5 rounded text-carbon font-mono font-bold">{DEFAULT_SYSTEM_PASSWORD}</code>). Quản trị viên <strong>không thể can thiệp hoặc thay đổi mật khẩu</strong> của đối tác; chủ tài khoản sẽ tự đổi mật khẩu riêng sau khi đăng nhập.
+                          Tài khoản ban đầu được cấp với mật khẩu hệ thống mặc định (<code className="bg-fog px-1.5 py-0.5 rounded text-carbon tabular-nums font-bold">{DEFAULT_SYSTEM_PASSWORD}</code>). Quản trị viên <strong>không thể can thiệp hoặc thay đổi mật khẩu</strong> của đối tác; chủ tài khoản sẽ tự đổi mật khẩu riêng sau khi đăng nhập.
                         </div>
                       </div>
                     </div>
@@ -637,10 +637,10 @@ export default function CarrierManagement() {
                         <div key={driver.id} className="p-3 bg-fog rounded-lg border border-chalk text-xs font-bold text-carbon flex justify-between items-center">
                           <div className="flex flex-col">
                             <span className="text-sm">👤 {driver.fullName}</span>
-                            <span className="text-[10px] text-slate font-mono font-normal mt-0.5">GPLX: {driver.licenseNumber} • CCCD: {driver.idCardNumber}</span>
+                            <span className="text-[10px] text-slate tabular-nums font-normal mt-0.5">GPLX: {driver.licenseNumber} • CCCD: {driver.idCardNumber}</span>
                           </div>
                           <div className="flex flex-col items-end">
-                            <span className={`text-[10px] px-2 py-0.5 rounded border font-mono ${driver.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : driver.status === 'inactive' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
+                            <span className={`text-[10px] px-2 py-0.5 rounded border tabular-nums ${driver.status === 'active' ? 'bg-green-50 text-green-700 border-green-200' : driver.status === 'inactive' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-red-50 text-red-700 border-red-200'}`}>
                               {driver.status === 'active' ? 'Sẵn sàng' : driver.status === 'inactive' ? 'Tạm nghỉ' : 'Đình chỉ'}
                             </span>
                             <span className="text-[10px] text-slate font-normal mt-0.5">LH: {driver.phone}</span>
@@ -743,7 +743,7 @@ export default function CarrierManagement() {
 
                 <div className="flex justify-between items-center text-xs pb-2 border-b border-chalk">
                   <span className="text-slate font-medium">Email đăng nhập:</span>
-                  <div className="flex items-center gap-1.5 font-mono font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded">
+                  <div className="flex items-center gap-1.5 tabular-nums font-bold text-orange-700 bg-orange-50 px-2 py-0.5 rounded">
                     <span>{createdAccountModal.email}</span>
                     <button
                       type="button"
@@ -761,7 +761,7 @@ export default function CarrierManagement() {
 
                 <div className="flex justify-between items-center text-xs pb-2 border-b border-chalk">
                   <span className="text-slate font-medium">Mật khẩu khởi tạo:</span>
-                  <div className="flex items-center gap-2 font-mono font-bold text-carbon bg-slate-100 px-2.5 py-1 rounded border border-chalk">
+                  <div className="flex items-center gap-2 tabular-nums font-bold text-carbon bg-slate-100 px-2.5 py-1 rounded border border-chalk">
                     <span className="tracking-wider">
                       {modalShowPassword ? createdAccountModal.password : '••••••••••••'}
                     </span>
@@ -797,7 +797,7 @@ export default function CarrierManagement() {
 
               <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-800 flex items-start gap-2">
                 <span className="material-symbols-outlined text-amber-600 text-base flex-shrink-0 mt-0.5">info</span>
-                <span>Tài khoản dùng mật khẩu khởi tạo chung của hệ thống (<strong className="font-mono">{DEFAULT_SYSTEM_PASSWORD}</strong>). Chủ doanh nghiệp vui lòng tự đổi mật khẩu sau khi đăng nhập vào hệ thống.</span>
+                <span>Tài khoản dùng mật khẩu khởi tạo chung của hệ thống (<strong className="tabular-nums">{DEFAULT_SYSTEM_PASSWORD}</strong>). Chủ doanh nghiệp vui lòng tự đổi mật khẩu sau khi đăng nhập vào hệ thống.</span>
               </div>
 
               <div className="flex gap-2">
@@ -882,7 +882,7 @@ export default function CarrierManagement() {
                     value={newCarrier.code}
                     onChange={(e) => setNewCarrier({ ...newCarrier, code: e.target.value.toUpperCase() })}
                     placeholder="VD: 0311234567"
-                    className="w-full bg-fog border border-chalk rounded-lg p-2.5 uppercase font-mono font-bold focus:outline-none focus:border-signal-orange"
+                    className="w-full bg-fog border border-chalk rounded-lg p-2.5 uppercase tabular-nums font-bold focus:outline-none focus:border-signal-orange"
                   />
                 </div>
                 <div className="space-y-1">
@@ -903,7 +903,7 @@ export default function CarrierManagement() {
                     value={newCarrier.phone}
                     onChange={(e) => setNewCarrier({ ...newCarrier, phone: e.target.value })}
                     placeholder="VD: 0901 234 567"
-                    className="w-full bg-fog border border-chalk rounded-lg p-2.5 focus:outline-none focus:border-signal-orange font-mono"
+                    className="w-full bg-fog border border-chalk rounded-lg p-2.5 focus:outline-none focus:border-signal-orange tabular-nums"
                   />
                 </div>
 
@@ -923,7 +923,7 @@ export default function CarrierManagement() {
                         value={newCarrier.email}
                         onChange={(e) => setNewCarrier({ ...newCarrier, email: e.target.value })}
                         placeholder="VD: contact@carrier.com"
-                        className="w-full bg-white border border-chalk rounded-lg p-2.5 font-mono text-carbon focus:outline-none focus:border-signal-orange font-bold text-xs"
+                        className="w-full bg-white border border-chalk rounded-lg p-2.5 tabular-nums text-carbon focus:outline-none focus:border-signal-orange font-bold text-xs"
                       />
                       <span className="text-[10px] text-slate block">Email công ty dùng làm tài khoản đăng nhập.</span>
                     </div>
@@ -935,7 +935,7 @@ export default function CarrierManagement() {
                           type={showAddPassword ? 'text' : 'password'}
                           readOnly
                           value={DEFAULT_SYSTEM_PASSWORD}
-                          className="w-full bg-slate-100 border border-chalk rounded-lg p-2.5 pr-10 font-mono tracking-wider text-carbon cursor-not-allowed select-none font-bold text-xs"
+                          className="w-full bg-slate-100 border border-chalk rounded-lg p-2.5 pr-10 tabular-nums tracking-wider text-carbon cursor-not-allowed select-none font-bold text-xs"
                         />
                         <button
                           type="button"
