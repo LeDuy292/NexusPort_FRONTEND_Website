@@ -1,15 +1,22 @@
 import React, { useState } from 'react'
+import YardZoneBlockSelectorModal from './YardZoneBlockSelectorModal'
+import YardSlotReservationModal from './YardSlotReservationModal'
 
 export default function ContainerYardDetailModal({
   isOpen,
   onClose,
   containerData,
   onOpenHistory,
+  onChangeYardSlot,
 }) {
   const [activeTab, setActiveTab] = useState('overview') // 'overview' | 'booking' | 'documents' | 'inspection' | 'history'
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [activeDocType, setActiveDocType] = useState('eir')
   const [zoomLevel, setZoomLevel] = useState(1)
+  const [showZoneSelectorModal, setShowZoneSelectorModal] = useState(false)
+  const [selectedBlockForReservation, setSelectedBlockForReservation] = useState(null)
+  const [showYardReservationModal, setShowYardReservationModal] = useState(false)
+  const [liveSlotOverride, setLiveSlotOverride] = useState(null)
 
   if (!isOpen || !containerData) return null
 
@@ -109,15 +116,32 @@ export default function ContainerYardDetailModal({
   const weightClass = weightNum > 20000 ? 'HEAVY (>20T)' : weightNum >= 12000 ? 'MEDIUM (12-20T)' : 'LIGHT (<12T)'
   const weightBadgeColor = weightNum > 20000 ? 'bg-red-100 text-red-800 border-red-200' : weightNum >= 12000 ? 'bg-amber-100 text-amber-800 border-amber-200' : 'bg-emerald-100 text-emerald-800 border-emerald-200'
 
-  const blockCode = containerData.block || containerData.blockCode || 'A01'
-  const bay = String(containerData.bay || 2).padStart(2, '0')
-  const row = String(containerData.row || 6).padStart(2, '0')
-  const tier = containerData.tier || 1
-  const slotCode = containerData.slotCode || `${blockCode}.${bay}.${row}.${tier}`
+  const blockCode = liveSlotOverride?.blockCode || liveSlotOverride?.block || containerData.block || containerData.blockCode || 'A01'
+  const bay = String(liveSlotOverride?.bay || containerData.bay || 2).padStart(2, '0')
+  const row = String(liveSlotOverride?.row || containerData.row || 6).padStart(2, '0')
+  const tier = liveSlotOverride?.tier || containerData.tier || 1
+  const slotCode = liveSlotOverride?.posCode || containerData.slotCode || `${blockCode}.${bay}.${row}.${tier}`
 
   const coveredBays = is40 
-    ? (containerData.coveredBays?.length ? containerData.coveredBays : [String(Number(bay) - 1).padStart(2, '0'), String(Number(bay) + 1).padStart(2, '0')])
+    ? (liveSlotOverride?.coveredBays?.length ? liveSlotOverride.coveredBays : containerData.coveredBays?.length ? containerData.coveredBays : [String(Number(bay) - 1).padStart(2, '0'), String(Number(bay) + 1).padStart(2, '0')])
     : [bay]
+
+  const handleOpenChangeSlot = () => {
+    if (onChangeYardSlot) {
+      onChangeYardSlot({
+        ...containerData,
+        containerNo,
+        containerId: containerNo,
+        size,
+        blockCode,
+        bay,
+        row,
+        tier,
+      })
+    } else {
+      setShowZoneSelectorModal(true)
+    }
+  }
 
   return (
     <div
@@ -253,9 +277,20 @@ export default function ContainerYardDetailModal({
                       <span className="material-symbols-outlined text-base">location_on</span>
                       TỌA ĐỘ VỊ TRÍ CHÍNH XÁC TẠI CẢNG TIÊN SA
                     </span>
-                    <span className="text-xs font-mono font-bold text-carbon bg-white px-2.5 py-1 rounded-lg border border-orange-200">
-                      MÃ SLOT: {slotCode}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-mono font-bold text-carbon bg-white px-2.5 py-1 rounded-lg border border-orange-200">
+                        MÃ SLOT: {slotCode}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleOpenChangeSlot}
+                        className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-bold transition inline-flex items-center gap-1 shadow-xs cursor-pointer active:scale-95"
+                        title="Đổi vị trí xếp bãi cho container này (Quy trình 2 phần: Chọn Bay & Chọn Chỗ)"
+                      >
+                        <span className="material-symbols-outlined text-sm">swap_horiz</span>
+                        <span>Đổi bãi</span>
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-4 gap-2.5 text-center">
@@ -640,6 +675,16 @@ export default function ContainerYardDetailModal({
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={handleOpenChangeSlot}
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer active:scale-95"
+              title="Mở sơ đồ 2 phần (Chọn Bay & Chọn Chỗ) để đổi vị trí xếp bãi"
+            >
+              <span className="material-symbols-outlined text-sm">swap_horiz</span>
+              <span>Đổi bãi</span>
+            </button>
+
+            <button
+              type="button"
               onClick={() => {
                 onClose?.()
                 onOpenHistory?.({
@@ -692,6 +737,66 @@ export default function ContainerYardDetailModal({
         </div>
 
       </div>
+
+      {/* Bước 1: Sơ Đồ Phân Khu Bãi Container Tiên Sa (Bản đồ chọn Block trực tiếp) */}
+      {showZoneSelectorModal && (
+        <YardZoneBlockSelectorModal
+          isOpen={showZoneSelectorModal}
+          onClose={() => {
+            setShowZoneSelectorModal(false)
+            setSelectedBlockForReservation(null)
+          }}
+          container={{
+            ...containerData,
+            containerNumber: containerNo,
+            containerId: containerNo,
+            size,
+          }}
+          currentSlot={`${blockCode}-${bay}-R${row}-T${tier}`}
+          onSelectBlock={(selectedBlock) => {
+            setSelectedBlockForReservation(selectedBlock)
+            setShowZoneSelectorModal(false)
+            setShowYardReservationModal(true)
+          }}
+        />
+      )}
+
+      {/* Bước 2: Modal Đổi Vị Trí Bãi 2D (Chọn Bay & Slot trên mặt cắt Block) */}
+      {showYardReservationModal && (
+        <YardSlotReservationModal
+          isOpen={showYardReservationModal}
+          onClose={() => {
+            setShowYardReservationModal(false)
+            setSelectedBlockForReservation(null)
+          }}
+          block={selectedBlockForReservation || blockCode}
+          booking={{
+            id: containerNo,
+            containerId: containerNo,
+            containerNo,
+            containerNumber: containerNo,
+            size,
+            containerType: containerData?.containerType || (is40 ? '40HC' : '20GP'),
+            vesselName: containerData?.vesselName,
+            voyageNumber: containerData?.voyageNumber,
+            manifestId: containerData?.manifestId || containerData?.sourceManifestId,
+          }}
+          currentReservation={{
+            blockCode: selectedBlockForReservation?.blockCode || blockCode,
+            bay: Number(bay),
+            row: Number(row),
+            tier: Number(tier),
+            size,
+            containerNo,
+            containerId: containerNo,
+          }}
+          onConfirm={(newRes) => {
+            setLiveSlotOverride(newRes)
+            setShowYardReservationModal(false)
+            setSelectedBlockForReservation(null)
+          }}
+        />
+      )}
     </div>
   )
 }

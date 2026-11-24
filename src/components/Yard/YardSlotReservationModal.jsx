@@ -2,7 +2,25 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { padPosition } from '../../features/yard-design/positions'
 import { yardReservationStore } from '../../services/yardReservationStore'
 import { manifestPortSyncService } from '../../services/manifestPortSyncService'
+import { resolveTargetBlock, isContainer20, getContainerKey } from '../../services/yardPlanningRules'
 import tienSaLayout from '../../features/yard-design/tienSaLayout.json'
+import Select from '../ui/Select'
+import apiClient from '../../services/apiClient'
+
+// Helper tính mảng module (0-indexed) mà container chiếm dụng dựa trên Bay & Size
+function getModulesForBay(bayNum, size) {
+  const b = Number(bayNum) || 1
+  if (size === 40 || b % 2 === 0) {
+    // 40ft kép chiếm 2 module: bay 2 -> module 0 & 1; bay 6 -> module 2 & 3; bay 10 -> module 4 & 5
+    const m = b % 2 === 0 ? Math.floor(b / 2) - 1 : Math.floor((b - 1) / 2)
+    const start = Math.max(0, m)
+    return [start, start + 1]
+  } else {
+    // 20ft đơn chiếm 1 module: bay 1 -> module 0; bay 3 -> module 1; bay 5 -> module 2
+    const m = Math.floor((b - 1) / 2)
+    return [Math.max(0, m)]
+  }
+}
 
 export default function YardSlotReservationModal({
   isOpen,
@@ -11,6 +29,8 @@ export default function YardSlotReservationModal({
   booking,
   currentReservation,
   onConfirm,
+  siblingContainers = [],
+  manualOverrides = {},
 }) {
   // Toàn bộ các Khu Bãi (Block) chuẩn Cảng Tiên Sa từ Bản đồ thiết kế
   const availableBlocks = useMemo(() => {
@@ -25,6 +45,17 @@ export default function YardSlotReservationModal({
       planning: a.planning || { bayModules: 28, rows: 6, tiers: 4 }
     }))
   }, [])
+
+  // Hiện trạng bãi THẬT: tải sơ đồ bãi mỗi lần mở để biết ô nào đang có container / đã giữ chỗ
+  const [liveSlots, setLiveSlots] = useState(null)
+  useEffect(() => {
+    if (!isOpen) return undefined
+    let alive = true
+    apiClient.get('/yard/layout')
+      .then((res) => { if (alive) setLiveSlots(res.data?.data?.slots || []) })
+      .catch(() => { if (alive) setLiveSlots(null) })
+    return () => { alive = false }
+  }, [isOpen])
 
   // State Block đang được chọn để tương tác 2D
   const [activeBlock, setActiveBlock] = useState(block)
@@ -46,6 +77,7 @@ export default function YardSlotReservationModal({
   const [size, setSize] = useState(isDefault40 ? 40 : 20)
   const [currentTier, setCurrentTier] = useState(1)
   const [warningMessage, setWarningMessage] = useState('')
+  const [successNotice, setSuccessNotice] = useState('')
   
   // Total modules, rows and tiers for this block
   const bayModules = useMemo(() => {
@@ -73,72 +105,88 @@ export default function YardSlotReservationModal({
   // 1. TẬP HỢP TOÀN BỘ CÁC CONTAINER ĐANG CÓ MẶT TẠI BLOCK NÀY (ĐỂ HIỂN THỊ RÕ RÀNG VÀ TRÁNH VA CHẠM)
   const existingYardContainers = useMemo(() => {
     if (!isOpen) return []
-    const allStoreReservations = yardReservationStore.getReservationsSync()
+    const curBlock = String(currentBlockCode || '').trim().toUpperCase()
+    const targetContKey = String(currentContId || '').trim().toUpperCase()
 
-    // 1.1 Các container KHÁC đã được giữ chỗ trước tại Block này
-    const otherReservations = allStoreReservations.filter((r) => {
-      const rCont = (r.containerId || r.containerNo || r.booking?.containerId || '').trim().toUpperCase()
-      const rBook = (r.bookingCode || r.booking?.id || '').trim().toUpperCase()
-      const isSameContainer = (currentContId && rCont === currentContId) || (currentBookId && rBook === currentBookId)
-      const isSameBlock = (r.blockCode === currentBlockCode || r.block === currentBlockCode)
-      return isSameBlock && !isSameContainer
-    })
+    const result = []
+    const seenSlots = new Set()
 
-    const syntheticReservations = otherReservations.map((r) => {
-      const rSize = Number(r.size) || 40
-      const bayNum = Number(r.bay)
-      // Với 40ft: bay 02 -> moduleStart = 1; bay 12 -> moduleStart = 6
-      const modStart = rSize === 40 
-        ? (bayNum % 2 === 0 ? bayNum / 2 : Math.floor(bayNum / 2))
-        : Math.ceil(bayNum / 2)
+    const addContRecord = (item, source) => {
+      if (!item) return
+      const cId = (item.containerId || item.containerNo || item.containerNumber || item.id || '').trim().toUpperCase()
+      // Bỏ qua container hiện tại đang được điều độ chọn vị trí mới
+      if (targetContKey && cId === targetContKey) return
 
-      return {
-        id: `res-${r.posId || r.slotId || bayNum}`,
-        block: r.blockCode || currentBlockCode,
+      const override = manualOverrides[cId] || manualOverrides[item.containerNumber] || manualOverrides[item.id]
+      const slot = override || item.autoYardSlot || item.slot || {}
+      const blockCode = (
+        override?.blockCode ||
+        override?.block ||
+        slot.blockCode ||
+        slot.block ||
+        item.blockCode ||
+        item.block ||
+        resolveTargetBlock(item, 'IMPORT') ||
+        'C10'
+      ).trim().toUpperCase()
+
+      if (blockCode !== curBlock) return
+
+      const is20 = isContainer20({ ...item, ...slot }) || (Number(slot.bay || item.bay || 0) % 2 !== 0)
+      const sizeNum = is20 ? 20 : 40
+      const bayNum = Number(override?.bay || slot.bay || item.bay || (is20 ? 1 : 2))
+      const rowNum = Number(override?.row || slot.row || item.row || 1)
+      const grossKg = Number(item.grossWeightKg || 22000)
+      const tierNum = Number(override?.tier || slot.tier || item.tier || (grossKg >= 22000 ? 1 : 2))
+      const coveredMods = getModulesForBay(bayNum, sizeNum)
+
+      const key = `${rowNum}-${tierNum}-${coveredMods[0]}`
+      if (seenSlots.has(key)) return
+      seenSlots.add(key)
+
+      const isSibling = source === 'sibling' || Boolean(item.isSiblingVessel)
+      const isRes = source === 'store' || source === 'manifest' || item.status === 'reserved'
+
+      result.push({
+        id: item.id || `occ-${cId || key}`,
+        block: curBlock,
+        blockCode: curBlock,
         bay: bayNum,
-        row: Number(r.row),
-        tier: Number(r.tier),
-        moduleStart: Math.max(1, modStart),
-        moduleSpan: rSize === 40 ? 2 : 1,
-        containerLengthFt: rSize,
-        status: r.status ? String(r.status).toLowerCase() : 'reserved',
-        containerNumber: r.containerNo || r.containerId || 'CONT ĐÃ GIỮ',
-        isOtherReserved: true,
-      }
-    })
+        row: rowNum,
+        tier: tierNum,
+        size: sizeNum,
+        containerLengthFt: sizeNum,
+        moduleSpan: sizeNum === 40 ? 2 : 1,
+        moduleStart: coveredMods[0] + 1,
+        coveredModules: coveredMods,
+        status: isSibling ? 'sibling_vessel' : (isRes ? 'reserved' : (item.status || 'occupied')),
+        containerNumber: cId || item.containerNumber || 'CONT BÃI',
+        isSiblingVessel: isSibling,
+        isOtherReserved: isRes && !isSibling,
+        isBackendOccupied: !isSibling && !isRes,
+        vesselName: item.vesselName || booking?.vesselName || '',
+      })
+    }
 
-    // 1.2 Các container đang lưu bãi (occupied) từ API Backend của Block này
-    const backendOccupied = (block?.slots || []).filter((s) => {
-      const isBusy = s.status && s.status !== 'empty' && (s.status === 'occupied' || s.status === 'reserved' || s.containerNumber)
-      if (!isBusy) return false
-      // Không tính container của chính booking hiện tại
-      const sCont = (s.containerNumber || s.containerId || '').trim().toUpperCase()
-      if (currentContId && sCont === currentContId) return false
-      return true
-    }).map((s) => {
-      const sSize = Number(s.containerLengthFt) || Number(s.size) || 20
-      const bayNum = Number(s.bay)
-      const modStart = sSize === 40 
-        ? (bayNum % 2 === 0 ? bayNum / 2 : Math.floor(bayNum / 2))
-        : Math.ceil(bayNum / 2)
+    // 1. Các container cùng tàu/cùng chuyến đang duyệt
+    (siblingContainers || []).forEach(c => addContRecord(c, 'sibling'))
 
-      return {
-        ...s,
-        bay: bayNum,
-        row: Number(s.row),
-        tier: Number(s.tier),
-        moduleStart: s.moduleStart || Math.max(1, modStart),
-        moduleSpan: sSize === 40 ? 2 : 1,
-        containerLengthFt: sSize,
-        status: s.status || 'occupied',
-        containerNumber: s.containerNumber || s.containerId || 'CONT LƯU BÃI',
-        isBackendOccupied: true,
-      }
-    })
+    // 2. Toàn bộ các đặt chỗ đã lưu trong yardReservationStore
+    const storeRes = yardReservationStore.getReservationsSync() || []
+    storeRes.forEach(r => addContRecord(r, 'store'))
 
-    // Gộp và ưu tiên reservation mới nhất
-    return [...syntheticReservations, ...backendOccupied]
-  }, [isOpen, currentBlockCode, currentContId, currentBookId, block?.slots])
+    // 3. Toàn bộ các container từ các chuyến tàu đã sinh gate bookings
+    const manifestBookings = manifestPortSyncService.getGeneratedGateBookings() || []
+    manifestBookings.forEach(b => addContRecord(b, 'manifest'))
+
+    // 4. Các slot occupied thực tế từ backend
+    const sourceSlots = liveSlots
+      ? liveSlots.filter((s) => String(s.block || '').toUpperCase() === curBlock)
+      : (block?.slots || [])
+    sourceSlots.filter(s => s.status && s.status !== 'empty').forEach(s => addContRecord(s, 'backend'))
+
+    return result
+  }, [isOpen, currentBlockCode, currentContId, currentBookId, block?.slots, liveSlots, siblingContainers, manualOverrides])
 
   // Khi mở Modal: tự động lấy vị trí hiện tại đã lưu của container này để hiển thị chuẩn xác (chỉ khởi tạo khi mở hoặc đổi block, không reset khi re-render)
   useEffect(() => {
@@ -171,17 +219,14 @@ export default function YardSlotReservationModal({
           existingRes &&
           existingRes.bay &&
           existingRes.row &&
-          (existingRes.blockCode === currentBlockCode || existingRes.block === currentBlockCode)
+          String(existingRes.blockCode || existingRes.block || '').trim().toUpperCase() === String(currentBlockCode).trim().toUpperCase()
         )
 
         if (isReservedInThisBlock) {
           // Container ĐÃ nằm tại chính Block này -> Highlight đúng vị trí đang nằm
           const bayNum = Number(existingRes.bay)
-          let modIdx = initialSize === 40 
-            ? (bayNum % 2 === 0 ? (bayNum / 2) - 1 : Math.floor(bayNum / 2))
-            : Math.floor((bayNum - 1) / 2)
-          
-          modIdx = Math.max(0, Math.min(modIdx, bayModules - (initialSize === 40 ? 2 : 1)))
+          const coveredMods = getModulesForBay(bayNum, initialSize)
+          const modIdx = Math.max(0, Math.min(coveredMods[0], bayModules - (initialSize === 40 ? 2 : 1)))
           const resTier = Number(existingRes.tier) || 1
           setCurrentTier(resTier)
 
@@ -204,20 +249,19 @@ export default function YardSlotReservationModal({
   // Tọa độ gốc nơi container đang thực sự nằm trong Block này (nếu có)
   const originCellInThisBlock = useMemo(() => {
     if (!existingReservation) return null
-    const resBlock = existingReservation.blockCode || existingReservation.block
-    if (resBlock !== currentBlockCode) return null
+    const resBlock = String(existingReservation.blockCode || existingReservation.block || '').trim().toUpperCase()
+    if (resBlock !== String(currentBlockCode).trim().toUpperCase()) return null
     const resSize = Number(existingReservation.size) || (isDefault40 ? 40 : 20)
-    const bayNum = Number(existingReservation.bay) || 2
-    let modIdx = resSize === 40
-      ? (bayNum % 2 === 0 ? (bayNum / 2) - 1 : Math.floor(bayNum / 2))
-      : Math.floor((bayNum - 1) / 2)
-    modIdx = Math.max(0, Math.min(modIdx, bayModules - (resSize === 40 ? 2 : 1)))
+    const bayNum = Number(existingReservation.bay) || (resSize === 40 ? 2 : 1)
+    const coveredMods = getModulesForBay(bayNum, resSize)
+    const modIdx = Math.max(0, Math.min(coveredMods[0], bayModules - (resSize === 40 ? 2 : 1)))
     return {
       module: modIdx,
       row: Number(existingReservation.row) || 1,
       tier: Number(existingReservation.tier) || 1,
       size: resSize,
       bay: bayNum,
+      coveredModules: coveredMods,
     }
   }, [existingReservation, currentBlockCode, isDefault40, bayModules])
 
@@ -236,13 +280,10 @@ export default function YardSlotReservationModal({
   // Helper tìm container đang nằm tại toạ độ moduleIndex, row, tier
   const findExistingContainerAt = (modIdx, rowNum, tierNum) => {
     return existingYardContainers.find((item) => {
-      if (Number(item.row) !== rowNum || Number(item.tier) !== tierNum) return false
-      if (item.moduleSpan === 2) {
-        const mStart = item.moduleStart - 1
-        return modIdx === mStart || modIdx === mStart + 1
-      }
-      const bayOdd = modIdx * 2 + 1
-      return Number(item.bay) === bayOdd || Number(item.bay) === bayOdd + 1
+      if (Number(item.row) !== Number(rowNum) || Number(item.tier) !== Number(tierNum)) return false
+      const itemSize = Number(item.size || item.containerLengthFt || (item.moduleSpan === 2 ? 40 : 20))
+      const coveredMods = item.coveredModules || getModulesForBay(item.bay, itemSize)
+      return coveredMods.includes(modIdx)
     })
   }
 
@@ -389,6 +430,9 @@ export default function YardSlotReservationModal({
       containerNo: booking?.containerId,
       containerId: booking?.containerId,
     };
+
+    setSuccessNotice(`✅ Đã chọn vị trí: Block ${currentBlockCode} · Bay ${padPosition(primaryBay)} (Hàng ${selection.row} · Tầng ${currentTier}) cho container ${booking?.containerId || ''}!`)
+
     onConfirm?.(reservation);
     // Sync with transport system
     manifestPortSyncService.syncYardSlotAcrossAll({
@@ -400,7 +444,10 @@ export default function YardSlotReservationModal({
       vesselName: booking?.vesselName || '',
       voyageNumber: booking?.voyageNumber || ''
     }).catch(err => console.warn('Sync error', err));
-    onClose?.();
+
+    setTimeout(() => {
+      onClose?.();
+    }, 300);
   }
 
   const isReservedInOtherBlock = existingReservation && 
@@ -441,7 +488,7 @@ export default function YardSlotReservationModal({
             <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/90 px-3 py-1.5 rounded-xl shadow-2xs">
               <span className="material-symbols-outlined text-sm text-orange-600">location_on</span>
               <span className="text-xs font-bold text-slate-700">Khu Bãi:</span>
-              <select
+              <Select
                 value={currentBlockCode}
                 onChange={(e) => {
                   const targetCode = e.target.value
@@ -459,7 +506,7 @@ export default function YardSlotReservationModal({
                     Block {b.blockCode} {b.zone ? `· Khu ${b.zone}` : ''}
                   </option>
                 ))}
-              </select>
+              </Select>
             </div>
 
             <button
@@ -471,6 +518,14 @@ export default function YardSlotReservationModal({
             </button>
           </div>
         </div>
+
+        {/* Thông báo thành công khi xác nhận vị trí */}
+        {successNotice && (
+          <div className="flex items-center gap-2.5 p-3 rounded-2xl bg-emerald-50 border-2 border-emerald-500 text-emerald-950 text-xs shadow-md animate-in fade-in duration-200">
+            <span className="material-symbols-outlined text-emerald-600 text-xl flex-shrink-0">check_circle</span>
+            <span className="font-extrabold flex-1 text-emerald-900">{successNotice}</span>
+          </div>
+        )}
 
         {/* Thông báo va chạm hoặc vị trí Block khác */}
         {warningMessage && (
@@ -662,6 +717,10 @@ export default function YardSlotReservationModal({
               <span className="font-medium text-slate-700">Vị trí mới chọn</span>
             </div>
             <div className="flex items-center gap-1.5">
+              <span className="w-4 h-3 rounded bg-purple-100 border-2 border-purple-500"></span>
+              <span className="font-bold text-purple-900">Cont cùng tàu (Đang xếp)</span>
+            </div>
+            <div className="flex items-center gap-1.5">
               <span className="w-4 h-3 rounded bg-amber-100 border border-amber-500"></span>
               <span className="font-medium text-slate-700">Cont khác đã đặt (Bận)</span>
             </div>
@@ -740,7 +799,7 @@ export default function YardSlotReservationModal({
                         originCellInThisBlock &&
                         originCellInThisBlock.tier === currentTier &&
                         row === originCellInThisBlock.row &&
-                        moduleIdx === originCellInThisBlock.module
+                        (originCellInThisBlock.coveredModules ? originCellInThisBlock.coveredModules.includes(moduleIdx) : moduleIdx === originCellInThisBlock.module)
                       )
 
                       if (isSelected) {
@@ -797,7 +856,7 @@ export default function YardSlotReservationModal({
                         )
                       }
 
-                      // 2. Container khác
+                      // 2. Container khác (hoặc cont cùng tàu, cont lưu bãi)
                       const existingCont = findExistingContainerAt(moduleIdx, row, currentTier)
                       if (existingCont) {
                         const is40Cont = existingCont.moduleSpan === 2 || Number(existingCont.containerLengthFt) === 40
@@ -808,7 +867,11 @@ export default function YardSlotReservationModal({
 
                         const contStatus = (existingCont.status || '').toLowerCase()
                         const isRes = contStatus === 'reserved'
-                        const isOccupiedInYard = !isRes // Đang lưu bãi thực tế (occupied / in_yard)
+                        const isSibling = Boolean(existingCont.isSiblingVessel)
+                        const isOccupiedInYard = !isRes && !isSibling
+
+                        const contDisplay = existingCont.containerNumber || 'CONT'
+                        const shortCont = contDisplay.length > 7 ? contDisplay.slice(-6) : contDisplay
 
                         return (
                           <button
@@ -816,22 +879,33 @@ export default function YardSlotReservationModal({
                             type="button"
                             style={span > 1 ? { gridColumn: `span ${span}` } : {}}
                             onClick={() => {
-                              setWarningMessage(`⚠️ Vị trí đã có container ${existingCont.containerNumber} (${isRes ? 'Đã giữ chỗ trước' : 'Đang lưu bãi thực tế'}). Không thể xếp đè!`)
+                              if (isSibling) {
+                                setWarningMessage(`⚠️ Vị trí này đã được phân bổ cho container CÙNG TÀU ${existingCont.containerNumber} (${is40Cont ? '40ft' : '20ft'} - Bay ${padPosition(existingCont.bay)} · Row ${padPosition(row)} · Tier ${currentTier}). Vui lòng né ô này và chọn ô trống khác!`)
+                              } else if (isRes) {
+                                setWarningMessage(`⚠️ Vị trí đã có container ${existingCont.containerNumber} (Đã giữ chỗ trước). Không thể xếp đè!`)
+                              } else {
+                                setWarningMessage(`⚠️ Vị trí đang có container ${existingCont.containerNumber} (Đang lưu bãi thực tế). Không thể xếp đè!`)
+                              }
                             }}
-                            className={`h-9 border-2 rounded-xl z-10 p-0.5 flex items-center justify-center cursor-not-allowed transition ${
-                              isRes
-                                ? 'bg-[#fff8db] border-[#f59e0b] text-[#92400e]'
-                                : 'bg-[#cbe7f7] border-[#5497c4] text-[#0369a1]'
+                            className={`h-9 border-2 rounded-xl z-10 px-1 py-0.5 flex flex-col items-center justify-center cursor-not-allowed transition ${
+                              isSibling
+                                ? 'bg-purple-50 border-purple-400 text-purple-900 shadow-2xs hover:bg-purple-100 ring-1 ring-purple-300'
+                                : isRes
+                                  ? 'bg-[#fff8db] border-[#f59e0b] text-[#92400e]'
+                                  : 'bg-[#cbe7f7] border-[#5497c4] text-[#0369a1]'
                             }`}
-                            title={`ĐÃ BẬN: Cont ${existingCont.containerNumber} (${isRes ? 'Đã giữ chỗ' : 'Đang lưu bãi thực tế'})`}
+                            title={
+                              isSibling
+                                ? `🚢 CÙNG TÀU: Cont ${existingCont.containerNumber} (${is40Cont ? '40ft' : '20ft'} - Bay ${padPosition(existingCont.bay)})`
+                                : `ĐÃ BẬN: Cont ${existingCont.containerNumber} (${isRes ? 'Đã giữ chỗ' : 'Đang lưu bãi thực tế'})`
+                            }
                           >
-                            {isRes ? (
-                              <div className="w-full h-full border border-dashed border-[#f59e0b]/80 rounded-lg flex items-center justify-center">
-                                <span className="font-mono font-black text-xs tracking-tight">CONT</span>
-                              </div>
-                            ) : (
-                              <span className="font-mono font-black text-xs tracking-tight">CONT</span>
-                            )}
+                            <span className="text-[9.5px] font-black tracking-tight truncate w-full text-center font-mono leading-tight">
+                              {isSibling ? `🚢 ${shortCont}` : isRes ? `🔒 ${shortCont}` : `🏢 ${shortCont}`}
+                            </span>
+                            <span className="text-[7.5px] font-bold uppercase tracking-tighter leading-none mt-0.5 truncate opacity-90">
+                              {isSibling ? `CÙNG TÀU · ${is40Cont ? '40ft' : '20ft'}` : isRes ? 'ĐÃ ĐẶT TRƯỚC' : 'LƯU BÃI'}
+                            </span>
                           </button>
                         )
                       }

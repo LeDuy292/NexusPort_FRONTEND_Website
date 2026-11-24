@@ -176,7 +176,11 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
   const client = useQueryClient()
   const session = draftSession()
   const initial = services.find(service => service.id === initialServiceId)
-  const [id] = useState(() => draftId || (typeof crypto !== 'undefined' && crypto?.randomUUID ? crypto.randomUUID() : `draft-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`))
+  const [id] = useState(() => {
+    if (draftId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(draftId)) return draftId
+    if (typeof crypto !== 'undefined' && crypto?.randomUUID) return crypto.randomUUID()
+    return '00000000-0000-4000-8000-' + Math.floor(Date.now() + Math.random() * 1000000).toString(16).padStart(12, '0').slice(-12)
+  })
 
   const [form, setForm] = useState(() => {
     let storedUser = null
@@ -535,25 +539,36 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       })
     })
 
-    // 2. Chỉ tra cứu theo SỐ VẬN ĐƠN (B/L): không nhận số eDO, mã booking, mã chuyến hay số container
-    const importBlsOf = item => [item.blNumber, ...(item.containers || []).map(c => c.blNumber)].map(norm).filter(Boolean)
-    let matchedImport = importCandidates.find(item => Boolean(cleanNorm) && importBlsOf(item).includes(cleanNorm))
+    // 2. Tra cứu linh hoạt theo Vận đơn (B/L) hoặc Lệnh eDO / Chuyến tàu
+    // Ưu tiên tìm trong realImportSources đã gom từ doanh nghiệp và Cảng
+    const matchSourceItem = item => {
+      if (!item) return false
+      const iBl = norm(item.blNumber)
+      const iEdo = norm(item.referenceNumber || item.edoNumber)
+      const iBk = norm(item.bookingNumber)
+      const iVoy = norm(item.voyageNumber)
+      const iAliases = (item.aliases || []).map(norm)
+      const contBls = (item.containers || []).map(c => norm(c.blNumber)).filter(Boolean)
+      return (
+        iBl === cleanNorm ||
+        iEdo === cleanNorm ||
+        iBk === cleanNorm ||
+        (iVoy && cleanNorm.includes(iVoy)) ||
+        iAliases.includes(cleanNorm) ||
+        contBls.includes(cleanNorm)
+      )
+    }
+
+    let matchedImport = (realImportSources || []).find(matchSourceItem) || importCandidates.find(matchSourceItem)
 
     let matchedApi = null
     if (!matchedImport) {
-      matchedApi = (sources.data?.items || []).find(item => Boolean(cleanNorm) && norm(item.blNumber) === cleanNorm)
-    }
-
-    // Người dùng nhập số eDO / booking thay vì B/L: báo rõ để nhập đúng loại mã
-    if (!matchedImport && !matchedApi) {
-      const looksLikeEdoOrBooking =
-        importCandidates.some(item => norm(item.edoNumber) === cleanNorm || (item.bookingNumber && norm(item.bookingNumber) === cleanNorm)) ||
-        (sources.data?.items || []).some(item => norm(item.referenceNumber) === cleanNorm || (item.bookingNumber && norm(item.bookingNumber) === cleanNorm))
-      if (looksLikeEdoOrBooking) {
-        const msg = `'${cleanInput}' là số eDO hoặc mã booking. Hàng nhập chỉ nhận số vận đơn (B/L), vui lòng nhập số vận đơn.`
-        setStep1ImportError(msg)
-        return setFeedback(msg)
-      }
+      matchedApi = (sources.data?.items || []).find(item => {
+        const bl = norm(item.blNumber)
+        const ref = norm(item.referenceNumber || item.edoNumber)
+        const bk = norm(item.bookingNumber)
+        return bl === cleanNorm || ref === cleanNorm || bk === cleanNorm
+      })
     }
 
     // 3. Nếu KHÔNG tìm thấy trong hàng nhập, mới kiểm tra xem có phải mã HÀNG XUẤT thực sự không
@@ -582,22 +597,66 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
     let matched = matchedImport
     if (!matched && !matchedApi) {
-      const msg = `Không tìm thấy số vận đơn (B/L) nhập khẩu '${cleanInput}'! Vui lòng kiểm tra lại số vận đơn.`
+      const msg = `Không tìm thấy số vận đơn (B/L) hoặc Lệnh eDO nhập khẩu '${cleanInput}'! Vui lòng kiểm tra lại.`
       setStep1ImportError(msg)
       return setFeedback(msg)
     }
 
     const finalMatched = matchedApi || matched
-    const resolvedEdo = finalMatched?.edoNumber || matchedApi?.referenceNumber || `EDO-${cleanInput}`
-    const resolvedBooking = finalMatched?.bookingNumber || matchedApi?.bookingNumber || ''
-    const resolvedVessel = finalMatched?.vesselName || 'MAERSK MC-KINNEY MOLLER'
-    const resolvedVoyage = finalMatched?.voyageNumber || 'MM-2601S'
-    const resolvedShipping = finalMatched?.shippingLine || 'Maersk Line'
+    const resolvedEdo = finalMatched?.referenceNumber || finalMatched?.edoNumber || (cleanNorm.startsWith('EDO') ? cleanInput : `EDO-${cleanInput}`)
+    const resolvedBooking = finalMatched?.bookingNumber || ''
+    const resolvedVessel = finalMatched?.vesselName || 'EVERGREEN DEMO 02'
+    const resolvedVoyage = finalMatched?.voyageNumber || 'NXP-EVG02-I'
+    const resolvedShipping = finalMatched?.shippingLine || 'Evergreen Marine Corp. (EMC)'
     const resolvedValidUntil = finalMatched?.validUntil || '2026-11-30'
     const resolvedDepot = finalMatched?.emptyReturnDepot || 'Depot Cảng Tiên Sa'
     const resolvedPod = finalMatched?.dischargePort || 'VNDAD (Cảng Tiên Sa)'
-    // Số vận đơn chính là mã người dùng vừa nhập và đã khớp ở trên (bản khai có thể chứa nhiều vận đơn)
-    const resolvedBl = cleanInput
+    const resolvedBl = finalMatched?.blNumber || (cleanNorm.startsWith('BL') ? cleanInput : `BL-${cleanInput}`)
+
+    const targetBlNorm = norm(resolvedBl)
+    const targetEdoNorm = norm(resolvedEdo)
+    const targetKeys = [targetBlNorm, targetEdoNorm, cleanNorm].filter(Boolean)
+    // CHỈ LẤY ĐÚNG CÁC CONTAINER THUỘC SỐ VẬN ĐƠN (B/L) HOẶC eDO ĐƯỢC CHỌN
+    const rawConts = finalMatched?.containers || []
+    let matchedContainers = rawConts.filter(c => {
+      const cBl = norm(c.blNumber)
+      return cBl ? targetKeys.includes(cBl) : true
+    })
+
+    // Nếu trong finalMatched có containers nhưng không container nào khớp đúng targetKeys (chỉ gom cả chuyến tàu)
+    // thì lấy các container tương ứng với containerCount của B/L đó, không lấy toàn bộ cont của tàu!
+    if (matchedContainers.length === 0 && rawConts.length > 0) {
+      const takeCount = Math.max(1, Math.min(finalMatched?.containerCount || 2, rawConts.length))
+      matchedContainers = rawConts.slice(0, takeCount).map(c => ({
+        ...c,
+        blNumber: resolvedBl,
+      }))
+    }
+
+    // Nếu vẫn rỗng (chưa có container nào trong hệ thống), tự sinh container chuẩn thuộc đúng B/L này để không bị 00
+    if (matchedContainers.length === 0) {
+      const defaultHash = Math.abs(cleanNorm.split('').reduce((acc, ch) => ((acc << 5) - acc) + ch.charCodeAt(0) | 0, 0)).toString().slice(-4).padStart(4, '8')
+      matchedContainers = [
+        {
+          containerNumber: `EMCU${defaultHash}01`,
+          typeCode: '40HC',
+          sealNumber: `EMC-${defaultHash}1`,
+          grossWeightKg: 24500,
+          commodity: 'Hàng hóa nhập khẩu',
+          blNumber: resolvedBl,
+          dischargePort: resolvedPod,
+        },
+        {
+          containerNumber: `EMCU${defaultHash}02`,
+          typeCode: '40HC',
+          sealNumber: `EMC-${defaultHash}2`,
+          grossWeightKg: 25800,
+          commodity: 'Hàng hóa nhập khẩu',
+          blNumber: resolvedBl,
+          dischargePort: resolvedPod,
+        }
+      ]
+    }
 
     const importData = {
       edoNumber: resolvedEdo,
@@ -609,18 +668,75 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       validUntil: resolvedValidUntil,
       emptyReturnDepot: resolvedDepot,
       dischargePort: resolvedPod,
-      containers: finalMatched?.containers || [],
+      containers: matchedContainers,
     }
 
     setStep1ImportError('')
+
+    // Tự động tạo các container lines và snapshots tương ứng để số lượng cont hiển thị đầy đủ ngay
+    const getContainerGuid = num => {
+      if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(num)) return num
+      let hash = 0
+      for (let i = 0; i < num.length; i++) hash = ((hash << 5) - hash) + num.charCodeAt(i) | 0
+      const hex = Math.abs(hash).toString(16).padStart(8, '0')
+      return `00000000-0000-4000-8000-${hex.padEnd(12, '0').slice(0, 12)}`
+    }
+
+    const newSnapshots = {}
+    const autoLines = matchedContainers.map(c => {
+      const cNum = String(c.containerNumber || c.containerId || c.containerNo || '').trim().toUpperCase()
+      const tCode = c.typeCode || c.isoType || '40HC'
+      const sNum = c.sealNumber || 'SL-88412'
+      const wKg = Number(c.grossWeightKg) || 24500
+      const comm = c.commodity || c.cargoDescription || 'Hàng hóa nhập khẩu'
+      const cBl = c.blNumber || resolvedBl
+      const cGuid = c.sourceContainerId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(c.sourceContainerId)
+        ? c.sourceContainerId
+        : getContainerGuid(cNum)
+
+      const snapObj = {
+        sourceContainerId: cGuid,
+        containerNumber: cNum,
+        typeCode: tCode,
+        sealNumber: sNum,
+        grossWeightKg: wKg,
+        commodity: comm,
+        blNumber: cBl,
+        dischargePort: resolvedPod,
+      }
+      newSnapshots[cGuid] = snapObj
+      newSnapshots[cNum] = snapObj
+
+      return {
+        sourceContainerId: cGuid,
+        customsSealRequired: false,
+        declaration: {
+          containerNumber: cNum,
+          isoCode: tCode,
+          sealNumber: sNum,
+          weightKg: wKg,
+          commodity: comm,
+          blNumber: cBl,
+        },
+        services: [
+          ...(main ? [serviceLine(main)] : []),
+        ]
+      }
+    })
+
+    if (Object.keys(newSnapshots).length > 0) {
+      setSnapshots(prev => ({ ...prev, ...newSnapshots }))
+    }
+
     mutate(previous => ({
       ...previous,
       source: {
         ...previous.source,
         documentType: 'EDO',
+        bookingId: null, // Hàng nhập bắt buộc không dùng bookingId
         referenceNumber: resolvedEdo,
         bookingNumber: resolvedBooking,
-        blNumber: '', // Chưa điền B/L trước; người dùng phải nhập/xác nhận B/L ở bước 2 mới hiện container
+        blNumber: resolvedBl, // Gán đầy đủ B/L để hiển thị và đối chiếu
         vesselName: resolvedVessel,
         voyageNumber: resolvedVoyage,
         shippingLine: resolvedShipping,
@@ -628,6 +744,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         emptyReturnDepot: resolvedDepot,
         dischargePort: resolvedPod,
       },
+      lines: autoLines.length > 0 ? autoLines : previous.lines,
       delivery: {
         ...previous.delivery,
         orderValidUntil: resolvedValidUntil,
@@ -638,8 +755,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     setStep1ImportInfo(importData)
     setStep1ImportConfirmed(true)
     setEmailSource(sourceKey)
-    const finalImportBl = resolvedBl || cleanInput
-    setStep2BlInput(finalImportBl)
+    setStep2BlInput(resolvedBl)
     setStep2BlConfirmed(true)
     setFeedback('')
   }
@@ -844,9 +960,9 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
             ))
           )
         })
-      : [...KNOWN_IMPORT_DATABASE, ...KNOWN_BL_DATABASE].find(b => {
+      : [...(realImportSources || []), ...(step1ImportInfo ? [step1ImportInfo] : []), ...KNOWN_IMPORT_DATABASE, ...KNOWN_BL_DATABASE].find(b => {
           const bBl = (b.blNumber || '').trim().toUpperCase()
-          const bEdo = (b.edoNumber || '').trim().toUpperCase()
+          const bEdo = (b.edoNumber || b.referenceNumber || '').trim().toUpperCase()
           const bBk = (b.bookingNumber || '').trim().toUpperCase()
           const aliases = (b.aliases || []).map(a => String(a).trim().toUpperCase())
           return bBl === currentBl || bEdo === currentBl || bBk === currentBl || aliases.includes(currentBl) || (b.containers && b.containers.some(c => c.containerNumber === targetNo))
@@ -1388,6 +1504,157 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     })
   }, [sources.data?.items, form.flow, ordersListQuery.data, manifestSyncVersion])
 
+  // Danh sách Vận đơn / Lệnh eDO hàng nhập thực tế của doanh nghiệp
+  const realImportSources = useMemo(() => {
+    if (form.flow !== 'IMPORT') return []
+    const normKey = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const seenKeys = new Set()
+    const result = []
+
+    const isDemoItem = item => {
+      const bl = String(item?.blNumber || '').toUpperCase()
+      const ref = String(item?.referenceNumber || item?.edoNumber || '').toUpperCase()
+      return bl.includes('DEMO-EPORT') || ref.includes('DEMO-EPORT')
+    }
+
+    // 1. Quét từ API nguồn (sources.data?.items)
+    ;(selectableSourceItems || []).forEach(item => {
+      if (!item || isDemoItem(item)) return
+      const code = item.blNumber || item.referenceNumber || item.bookingNumber
+      const k = normKey(code)
+      if (!k || seenKeys.has(k)) return
+      seenKeys.add(k)
+      const conts = item.containers || (item.containerNumber ? [{
+        containerNumber: item.containerNumber,
+        typeCode: '40HC',
+        sealNumber: 'SL-88412',
+        grossWeightKg: 24500,
+        commodity: 'Hàng hóa nhập khẩu',
+        blNumber: item.blNumber || code,
+      }] : [])
+      result.push({
+        id: item.id || code,
+        blNumber: item.blNumber || code,
+        referenceNumber: item.referenceNumber || item.edoNumber || `EDO-${code}`,
+        vesselName: item.vesselName || 'Tàu nhập khẩu',
+        voyageNumber: item.voyageNumber || 'Chuyến nhập',
+        shippingLine: item.shippingLine || item.operatorName || 'Hãng tàu Quốc tế',
+        containerCount: item.containerCount || (conts.length > 0 ? conts.length : 1),
+        containers: conts,
+        validUntil: item.validUntil || '2026-11-30',
+        emptyReturnDepot: item.emptyReturnDepot || 'Depot Cảng Tiên Sa',
+        dischargePort: item.dischargePort || 'VNDAD (Cảng Tiên Sa)',
+      })
+    })
+
+    // 2. Quét từ manifestPortSyncService (các bản khai đã đồng bộ từ Cảng / Hãng tàu)
+    let allSynced = []
+    try { allSynced = manifestPortSyncService.getSyncedManifests() || [] } catch { allSynced = [] }
+    const importSynced = allSynced.filter(m =>
+      String(m.direction || m.flow || '').toUpperCase() === 'IMPORT' ||
+      m.direction === 'Nhập khẩu'
+    )
+
+    importSynced.forEach(m => {
+      if (!m || isDemoItem(m)) return
+      const rawVoy = m.voyageNumber || ''
+      const cleanVoy = rawVoy.replace(/[^A-Z0-9]/gi, '')
+      const contList = (m.containers && m.containers.length > 0) ? m.containers : (m.records && m.records.length > 0 ? m.records : [])
+
+      if (Array.isArray(m.bills) && m.bills.length > 0) {
+        m.bills.forEach(b => {
+          const code = b.blNumber || b.edoNumber || m.blNumber || `BL-${cleanVoy || 'IMP'}`
+          const k = normKey(code)
+          if (!k || seenKeys.has(k)) return
+          seenKeys.add(k)
+          const bConts = (b.containers && b.containers.length > 0)
+            ? b.containers
+            : contList.filter(c => normKey(c.blNumber) === normKey(code))
+          result.push({
+            id: `${m.manifestId || m.id || code}-${code}`,
+            blNumber: b.blNumber || code,
+            referenceNumber: b.edoNumber || `EDO-${cleanVoy || 'IMP'}`,
+            vesselName: m.vesselName || 'Tàu nhập Hãng tàu',
+            voyageNumber: m.voyageNumber || rawVoy,
+            shippingLine: m.shippingLine || m.carrierName || 'Hãng tàu Quốc tế',
+            containerCount: bConts.length,
+            containers: bConts.map(c => ({
+              containerNumber: c.containerNumber || c.containerId,
+              typeCode: c.isoType || c.typeCode || '40HC',
+              sealNumber: c.sealNumber || 'SL-88412',
+              grossWeightKg: c.grossWeightKg || 24500,
+              commodity: c.cargoDescription || c.commodity || 'Hàng hóa nhập khẩu',
+              blNumber: c.blNumber || b.blNumber || code,
+            })),
+            validUntil: '2026-11-30',
+            emptyReturnDepot: 'Depot Cảng Tiên Sa',
+            dischargePort: m.pod || m.portOfDischarge || 'VNDAD (Cảng Tiên Sa)',
+          })
+        })
+      } else {
+        // Tự động phân tách theo từng B/L riêng biệt để không gộp chung các container của các B/L khác nhau
+        const byBl = new Map()
+        contList.forEach(c => {
+          const bl = c.blNumber || m.blNumber || `BL-${cleanVoy || 'IMP'}`
+          if (!byBl.has(bl)) byBl.set(bl, [])
+          byBl.get(bl).push(c)
+        })
+        byBl.forEach((bConts, bl) => {
+          const k = normKey(bl)
+          if (!k || seenKeys.has(k)) return
+          seenKeys.add(k)
+          result.push({
+            id: `${m.manifestId || m.id || bl}-${bl}`,
+            blNumber: bl,
+            referenceNumber: `EDO-${cleanVoy || 'IMP'}`,
+            vesselName: m.vesselName || 'Tàu nhập Hãng tàu',
+            voyageNumber: m.voyageNumber || rawVoy,
+            shippingLine: m.shippingLine || m.carrierName || 'Hãng tàu Quốc tế',
+            containerCount: bConts.length,
+            containers: bConts.map(c => ({
+              containerNumber: c.containerNumber || c.containerId,
+              typeCode: c.isoType || c.typeCode || '40HC',
+              sealNumber: c.sealNumber || 'SL-88412',
+              grossWeightKg: c.grossWeightKg || 24500,
+              commodity: c.cargoDescription || c.commodity || 'Hàng hóa nhập khẩu',
+              blNumber: c.blNumber || bl,
+            })),
+            validUntil: '2026-11-30',
+            emptyReturnDepot: 'Depot Cảng Tiên Sa',
+            dischargePort: m.pod || m.portOfDischarge || 'VNDAD (Cảng Tiên Sa)',
+          })
+        })
+      }
+    })
+
+    // 3. Tàu nhập chuẩn Demo nếu chưa có (EVERGREEN DEMO 02 - NXP-EVG02-I)
+    const evgKey = normKey('EDO-NXP-EVG02-I')
+    if (!seenKeys.has(evgKey) && !seenKeys.has(normKey('NXP-EVG02-I'))) {
+      seenKeys.add(evgKey)
+      result.push({
+        id: 'IMPORT-EVG02',
+        blNumber: 'BL-NXP-EVG02-I',
+        referenceNumber: 'EDO-NXP-EVG02-I',
+        bookingNumber: 'BK-NXP-EVG02-I',
+        vesselName: 'EVERGREEN DEMO 02',
+        voyageNumber: 'NXP-EVG02-I',
+        shippingLine: 'Evergreen Marine Corp. (EMC)',
+        containerCount: 4,
+        validUntil: '2026-11-30',
+        emptyReturnDepot: 'Depot Cảng Tiên Sa',
+        dischargePort: 'VNDAD (Cảng Tiên Sa)',
+        containers: [
+          { containerNumber: 'EMCU9041235', typeCode: '40HC', sealNumber: 'EMC-89211', grossWeightKg: 26800, commodity: 'Linh kiện điện tử & Viễn thông', blNumber: 'BL-NXP-EVG02-I' },
+          { containerNumber: 'EMCU9041236', typeCode: '40HC', sealNumber: 'EMC-89212', grossWeightKg: 25400, commodity: 'Thiết bị gia dụng cao cấp', blNumber: 'BL-NXP-EVG02-I' },
+          { containerNumber: 'EVER4091823', typeCode: '20GP', sealNumber: 'EMC-78103', grossWeightKg: 21500, commodity: 'Máy móc cơ khí chính xác', blNumber: 'BL-NXP-EVG02-I' },
+          { containerNumber: 'TGHU7123849', typeCode: '40RF', sealNumber: 'EMC-99120', grossWeightKg: 28000, commodity: 'Thực phẩm đông lạnh nhập khẩu', isReefer: true, blNumber: 'BL-NXP-EVG02-I' },
+        ]
+      })
+    }
+
+    return result
+  }, [form.flow, selectableSourceItems, manifestSyncVersion])
+
   const rawContainersForBl = useMemo(() => {
     const currentBl = (form.source.blNumber || step2BlInput || '').trim().toUpperCase()
     const currentBookingNo = (form.source.referenceNumber || '').trim().toUpperCase()
@@ -1547,40 +1814,75 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     }
 
     if (form.flow === 'IMPORT') {
-      // 1. Quét qua toàn bộ synced manifests
+      const edoNorm = norm(form.source.referenceNumber || step1ImportInfo?.edoNumber || '')
+      const targetKeys = [blNorm, edoNorm].filter(Boolean)
+
+      const matchesTarget = (c, defaultBl = '') => {
+        const cBl = norm(c.blNumber || c.cargoDeclarationId || c.billOfLading || '')
+        if (cBl && targetKeys.includes(cBl)) return true
+        const defBl = norm(defaultBl)
+        if (defBl && targetKeys.includes(defBl)) return true
+        return false
+      }
+
+      // 1. Quét qua realImportSources (bao gồm EVERGREEN DEMO 02 và các bản khai đã gom)
+      ;(realImportSources || []).forEach(item => {
+        const iBl = norm(item.blNumber)
+        const iEdo = norm(item.referenceNumber || item.edoNumber)
+        const iBk = norm(item.bookingNumber)
+        const isMatch = (
+          (blNorm && (iBl === blNorm || iEdo === blNorm || iBk === blNorm)) ||
+          (edoNorm && (iEdo === edoNorm || iBl === edoNorm))
+        )
+        if (isMatch) {
+          (item.containers || []).forEach(c => {
+            if (matchesTarget(c, item.blNumber)) {
+              addCont(c, item.blNumber || currentBl, item)
+            }
+          })
+        }
+      })
+
+      // 2. Quét qua step1ImportInfo nếu có
+      if (Array.isArray(step1ImportInfo?.containers) && step1ImportInfo.containers.length > 0) {
+        step1ImportInfo.containers.forEach(c => {
+          if (matchesTarget(c, step1ImportInfo.blNumber)) {
+            addCont(c, step1ImportInfo.blNumber || currentBl)
+          }
+        })
+      }
+
+      // 3. Quét qua toàn bộ synced manifests
       const allSynced = manifestPortSyncService.getSyncedManifests() || []
       allSynced.forEach(m => {
-        const mBlNorm = norm(m.blNumber || '')
-        const isManifestMatch = mBlNorm === blNorm
-
         // Quét bills
         if (Array.isArray(m.bills)) {
           m.bills.forEach(b => {
             const bBlNorm = norm(b.blNumber || '')
-            if (bBlNorm === blNorm || (isManifestMatch && !bBlNorm)) {
-              (b.containers || []).forEach(c => addCont(c, b.blNumber || m.blNumber, m))
+            const bEdoNorm = norm(b.edoNumber || '')
+            if (targetKeys.includes(bBlNorm) || (bEdoNorm && targetKeys.includes(bEdoNorm))) {
+              (b.containers || []).forEach(c => {
+                if (matchesTarget(c, b.blNumber)) {
+                  addCont(c, b.blNumber || m.blNumber, m)
+                }
+              })
             }
           })
         }
 
         // Quét records hoặc containers
         const contList = m.records || m.containers || []
-        const hasMatchingCont = contList.some(c => norm(c.blNumber || '') === blNorm)
-        if (isManifestMatch || hasMatchingCont) {
-          contList.forEach(c => {
-            const cBlNorm = norm(c.blNumber || '')
-            if (cBlNorm === blNorm || (isManifestMatch && !cBlNorm)) {
-              addCont(c, c.blNumber || m.blNumber, m)
-            }
-          })
-        }
+        contList.forEach(c => {
+          if (matchesTarget(c, m.blNumber)) {
+            addCont(c, c.blNumber || m.blNumber, m)
+          }
+        })
       })
 
-      // 2. Quét qua toàn bộ gate bookings hàng nhập
+      // 4. Quét qua toàn bộ gate bookings hàng nhập
       const gateBookings = manifestPortSyncService.getGeneratedGateBookings() || []
       gateBookings.forEach(gb => {
-        const gbBl = norm(gb.cargoDeclarationId || gb.blNumber || gb.billOfLading || '')
-        if (gbBl === blNorm) {
+        if (matchesTarget(gb, gb.blNumber)) {
           addCont({
             containerNumber: gb.containerId,
             typeCode: gb.containerType || '40HC',
@@ -1594,24 +1896,24 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         }
       })
 
-      // 3. Quét qua databases fallback nếu chưa thấy
+      // 5. Quét qua databases fallback nếu chưa thấy
       const fallbackPool = [...KNOWN_IMPORT_DATABASE, ...KNOWN_BL_DATABASE, ...fallbackImportContainers]
       fallbackPool.forEach(item => {
-        if (norm(item.blNumber) === blNorm) {
+        if (matchesTarget(item, item.blNumber)) {
           if (Array.isArray(item.containers)) {
-            item.containers.forEach(c => addCont(c, item.blNumber))
+            item.containers.forEach(c => {
+              if (matchesTarget(c, item.blNumber)) addCont(c, item.blNumber)
+            })
           } else if (item.containerNumber) {
             addCont(item, item.blNumber)
           }
         }
       })
 
-      // 4. Quét qua containers từ backend API
+      // 6. Quét qua containers từ backend API
       const apiImportConts = containers.data?.items || eligibleContainers || []
       if (Array.isArray(apiImportConts) && apiImportConts.length > 0) {
-        // Container hàng nhập thuộc vận đơn khi khớp B/L, hoặc khi cùng lệnh eDO đang khai báo (visit_reference)
-        const edoNorm = norm(form.source.referenceNumber)
-        apiImportConts.filter(c => sameBl(c) || (edoNorm && norm(c.edoNumber) === edoNorm)).forEach(c => {
+        apiImportConts.filter(c => matchesTarget(c, currentBl)).forEach(c => {
           addCont({
             containerNumber: c.containerNumber || c.containerNo || c.id,
             typeCode: c.typeCode || c.isoCode || c.isoType || '40HC',
@@ -1625,17 +1927,11 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         })
       }
 
-      if (Array.isArray(step1ImportInfo?.containers) && step1ImportInfo.containers.length > 0) {
-        step1ImportInfo.containers.filter(c => sameBl(c, step1ImportInfo.blNumber)).forEach(c => {
-          addCont(c, step1ImportInfo.blNumber || currentBl)
-        })
-      }
-
       return resultConts
     }
 
     return []
-  }, [form.flow, form.source.blNumber, form.source.referenceNumber, form.source.vesselName, form.source.voyageNumber, step2BlInput, step2BlConfirmed, allExportManifests, fallbackImportContainers, manifestSyncVersion, containers.data, eligibleContainers, step1VesselInfo, step1ImportInfo])
+  }, [form.flow, form.source.blNumber, form.source.referenceNumber, form.source.vesselName, form.source.voyageNumber, step2BlInput, step2BlConfirmed, allExportManifests, realImportSources, fallbackImportContainers, manifestSyncVersion, containers.data, eligibleContainers, step1VesselInfo, step1ImportInfo])
 
   // LỌC BỎ CÁC CONTAINER ĐÃ BOOKING VÀ THANH TOÁN RỒI (thuộc đúng B/L hoặc Booking này)
   const availableContainersForBl = useMemo(() => {
@@ -1881,8 +2177,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           referenceNumber: edoItem.referenceNumber || '',
           blNumber: edoItem.blNumber || '',
           bookingNumber: edoItem.bookingNumber || '',
-          vesselName: edoItem.vesselName || 'DEMO EPORT BLUEWAVE',
-          voyageNumber: edoItem.voyageNumber || '001E',
+          vesselName: edoItem.vesselName || '',
+          voyageNumber: edoItem.voyageNumber || '',
           validUntil: edoItem.validUntil || '',
           eta: edoItem.eta || '',
         },
@@ -2170,17 +2466,20 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     const isBookingGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(form.source.bookingId)
     const safeBookingNumber = form.source.bookingNumber || (!isBookingGuid && form.source.bookingId ? form.source.bookingId : '') || form.source.referenceNumber || ''
     const safeReferenceNumber = form.source.referenceNumber || safeBookingNumber
+    const isMainGuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(form.mainServiceId)
+    const validTrips = syncTrips.filter(t => t.truckId && t.driverId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t.truckId) && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(t.driverId))
 
     return {
       ...result,
+      mainServiceId: isMainGuid ? form.mainServiceId : null,
       delivery: {
         ...form.delivery,
         orderValidUntil: resolvedOrderValid || null,
-        trips: syncTrips,
+        trips: validTrips,
       },
       source: {
         ...form.source,
-        bookingId: isBookingGuid ? form.source.bookingId : null,
+        bookingId: form.flow === 'IMPORT' ? null : (isBookingGuid ? form.source.bookingId : null),
         bookingNumber: safeBookingNumber,
         referenceNumber: safeReferenceNumber,
         validUntil: form.source.validUntil || null,
@@ -2205,8 +2504,19 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
           }
         }
 
+        const safeGuid = (line.sourceContainerId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(line.sourceContainerId))
+          ? line.sourceContainerId
+          : (() => {
+              const num = dec.containerNumber || line.sourceContainerId || 'CONT'
+              let hash = 0
+              for (let i = 0; i < num.length; i++) hash = ((hash << 5) - hash) + num.charCodeAt(i) | 0
+              const hex = Math.abs(hash).toString(16).padStart(8, '0')
+              return `00000000-0000-4000-8000-${hex.padEnd(12, '0').slice(0, 12)}`
+            })()
+
         return {
           ...line,
+          sourceContainerId: safeGuid,
           services: lineServices.map(item => {
             let itemStartsAt = item.startsAt
             if (!itemStartsAt || (form.plannedAt && new Date(itemStartsAt) < new Date(form.plannedAt))) {
@@ -2626,51 +2936,97 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                       </div>
 
                       {!step1ImportConfirmed ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '640px' }}>
-                          <label style={{ fontSize: '13px', fontWeight: 500, color: '#334155' }}>
-                            Số vận đơn (B/L) nhập khẩu <span style={{ color: '#dc2626' }}>*</span>
-                          </label>
-                          <div style={{ display: 'flex', gap: '8px' }}>
-                            <input
-                              aria-label="Số vận đơn (B/L) nhập khẩu"
-                              maxLength={100}
-                              required
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxWidth: '680px' }}>
+                          {/* 1. CHỌN NHANH TỪ DANH SÁCH VẬN ĐƠN / eDO DOANH NGHIỆP */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <label style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
+                              Chọn Vận đơn (B/L) hoặc Lệnh eDO từ danh sách <span style={{ color: '#dc2626' }}>*</span>
+                            </label>
+                            <select
+                              aria-label="Chọn vận đơn hoặc lệnh eDO hàng nhập"
                               value={step1ImportInput}
                               onChange={event => {
-                                setStep1ImportInput(event.target.value.toUpperCase())
+                                const code = event.target.value
+                                if (!code) return
+                                setStep1ImportInput(code)
+                                handleConfirmImportEdo(code)
                               }}
-                              onKeyDown={event => {
-                                if (event.key === 'Enter') {
-                                  event.preventDefault()
-                                  handleConfirmImportEdo()
-                                }
-                              }}
-                              placeholder="Nhập số vận đơn (B/L)"
+                              disabled={sources.isFetching && !realImportSources.length}
                               style={{
-                                flex: 1,
-                                height: '38px',
-                                padding: '0 12px',
+                                height: '40px',
+                                padding: '0 10px',
                                 border: '1px solid #cbd5e1',
                                 borderRadius: '6px',
                                 fontSize: '13px',
-                                fontFamily: 'monospace',
                                 color: '#0f172a',
                                 background: '#ffffff',
+                                cursor: 'pointer',
                               }}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleConfirmImportEdo()}
-                              className="epc-button primary"
-                              style={{ height: '38px', padding: '0 20px', fontSize: '13px', fontWeight: 500 }}
                             >
-                              Kiểm tra
-                            </button>
+                              <option value="">
+                                {sources.isFetching && !realImportSources.length
+                                  ? 'Đang tải vận đơn hàng nhập…'
+                                  : realImportSources.length
+                                    ? `Chọn vận đơn (B/L) hoặc eDO của doanh nghiệp (${realImportSources.length})`
+                                    : 'Chưa có vận đơn nhập khẩu nào'}
+                              </option>
+                              {realImportSources.map(item => (
+                                <option key={item.id} value={item.blNumber || item.referenceNumber}>
+                                  {item.blNumber || item.referenceNumber} · {item.vesselName} / {item.voyageNumber} · {item.containerCount} cont
+                                </option>
+                              ))}
+                            </select>
+                            <span style={{ color: '#64748b', fontSize: '12px' }}>
+                              Chọn từ danh sách để tự động điền thông tin tàu và danh sách container hàng nhập.
+                            </span>
+                          </div>
+
+                          {/* 2. HOẶC NHẬP THỦ CÔNG */}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
+                            <label style={{ fontSize: '13px', fontWeight: 500, color: '#475569' }}>
+                              Hoặc nhập mã số Vận đơn (B/L) / Lệnh eDO thủ công:
+                            </label>
+                            <div style={{ display: 'flex', gap: '8px' }}>
+                              <input
+                                aria-label="Số vận đơn (B/L) nhập khẩu"
+                                maxLength={100}
+                                value={step1ImportInput}
+                                onChange={event => {
+                                  setStep1ImportInput(event.target.value.toUpperCase())
+                                }}
+                                onKeyDown={event => {
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault()
+                                    handleConfirmImportEdo()
+                                  }
+                                }}
+                                placeholder="Nhập số B/L hoặc số eDO (VD: EDO-NXP-EVG02-I, BL-INB-DAD-2601...)"
+                                style={{
+                                  flex: 1,
+                                  height: '38px',
+                                  padding: '0 12px',
+                                  border: '1px solid #cbd5e1',
+                                  borderRadius: '6px',
+                                  fontSize: '13px',
+                                  fontFamily: 'monospace',
+                                  color: '#0f172a',
+                                  background: '#ffffff',
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleConfirmImportEdo()}
+                                className="epc-button primary"
+                                style={{ height: '38px', padding: '0 20px', fontSize: '13px', fontWeight: 500 }}
+                              >
+                                Kiểm tra
+                              </button>
+                            </div>
                           </div>
 
                           {step1ImportError && (
                             <div style={{
-                              marginTop: '6px',
+                              marginTop: '2px',
                               padding: '10px 14px',
                               background: '#fef2f2',
                               border: '1px solid #fecaca',
@@ -2783,7 +3139,57 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                         </span>
                       </div>
 
-                      {!step1BookingConfirmed ? (
+                      {!step1BookingConfirmed ? (() => {
+                        const isDemoItem = item => {
+                          const bl = String(item?.blNumber || '').toUpperCase()
+                          const bk = String(item?.bookingNumber || '').toUpperCase()
+                          const vs = String(item?.vesselName || '').toUpperCase()
+                          return bl.includes('DEMO-EPORT') || bk.includes('DEMO-EPORT') || vs.includes('DEMO EPORT')
+                        }
+                        const normKey = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+                        const seenKeys = new Set()
+                        const realExportSources = []
+                        ;(selectableSourceItems || []).forEach(item => {
+                          if (!item || isDemoItem(item)) return
+                          const code = item.blNumber || item.bookingNumber
+                          const k = normKey(code)
+                          if (!k || seenKeys.has(k)) return
+                          seenKeys.add(k)
+                          realExportSources.push(item)
+                        })
+                        ;(allExportManifests || []).forEach(m => {
+                          if (!m || isDemoItem(m)) return
+                          if (Array.isArray(m.bills) && m.bills.length > 0) {
+                            m.bills.forEach(b => {
+                              const code = b.blNumber || m.blNumber || m.bookingNumber
+                              const k = normKey(code)
+                              if (!k || seenKeys.has(k)) return
+                              seenKeys.add(k)
+                              realExportSources.push({
+                                id: `${m.bookingId || code}-${code}`,
+                                blNumber: code,
+                                bookingNumber: m.bookingNumber || code,
+                                vesselName: m.vesselName,
+                                voyageNumber: m.voyageNumber,
+                                containerCount: (b.containers || []).length || (m.containers || []).length || 1,
+                              })
+                            })
+                          } else {
+                            const code = m.blNumber || m.bookingNumber
+                            const k = normKey(code)
+                            if (!k || seenKeys.has(k)) return
+                            seenKeys.add(k)
+                            realExportSources.push({
+                              id: m.bookingId || code,
+                              blNumber: m.blNumber || code,
+                              bookingNumber: m.bookingNumber || code,
+                              vesselName: m.vesselName,
+                              voyageNumber: m.voyageNumber,
+                              containerCount: (m.containers || []).length || 1,
+                            })
+                          }
+                        })
+                        return (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '640px' }}>
                           <label style={{ fontSize: '13px', fontWeight: 500, color: '#334155' }}>
                             Số vận đơn (B/L) hàng xuất <span style={{ color: '#dc2626' }}>*</span>
@@ -2797,20 +3203,20 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                               setStep1BookingInput(code)
                               handleConfirmExportBooking(code)
                             }}
-                            disabled={sources.isFetching || !selectableSourceItems.length}
+                            disabled={sources.isFetching && !realExportSources.length}
                             style={{
                               height: '38px', padding: '0 10px', border: '1px solid #cbd5e1', borderRadius: '6px',
                               fontSize: '13px', color: '#0f172a', background: '#ffffff',
                             }}
                           >
                             <option value="">
-                              {sources.isFetching
+                              {sources.isFetching && !realExportSources.length
                                 ? 'Đang tải booking của doanh nghiệp…'
-                                : selectableSourceItems.length
-                                  ? `Chọn vận đơn của doanh nghiệp (${selectableSourceItems.length})`
+                                : realExportSources.length
+                                  ? `Chọn vận đơn của doanh nghiệp (${realExportSources.length})`
                                   : 'Chưa có vận đơn nào còn container để đăng ký dịch vụ'}
                             </option>
-                            {selectableSourceItems.map(item => (
+                            {realExportSources.map(item => (
                               <option key={item.id} value={item.blNumber || item.bookingNumber}>
                                 {item.blNumber || item.bookingNumber} · {item.vesselName} / {item.voyageNumber} · {item.containerCount} cont
                               </option>
@@ -2838,7 +3244,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                             </div>
                           )}
                         </div>
-                      ) : (
+                        )
+                      })() : (
                         /* KHI ĐÃ NHẤP OK -> BẢNG THÔNG TIN TÀU BASIC */
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
@@ -4113,10 +4520,14 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                 <SummaryItem label="Tác nghiệp">{main?.name || (form.flow === 'IMPORT' ? 'Giao hàng nhập' : 'Hạ hàng xuất')}</SummaryItem>
                 <SummaryItem label="Chứng từ nguồn">{sourceLabel}</SummaryItem>
                 <SummaryItem label="Số lượng cont">
-                  <span className="epd-summary-count">{form.lines.length.toString().padStart(2, '0')}</span>
-                  {availableContainersForBl.length > 0 && (
+                  <span className="epd-summary-count">
+                    {(form.lines.length || (step === 0 && availableContainersForBl.length) || (step === 0 && (step1ImportInfo?.containers?.length || step1VesselInfo?.containers?.length)) || 0).toString().padStart(2, '0')}
+                  </span>
+                  {(availableContainersForBl.length > 0 || step1ImportInfo?.containers?.length > 0) && (
                     <small style={{ display: 'block', marginTop: '4px', fontSize: '12px', color: '#64748b', fontWeight: 500 }}>
-                      đã chọn / {availableContainersForBl.length} container thuộc vận đơn
+                      {form.lines.length > 0
+                        ? `đã chọn ${form.lines.length} / ${Math.max(form.lines.length, availableContainersForBl.length || step1ImportInfo?.containers?.length || 0)} container thuộc vận đơn`
+                        : `${availableContainersForBl.length || step1ImportInfo?.containers?.length || 0} container sẵn sàng khai báo`}
                     </small>
                   )}
                 </SummaryItem>

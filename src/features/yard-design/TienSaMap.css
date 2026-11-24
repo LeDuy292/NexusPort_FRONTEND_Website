@@ -13,7 +13,8 @@
 .yard-design-preview .yard-layout-legend i { width:10px; height:10px; display:inline-block; border:1px solid; }
 .yard-design-preview .reference-key { background:#dcebe3; border-color:#6e9e8a!important; }
 .yard-design-preview .proposed-key { background:#f1e5cc; border-color:#b8995e!important; }
-.yard-design-preview .yard-layout-viewport { width:100%; height:clamp(640px,calc(100dvh - 305px),1080px); overflow:hidden; background:#f8fbfc; }
+.yard-design-preview .yard-layout-viewport { width:100%; height:clamp(640px,calc(100dvh - 305px),1080px); overflow:hidden; background:#f8fbfc; cursor:grab; touch-action:none; }
+.yard-design-preview .yard-layout-viewport:active { cursor:grabbing; }
 .yard-design-preview .yard-layout-viewport.can-pan { cursor:grab; touch-action:none; }
 .yard-design-preview .yard-layout-viewport:fullscreen { height:100vh; width:100vw; background:#f8fbfc; }
 .yard-design-preview .yard-layout-drawing { display:block; height:100%; width:100%; font-family:'Inter',sans-serif; }

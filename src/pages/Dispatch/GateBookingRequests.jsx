@@ -10,8 +10,25 @@ import VehicleDetailModal from '../../components/Modals/VehicleDetailModal'
 import CompanyDetailModal from '../../components/Modals/CompanyDetailModal'
 import DocumentViewerModal from '../../components/Modals/DocumentViewerModal'
 import YardSlotReservationModal from '../../components/Yard/YardSlotReservationModal'
-import BookingDocumentsModal from '../../components/Booking/BookingDocumentsModal'
 import sourceLayout from '../../features/yard-design/tienSaLayout.json'
+import VesselsManifestTab from './components/VesselsManifestTab'
+import BookingsScheduleTab from './components/BookingsScheduleTab'
+import EportServiceOrdersTab from './components/EportServiceOrdersTab'
+import VesselYardAllocationModal from './components/VesselYardAllocationModal'
+import VesselManifestDetailModal from './components/VesselManifestDetailModal'
+import { planAllManifestContainers } from '../../services/yardPlanningRules'
+import GateBookingDetailModal from './components/GateBookingDetailModal'
+import {
+  BookingApproveModal,
+  BookingRejectModal,
+  BookingDocumentsModal,
+  BookingVehicleModal,
+  BookingCarrierModal,
+  BookingVesselModal,
+  BookingTariffModal,
+  BookingYardBigModal,
+} from './components/BookingActionModals'
+import ServicePortReconciliationModal from './components/ServicePortReconciliationModal'
 import { yardReservationStore } from '../../services/yardReservationStore'
 import { calculatePortStorageFee, calculatePortServiceTariff, computeAutoBookingTariff, calculateShiftingFee, PORT_STORAGE_TIERS } from '../../utils/portStorageFee'
 import { manifestPortSyncService, TRANSPORT_COMPANIES_POOL, sortContainersForYardAllocation, isManifestPermanentlyApproved } from '../../services/manifestPortSyncService'
@@ -146,6 +163,27 @@ const extractBookingDate = (b) => {
   return new Date().toLocaleDateString('vi-VN')
 }
 
+export const normCompanyText = (s) =>
+  String(s || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+export const companiesMatch = (a, b) => {
+  const na = normCompanyText(a)
+  const nb = normCompanyText(b)
+  if (!na || !nb) return false
+  if (na.includes(nb) || nb.includes(na)) return true
+  const stop = new Set(['cong', 'ty', 'tnhh', 'cp', 'co', 'phan', 'van', 'tai', 'logistics', 'giao', 'nhan', 'dich', 'vu', 'da', 'nang', 'mien', 'trung', 'chi', 'nhanh'])
+  const ta = na.split(' ').filter(w => w.length >= 2 && !stop.has(w))
+  const tb = new Set(nb.split(' ').filter(w => w.length >= 2 && !stop.has(w)))
+  const overlap = ta.filter(w => tb.has(w))
+  return overlap.length >= 1
+}
+
 export default function GateBookingRequests() {
   const navigate = useNavigate()
   const [bookings, setBookings] = useState([])
@@ -217,13 +255,34 @@ export default function GateBookingRequests() {
   const [vesselSearch, setVesselSearch] = useState('')
   const [selectedVesselFilter, setSelectedVesselFilter] = useState('All')
   const [vesselContainersPopup, setVesselContainersPopup] = useState(null)
-  const [vesselDetailTab, setVesselDetailTab] = useState('containers') // 'containers' | 'bl' | 'vessel' | 'seal'
   const [vesselPage, setVesselPage] = useState(1)
   const [vesselPageSize, setVesselPageSize] = useState(5)
   const [companyPage, setCompanyPage] = useState(1)
   const [companyPageSize, setCompanyPageSize] = useState(5)
   const [popupContainerPage, setPopupContainerPage] = useState(1)
   const [popupContainerPageSize, setPopupContainerPageSize] = useState(5)
+  const [selectedSlotDetails, setSelectedSlotDetails] = useState(null)
+  const [yardInventory, setYardInventory] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    const fetchYardInventory = async () => {
+      try {
+        const snap = await expressApiClient.get('/yard/layout')
+        if (active && snap?.slots) {
+          setYardInventory(snap)
+        }
+      } catch (err) {
+        // silent fallback
+      }
+    }
+    fetchYardInventory()
+    const timer = setInterval(fetchYardInventory, 15000)
+    return () => {
+      active = false
+      clearInterval(timer)
+    }
+  }, [])
 
   // Cảng phê duyệt / chấp nhận Bản khai Tàu -> Tự động tách ra bảng mới chia theo từng Công ty vận tải để xét duyệt
   const handleApproveVesselManifest = async (manifestId) => {
@@ -285,6 +344,60 @@ export default function GateBookingRequests() {
     showToast(
       `🟢 Đã duyệt tàu ${approvedManifest?.vesselName || manifestId}! Đã áp dụng phân bổ bãi tự động chuẩn: Hàng xuất gần cổng, Hàng nhập gần biển, Cont lạnh/DG ưu tiên, Cont nặng hạ tầng dưới.`
     )
+  }
+
+  // Dispatcher kiểm tra logic bãi, chấp nhận (Accept) và chuyển sang bước tiếp theo
+  const handleAcceptYardAndNext = async (manifest, overrides = {}, containerList = []) => {
+    if (!manifest) return
+    const mId = manifest.manifestId || manifest.manifestNumber || manifest.id
+
+    // 1. Phê duyệt bản khai tàu & tự động gán vị trí bãi
+    await handleApproveVesselManifest(mId)
+
+    // 2. Thu thập và đồng bộ ngay 100% vị trí bãi từ Popup sang Bookings & yardReservationStore
+    const effectiveList = Array.isArray(containerList) && containerList.length > 0 ? containerList : popupContainerList
+    if (Array.isArray(effectiveList)) {
+      effectiveList.forEach(c => {
+        const key = String(c.containerNumber || c.containerId || c.containerNo || c.id || '').trim().toUpperCase()
+        const manual = overrides?.[key]
+        const slot = manual || c.autoYardSlot
+        if (key && slot) {
+          const slotCoord = slot.coordinate || `${slot.blockCode || slot.block}-${String(slot.bay || 1).padStart(2, '0')}-${String(slot.row || 1).padStart(2, '0')}-${slot.tier || 1}`
+          manifestPortSyncService.syncYardSlotAcrossAll({
+            containerNumber: key,
+            manifestId: mId,
+            newSlotCoordinate: slotCoord,
+            reason: 'Điều độ viên xác nhận vị trí bãi đề xuất từ Bản Khai Tàu',
+            status: 'reserved',
+            vesselName: manifest.vesselName || '',
+            voyageNumber: manifest.voyageNumber || '',
+          }).catch(() => {})
+        }
+      })
+    }
+    
+    // 3. Gửi lịch Manifest và vị trí bãi cho Hãng tàu
+    manifestPortSyncService.saveSyncedManifest({
+      ...manifest,
+      yardScheduleSentToCarrier: true,
+      yardScheduleSentAt: new Date().toISOString(),
+      portApprovalStatus: 'PORT_APPROVED',
+      status: 'PORT_APPROVED'
+    })
+    
+    // 4. Cập nhật version để re-render bảng
+    setManifestSyncVersion(v => v + 1)
+
+    // 5. Đóng Popup xem bãi
+    setVesselContainersPopup(null)
+    
+    // 6. "rr mới hướng tới bước tiếp theo": Chuyển sang Tab 2 "Container Theo Ngày & Chuyến Tàu"
+    setActiveListType('truck')
+    if (manifest.manifestNumber || manifest.vesselName) {
+      setSelectedVesselFilter(manifest.manifestNumber || manifest.vesselName)
+    }
+    
+    showToast(`🟢 Đã duyệt và gửi lịch bãi thành công cho Hãng tàu! Đang chuyển sang bước điều phối xe & lịch hẹn cổng.`)
   }
 
   // Chuyển Trạng Thái Cảng của Tàu về lại "Chờ phê duyệt"
@@ -428,6 +541,7 @@ export default function GateBookingRequests() {
     }
     const handleYardResUpdate = () => {
       setYardResVersion(v => v + 1)
+      setManifestSyncVersion(v => v + 1)
     }
     window.addEventListener('nexusport:manifest_synced', handleManifestCustomEvent)
     window.addEventListener('storage', handleStorageUpdate)
@@ -1257,17 +1371,23 @@ export default function GateBookingRequests() {
     return Array.from(dates).sort()
   }, [manifestGeneratedBookings])
 
-  // Danh sách các Tàu có container để lọc
+  // Danh sách các Tàu có container để lọc (Tách riêng theo chiều Nhập khẩu & Xuất khẩu)
   const availableVessels = useMemo(() => {
     const vessels = new Map()
     manifestGeneratedBookings.forEach(b => {
       const vName = b.vesselName
-      if (vName && !vessels.has(vName)) {
-        vessels.set(vName, {
+      if (!vName) return
+      const normDir = (String(b.direction || '').toUpperCase() === 'IMPORT' || b.operation === 'Pickup') ? 'IMPORT' : 'EXPORT'
+      const dirLabel = normDir === 'IMPORT' ? 'Nhập khẩu' : 'Xuất khẩu'
+      const mKey = b.sourceManifestNumber || b.sourceManifestId || `${vName}___${normDir}`
+      if (!vessels.has(mKey)) {
+        vessels.set(mKey, {
+          key: mKey,
           vesselName: vName,
           voyageNumber: b.voyageNumber || '',
-          label: b.voyageNumber ? `${vName} (${b.voyageNumber})` : vName,
-          manifestNumber: b.sourceManifestNumber || b.sourceManifestId || vName
+          direction: normDir,
+          label: `${vName}${b.voyageNumber ? ` (${b.voyageNumber})` : ''} · ${dirLabel}`,
+          manifestNumber: mKey,
         })
       }
     })
@@ -1361,28 +1481,7 @@ export default function GateBookingRequests() {
   // - Sai Cont / Sai Mã vận đơn (B/L) hoặc Mã Booking / Sai Tên công ty -> Tự động Reject
   // - Đúng hết -> Tự động cập nhật 1. Công Ty Vận Tải chi tiết & báo lên để vào Accept
   useEffect(() => {
-    if (!eportListItems.length || !manifestGeneratedBookings.length) return
-
-    const normText = (s) =>
-      String(s || '')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-
-    const companiesMatch = (a, b) => {
-      const na = normText(a)
-      const nb = normText(b)
-      if (!na || !nb) return false
-      if (na.includes(nb) || nb.includes(na)) return true
-      const stop = new Set(['cong', 'ty', 'tnhh', 'cp', 'co', 'phan', 'van', 'tai', 'logistics', 'giao', 'nhan', 'dich', 'vu', 'da', 'nang', 'mien', 'trung', 'chi', 'nhanh'])
-      const ta = na.split(' ').filter(w => w.length >= 2 && !stop.has(w))
-      const tb = new Set(nb.split(' ').filter(w => w.length >= 2 && !stop.has(w)))
-      const overlap = ta.filter(w => tb.has(w))
-      return overlap.length >= 1
-    }
+    if (!eportListItems.length || (!manifestGeneratedBookings.length && !bookings.length)) return
 
     let cancelled = false
     const runValidation = async () => {
@@ -1395,10 +1494,12 @@ export default function GateBookingRequests() {
         if (order.status === 'DRAFT' || order.status === 'CANCELLED') continue
 
         let detail = order
-        try {
-          detail = await serviceOrdersApi.get(order.id)
-        } catch {
-          detail = order
+        if (!detail.containers?.length && !detail.content?.source && detail.id) {
+          try {
+            detail = await serviceOrdersApi.get(order.id)
+          } catch {
+            detail = order
+          }
         }
 
         const containerTokens = [
@@ -1443,6 +1544,8 @@ export default function GateBookingRequests() {
         }
 
         let rejectReason = ''
+        const isOrderImport = String(order.flow || detail.flow || '').toUpperCase() === 'IMPORT'
+        let targetCompanyOnGate = ''
         if (matchedBookings.length === 0) {
           rejectReason = 'Cont không nằm trong danh sách'
         } else {
@@ -1472,12 +1575,20 @@ export default function GateBookingRequests() {
               refTokens.some(t => cleanBookingCode(t).toUpperCase().includes(bkExpected) || bkExpected.includes(cleanBookingCode(t).toUpperCase()))
 
             const refMatches = blMatches || bkMatches
-            const companyMatches = companiesMatch(order.companyName, primary.company)
+            // ĐỐI CHIẾU THỐNG NHẤT THEO LOẠI HÀNG (từ thông tin Vận đơn Hãng tàu):
+            // - Hàng xuất: Người gửi hàng (Shipper / Booking)
+            // - Hàng nhập: Người nhận hàng (Consignee)
+            targetCompanyOnGate = isOrderImport
+              ? (primary.consignee || primary.company)
+              : (primary.shipper || primary.company)
+            const companyMatches = companiesMatch(order.companyName, targetCompanyOnGate)
 
             if (!refMatches) {
               rejectReason = 'Sai mã vận đơn / booking'
             } else if (!companyMatches) {
-              rejectReason = 'Sai tên công ty'
+              rejectReason = isOrderImport
+                ? 'Sai người nhận hàng'
+                : 'Sai người gửi hàng'
             }
           }
         }
@@ -1488,6 +1599,9 @@ export default function GateBookingRequests() {
           nextMap[order.id] = {
             status: 'AUTO_REJECTED',
             reason: rejectReason,
+            detailReason: isOrderImport
+              ? `Sai Người nhận hàng (ePort: ${order.companyName || '—'} ≠ Consignee: ${targetCompanyOnGate || '—'})`
+              : `Sai Người gửi hàng (ePort: ${order.companyName || '—'} ≠ Shipper: ${targetCompanyOnGate || '—'})`,
             ...(containerIdsList.length > 0 ? { containerIds: containerIdsList } : {}),
           }
         } else if (order.status === 'REJECTED') {
@@ -1521,18 +1635,34 @@ export default function GateBookingRequests() {
             const syncKey = `sync:${order.id}:${mb.id}`
             if (!processedEportOrderRef.current.has(syncKey)) {
               processedEportOrderRef.current.add(syncKey)
+              const extractedFleet = manifestPortSyncService.extractFleetFromOrder(detail, mb.containerId)
+              const isOrdPaid = String(order.paymentStatus || '').toUpperCase() === 'PAID'
+              const isOrdApproved = String(order.status || '').toUpperCase() === 'APPROVED' || String(order.approvalStatus || '').toUpperCase() === 'APPROVED' || isOrdPaid
+              const targetStatus = isOrdPaid
+                ? 'Ready'
+                : (isOrdApproved ? (mb.status === 'Ready' ? 'Ready' : 'Approved') : (mb.status === 'WaitingTransport' ? 'Pending' : mb.status))
               const needsBookingUpdate =
                 !mb.transportSubmitted ||
                 mb.eportOrderId !== order.id ||
-                mb.status === 'WaitingTransport'
+                mb.status !== targetStatus ||
+                (extractedFleet?.plate && mb.licensePlate !== extractedFleet.plate) ||
+                (extractedFleet?.driver && mb.driverName !== extractedFleet.driver)
               if (needsBookingUpdate) {
                 manifestPortSyncService.updateGeneratedGateBookingStatus(mb.id, {
                   transportSubmitted: true,
-                  status: mb.status === 'WaitingTransport' ? 'Pending' : mb.status,
+                  status: targetStatus,
                   company: order.companyName || mb.company,
                   contactName: detail.content?.contactName || mb.contactName,
-                  phone: detail.content?.contactPhone || mb.phone,
+                  phone: extractedFleet?.phone || detail.content?.contactPhone || mb.phone,
                   email: detail.content?.contactEmail || mb.email,
+                  ...(extractedFleet?.plate ? { licensePlate: extractedFleet.plate, vehiclePlate: extractedFleet.plate, suggestedPlate: extractedFleet.plate } : {}),
+                  ...(extractedFleet?.driver ? { driverName: extractedFleet.driver, suggestedDriver: extractedFleet.driver } : {}),
+                  ...(extractedFleet?.license ? { licenseNumber: extractedFleet.license } : {}),
+                  ...(extractedFleet?.trailer ? { trailerPlate: extractedFleet.trailer } : {}),
+                  ...(extractedFleet?.driverSnapshot ? { driverSnapshot: extractedFleet.driverSnapshot } : {}),
+                  ...(extractedFleet?.vehicle ? { vehicleSnapshot: extractedFleet.vehicle } : {}),
+                  ...(extractedFleet?.appointmentStart ? { appointmentStart: extractedFleet.appointmentStart, eta: extractedFleet.appointmentStart } : {}),
+                  ...(extractedFleet?.appointmentEnd ? { appointmentEnd: extractedFleet.appointmentEnd } : {}),
                   eportOrderId: order.id,
                   eportOrderNumber: order.number,
                   eportMatched: true,
@@ -1570,7 +1700,7 @@ export default function GateBookingRequests() {
 
     runValidation()
     return () => { cancelled = true }
-  }, [eportListItems, manifestGeneratedBookings])
+  }, [eportListItems, manifestGeneratedBookings, bookings])
 
   useEffect(() => {
     if (!selectedBooking) {
@@ -1610,24 +1740,28 @@ export default function GateBookingRequests() {
     const regexMatches = (String(activeOrder.sourceLabel || '').toUpperCase().match(/[A-Z]{4}\d{7}/g)) || []
     const allEportContList = Array.from(new Set([...eportContainers, ...regexMatches])).filter(Boolean)
 
-    // Tìm TẤT CẢ các container phía Cổng thuộc về cùng booking / ePort order này (loại bỏ trùng lặp container giữa manifest và bookings)
+    // Tìm TẤT CẢ các container phía Cổng thuộc về cùng booking / ePort order này (tách biệt rõ chiều Nhập & Xuất)
     const allGatesMap = new Map()
     for (const b of [...manifestGeneratedBookings, ...bookings]) {
       const cId = String(b.containerId || '').trim().toUpperCase()
       if (!cId) continue
-      if (!allGatesMap.has(cId) || b.id === selectedBooking.id) {
-        allGatesMap.set(cId, b)
+      const bDir = (String(b.direction || '').toUpperCase() === 'IMPORT' || b.operation === 'Pickup') ? 'IMPORT' : 'EXPORT'
+      const mapKey = `${cId}___${bDir}`
+      if (!allGatesMap.has(mapKey) || b.id === selectedBooking.id) {
+        allGatesMap.set(mapKey, b)
       }
     }
     const allGates = Array.from(allGatesMap.values())
     const matchedGateBookings = allGates.filter(b => {
+      const bDir = (String(b.direction || '').toUpperCase() === 'IMPORT' || b.operation === 'Pickup') ? 'IMPORT' : 'EXPORT'
+      if (bDir !== gateFlow) return false
       const bCont = String(b.containerId || '').trim().toUpperCase()
       if (allEportContList.length > 0) {
         return Boolean(bCont && allEportContList.includes(bCont))
       }
       if (b.id === selectedBooking.id || b.containerId === selectedBooking.containerId) return true
       if (activeOrder.id && b.eportOrderId === activeOrder.id) return true
-      // Cùng chung mã Vận đơn (B/L) và Tàu
+      // Cùng chung mã Vận đơn (B/L), cùng Bản khai và cùng chiều Xuất/Nhập
       if (selectedBooking.cargoDeclarationId && selectedBooking.cargoDeclarationId !== 'N/A' &&
         b.cargoDeclarationId === selectedBooking.cargoDeclarationId &&
         (b.sourceManifestNumber === selectedBooking.sourceManifestNumber || b.vesselName === selectedBooking.vesselName)) {
@@ -1775,9 +1909,21 @@ export default function GateBookingRequests() {
     const refTag = gateManifestNo || eportBookingNo
     const isManifestCodeMatch = Boolean(bookingMatch && gateBookingNo && eportBookingNo && normCode(gateBookingNo) !== normCode(eportBookingNo))
 
-    const eportCompany = String(activeOrder.companyName || '').trim().toLowerCase()
-    const gateCompany = String(selectedBooking.company || '').trim().toLowerCase()
-    const companyMatch = !eportCompany || !gateCompany || eportCompany.includes(gateCompany.slice(0, 8)) || gateCompany.includes(eportCompany.slice(0, 8))
+    const isCurrentImport = gateFlow === 'IMPORT' || eportFlow === 'IMPORT'
+    // ĐỐI CHIẾU THỐNG NHẤT THEO LOẠI HÀNG (từ thông tin Vận đơn Hãng tàu):
+    // - Hàng xuất: Người gửi hàng (Shipper / Booking)
+    // - Hàng nhập: Người nhận hàng (Consignee)
+    const gateExpectedCompany = isCurrentImport
+      ? (selectedBooking.consignee || selectedBooking.company || '—')
+      : (selectedBooking.shipper || selectedBooking.company || '—')
+
+    const eportCompany = String(activeOrder.companyName || '').trim()
+    const normTextMatch = (s) => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '')
+    const companyMatch = !eportCompany || !gateExpectedCompany ||
+      gateExpectedCompany === '—' ||
+      companiesMatch(activeOrder.companyName, gateExpectedCompany) ||
+      normTextMatch(eportCompany).includes(normTextMatch(gateExpectedCompany).slice(0, 8)) ||
+      normTextMatch(gateExpectedCompany).includes(normTextMatch(eportCompany).slice(0, 8))
 
     const sortedGateConts = Array.from(new Set(matchedGateBookings.map(b => b.containerId).filter(Boolean))).sort().join(', ')
     const sortedEportConts = Array.from(new Set(allEportContList.filter(Boolean))).sort().join(', ')
@@ -1797,16 +1943,19 @@ export default function GateBookingRequests() {
         ok: flowMatch
       },
       {
-        label: 'Mã Booking',
-        gateVal: isManifestCodeMatch && refTag ? `${gateBookingNo} (${refTag})` : (gateBookingNo || 'Chưa có Booking'),
-        eportVal: isManifestCodeMatch ? `${gateBookingNo} (${eportBookingNo})` : (eportBookingNo || 'Chưa nhập Booking'),
+        label: isCurrentImport ? 'Mã Lệnh eDO / Vận đơn B/L' : 'Mã Booking',
+        gateVal: isManifestCodeMatch && refTag ? `${gateBookingNo} (${refTag})` : (gateBookingNo || (isCurrentImport ? 'Chưa có eDO' : 'Chưa có Booking')),
+        eportVal: isManifestCodeMatch ? `${gateBookingNo} (${eportBookingNo})` : (eportBookingNo || (isCurrentImport ? 'Chưa nhập eDO' : 'Chưa nhập Booking')),
         ok: bookingMatch
       },
       {
-        label: 'Doanh nghiệp / Vận tải',
-        gateVal: selectedBooking.company || '—',
-        eportVal: activeOrder.companyName || 'Doanh nghiệp đăng ký',
-        ok: companyMatch
+        label: isCurrentImport ? 'Doanh nghiệp nhận hàng (Consignee)' : 'Doanh nghiệp gửi hàng (Shipper / Booking)',
+        gateVal: isCurrentImport
+          ? `${gateExpectedCompany} ${selectedBooking.consignee ? '(Consignee trên B/L)' : ''}`
+          : `${gateExpectedCompany} ${selectedBooking.shipper ? '(Shipper trên B/L)' : ''}`,
+        eportVal: `${activeOrder.companyName || 'Doanh nghiệp đăng ký'}${isCurrentImport ? ' (Đơn vị nhận ePort)' : ' (Đơn vị gửi ePort)'}`,
+        ok: companyMatch,
+        note: isCurrentImport ? 'Đối chiếu Người nhận hàng (Consignee) giữa Vận đơn Hãng tàu ↔ Đơn ePort' : 'Đối chiếu Người gửi hàng (Shipper) giữa Vận đơn Hãng tàu ↔ Đơn ePort'
       }
     ]
 
@@ -2073,13 +2222,16 @@ export default function GateBookingRequests() {
     }
   }, [selectedBooking, reservedSlot, activePortTariff, activeShiftingFee])
 
-  // Danh sách toàn bộ các container trong Booking / Đơn hàng này (để xem từng cont và tính tổng 1 Bill)
+  // Danh sách toàn bộ các container trong Booking / Đơn hàng này (để xem từng cont và tính tổng 1 Bill, tách biệt rõ chiều Nhập & Xuất)
   const orderContainersList = useMemo(() => {
     if (!selectedBooking) return []
+    const selectedDir = isImportBooking ? 'IMPORT' : 'EXPORT'
     const allGatesMap = new Map()
     for (const b of [...manifestGeneratedBookings, ...bookings]) {
       const cId = String(b.containerId || '').trim().toUpperCase()
       if (!cId) continue
+      const bDir = (String(b.direction || '').toUpperCase() === 'IMPORT' || b.operation === 'Pickup') ? 'IMPORT' : 'EXPORT'
+      if (bDir !== selectedDir) continue
       if (!allGatesMap.has(cId) || b.id === selectedBooking.id) {
         allGatesMap.set(cId, b)
       }
@@ -2197,19 +2349,22 @@ export default function GateBookingRequests() {
 
   useEffect(() => {
     setPopupContainerPage(1)
+    setSelectedSlotDetails(null)
   }, [vesselContainersPopup])
 
   // Lọc danh sách container theo Tàu được chọn / Tìm kiếm tàu / Từ khóa / Trạng thái / Công ty vận tải
   const filteredBookings = useMemo(() => {
     const vq = vesselSearch.toLowerCase().trim()
     return manifestGeneratedBookings.filter(b => {
-      // 1. Lọc riêng theo Tàu được chọn (selectedVesselFilter)
+      // 1. Lọc riêng theo Tàu & Bản khai được chọn (selectedVesselFilter) — Tách biệt rõ chiều Nhập & Xuất
       if (selectedVesselFilter !== 'All') {
         const sv = String(selectedVesselFilter).toLowerCase().trim()
+        const bDir = (String(b.direction || '').toUpperCase() === 'IMPORT' || b.operation === 'Pickup') ? 'import' : 'export'
+        const bKey = `${(b.vesselName || '').toLowerCase()}___${bDir}`
         const matchesSelectedVessel =
           (b.sourceManifestNumber && b.sourceManifestNumber.toLowerCase() === sv) ||
           (b.sourceManifestId && b.sourceManifestId.toLowerCase() === sv) ||
-          (b.vesselName && b.vesselName.toLowerCase() === sv)
+          bKey === sv
         if (!matchesSelectedVessel) return false
       }
 
@@ -2282,7 +2437,7 @@ export default function GateBookingRequests() {
     return filteredVessels.slice(start, start + vesselPageSize)
   }, [filteredVessels, vesselPage, vesselPageSize])
 
-  // Gom nhóm container theo Ngày & Chuyến Tàu (thay thế nhóm theo Công ty Vận tải)
+  // Gom nhóm container theo Ngày, Chuyến Tàu & Chiều Xuất/Nhập riêng biệt (không gộp chung Xuất và Nhập vào 1 bảng)
   const manifestBookingsByCompany = useMemo(() => {
     const groups = {}
     filteredBookings.forEach((b) => {
@@ -2290,8 +2445,9 @@ export default function GateBookingRequests() {
       const vesselName = b.vesselName || 'Tàu Cập Cảng'
       const voyageNumber = b.voyageNumber || ''
       const shippingLine = b.shippingLine || ''
-      const direction = b.direction || (b.operation === 'Pickup' ? 'IMPORT' : 'EXPORT')
-      const groupKey = `${dateStr}___${vesselName}___${voyageNumber}`
+      const direction = (String(b.direction || '').toUpperCase() === 'IMPORT' || b.operation === 'Pickup') ? 'IMPORT' : 'EXPORT'
+      const manifestKey = b.sourceManifestId || b.sourceManifestNumber || direction
+      const groupKey = `${dateStr}___${vesselName}___${voyageNumber}___${direction}___${manifestKey}`
 
       if (!groups[groupKey]) {
         groups[groupKey] = {
@@ -2302,6 +2458,7 @@ export default function GateBookingRequests() {
           voyageNumber,
           shippingLine,
           direction,
+          sourceManifestNumber: b.sourceManifestNumber || '',
           items: [],
         }
       }
@@ -2323,90 +2480,42 @@ export default function GateBookingRequests() {
   }, [manifestBookingsByCompany, companyPage, companyPageSize])
 
   // Gom nhóm container theo từng Vận đơn (B/L) cho tàu đang xem
-  const selectedVesselBlGroups = useMemo(() => {
-    if (!selectedVesselManifest?.containers) return []
-    const map = {}
-    selectedVesselManifest.containers.forEach((c) => {
-      const bl = c.blNumber || 'BL-VNDAD-DEFAULT'
-      if (!map[bl]) {
-        map[bl] = {
-          blNumber: bl,
-          shipper: c.shipper || 'Công ty CP Xuất Nhập Khẩu Đà Nẵng',
-          consignee: c.consignee || 'Hãng Tàu & Khách Hàng Quốc Tế',
-          pol: selectedVesselManifest.pol || 'Cảng Tiên Sa, Đà Nẵng (VNDAD)',
-          pod: selectedVesselManifest.pod || 'Tokyo Port, Nhật Bản (JPTYO)',
-          containers: [],
-          totalGrossWeight: 0,
-          totalCbm: 0,
-        }
-      }
-      map[bl].containers.push(c)
-      map[bl].totalGrossWeight += Number(c.grossWeightKg || 0)
-      map[bl].totalCbm += Number(c.cbm || 0)
-    })
-    return Object.values(map)
-  }, [selectedVesselManifest])
-
-  // Thống kê tổng hợp toàn tàu đang chọn
-  const selectedVesselCargoStats = useMemo(() => {
-    if (!selectedVesselManifest?.containers) return { count: 0, gross: 0, net: 0, cbm: 0, rfCount: 0 }
-    const list = selectedVesselManifest.containers
-    const count = list.length
-    const gross = list.reduce((a, c) => a + Number(c.grossWeightKg || 0), 0)
-    const net = list.reduce((a, c) => a + Number(c.netWeightKg || ((Number(c.grossWeightKg) || 0) - (Number(c.tareWeightKg) || 3820))), 0)
-    const cbm = list.reduce((a, c) => a + Number(c.cbm || 65), 0)
-    const rfCount = list.filter(c => (c.isoType || '').includes('RF') || (c.tempRequired || '').includes('-')).length
-    return { count, gross, net, cbm: cbm.toFixed(1), rfCount }
-  }, [selectedVesselManifest])
-
-  // Danh sách Container hiển thị trong Popup khi bấm Cái Phễu
+  // Danh sách Container hiển thị trong Popup khi bấm Cái Phễu (Đồng bộ qua module quy hoạch bãi chuẩn yardPlanningRules)
   const popupContainerList = useMemo(() => {
     if (!vesselContainersPopup) return []
     const vKey = vesselContainersPopup.manifestNumber || vesselContainersPopup.manifestId
-    const matched = manifestGeneratedBookings.filter(
-      b => b.sourceManifestNumber === vKey || b.sourceManifestId === vKey || b.vesselName === vesselContainersPopup.vesselName
-    )
-    if (matched.length > 0) return matched
-
-    return (vesselContainersPopup.containers || []).map((c, idx) => {
-      const isRf = (c.isoType || '').includes('RF') || (c.tempRequired || '').includes('-')
-      const isDg = (c.dgClass || '').includes('IMO') || (c.dgClass || '').includes('Class')
-      const blockCode = isRf ? 'D01' : (isDg ? 'E01' : (idx % 2 === 0 ? 'A01' : 'A02'))
-      const bayNum = c.isoType?.includes('20') ? (1 + (idx * 2) % 15) : (2 + (idx * 2) % 16)
-      const bayStr = String(bayNum).padStart(2, '0')
-      const rowNum = (idx % 4) + 1
-      const rowStr = String(rowNum).padStart(2, '0')
-      const tierNum = 1
-      const autoGate = 'Gate 1'
-      const slot = c.autoYardSlot || {
-        blockCode,
-        bay: bayNum,
-        bayCode: bayStr,
-        bayDisplay: `Bay ${bayStr}`,
-        row: rowNum,
-        rowCode: rowStr,
-        tier: tierNum,
-        tierCode: '1',
-        gate: 'Gate 1',
-        gateDisplay: 'Gate 1 (Cổng Cảng Tiên Sa)',
-        slotName: `Khu ${blockCode} · Bay ${bayStr} (R${rowStr}-T${tierNum})`,
-        fullLocation: `Block ${blockCode} · Bay ${bayStr} · Row ${rowStr} · Tier ${tierNum}`
-      }
-
-      return {
-        id: `cont-${idx}`,
-        containerId: c.containerNumber,
-        containerType: c.isoType || '40HC',
-        cargoDescription: c.cargoDescription || 'Hàng hóa thông quan',
-        blNumber: c.blNumber || 'BL-VNDAD',
-        sealNumber: c.sealNumber || 'SL-88412',
-        customsStatus: c.customsStatus || 'Đã thông quan',
-        autoYardSlot: slot,
-        requestedGate: 'Gate 1',
-        transportSubmitted: false,
-        status: 'WaitingTransport',
-      }
+    const popupDir = (String(vesselContainersPopup.direction || '').toUpperCase() === 'IMPORT' || vesselContainersPopup.direction === 'Nhập khẩu') ? 'IMPORT' : 'EXPORT'
+    const matched = manifestGeneratedBookings.filter(b => {
+      const bDir = (String(b.direction || '').toUpperCase() === 'IMPORT' || b.operation === 'Pickup') ? 'IMPORT' : 'EXPORT'
+      if (vKey && (b.sourceManifestNumber === vKey || b.sourceManifestId === vKey)) return true
+      return b.vesselName === vesselContainersPopup.vesselName && bDir === popupDir
     })
+
+    const sourceConts = matched.length > 0
+      ? matched
+      : (vesselContainersPopup.containers || []).map((c, idx) => ({
+          ...c,
+          id: `cont-${idx}`,
+          containerId: c.containerNumber,
+          containerType: c.isoType || '40HC',
+          cargoDescription: c.cargoDescription || 'Hàng hóa thông quan',
+          blNumber: c.blNumber || 'BL-VNDAD',
+          sealNumber: c.sealNumber || 'SL-88412',
+          customsStatus: c.customsStatus || 'Đã thông quan',
+          requestedGate: 'Gate 1',
+          transportSubmitted: false,
+          status: 'WaitingTransport',
+          isRf: Boolean(c.isReefer) || (c.isoType || '').includes('RF') || (c.tempRequired || '').includes('-'),
+          isReefer: Boolean(c.isReefer) || (c.isoType || '').includes('RF') || (c.tempRequired || '').includes('-'),
+          tempRequired: c.tempRequired || ((Boolean(c.isReefer) || (c.isoType || '').includes('RF')) ? '-18.0°C' : null),
+          grossWeightKg: Number(c.grossWeightKg || 24000),
+          isDg: (c.dgClass || '').includes('IMO') || (c.dgClass || '').includes('Class') || c.isDG,
+          dgClass: c.dgClass || (c.isDG ? 'IMO Class 3' : null)
+        }))
+
+    const otherBookings = manifestGeneratedBookings.filter(b => !matched.includes(b))
+    const { plannedContainers } = planAllManifestContainers(sourceConts, popupDir, otherBookings)
+    return plannedContainers
   }, [vesselContainersPopup, manifestGeneratedBookings])
 
   // Phân trang danh sách Container trong Popup
@@ -2617,6 +2726,13 @@ export default function GateBookingRequests() {
             driverStatus: 'Available',
             portBill: tPortBill,
             storageData: tStorageData,
+            ...(tOrderFleet?.appointmentStart || activeEportOrder?.content?.plannedAt
+              ? {
+                  appointmentStart: tOrderFleet?.appointmentStart || activeEportOrder?.content?.plannedAt,
+                  eta: tOrderFleet?.appointmentStart || activeEportOrder?.content?.plannedAt,
+                }
+              : {}),
+            ...(tOrderFleet?.appointmentEnd ? { appointmentEnd: tOrderFleet.appointmentEnd } : {}),
             ...(activeEportOrder?.id ? { eportOrderId: activeEportOrder.id, eportOrderNumber: activeEportOrder.number } : {}),
             ...(tOrderFleet?.documents ? { eportDocuments: tOrderFleet.documents, documents: tOrderFleet.documents } : {}),
             ...(tOrderFleet?.driverSnapshot ? { driverSnapshot: tOrderFleet.driverSnapshot } : {}),
@@ -3014,395 +3130,75 @@ export default function GateBookingRequests() {
     return { isEligible, checks }
   }
 
-  // Render các Bảng Mới Chia Theo Ngày & Chuyến Tàu (tách từ Tàu đã được Cảng phê duyệt, lọc riêng theo từng Tàu hoặc Ngày được chọn)
-  const renderManifestCompanyTables = () => {
-    if (manifestGeneratedBookings.length === 0) return null
+  const handleSlotReservationConfirm = async (slotInfo) => {
+    try {
+      const newTier = Number(slotInfo.tier) || 1
+      const bayStr = String(slotInfo.bay).padStart(2, '0')
+      const rowStr = String(slotInfo.row).padStart(2, '0')
+      const coordinate = `${slotInfo.blockCode}-${bayStr}-${rowStr}-${newTier}`
 
-    const waitingTransportTotal = filteredBookings.filter(b => !isBookingTransportSubmitted(b)).length
-    const readyForReviewTotal = filteredBookings.filter(b => isBookingTransportSubmitted(b) && (b.status === 'Pending' || b.status === 'Under Review' || b.status === 'WaitingTransport')).length
-    const approvedTotal = filteredBookings.filter(b => b.status === 'Approved').length
+      // Đồng bộ 4 bên
+      await manifestPortSyncService.syncYardSlotAcrossAll({
+        containerNumber: selectedBooking?.containerId,
+        bookingCode: selectedBooking?.id,
+        manifestId: selectedBooking?.sourceManifestId || selectedBooking?.manifestId,
+        newSlotCoordinate: coordinate,
+        reason: 'Điều độ viên thay đổi vị trí bãi tại Gate Dispatching',
+        vehiclePlate: selectedBooking?.licensePlate,
+        driverName: selectedBooking?.driverName,
+        company: selectedBooking?.company,
+        vesselName: selectedBooking?.vesselName,
+        voyageNumber: selectedBooking?.voyageNumber,
+      })
 
-    const activeVesselObj =
-      selectedVesselFilter !== 'All'
-        ? approvedVesselsList.find(
-          v => v.manifestNumber === selectedVesselFilter || v.manifestId === selectedVesselFilter || v.vesselName === selectedVesselFilter
-        )
-        : null
-
-    const allCompaniesCollapsed =
-      manifestBookingsByCompany.length > 0 &&
-      manifestBookingsByCompany.every(g => collapsedCompanies[g.groupKey || g.companyName])
-
-    const handleToggleAllCompanies = (e) => {
-      e.stopPropagation()
-      if (isCompanySectionCollapsed) {
-        setIsCompanySectionCollapsed(false)
-        setCollapsedCompanies({})
-        return
+      const updatedSlot = {
+        ...(reservedSlot || selectedBooking?.autoYardSlot || {}),
+        ...slotInfo,
+        bay: bayStr,
+        row: rowStr,
+        tier: newTier,
+        tierCode: String(newTier),
+        zoneCode: (slotInfo.blockCode || 'A')[0],
+        zoneName: `Khu ${(slotInfo.blockCode || 'A')[0]} · Block ${slotInfo.blockCode}`,
+        autoAssigned: false,
+        coordinate,
       }
-      if (allCompaniesCollapsed) {
-        setCollapsedCompanies({})
+      setReservedSlot(updatedSlot)
+      setSelectedZone((slotInfo.blockCode || 'A')[0])
+      setSelectedBlock(slotInfo.blockCode || 'A01')
+
+      const updatedBooking = {
+        ...selectedBooking,
+        yardSlot: coordinate,
+        autoYardSlot: updatedSlot,
+        reservedSlot: updatedSlot,
+        slotInfo: updatedSlot,
+        yardBlockCode: slotInfo.blockCode,
+        yardBay: Number(slotInfo.bay),
+        yardRow: Number(slotInfo.row),
+        yardTier: newTier,
+      }
+      setSelectedBooking(updatedBooking)
+      setBookings(prev => prev.map(b => {
+        const isMatch = (selectedBooking?.id && b.id === selectedBooking.id) ||
+                        (selectedBooking?.containerId && b.containerId === selectedBooking.containerId)
+        return isMatch ? { ...b, ...updatedBooking } : b
+      }))
+
+      setYardResVersion(v => v + 1)
+      setManifestSyncVersion(v => v + 1)
+
+      if (slotInfo.slotId && slotInfo.slotId.length > 10) {
+        await apiClient.post(`/v1/Yard/Slots/${slotInfo.slotId}/Reserve`).catch(() => { })
       } else {
-        const next = {}
-        manifestBookingsByCompany.forEach(g => {
-          next[g.groupKey || g.companyName] = true
-        })
-        setCollapsedCompanies(next)
+        await yardOperationService.reserveSlot({ posId: slotInfo.posId }).catch(() => { })
       }
+      handleReserveSlot(slotInfo.slotId, slotInfo.blockCode, slotInfo)
+      fetchYardMap()
+      showToast(`🟢 Đã chuyển & đồng bộ container ${selectedBooking?.containerId || ''} sang Block ${slotInfo.blockCode} (${slotInfo.bayDisplay || `Bay ${slotInfo.bay}`}, Tầng ${newTier}, Hàng ${slotInfo.row}) cho cả 4 bên và lịch tài xế!`)
+    } catch (err) {
+      showToast(`❌ Không thể giữ chỗ: ${err.message}`, 'error')
     }
-
-    return (
-      <div id="manifest-company-section" className="space-y-4">
-        {/* Tiêu đề Khu vực Bảng Chia Theo Ngày & Chuyến Tàu (vibe ePort) */}
-        <section className="epo-worklist p-5">
-          <div className="epo-worklist-heading !p-0 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-[11px] bg-[#f5f8fc] text-[#60768f] border border-[#e2e9f1] flex items-center justify-center shrink-0">
-                <span className="material-symbols-outlined text-lg">calendar_month</span>
-              </div>
-              <div>
-                <span className="epo-caption">PHÂN BỔ THEO NGÀY &amp; CHUYẾN TÀU</span>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h2>Danh Sách Container Theo Ngày &amp; Chuyến Tàu</h2>
-                  <span className="epo-result-count">{filteredBookings.length} Cont</span>
-                  {activeVesselObj && (
-                    <span className="epo-badge blue">
-                      <span />
-                      Tàu: {activeVesselObj.vesselName}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setSelectedVesselFilter('All')
-                        }}
-                        className="hover:text-rose-600 ml-1 text-[11px] font-bold cursor-pointer"
-                        title="Bỏ lọc tàu"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  )}
-                  {dateFilter !== 'All' && (
-                    <span className="epo-badge orange">
-                      <span />
-                      Ngày: {dateFilter}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setDateFilter('All')
-                        }}
-                        className="hover:text-rose-600 ml-1 text-[11px] font-bold cursor-pointer"
-                        title="Bỏ lọc ngày"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              {!isCompanySectionCollapsed && manifestBookingsByCompany.length > 0 && (
-                <button
-                  type="button"
-                  onClick={handleToggleAllCompanies}
-                  className="epc-button secondary !min-h-[36px] !py-1.5 !px-3"
-                >
-                  <span className="material-symbols-outlined text-sm">
-                    {allCompaniesCollapsed ? 'unfold_more' : 'unfold_less'}
-                  </span>
-                  <span>{allCompaniesCollapsed ? 'Mở tất cả' : 'Thu gọn'}</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => setIsCompanySectionCollapsed(prev => !prev)}
-                className="epc-button secondary !min-h-[36px] !py-1.5 !px-3"
-              >
-                <span className="material-symbols-outlined text-base">
-                  {isCompanySectionCollapsed ? 'expand_more' : 'expand_less'}
-                </span>
-                <span>{isCompanySectionCollapsed ? 'Mở rộng' : 'Ẩn'}</span>
-              </button>
-            </div>
-          </div>
-        </section>
-
-        {/* Nếu lọc tàu mà không có container khớp */}
-        {!isCompanySectionCollapsed && manifestBookingsByCompany.length === 0 && (
-          <div className="bg-white border border-dashed border-chalk rounded-2xl p-6 text-center space-y-2">
-            <span className="material-symbols-outlined text-3xl text-slate-400">search_off</span>
-            <div className="text-xs font-bold text-carbon">
-              Không có Container nào phù hợp với bộ lọc hiện tại.
-            </div>
-            <div>
-              <button
-                type="button"
-                onClick={handleClearAllFilters}
-                className="px-3 py-1.5 bg-carbon text-white rounded-xl text-xs font-bold inline-flex items-center gap-1 cursor-pointer transition shadow-2xs"
-              >
-                <span className="material-symbols-outlined text-sm">filter_alt_off</span>
-                <span>Xem tất cả Container ({manifestGeneratedBookings.length})</span>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Danh sách từng Bảng riêng cho mỗi Ngày & Chuyến Tàu */}
-        {!isCompanySectionCollapsed && manifestBookingsByCompany.length > 0 && (
-          <>
-            <div className="space-y-4">
-              {pagedCompanies.map((group, gIdx) => {
-                const globalIdx = (companyPage - 1) * companyPageSize + gIdx + 1
-                const waitingTransportCount = group.items.filter(x => !isBookingTransportSubmitted(x) && !isBookingApprovedOrBillSent(x)).length
-                const readyToReviewCount = group.items.filter(x => isBookingTransportSubmitted(x) && !isBookingApprovedOrBillSent(x)).length
-                const isGroupCollapsed = Boolean(collapsedCompanies[group.groupKey || group.companyName])
-
-                return (
-                  <div
-                    key={group.groupKey || group.companyName}
-                    className="epo-worklist transition-all"
-                  >
-                    {/* Header của từng Bảng Ngày & Chuyến Tàu (vibe ePort) */}
-                    <div
-                      onClick={() =>
-                        setCollapsedCompanies(prev => ({
-                          ...prev,
-                          [group.groupKey || group.companyName]: !prev[group.groupKey || group.companyName],
-                        }))
-                      }
-                      className="px-5 py-3.5 bg-[#fbfcfe] hover:bg-[#f5f8fc] border-b border-[#e9eef4] flex justify-between items-center gap-2 cursor-pointer transition select-none"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="w-7 h-7 rounded-[9px] bg-[#f5f8fc] border border-[#e2e9f1] text-[#3e5873] font-mono font-bold text-[11px] flex items-center justify-center shrink-0">
-                          {globalIdx}
-                        </span>
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-[#eef4fb] text-[#1b4372] border border-[#d6e4f3] font-mono font-bold text-xs">
-                              <span className="material-symbols-outlined text-[13px]">calendar_today</span>
-                              <span>{group.date}</span>
-                            </span>
-                            <h4 className="text-[13px] font-bold text-[#29415a] flex items-center gap-1.5">
-                              <span className="material-symbols-outlined text-sm text-[#ea580c]">directions_boat</span>
-                              <span>{group.vesselName}</span>
-                              {group.voyageNumber && (
-                                <span className="font-mono text-xs font-semibold text-[#60768f]">
-                                  ({group.voyageNumber})
-                                </span>
-                              )}
-                            </h4>
-                          </div>
-                          <div className="text-[11px] text-[#8a9bb0] mt-0.5 flex items-center gap-2">
-                            <span>Hãng tàu: <strong className="text-[#3e5873]">{group.shippingLine || 'Hãng tàu'}</strong></span>
-                            <span>•</span>
-                            <span className={group.direction === 'IMPORT' ? 'text-sky-700 font-semibold' : 'text-purple-700 font-semibold'}>
-                              {group.direction === 'IMPORT' ? 'Hàng Nhập khẩu' : 'Hàng Xuất khẩu'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="epo-result-count font-mono">
-                          {group.items.length} Cont
-                        </span>
-
-                        {waitingTransportCount > 0 ? (
-                          <span className="epo-badge orange">
-                            <span />
-                            Chờ vận tải gửi booking ({waitingTransportCount})
-                          </span>
-                        ) : readyToReviewCount > 0 ? (
-                          <span className="epo-badge blue">
-                            <span />
-                            Vận tải đã gửi · Chờ duyệt ({readyToReviewCount})
-                          </span>
-                        ) : (
-                          <span className="epo-badge green">
-                            <span />
-                            Đã đủ xe &amp; duyệt
-                          </span>
-                        )}
-
-                        <span className="material-symbols-outlined text-[#8a9bb0] text-base">
-                          {isGroupCollapsed ? 'expand_more' : 'expand_less'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Bảng các Container của Ngày & Chuyến Tàu này */}
-                    {!isGroupCollapsed && (
-                      <div className="w-full overflow-x-auto">
-                        <table className="w-full text-left border-collapse text-xs">
-                          <thead>
-                            <tr className="bg-[#f7f9fc] border-b border-[#e9eef4] text-[#8a9bb0] font-bold uppercase text-[10px] tracking-wider">
-                              <th className="py-2.5 px-3.5">Mã Đơn</th>
-                              <th className="py-2.5 px-3">Container</th>
-                              <th className="py-2.5 px-3">Phương Tiện &amp; Tài Xế</th>
-                              <th className="py-2.5 px-3">Vị Trí Bãi</th>
-                              <th className="py-2.5 px-3">Trạng Thái Hàng Hóa</th>
-                              <th className="py-2.5 px-3.5 text-right">Thao Tác</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-100 font-medium">
-                            {group.items.map((b, bIdx) => {
-                              const isSubmitted = isBookingTransportSubmitted(b)
-                              const isPickup = b.operation === 'Pickup'
-                              const slot = b.autoYardSlot || {}
-                              const isReefer = slot.isReefer || (b.containerType || '').includes('RF')
-                              const isDG = slot.isDG || (b.dgClass || '').includes('Class')
-                              const matchedEport = eportListItems.find(
-                                (o) =>
-                                  (b.eportOrderId && o.id === b.eportOrderId) ||
-                                  eportValidationMap[o.id]?.bookingId === b.id ||
-                                  (b.containerId && String(o.sourceLabel || '').toUpperCase().includes(String(b.containerId).toUpperCase())) ||
-                                  (b.containerId && (o.containers || []).some(c => (c.containerNumber || c).toUpperCase() === b.containerId.toUpperCase())) ||
-                                  (b.voyageNumber && String(o.sourceLabel || '').toUpperCase().includes(String(b.voyageNumber).replace(/[^A-Z0-9]/gi, '').toUpperCase())) ||
-                                  (b.id && (String(o.sourceLabel || '').toUpperCase().includes(String(b.id).toUpperCase()) || (o.bookingNumber && o.bookingNumber.toUpperCase() === b.id.toUpperCase())))
-                              )
-                              const isEportPaid = !!(
-                                matchedEport &&
-                                !['REJECTED', 'CANCELLED'].includes(String(matchedEport.status || '').toUpperCase()) &&
-                                ['PAID', 'SUCCEEDED', 'NOT_REQUIRED'].includes(String(matchedEport.paymentStatus || '').toUpperCase())
-                              )
-                              const isRejectedUnassigned = isBookingRejectedOrUnassigned(b)
-                              const isApprovedOrBilled = !isRejectedUnassigned && (isBookingApprovedOrBillSent(b) || isEportPaid)
-                              const isPaid = !isRejectedUnassigned && (isEportPaid || !!b.portBillPaid || b.paymentStatus === 'Paid' || b.status === 'Ready')
-
-                              let completionBadge = { cls: 'orange', icon: 'local_shipping', text: 'Chờ vận tải gửi booking' }
-                              if (b.status === 'Cancelled' || b.status === 'Canceled') {
-                                completionBadge = { cls: 'slate', icon: 'block', text: 'Đã hủy' }
-                              } else if (isPaid) {
-                                completionBadge = { cls: 'green', icon: 'check_circle', text: '✓ Sẵn sàng vào cổng (Đã thanh toán)' }
-                              } else if (isApprovedOrBilled) {
-                                completionBadge = { cls: 'orange', icon: 'account_balance_wallet', text: 'Đã duyệt · Chờ thanh toán' }
-                              } else {
-                                // Khi chưa duyệt & gửi bill: Luôn giữ nguyên trạng thái Chờ vận tải gửi booking (không đổi sang Từ chối)
-                                completionBadge = { cls: 'orange', icon: 'local_shipping', text: 'Chờ vận tải gửi booking' }
-                              }
-
-                              const bayNumOnly = String(slot.bay || slot.bayCode || slot.bayDisplay || '02').replace(/\D/g, '').padStart(2, '0')
-                              const cleanBay = `Bay ${bayNumOnly}`
-
-                              return (
-                                <tr
-                                  key={b.id ? `${b.id}-${bIdx}` : bIdx}
-                                  onClick={() => handleSelectBooking(b)}
-                                  className="hover:bg-slate-50/80 transition-colors cursor-pointer group"
-                                >
-                                  {/* 1. Mã Đơn */}
-                                  <td className="py-2.5 px-3 whitespace-nowrap">
-                                    <span className="font-mono text-xs font-semibold text-slate-700 group-hover:text-orange-600 transition-colors">
-                                      {b.id}
-                                    </span>
-                                  </td>
-
-                                  {/* 2. Container */}
-                                  <td className="py-2.5 px-3 whitespace-nowrap">
-                                    <div className="flex items-center gap-1.5">
-                                      <span className="font-mono text-xs font-bold text-slate-900">{b.containerId}</span>
-                                      <span className={`px-1.5 py-0.2 rounded text-[10px] font-semibold border ${isPickup
-                                        ? 'bg-sky-50 text-sky-700 border-sky-200'
-                                        : 'bg-purple-50 text-purple-700 border-purple-200'
-                                        }`}>
-                                        {isPickup ? 'Lấy cont' : 'Hạ cont'}
-                                      </span>
-                                    </div>
-                                  </td>
-
-                                  {/* 3. Phương Tiện & Tài Xế */}
-                                  <td className="py-2.5 px-3 whitespace-nowrap">
-                                    {(() => {
-                                      const vPlate = getGateBookingVehicle(b)
-                                      const dName = getGateBookingDriver(b)
-                                      if (vPlate) {
-                                        return (
-                                          <div className="flex flex-col gap-0.5">
-                                            <span className="font-mono text-xs font-bold text-slate-800 flex items-center gap-1">
-                                              <span>🚚</span>
-                                              <span>{vPlate}</span>
-                                            </span>
-                                            <span className="text-[11px] text-slate-500 truncate max-w-[150px]">
-                                              👤 {dName || 'Tài xế theo xe'}
-                                            </span>
-                                          </div>
-                                        )
-                                      }
-                                      return (
-                                        <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium">
-                                          Chờ gán xe &amp; tài xế
-                                        </span>
-                                      )
-                                    })()}
-                                  </td>
-
-                                  {/* 3. Vị Trí Bãi (Màu sắc nhẹ theo khu vực bãi, gọn gàng) */}
-                                  <td className="py-2.5 px-3 whitespace-nowrap">
-                                    {slot.blockCode ? (
-                                      <span className={`px-2 py-0.5 rounded font-mono text-[11px] font-semibold border inline-flex items-center gap-1 ${isReefer
-                                        ? 'bg-cyan-50/70 text-cyan-900 border-cyan-200'
-                                        : isDG
-                                          ? 'bg-rose-50/70 text-rose-900 border-rose-200'
-                                          : 'bg-emerald-50/70 text-emerald-900 border-emerald-200'
-                                        }`}>
-                                        <span className="material-symbols-outlined text-[12px] opacity-70">location_on</span>
-                                        <span>Block {slot.blockCode} · {cleanBay} ({slot.row}-{slot.tier})</span>
-                                      </span>
-                                    ) : (
-                                      <span className="text-xs text-slate-400 italic">Chờ xếp bãi</span>
-                                    )}
-                                  </td>
-
-                                  {/* 4. Trạng thái hoàn thành đơn & thanh toán */}
-                                  <td className="py-2.5 px-3 whitespace-nowrap">
-                                    <span className={`epo-badge ${completionBadge.cls}`}>
-                                      <span />
-                                      {completionBadge.text}
-                                    </span>
-                                  </td>
-
-                                  {/* 6. Thao Tác (Nút cam chuẩn Reefer TOS) */}
-                                  <td className="py-2.5 px-3 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                    <button
-                                      type="button"
-                                      onClick={() => handleSelectBooking(b)}
-                                      className="px-3 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-xs font-semibold shadow-xs transition-colors cursor-pointer"
-                                    >
-                                      Chi tiết
-                                    </button>
-                                  </td>
-                                </tr>
-                              )
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
-
-            {/* Phân trang danh sách Container theo Ngày & Chuyến Tàu */}
-            <div className="bg-white rounded-2xl border border-chalk shadow-2xs overflow-hidden mt-2">
-              <ShippingPagination
-                currentPage={companyPage}
-                totalItems={manifestBookingsByCompany.length}
-                pageSize={companyPageSize}
-                onPageChange={setCompanyPage}
-                onPageSizeChange={setCompanyPageSize}
-                pageSizeOptions={[3, 5, 10]}
-                itemName="ngày & chuyến tàu"
-              />
-            </div>
-          </>
-        )}
-      </div>
-    )
   }
 
   return (
@@ -3438,61 +3234,6 @@ export default function GateBookingRequests() {
           <small>{eportListTotal} đơn ePort · {kpiStats.pending} chờ duyệt · {kpiStats.approvedToday} đã duyệt</small>
         </div>
       </section>
-
-      {/* ── THÔNG BÁO HÓA ĐƠN & PHÍ CẢNG (CHỈ HIỂN THỊ KHI CÓ BILL TỚI) ── */}
-      {billAlerts.length > 0 && (
-        <div className="bg-emerald-50 border border-emerald-300 rounded-xl p-3.5 shadow-2xs space-y-2">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-emerald-900 font-bold text-xs">
-              <span className="material-symbols-outlined text-emerald-600 text-lg">receipt_long</span>
-              <span>Thông báo Hóa Đơn &amp; Phí Cảng ({billAlerts.length} hóa đơn mới)</span>
-            </div>
-            <button
-              type="button"
-              onClick={handleDismissAllBillAlerts}
-              className="text-[11px] font-semibold text-emerald-700 hover:text-emerald-900 cursor-pointer"
-            >
-              Ẩn tất cả
-            </button>
-          </div>
-          <div className="space-y-1.5">
-            {billAlerts.slice(0, 3).map((bill) => (
-              <div key={bill.id} className="bg-white/95 border border-emerald-200 rounded-lg px-3 py-2 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
-                <div className="min-w-0 flex items-center gap-2 flex-wrap">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold ${bill.isPaid ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-amber-100 text-amber-800 border border-amber-300'}`}>
-                    {bill.isPaid ? '✓ ĐÃ THANH TOÁN' : '⏳ CHỜ THANH TOÁN'}
-                  </span>
-                  <span className="font-bold text-slate-900">{bill.company || 'Doanh nghiệp vận tải'}</span>
-                  <span className="text-slate-600">Hóa đơn:</span>
-                  <strong className="font-mono text-emerald-700">{bill.billNumber || bill.id}</strong>
-                  {bill.totalFormatted && (
-                    <span className="font-bold text-slate-800">({bill.totalFormatted})</span>
-                  )}
-                  {bill.containerCount > 0 && (
-                    <span className="text-slate-500">· {bill.containerCount} Container</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleViewBill(bill)}
-                    className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold cursor-pointer inline-flex items-center gap-1"
-                  >
-                    <span>Xem Hóa Đơn ➔</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDismissBillAlert(bill.id)}
-                    className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[11px] font-semibold cursor-pointer"
-                  >
-                    Ẩn
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* ── THANH TAB CHUYỂN ĐỔI DANH MỤC (VIBE ePORT SEGMENTED PILLS) ── */}
       <div className="rounded-[15px] border border-[#e3e8ed] bg-[#eaf0f5] p-1.5 flex flex-wrap gap-1.5 overflow-x-auto">
@@ -3546,2073 +3287,225 @@ export default function GateBookingRequests() {
       </div>
 
       {/* ───────────────────────────────────────────────────────────── */}
+            {/* ───────────────────────────────────────────────────────────── */}
       {/* ── NỘI DUNG TAB 1: DANH SÁCH CONTAINER CHIA THEO CÔNG TY VẬN TẢI ── */}
       {/* ───────────────────────────────────────────────────────────── */}
       {activeListType === 'truck' && (
-        <>
-          {/* ── KPI CHỈ SỐ CONTAINER THEO VIBE ePORT ── */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-            <div
-              onClick={() => setStatusFilter(statusFilter === 'Pending' ? 'All' : 'Pending')}
-              className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${statusFilter === 'Pending' ? 'border-[#cc9469] ring-2 ring-[#fb9b70]/40' : 'border-[#e0e8f0] hover:border-[#becbd8]'
-                }`}
-            >
-              <div className="text-[10px] font-bold text-[#a1845f] uppercase tracking-wider">Chờ xử lý</div>
-              <div className="text-2xl font-bold text-[#29415a] mt-1 font-mono">{kpiStats.pending}</div>
-              <div className="text-[11px] text-[#778ba3] mt-0.5">Cần xử lý ngay</div>
-            </div>
-
-            <div
-              onClick={() => setStatusFilter(statusFilter === 'Under Review' ? 'All' : 'Under Review')}
-              className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${statusFilter === 'Under Review' ? 'border-[#6b88a9] ring-2 ring-[#6b88a9]/30' : 'border-[#e0e8f0] hover:border-[#becbd8]'
-                }`}
-            >
-              <div className="text-[10px] font-bold text-[#6b88a9] uppercase tracking-wider">Đang xem xét</div>
-              <div className="text-2xl font-bold text-[#29415a] mt-1 font-mono">{kpiStats.underReview}</div>
-              <div className="text-[11px] text-[#778ba3] mt-0.5">Đang đối soát hồ sơ</div>
-            </div>
-
-            <div
-              onClick={() => setStatusFilter(statusFilter === 'Approved' ? 'All' : 'Approved')}
-              className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${statusFilter === 'Approved' ? 'border-[#5e8b74] ring-2 ring-[#5e8b74]/30' : 'border-[#e0e8f0] hover:border-[#becbd8]'
-                }`}
-            >
-              <div className="text-[10px] font-bold text-[#5e8b74] uppercase tracking-wider">Đã cấp lịch</div>
-              <div className="text-2xl font-bold text-[#29415a] mt-1 font-mono">{kpiStats.approvedToday}</div>
-              <div className="text-[11px] text-[#778ba3] mt-0.5">Đủ điều kiện qua cổng</div>
-            </div>
-
-            <div
-              onClick={() => setStatusFilter(statusFilter === 'Rejected' ? 'All' : 'Rejected')}
-              className={`rounded-[15px] border bg-white p-4 transition-all cursor-pointer ${statusFilter === 'Rejected' ? 'border-[#ad7a73] ring-2 ring-[#ad7a73]/30' : 'border-[#e0e8f0] hover:border-[#becbd8]'
-                }`}
-            >
-              <div className="text-[10px] font-bold text-[#ad7a73] uppercase tracking-wider">Bị từ chối</div>
-              <div className="text-2xl font-bold text-[#29415a] mt-1 font-mono">{kpiStats.rejectedToday}</div>
-              <div className="text-[11px] text-[#778ba3] mt-0.5">Sai lệch chứng từ</div>
-            </div>
-
-            <div
-              onClick={() => setStatusFilter('All')}
-              className="rounded-[15px] border border-[#e0e8f0] bg-white p-4 transition-all cursor-pointer col-span-2 sm:col-span-1 hover:border-[#becbd8]"
-            >
-              <div className="text-[10px] font-bold text-[#b94717] uppercase tracking-wider">Đợi Transport gửi xe</div>
-              <div className="text-2xl font-bold text-[#b94717] mt-1 font-mono">{kpiStats.atRisk}</div>
-              <div className="text-[11px] text-[#778ba3] mt-0.5">Đã có giấy tờ &amp; bãi</div>
-            </div>
-          </div>
-
-          {/* ── THANH TÌM KIẾM & BỘ LỌC THEO VIBE ePORT ── */}
-          <div className="epo-worklist p-4">
-            {/* Search + Select Dropdowns */}
-            <div className="flex flex-wrap items-center gap-2.5 text-xs font-bold">
-              <div className="relative flex-1 sm:w-64 min-w-[200px]">
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate text-base">search</span>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  placeholder="Tìm mã Booking, Số cont, Công ty, Tàu..."
-                  className="w-full h-9 pl-9 pr-7 rounded-xl border border-chalk bg-fog/60 text-xs font-bold text-carbon placeholder:text-slate/70 focus:outline-none focus:border-signal-orange focus:bg-white transition-all"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate hover:text-carbon cursor-pointer"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
-
-
-
-              <select
-                value={operationFilter}
-                onChange={e => setOperationFilter(e.target.value)}
-                className="h-9 px-3 bg-fog/60 hover:bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange cursor-pointer"
-              >
-                <option value="All">Mọi nghiệp vụ</option>
-                <option value="Pickup">Lấy cont (Pickup)</option>
-                <option value="Delivery">Hạ cont (Delivery)</option>
-              </select>
-
-              <select
-                value={selectedVesselFilter}
-                onChange={e => setSelectedVesselFilter(e.target.value)}
-                className="h-9 px-3 bg-fog/60 hover:bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange max-w-[220px] truncate cursor-pointer"
-                title="Lọc theo Tàu"
-              >
-                <option value="All">Tất cả chuyến tàu ({availableVessels.length})</option>
-                {availableVessels.map(v => (
-                  <option key={v.vesselName} value={v.manifestNumber || v.vesselName}>
-                    🚢 {v.label}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                value={dateFilter}
-                onChange={e => setDateFilter(e.target.value)}
-                className="h-9 px-3 bg-fog/60 hover:bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange cursor-pointer"
-                title="Lọc theo Ngày"
-              >
-                <option value="All">Tất cả các ngày ({availableDates.length})</option>
-                {availableDates.map(d => (
-                  <option key={d} value={d}>
-                    📅 {d}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {/* ── DANH SÁCH CONTAINER CHIA THEO NGÀY & CHUYẾN TÀU ── */}
-          {renderManifestCompanyTables()}
-        </>
+        <BookingsScheduleTab
+          kpiStats={kpiStats}
+          statusFilter={statusFilter}
+          setStatusFilter={setStatusFilter}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          operationFilter={operationFilter}
+          setOperationFilter={setOperationFilter}
+          selectedVesselFilter={selectedVesselFilter}
+          setSelectedVesselFilter={setSelectedVesselFilter}
+          dateFilter={dateFilter}
+          setDateFilter={setDateFilter}
+          availableVessels={availableVessels}
+          availableDates={availableDates}
+          manifestGeneratedBookings={manifestGeneratedBookings}
+          filteredBookings={filteredBookings}
+          manifestBookingsByCompany={manifestBookingsByCompany}
+          pagedCompanies={pagedCompanies}
+          companyPage={companyPage}
+          setCompanyPage={setCompanyPage}
+          companyPageSize={companyPageSize}
+          setCompanyPageSize={setCompanyPageSize}
+          isBookingTransportSubmitted={isBookingTransportSubmitted}
+          isBookingApprovedOrBillSent={isBookingApprovedOrBillSent}
+          isBookingRejectedOrUnassigned={isBookingRejectedOrUnassigned}
+          getGateBookingVehicle={getGateBookingVehicle}
+          getGateBookingDriver={getGateBookingDriver}
+          eportListItems={eportListItems}
+          eportValidationMap={eportValidationMap}
+          onSelectBooking={handleSelectBooking}
+          handleClearAllFilters={handleClearAllFilters}
+          approvedVesselsList={approvedVesselsList}
+        />
       )}
 
       {/* ───────────────────────────────────────────────────────────── */}
       {/* ── NỘI DUNG TAB ĐẦU TIÊN: DANH SÁCH TÀU CẬP CẢNG (BẢN KHAI MANIFEST) ── */}
       {/* ───────────────────────────────────────────────────────────── */}
       {activeListType === 'vessel' && (
-        <div className="space-y-4">
-          {/* ── KPI CHỈ SỐ TÀU CẬP CẢNG CHUẨN REEFER (WHITE & ORANGE ENTERPRISE) ── */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-            <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-2xs">
-              <div className="text-xs font-medium text-slate-500 uppercase tracking-wide">Tổng số tàu cập cảng</div>
-              <div className="text-2xl font-bold text-slate-900 mt-1 font-mono">{vesselKpiStats.total}</div>
-              <div className="text-xs text-slate-400 mt-0.5">Bản khai điện tử e-Manifest</div>
-            </div>
-
-            <div className="bg-white rounded-xl border border-slate-200 border-l-4 border-l-emerald-600 p-4 shadow-2xs">
-              <div className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">Tàu đã cập cảng</div>
-              <div className="text-2xl font-bold text-emerald-700 mt-1 font-mono">{vesselKpiStats.berthed}</div>
-              <div className="text-xs text-slate-500 mt-0.5">Sẵn sàng đón xe vào bãi</div>
-            </div>
-
-            <div className="bg-white rounded-xl border border-slate-200 border-l-4 border-l-indigo-600 p-4 shadow-2xs">
-              <div className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">Đang làm hàng</div>
-              <div className="text-2xl font-bold text-indigo-700 mt-1 font-mono">{vesselKpiStats.operating}</div>
-              <div className="text-xs text-slate-500 mt-0.5">Xếp dỡ tại cầu bến</div>
-            </div>
-
-            <div className="bg-white rounded-xl border border-slate-200 border-l-4 border-l-orange-500 p-4 shadow-2xs">
-              <div className="text-xs font-semibold text-orange-700 uppercase tracking-wide">Tổng container khai báo</div>
-              <div className="text-2xl font-bold text-orange-600 mt-1 font-mono">{vesselKpiStats.totalContainers}</div>
-              <div className="text-xs text-slate-500 mt-0.5">Chuẩn ISO 6346 &amp; VGM</div>
-            </div>
-          </div>
-
-          {/* ── THANH TÌM KIẾM TÀU TỐI GIẢN ── */}
-          <div className="bg-white rounded-xl border border-slate-200 p-3 shadow-2xs flex items-center justify-between gap-3">
-            <div className="relative flex-1 max-w-sm">
-              <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
-              <input
-                type="text"
-                value={vesselSearch}
-                onChange={e => setVesselSearch(e.target.value)}
-                placeholder="Tìm tàu, số chuyến, mã bản khai..."
-                className="w-full h-8 pl-8 pr-7 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-orange-500 transition-all"
-              />
-              {vesselSearch && (
-                <button
-                  type="button"
-                  onClick={() => setVesselSearch('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer text-xs"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
-
-            {selectedVesselFilter !== 'All' && (
-              <button
-                type="button"
-                onClick={() => setSelectedVesselFilter('All')}
-                className="h-8 px-3 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-2xs inline-flex items-center gap-1.5 cursor-pointer transition"
-              >
-                <span className="material-symbols-outlined text-sm">filter_alt_off</span>
-                <span>Xem tất cả tàu</span>
-              </button>
-            )}
-          </div>
-
-          {/* ── BẢNG DANH SÁCH TÀU CẬP CẢNG (TỐI GIẢN, 1 DÒNG/Ô, CỰC KỲ ÍT CHỮ) ── */}
-          <div className="bg-white rounded-2xl border border-chalk shadow-2xs overflow-hidden">
-            <div className="px-4 py-3 border-b border-chalk flex items-center justify-between bg-fog/30">
-              <h3 className="font-heading text-xs font-extrabold text-carbon uppercase tracking-wider">
-                Danh Sách Tàu Cập Cảng ({filteredVessels.length})
-              </h3>
-            </div>
-
-            <div className="w-full overflow-x-auto">
-              <table className="w-full text-left border-collapse text-xs">
-                <thead>
-                  <tr className="bg-fog/50 border-b border-chalk text-slate font-extrabold uppercase text-[10px] tracking-wider">
-                    <th className="py-2.5 px-3.5">Tàu Biển &amp; Chuyến</th>
-                    <th className="py-2.5 px-3">Hãng Tàu</th>
-                    <th className="py-2.5 px-3">Cầu Bến</th>
-                    <th className="py-2.5 px-3">Container</th>
-                    <th className="py-2.5 px-3">Trạng Thái</th>
-                    <th className="py-2.5 px-3.5 text-right whitespace-nowrap">Thao Tác</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-chalk font-medium">
-                  {filteredVessels.length === 0 ? null : (
-                    pagedVessels.map(m => {
-                      const isApproved = isManifestPermanentlyApproved(m) || m.portApprovalStatus === 'PORT_APPROVED' || m.status === 'PORT_APPROVED'
-                      const vKey = m.manifestNumber || m.manifestId
-                      const isSelectedFilter = selectedVesselFilter === vKey || selectedVesselFilter === m.vesselName
-
-                      return (
-                        <tr
-                          key={vKey}
-                          onClick={() => setSelectedVesselManifest(m)}
-                          className="hover:bg-fog/60 transition-colors cursor-pointer group"
-                        >
-                          {/* 1. Tàu & Chuyến (1 dòng) */}
-                          <td className="py-2.5 px-3.5 whitespace-nowrap">
-                            <span className="font-bold text-carbon text-xs group-hover:text-signal-orange">
-                              {m.vesselName}
-                            </span>
-                            <span className="font-mono text-slate text-[11px] ml-1.5">
-                              ({m.voyageNumber})
-                            </span>
-                          </td>
-
-                          {/* 2. Hãng Tàu (1 dòng) */}
-                          <td className="py-2.5 px-3 whitespace-nowrap">
-                            <span className="text-carbon font-medium text-xs">
-                              {m.shippingLine ? m.shippingLine.split('(')[0].trim() : 'Hãng tàu'}
-                            </span>
-                          </td>
-
-                          {/* 3. Cầu bến (1 dòng) */}
-                          <td className="py-2.5 px-3 whitespace-nowrap">
-                            <span className="font-mono text-xs text-carbon">
-                              {m.berth ? m.berth.split(' - ')[0] : 'Bến TS-01'}
-                            </span>
-                          </td>
-
-                          {/* 4. Số Cont (Tone xám trung tính, bỏ màu tím) */}
-                          <td className="py-2.5 px-3 whitespace-nowrap">
-                            <span className="px-2 py-0.5 rounded bg-fog border border-chalk font-mono font-bold text-xs text-carbon">
-                              {m.containers?.length || 0} Cont
-                            </span>
-                          </td>
-
-                          {/* 5. Trạng thái tàu (chỉ xem) */}
-                          <td className="py-2.5 px-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            {/* Trạng thái tàu do Hãng tàu cập nhật; Dispatcher chỉ xem */}
-                            <span
-                              title="Trạng thái do Hãng tàu cập nhật"
-                              className={`inline-flex items-center text-[11px] font-bold py-1 px-3 rounded-full border shadow-2xs ${VOYAGE_STATUS_STYLES[m.vesselStatus || 'BERTHED'] || 'bg-emerald-50 text-emerald-700 border-emerald-300'}`}
-                            >
-                              ● {VOYAGE_STATUS_LABELS[m.vesselStatus || 'BERTHED'] || m.vesselStatus}
-                            </span>
-                          </td>
-
-                          {/* 6. Thao tác: Lọc Cont + Xem Chi Tiết */}
-                          <td className="py-2.5 px-3.5 text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                            <div className="inline-flex items-center justify-end gap-1.5">
-                              {!isApproved ? (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleApproveVesselManifest(m.manifestId || m.manifestNumber || vKey)
-                                  }}
-                                  title="Phê duyệt tàu và tự động xếp bãi cho các container"
-                                  className="h-7 px-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer transition shadow-xs"
-                                >
-                                  <span className="material-symbols-outlined text-[13px]">check_circle</span>
-                                  <span>Duyệt Tàu</span>
-                                </button>
-                              ) : (
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    const willFilter = !isSelectedFilter
-                                    setSelectedVesselFilter(willFilter ? vKey : 'All')
-                                    if (willFilter) {
-                                      setVesselContainersPopup(m)
-                                    } else {
-                                      setVesselContainersPopup(null)
-                                    }
-                                  }}
-                                  title="Tàu đã được duyệt tại Cảng. Bấm để lọc và xem danh sách Container của tàu này"
-                                  className="h-7 px-2.5 bg-fog hover:bg-chalk/70 text-carbon border border-chalk rounded-lg font-bold text-[11px] inline-flex items-center gap-1 cursor-pointer transition shadow-2xs"
-                                >
-                                  <span className="material-symbols-outlined text-[13px] text-emerald-600 font-bold">check_circle</span>
-                                  <span>Đã duyệt (Lọc Cont)</span>
-                                </button>
-                              )}
-
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setSelectedVesselManifest(m)
-                                }}
-                                className="h-7 px-3 bg-orange-600 hover:bg-orange-700 text-white rounded-lg font-semibold text-[11px] shadow-xs transition-colors inline-flex items-center gap-1 cursor-pointer"
-                              >
-                                <span>Chi tiết</span>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Phân trang Bảng Tàu Cập Cảng */}
-            <ShippingPagination
-              currentPage={vesselPage}
-              totalItems={filteredVessels.length}
-              pageSize={vesselPageSize}
-              onPageChange={setVesselPage}
-              onPageSizeChange={setVesselPageSize}
-              pageSizeOptions={[5, 10, 20]}
-              itemName="bản khai tàu"
-            />
-          </div>
-        </div>
-      )}
-
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* ── MODAL POPUP DANH SÁCH CONTAINER CỦA TÀU (MỞ KHI BẤM CÁI PHỄU) ── */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      {vesselContainersPopup && (
-        <div className="fixed inset-0 bg-carbon/80 backdrop-blur-sm z-50 flex items-center justify-center p-3 sm:p-5">
-          <div className="bg-white w-full max-w-5xl max-h-[92vh] rounded-2xl p-5 sm:p-6 space-y-4 shadow-xl overflow-y-auto animate-in zoom-in-95 duration-150 font-sans border border-slate-200">
-            {/* Header Popup - Tối Giản, Gọn Gàng */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center shrink-0">
-                  <span className="material-symbols-outlined text-xl">directions_boat</span>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base sm:text-lg font-bold text-slate-900 font-heading">
-                      Tàu {vesselContainersPopup.vesselName} ({vesselContainersPopup.voyageNumber})
-                    </h3>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700">
-                      {vesselContainersPopup.direction === 'IMPORT' ? 'Nhập khẩu' : 'Xuất khẩu'}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Hãng: <strong>{vesselContainersPopup.shippingLine}</strong> · Cầu bến: {vesselContainersPopup.berth || 'Bến số 1 (TS-01)'} · {popupContainerList.length} Container
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedVesselFilter('All')
-                    setVesselContainersPopup(null)
-                    showToast('⚪ Đã bỏ lọc tàu, hiển thị lại toàn bộ Container.')
-                  }}
-                  className="px-2.5 py-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold inline-flex items-center gap-1 cursor-pointer transition"
-                >
-                  <span className="material-symbols-outlined text-sm">filter_alt_off</span>
-                  <span>Bỏ lọc</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setVesselContainersPopup(null)}
-                  className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer transition"
-                  title="Đóng"
-                >
-                  <span className="material-symbols-outlined text-base">close</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Thống kê nhanh Container - Tối giản */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
-                <span className="text-[10px] text-slate-500 uppercase font-semibold block">Tổng Container</span>
-                <div className="flex items-baseline gap-1 mt-0.5">
-                  <span className="text-lg font-extrabold text-slate-900 font-mono">{popupContainerList.length}</span>
-                  <span className="text-[11px] text-emerald-600 font-medium">· 100% có vị trí</span>
-                </div>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
-                <span className="text-[10px] text-slate-500 uppercase font-semibold block">Kích Thước</span>
-                <div className="flex items-baseline gap-1 mt-0.5">
-                  <span className="text-base font-bold text-slate-900 font-mono">
-                    {popupContainerList.filter(c => (c.containerType || '').includes('40')).length}x40'
-                  </span>
-                  <span className="text-slate-400">·</span>
-                  <span className="text-base font-bold text-slate-900 font-mono">
-                    {popupContainerList.filter(c => (c.containerType || '').includes('20')).length}x20'
-                  </span>
-                </div>
-              </div>
-              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5">
-                <span className="text-[10px] text-slate-500 uppercase font-semibold block">Cổng Vào Duy Nhất</span>
-                <div className="flex items-baseline gap-1.5 mt-0.5">
-                  <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-mono font-bold text-xs inline-flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
-                    Gate 1 (Cổng Cảng Tiên Sa)
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Bảng Danh Sách Container Tối Giản */}
-            <div className="border border-slate-200 rounded-xl overflow-hidden">
-              <div className="overflow-x-auto max-h-[48vh]">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead className="sticky top-0 bg-slate-50 text-[11px] font-bold text-slate-600 border-b border-slate-200">
-                    <tr>
-                      <th className="py-2.5 px-3 w-10">STT</th>
-                      <th className="py-2.5 px-3">Container</th>
-                      <th className="py-2.5 px-3">Loại</th>
-                      <th className="py-2.5 px-3">Cổng Vào</th>
-                      <th className="py-2.5 px-3">Vị Trí Bãi Tiên Sa</th>
-                      <th className="py-2.5 px-3">Vận Đơn (B/L)</th>
-                      <th className="py-2.5 px-3 text-right">Trạng Thái</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 text-[12px]">
-                    {pagedPopupContainers.map((item, idx) => {
-                      const globalIdx = (popupContainerPage - 1) * popupContainerPageSize + idx + 1
-                      const isRf = (item.containerType || '').includes('RF') || item.isReefer
-                      const isDg = item.isDG || (item.dgClass && !item.dgClass.includes('Non-DG'))
-                      const slot = item.autoYardSlot || {}
-
-                      // Tính toán vị trí bãi chuẩn - KHÔNG BAO GIỜ BỊ UNDEFINED
-                      const block = slot.blockCode || (isRf ? 'D01' : (isDg ? 'E01' : (idx % 2 === 0 ? 'A01' : 'A02')))
-                      const bayNum = slot.bay || slot.bayCode || (item.containerType?.includes('20') ? (1 + (idx * 2) % 15) : (2 + (idx * 2) % 16))
-                      const bayStr = String(bayNum).padStart(2, '0')
-                      const rowNum = slot.row || slot.rowCode || ((idx % 4) + 1)
-                      const rowStr = String(rowNum).padStart(2, '0')
-                      const tierNum = slot.tier || 1
-                      const locationText = `Khu ${block} · Bay ${bayStr} (R${rowStr}-T${tierNum})`
-
-                      // Cổng vào duy nhất: Gate 1
-                      const gateVal = 'Gate 1'
-
-                      return (
-                        <tr key={`${item.id || item.containerId || 'pop'}-${idx}`} className="hover:bg-slate-50/80 transition">
-                          <td className="py-2.5 px-3 font-mono text-slate-400">{globalIdx}</td>
-                          <td className="py-2.5 px-3 font-mono font-bold text-slate-900 whitespace-nowrap">
-                            {item.containerId || item.containerNumber}
-                          </td>
-                          <td className="py-2.5 px-3 whitespace-nowrap">
-                            <span className={`px-1.5 py-0.5 rounded font-mono font-bold text-[10px] ${isRf
-                              ? 'bg-cyan-50 text-cyan-800 border border-cyan-200'
-                              : isDg
-                                ? 'bg-rose-50 text-rose-800 border border-rose-200'
-                                : 'bg-slate-100 text-slate-700'
-                              }`}>
-                              {item.containerType || item.isoType || '40HC'}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 whitespace-nowrap">
-                            <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] inline-flex items-center gap-1 bg-blue-50 text-blue-800 border border-blue-200">
-                              <span className="w-1.5 h-1.5 rounded-full bg-blue-600"></span>
-                              Gate 1
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 whitespace-nowrap">
-                            <span className="font-mono font-bold text-emerald-800 bg-emerald-50/90 px-2 py-0.5 rounded border border-emerald-200 text-[11px]">
-                              📍 {locationText}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 font-mono text-[11px] whitespace-nowrap text-slate-600">
-                            <span className="font-semibold text-slate-800">{item.blNumber || 'BL-VNDAD'}</span>
-                            <span className="text-slate-400 mx-1">·</span>
-                            <span>{item.sealNumber || 'SL-88412'}</span>
-                          </td>
-                          <td className="py-2.5 px-3 text-right whitespace-nowrap">
-                            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 font-medium text-[10px]">
-                              {item.transportSubmitted ? '● Đã có xe' : '○ Chờ Transport gửi xe'}
-                            </span>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Footer popup - Tối Giản */}
-            <div className="flex justify-between items-center pt-2 border-t border-slate-100 text-xs">
-              <span className="text-slate-500">
-                Tổng cộng: <strong className="text-slate-900 font-mono">{popupContainerList.length} Container</strong>
-              </span>
-              <button
-                type="button"
-                onClick={() => setVesselContainersPopup(null)}
-                className="px-4 py-1.5 bg-slate-900 hover:bg-black text-white rounded-lg text-xs font-semibold cursor-pointer transition shadow-xs"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* ── MODAL CHI TIẾT TÀU CẬP CẢNG & BẢN KHAI HÀNG HÓA E-MANIFEST ĐẦY ĐỦ ── */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      {selectedVesselManifest && (
-        <div className="fixed inset-0 bg-carbon/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 print:p-0 print:bg-white">
-          <div className="bg-white w-full max-w-[96vw] xl:max-w-7xl max-h-[95vh] rounded-3xl p-5 md:p-8 space-y-6 shadow-2xl overflow-y-auto animate-in zoom-in-95 duration-200 font-sans print:max-h-none print:shadow-none print:rounded-none">
-
-            {/* Modal Top Header - Đơn giản, thoáng mắt, dễ nhìn */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-slate-200 pb-4 gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-xs shrink-0">
-                  <span className="material-symbols-outlined text-2xl">directions_boat</span>
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-heading text-lg sm:text-xl font-bold text-slate-900 truncate">
-                      Tàu {selectedVesselManifest.vesselName}
-                    </h3>
-                    <span className="px-2 py-0.5 rounded-lg bg-blue-50 text-blue-700 font-mono font-bold text-xs border border-blue-200">
-                      Chuyến {selectedVesselManifest.voyageNumber}
-                    </span>
-                    <span className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 font-medium text-xs">
-                      {selectedVesselManifest.shippingLine}
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-slate-500 font-mono mt-0.5 flex-wrap">
-                    <span>NSW: <strong className="text-blue-900 font-bold">{selectedVesselManifest.nswRef || 'NSW-DAD-2026-2341'}</strong></span>
-                    <span>•</span>
-                    <span>Cầu bến: <strong className="text-slate-700 font-bold">{selectedVesselManifest.berth || 'Bến số 1 (TS-01)'}</strong></span>
-                    <span>•</span>
-                    <span>Hành trình: <strong className="text-slate-700">{selectedVesselManifest.pol?.split(',')[0] || 'Tiên Sa'} ➔ {selectedVesselManifest.pod?.split(',')[0] || 'Quốc tế'}</strong></span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-3 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition shadow-2xs cursor-pointer"
-                  title="In / Xuất Bản khai"
-                >
-                  <span className="material-symbols-outlined text-sm">print</span>
-                  <span>In bản khai</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSelectedVesselManifest(null)}
-                  className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-500 hover:text-slate-800 transition cursor-pointer text-sm font-bold"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {/* ── KPI THỐNG KÊ TOÀN TÀU (TINH GỌN) ── */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-              <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-3">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Tổng Container</span>
-                <div className="text-lg font-bold font-mono text-slate-900 mt-0.5">{selectedVesselCargoStats.count} Cont</div>
-              </div>
-
-              <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-3">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Trọng lượng Gross</span>
-                <div className="text-lg font-bold font-mono text-blue-700 mt-0.5">{selectedVesselCargoStats.gross.toLocaleString()} kg</div>
-              </div>
-
-              <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-3">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Tổng thể tích (CBM)</span>
-                <div className="text-lg font-bold font-mono text-purple-700 mt-0.5">{selectedVesselCargoStats.cbm} m³</div>
-              </div>
-
-              <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-3">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Tổng Vận Đơn (B/L)</span>
-                <div className="text-lg font-bold font-mono text-amber-600 mt-0.5">{selectedVesselBlGroups.length} B/L</div>
-              </div>
-
-              <div className="bg-slate-50/80 border border-slate-200 rounded-xl p-3">
-                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">Cont Lạnh (Reefer)</span>
-                <div className="text-lg font-bold font-mono text-emerald-600 mt-0.5">{selectedVesselCargoStats.rfCount} RF</div>
-              </div>
-            </div>
-
-            {/* ── THANH CHUYỂN ĐỔI 4 TABS TRONG MODAL ── */}
-            <div className="border-b border-chalk flex items-center gap-2 overflow-x-auto">
-              <button
-                type="button"
-                onClick={() => setVesselDetailTab('containers')}
-                className={`flex items-center gap-2 px-5 py-3 border-b-2 font-extrabold text-xs transition-all cursor-pointer shrink-0 ${vesselDetailTab === 'containers'
-                  ? 'border-blue-600 text-blue-700 bg-blue-50/50'
-                  : 'border-transparent text-slate hover:text-carbon hover:bg-slate-100'
-                  }`}
-              >
-                <span className="material-symbols-outlined text-base">inventory_2</span>
-                <span>1. Danh Sách Container Chi Tiết ({selectedVesselCargoStats.count})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setVesselDetailTab('bl')}
-                className={`flex items-center gap-2 px-5 py-3 border-b-2 font-extrabold text-xs transition-all cursor-pointer shrink-0 ${vesselDetailTab === 'bl'
-                  ? 'border-blue-600 text-blue-700 bg-blue-50/50'
-                  : 'border-transparent text-slate hover:text-carbon hover:bg-slate-100'
-                  }`}
-              >
-                <span className="material-symbols-outlined text-base">receipt_long</span>
-                <span>2. Tổng Hợp Theo Vận Đơn B/L ({selectedVesselBlGroups.length})</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setVesselDetailTab('vessel')}
-                className={`flex items-center gap-2 px-5 py-3 border-b-2 font-extrabold text-xs transition-all cursor-pointer shrink-0 ${vesselDetailTab === 'vessel'
-                  ? 'border-blue-600 text-blue-700 bg-blue-50/50'
-                  : 'border-transparent text-slate hover:text-carbon hover:bg-slate-100'
-                  }`}
-              >
-                <span className="material-symbols-outlined text-base">directions_boat</span>
-                <span>3. Hồ Sơ Kỹ Thuật Tàu &amp; Cầu Bến</span>
-              </button>
-
-
-            </div>
-
-            {/* ── NỘI DUNG TAB 1: DANH SÁCH CONTAINER CHI TIẾT (14 CỘT CHUẨN) ── */}
-            {vesselDetailTab === 'containers' && (
-              <div className="space-y-3">
-                <div className="flex justify-between items-center text-xs text-slate">
-                  <span className="font-bold">Khai báo đầy đủ 100% container chuẩn ISO 6346, số niêm chì hải quan, VGM và vị trí stowage trên tàu</span>
-                  <span className="font-mono font-bold text-carbon">Hiển thị {selectedVesselCargoStats.count} / {selectedVesselCargoStats.count} Container</span>
-                </div>
-
-                <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-2xs">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
-                        <th className="py-3 px-3 w-[18%]">Container / ISO / Seal</th>
-                        <th className="py-3 px-3 w-[24%]">Vận Đơn B/L &amp; Chủ Hàng</th>
-                        <th className="py-3 px-3 w-[20%]">Hàng Hóa &amp; Số Kiện</th>
-                        <th className="py-3 px-3 w-[14%]">Trọng Lượng &amp; CBM</th>
-                        <th className="py-3 px-3 w-[12%]">Nhiệt Độ / DG</th>
-                        <th className="py-3 px-3 w-[12%] text-right">Stowage &amp; HQ</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
-                      {(selectedVesselManifest.containers || []).map((c, idx) => (
-                        <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
-                          {/* 1. Container + ISO + Seal */}
-                          <td className="py-3 px-3 align-middle">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-[10px] font-mono text-slate-400">#{idx + 1}</span>
-                              <span className="font-mono font-extrabold text-slate-900 text-xs">{c.containerNumber}</span>
-                              <span className="px-1.5 py-0.5 bg-slate-100 rounded border border-slate-300 font-mono font-bold text-[10px] text-slate-700">
-                                {c.isoType || '40HC'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5 mt-1">
-                              <span className="text-[10px] font-mono text-slate-600">Seal: <strong>{c.sealNumber || 'SL-88412'}</strong></span>
-                              <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200">
-                                ISO OK
-                              </span>
-                            </div>
-                          </td>
-
-                          {/* 2. Vận đơn B/L */}
-                          <td className="py-3 px-3 align-middle">
-                            <div className="font-mono font-bold text-blue-700 text-xs">
-                              {c.blNumber || 'BL-VNDAD-AUTO'}
-                            </div>
-                            <div className="text-[10px] text-slate-500 italic truncate max-w-[230px] mt-0.5">
-                              Đăng ký làm hàng tự do qua Cảng Tiên Sa
-                            </div>
-                          </td>
-
-                          {/* 3. Hàng hóa & Kiện */}
-                          <td className="py-3 px-3 align-middle">
-                            <div className="font-bold text-slate-800 text-[11px] line-clamp-2">
-                              {c.cargoDescription || 'Hàng hóa xuất khẩu tiêu chuẩn'}
-                            </div>
-                            <div className="text-[10px] text-slate-500 mt-0.5">
-                              {c.packageCount || '480 Kiện / Pallets'}
-                            </div>
-                          </td>
-
-                          {/* 4. Trọng lượng Gross / Tare / Net & CBM */}
-                          <td className="py-3 px-3 align-middle font-mono">
-                            <div className="font-extrabold text-blue-950 text-xs">
-                              {Number(c.grossWeightKg || 25400).toLocaleString()} kg <span className="text-[9px] font-sans font-bold text-emerald-700 bg-emerald-50 px-1 rounded">VGM</span>
-                            </div>
-                            <div className="text-[10px] text-slate-500 mt-0.5">
-                              Net: {Number(c.netWeightKg || ((Number(c.grossWeightKg) || 25400) - 3820)).toLocaleString()} • Tare: {Number(c.tareWeightKg || 3820).toLocaleString()}
-                            </div>
-                            <div className="text-[10px] text-slate-600 font-bold">
-                              Thể tích: {c.cbm || 68.5} CBM
-                            </div>
-                          </td>
-
-                          {/* 5. Nhiệt độ / DG */}
-                          <td className="py-3 px-3 align-middle text-[11px]">
-                            {(c.isoType?.includes('RF') || c.tempRequired?.includes('-')) ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-sky-50 text-sky-800 border border-sky-300 whitespace-nowrap">
-                                <span className="material-symbols-outlined text-[12px]">ac_unit</span>
-                                {c.tempRequired || '-18.0°C'}
-                              </span>
-                            ) : c.dgClass?.includes('Class') ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 whitespace-nowrap">
-                                <span className="material-symbols-outlined text-[12px] text-amber-700">warning</span>
-                                {c.dgClass}
-                              </span>
-                            ) : (
-                              <span className="text-slate-600 font-medium">{c.tempRequired || 'Dry (Thường)'}</span>
-                            )}
-                          </td>
-
-                          {/* 6. Vị trí Stowage & Hải quan */}
-                          <td className="py-3 px-3 align-middle text-right">
-                            <div>
-                              <span className="font-bold text-slate-800 font-mono text-[10px] bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 inline-block whitespace-nowrap">
-                                {c.stowageCell || 'Bay 02 - Row 04'}
-                              </span>
-                            </div>
-                            <div className="mt-1">
-                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full font-bold text-[10px] inline-block whitespace-nowrap">
-                                {c.customsStatus || 'Thông quan'}
-                              </span>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
-
-            {/* ── NỘI DUNG TAB 2: TỔNG HỢP THEO VẬN ĐƠN B/L (TINH GỌN, DỄ NHÌN) ── */}
-            {vesselDetailTab === 'bl' && (
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-200 pb-3">
-                  <div>
-                    <h4 className="font-heading font-bold text-sm text-slate-900">
-                      Danh Sách Vận Đơn Đường Biển ({selectedVesselBlGroups.length} B/L)
-                    </h4>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Vận đơn chính thức thuộc chuyến tàu {selectedVesselManifest.vesselName} ({selectedVesselManifest.voyageNumber})
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => window.print()}
-                    className="h-8 px-3 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs print:hidden"
-                  >
-                    <span className="material-symbols-outlined text-sm">print</span>
-                    <span>In Vận Đơn</span>
-                  </button>
-                </div>
-
-                {/* Danh sách các Vận Đơn theo Card tinh gọn */}
-                <div className="space-y-4">
-                  {selectedVesselBlGroups.map((bg, bIdx) => {
-                    const isImport = selectedVesselManifest.direction === 'IMPORT';
-                    const carrierName = selectedVesselManifest.shippingLine || 'EVERGREEN';
-
-                    return (
-                      <div
-                        key={bIdx}
-                        className="bg-white border border-slate-200 rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-2xs hover:border-blue-300 transition-all"
-                      >
-                        {/* Header B/L Card */}
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-xs shrink-0">
-                              #{bIdx + 1}
-                            </div>
-                            <div>
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wide">Số Vận Đơn (B/L):</span>
-                                <strong className="font-mono text-sm text-blue-900 font-bold bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                                  {bg.blNumber}
-                                </strong>
-                                <span className="text-xs text-slate-500 font-medium">• Hãng tàu: <strong>{carrierName}</strong></span>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 self-start sm:self-auto">
-                            <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[11px] flex items-center gap-1">
-                              <span>✓</span>
-                              <span>Đã thẩm định B/L</span>
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Thông tin cốt lõi (Shipper, Consignee, Cảng) */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-slate-50/70 p-3.5 rounded-xl border border-slate-100">
-                          <div>
-                            <span className="text-[10px] uppercase font-bold text-slate-500 block">Người gửi (Shipper):</span>
-                            <strong className="text-slate-900 block mt-0.5">{bg.shipper}</strong>
-                          </div>
-                          <div>
-                            <span className="text-[10px] uppercase font-bold text-slate-500 block">Người nhận (Consignee):</span>
-                            <strong className="text-slate-900 block mt-0.5">{bg.consignee}</strong>
-                          </div>
-                          <div>
-                            <span className="text-[10px] uppercase font-bold text-slate-500 block">Tuyến &amp; Cước phí:</span>
-                            <span className="text-slate-700 block mt-0.5">
-                              {bg.pol?.split(',')[0] || 'Cảng đi'} ➔ {bg.pod?.split(',')[0] || 'Cảng đến'}
-                              <span className="text-emerald-700 font-semibold ml-1.5 font-mono">({isImport ? 'Collect' : 'Prepaid'})</span>
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Danh sách Container thuộc B/L này (Bảng mini gọn gàng) */}
-                        <div className="border border-slate-200 rounded-xl overflow-hidden">
-                          <table className="w-full text-left border-collapse text-xs">
-                            <thead>
-                              <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
-                                <th className="py-2 px-3">Mã Container</th>
-                                <th className="py-2 px-3">Loại Cont</th>
-                                <th className="py-2 px-3">Số Seal</th>
-                                <th className="py-2 px-3">Hàng hóa</th>
-                                <th className="py-2 px-3 text-right">Trọng lượng</th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100 font-medium">
-                              {bg.containers.map((c, cIdx) => (
-                                <tr key={cIdx} className="hover:bg-blue-50/20">
-                                  <td className="py-2 px-3 font-mono font-bold text-slate-900">{c.containerNumber}</td>
-                                  <td className="py-2 px-3 font-mono text-slate-600">{c.isoType || '40HC'}</td>
-                                  <td className="py-2 px-3 font-mono text-blue-700">{c.sealNumber || 'SL-88412'}</td>
-                                  <td className="py-2 px-3 text-slate-700 truncate max-w-xs">{c.cargoDescription || 'Hàng bách hóa tiêu chuẩn'}</td>
-                                  <td className="py-2 px-3 text-right font-mono font-bold text-slate-900">{Number(c.grossWeightKg || 24000).toLocaleString()} kg</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                            <tfoot>
-                              <tr className="bg-slate-50/80 border-t border-slate-200 text-[11px] font-bold text-slate-700">
-                                <td colSpan="3" className="py-2 px-3">
-                                  Tổng: {bg.containers.length} Container
-                                </td>
-                                <td className="py-2 px-3 text-right text-slate-500 font-normal">Tổng Gross B/L:</td>
-                                <td className="py-2 px-3 text-right font-mono font-bold text-blue-900">
-                                  {bg.totalGrossWeight.toLocaleString()} kg
-                                </td>
-                              </tr>
-                            </tfoot>
-                          </table>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* ── NỘI DUNG TAB 3: HỒ SƠ KỸ THUẬT TÀU & CẦU BẾN ── */}
-            {vesselDetailTab === 'vessel' && (
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {/* Card 1: Định danh Tàu */}
-                  <div className="border border-chalk rounded-2xl p-4 bg-white space-y-2.5 shadow-2xs">
-                    <h4 className="font-extrabold text-carbon text-sm uppercase tracking-wider flex items-center gap-2 border-b border-chalk pb-2">
-                      <span className="material-symbols-outlined text-blue-600 text-base">directions_boat</span>
-                      <span>Định Danh Tàu Biển</span>
-                    </h4>
-                    <div className="space-y-1.5 text-xs">
-                      <div className="flex justify-between py-1 border-b border-fog">
-                        <span className="text-slate">Tên Tàu (Vessel Name):</span>
-                        <strong className="text-carbon font-extrabold">{selectedVesselManifest.vesselName}</strong>
-                      </div>
-                      <div className="flex justify-between py-1 border-b border-fog">
-                        <span className="text-slate">Số Hiệu IMO:</span>
-                        <strong className="font-mono text-carbon">{selectedVesselManifest.imoNumber || 'IMO 9811000'}</strong>
-                      </div>
-                      <div className="flex justify-between py-1 border-b border-fog">
-                        <span className="text-slate">Hô Hiệu (Call Sign):</span>
-                        <strong className="font-mono text-carbon">{selectedVesselManifest.callSign || '3FCA2'}</strong>
-                      </div>
-                      <div className="flex justify-between py-1 border-b border-fog">
-                        <span className="text-slate">Quốc Tịch / Cờ (Flag):</span>
-                        <strong className="text-carbon">{selectedVesselManifest.flag || 'Panama (PA)'}</strong>
-                      </div>
-                      <div className="flex justify-between py-1">
-                        <span className="text-slate">Loại Tàu:</span>
-                        <strong className="text-carbon">{selectedVesselManifest.vesselType || 'Tàu chở container chuyên dụng'}</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card 2: Kích thước & Trọng tải */}
-                  <div className="border border-chalk rounded-2xl p-4 bg-white space-y-2.5 shadow-2xs">
-                    <h4 className="font-extrabold text-carbon text-sm uppercase tracking-wider flex items-center gap-2 border-b border-chalk pb-2">
-                      <span className="material-symbols-outlined text-purple-600 text-base">straighten</span>
-                      <span>Kích Thước &amp; Trọng Tải</span>
-                    </h4>
-                    <div className="space-y-1.5 text-xs">
-                      <div className="flex justify-between py-1 border-b border-fog">
-                        <span className="text-slate">Chiều dài lớn nhất (LOA):</span>
-                        <strong className="font-mono text-carbon">{selectedVesselManifest.lengthOverall || '294.1 m'}</strong>
-                      </div>
-                      <div className="flex justify-between py-1 border-b border-fog">
-                        <span className="text-slate">Chiều rộng lớn nhất (Beam):</span>
-                        <strong className="font-mono text-carbon">{selectedVesselManifest.beam || '32.2 m'}</strong>
-                      </div>
-                      <div className="flex justify-between py-1 border-b border-fog">
-                        <span className="text-slate">Mớn nước thực tế (Draft):</span>
-                        <strong className="font-mono text-carbon">{selectedVesselManifest.draft || '12.5 m'}</strong>
-                      </div>
-                      <div className="flex justify-between py-1 border-b border-fog">
-                        <span className="text-slate">Trọng tải toàn phần (DWT):</span>
-                        <strong className="font-mono text-carbon">{selectedVesselManifest.deadweight || '80,500 DWT'}</strong>
-                      </div>
-                      <div className="flex justify-between py-1">
-                        <span className="text-slate">Tổng dung tích (GT):</span>
-                        <strong className="font-mono text-carbon">{selectedVesselManifest.grossTonnage || '68,200 GT'}</strong>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card 3: Cầu bến & Lịch Cảng */}
-                  <div className="border border-chalk rounded-2xl p-4 bg-white space-y-2.5 shadow-2xs">
-                    <h4 className="font-extrabold text-carbon text-sm uppercase tracking-wider flex items-center gap-2 border-b border-chalk pb-2">
-                      <span className="material-symbols-outlined text-emerald-600 text-base">anchor</span>
-                      <span>Lịch Trình &amp; Cầu Bến</span>
-                    </h4>
-                    <div className="space-y-1.5 text-xs">
-                      <div className="flex justify-between py-1 border-b border-fog">
-                        <span className="text-slate">Cầu bến chỉ định:</span>
-                        <strong className="text-emerald-800 font-extrabold">{selectedVesselManifest.berth || 'Bến số 1 (TS-01)'}</strong>
-                      </div>
-                      <div className="flex justify-between py-1 border-b border-fog">
-                        <span className="text-slate">Cảng bốc hàng (POL):</span>
-                        <strong className="text-carbon">{selectedVesselManifest.pol || 'Cảng Tiên Sa (VNDAD)'}</strong>
-                      </div>
-                      <div className="flex justify-between py-1 border-b border-fog">
-                        <span className="text-slate">Cảng dỡ hàng (POD):</span>
-                        <strong className="text-carbon">{selectedVesselManifest.pod || 'Tokyo (JPTYO)'}</strong>
-                      </div>
-                      <div className="flex justify-between py-1 border-b border-fog">
-                        <span className="text-slate">Giờ cập bến (ETA):</span>
-                        <strong className="font-mono text-carbon">{selectedVesselManifest.eta || '2026-11-09 14:00'}</strong>
-                      </div>
-                      <div className="flex justify-between py-1">
-                        <span className="text-slate">Dự kiến rời bến (ETD):</span>
-                        <strong className="font-mono text-carbon">{selectedVesselManifest.etd || '2026-11-09 22:00'}</strong>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Modal Bottom Actions */}
-            <div className="flex flex-col sm:flex-row justify-between items-center gap-3 pt-4 border-t border-chalk">
-              <div className="text-xs text-slate">
-                Bản khai điện tử: <strong className="text-carbon font-mono">{selectedVesselManifest.manifestNumber}</strong> · Tàu <strong className="text-carbon">{selectedVesselManifest.vesselName}</strong>
-              </div>
-
-              <div className="flex items-center gap-3">
-                {!isManifestPermanentlyApproved(selectedVesselManifest) && selectedVesselManifest.portApprovalStatus !== 'PORT_APPROVED' && selectedVesselManifest.status !== 'PORT_APPROVED' && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleApproveVesselManifest(selectedVesselManifest.manifestId || selectedVesselManifest.manifestNumber)
-                    }}
-                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-extrabold text-xs shadow-xs transition-colors flex items-center gap-1.5"
-                  >
-                    <span className="material-symbols-outlined text-base">check_circle</span>
-                    Phê Duyệt Tàu &amp; Phân Bổ Bãi
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  className="px-5 py-2.5 bg-fog border border-chalk text-carbon rounded-xl font-extrabold text-xs hover:bg-slate-200 transition-colors flex items-center gap-1.5"
-                >
-                  <span className="material-symbols-outlined text-base">print</span>
-                  In Bản Khai
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setSelectedVesselManifest(null)}
-                  className="px-6 py-2.5 bg-carbon text-white rounded-xl font-extrabold text-xs hover:bg-black transition-colors"
-                >
-                  Đóng
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <VesselsManifestTab
+          vesselKpiStats={vesselKpiStats}
+          vesselSearch={vesselSearch}
+          setVesselSearch={setVesselSearch}
+          selectedVesselFilter={selectedVesselFilter}
+          setSelectedVesselFilter={setSelectedVesselFilter}
+          filteredVessels={filteredVessels}
+          pagedVessels={pagedVessels}
+          vesselPage={vesselPage}
+          setVesselPage={setVesselPage}
+          vesselPageSize={vesselPageSize}
+          setVesselPageSize={setVesselPageSize}
+          onOpenManifestDetail={(m) => setSelectedVesselManifest(m)}
+          onOpenYardPlanning={(m) => setVesselContainersPopup(m)}
+        />
       )}
 
       {/* ───────────────────────────────────────────────────────────── */}
       {/* ── NỘI DUNG TAB 3: TẤT CẢ ĐƠN DỊCH VỤ ePORT GỬI ĐẾN ── */}
       {/* ───────────────────────────────────────────────────────────── */}
       {activeListType === 'eport' && (
-        <section className="epo-worklist" aria-labelledby="epo-port-list-title">
-          <div className="epo-worklist-heading">
-            <div>
-              <span className="epo-caption">KHÔNG GIAN HỒ SƠ</span>
-              <h2 id="epo-port-list-title">Tất Cả Yêu Cầu Dịch Vụ ePort Gửi Đến Cảng</h2>
-            </div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <span className="epo-result-count">{eportListTotal} hồ sơ</span>
-            </div>
-          </div>
-
-          <form
-            onSubmit={(e) => {
-              e.preventDefault()
-              setEportListPage(1)
-              loadAllEportRequests({ page: 1 })
-            }}
-            className="epo-filters"
-          >
-            <div className="epc-search epo-search">
-              <Search size={17} />
-              <input
-                aria-label="Tìm đơn dịch vụ ePort"
-                maxLength={100}
-                placeholder="Mã đơn, Booking, dịch vụ hoặc container…"
-                value={eportListSearch}
-                onChange={(e) => setEportListSearch(e.target.value)}
-              />
-            </div>
-            <label>
-              <span className="epc-sr-only">Trạng thái đơn</span>
-              <select
-                value={eportListStatus}
-                onChange={(e) => {
-                  setEportListStatus(e.target.value)
-                  setEportListPage(1)
-                }}
-              >
-                <option value="">Mọi trạng thái đơn</option>
-                {Object.entries(orderStatusLabels)
-                  .filter(([val]) => val !== 'DRAFT')
-                  .map(([val, label]) => (
-                    <option key={val} value={val}>{label}</option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              <span className="epc-sr-only">Trạng thái thanh toán</span>
-              <select
-                value={eportListPaymentStatus}
-                onChange={(e) => {
-                  setEportListPaymentStatus(e.target.value)
-                  setEportListPage(1)
-                }}
-              >
-                <option value="">Mọi thanh toán</option>
-                {['UNPAID', 'PENDING', 'PAID', 'FAILED', 'NOT_REQUIRED'].map((val) => (
-                  <option key={val} value={val}>{paymentStatusLabels[val] || val}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              <span className="epc-sr-only">Luồng hàng</span>
-              <select
-                value={eportListFlow}
-                onChange={(e) => {
-                  setEportListFlow(e.target.value)
-                  setEportListPage(1)
-                }}
-              >
-                <option value="">Mọi luồng hàng</option>
-                <option value="EXPORT">Hàng xuất</option>
-                <option value="IMPORT">Hàng nhập</option>
-              </select>
-            </label>
-          </form>
-
-          {eportListError && (
-            <div className="mx-6 mb-4 p-3 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs">
-              {eportListError}
-            </div>
-          )}
-
-          {eportListLoading ? (
-            <div className="epo-empty" role="status">
-              <Loader2 size={29} className="epc-spin" />
-              <h3>Đang tải hồ sơ…</h3>
-            </div>
-          ) : eportListItems.length === 0 ? (
-            <div className="epo-empty">
-              <Filter size={33} />
-              <h3>Không có hồ sơ phù hợp</h3>
-              <p>Thử điều chỉnh từ khóa hoặc bộ lọc để tìm lại hồ sơ ePort gửi đến cảng.</p>
-              {(eportListSearch || eportListStatus || eportListPaymentStatus || eportListFlow) && (
-                <button
-                  type="button"
-                  className="epc-button secondary"
-                  onClick={() => {
-                    setEportListSearch('')
-                    setEportListStatus('')
-                    setEportListPaymentStatus('')
-                    setEportListFlow('')
-                    setEportListPage(1)
-                  }}
-                >
-                  Xóa bộ lọc
-                </button>
-              )}
-            </div>
-          ) : (
-            <div className="overflow-x-auto w-full rounded-2xl border border-[#e2e8f0] bg-white shadow-2xs">
-              <table className="w-full text-left border-collapse text-xs min-w-[1100px]">
-                <thead>
-                  <tr className="bg-[#f8fafc] border-b border-[#e2e8f0] text-[#71869f] font-bold uppercase text-[10px] tracking-wider select-none">
-                    <th className="py-3 px-4 w-[280px]">Hồ Sơ / Dịch Vụ</th>
-                    <th className="py-3 px-4 w-[210px]">Nguồn / Container</th>
-                    <th className="py-3 px-3.5 w-[160px]">Trạng Thái Xử Lý</th>
-                    <th className="py-3 px-3.5 w-[210px]">Lý Do Từ Chối</th>
-                    <th className="py-3 px-4 w-[140px] text-right">Giá Trị Đăng Ký</th>
-                    <th className="py-3 px-4 w-[210px] text-right">Thao Tác</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#edf2f7]">
-                  {eportListItems.map((order, index) => {
-                    const validation = eportValidationMap[order.id]
-                    const srcUpper = String(order.sourceLabel || '').toUpperCase()
-                    const orderConts = (order.containers || []).map((x) => String(x.containerNumber || '').toUpperCase())
-                    const orderBl = String(order.content?.source?.blNumber || order.sourceSnapshot?.blNumber || '').toUpperCase()
-                    const orderBk = String(order.content?.source?.bookingNumber || order.sourceSnapshot?.bookingNumber || '').toUpperCase()
-                    const matchedGate =
-                      (validation?.bookingId
-                        ? [...manifestGeneratedBookings, ...bookings].find((b) => b.id === validation.bookingId)
-                        : null) ||
-                      [...manifestGeneratedBookings, ...bookings].find((b) => {
-                        const c = String(b.containerId || '').toUpperCase()
-                        const bl = String(b.cargoDeclarationId || b.billOfLading || '').toUpperCase()
-                        const bid = String(b.id || '').toUpperCase()
-                        return (
-                          (c && (srcUpper.includes(c) || orderConts.includes(c))) ||
-                          (bl && bl !== 'N/A' && (srcUpper.includes(bl) || orderBl === bl)) ||
-                          (bid && (srcUpper.includes(bid) || orderBk === bid))
-                        )
-                      })
-                    const isRejectedOrder = order.status === 'REJECTED' || validation?.status === 'AUTO_REJECTED' || validation?.status === 'REJECTED'
-                    const rawRejectReason = isRejectedOrder
-                      ? (order.rejectionReason || validation?.reason || 'Cont không nằm trong danh sách')
-                      : ''
-                    const rejectReasonText = !rawRejectReason
-                      ? ''
-                      : rawRejectReason.toLowerCase().includes('không nằm trong danh sách')
-                        ? 'Cont không nằm trong danh sách'
-                        : rawRejectReason.toLowerCase().includes('sai mã vận đơn')
-                          ? 'Sai mã vận đơn / booking'
-                          : rawRejectReason.toLowerCase().includes('sai tên công ty')
-                            ? 'Sai tên công ty'
-                            : rawRejectReason.replace(/^Tự động Reject:\s*/i, '').trim()
-
-                    return (
-                      <tr
-                        key={order.id}
-                        onClick={() => setSelectedEportOrderId(order.id)}
-                        className="hover:bg-[#f8faff] transition-colors cursor-pointer group"
-                      >
-                        {/* 1. Hồ sơ / Dịch vụ */}
-                        <td className="py-3.5 px-4 align-middle">
-                          <div className="flex items-center gap-3">
-                            <span className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border border-[#e2e9f1] bg-[#f5f8fc] text-[#8a9eb6]">
-                              <FileText size={18} />
-                            </span>
-                            <div className="flex flex-col gap-0.5 min-w-0">
-                              <strong className="font-mono text-xs font-semibold text-[#2b425b] group-hover:text-orange-600 transition-colors">
-                                {order.number}
-                              </strong>
-                              <span className="text-xs text-[#526a85] truncate font-medium">
-                                {order.mainServiceName || 'Chưa chọn dịch vụ chính'}
-                              </span>
-                              <small className="text-[11px] text-[#8c9eb2] truncate">
-                                {order.companyName || 'Doanh nghiệp đăng ký'}
-                              </small>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* 2. Nguồn / Container */}
-                        <td className="py-3.5 px-4 align-middle">
-                          <div className="flex flex-col gap-1">
-                            <strong className="text-xs font-semibold text-[#405670]">
-                              {order.sourceLabel || 'Chưa chọn hồ sơ nguồn'}
-                            </strong>
-                            <div className="flex items-center gap-1.5 text-[11px] text-[#7d91a6]">
-                              <Container size={13} className="shrink-0" />
-                              <span>{order.containerCount || 0} container</span>
-                              <span>·</span>
-                              <span className={order.flow === 'IMPORT' ? 'text-sky-700 font-semibold' : 'text-purple-700 font-semibold'}>
-                                {order.flow === 'IMPORT' ? 'Hàng nhập' : 'Hàng xuất'}
-                              </span>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* 3. Trạng thái xử lý */}
-                        <td className="py-3.5 px-3.5 align-middle whitespace-nowrap">
-                          <div className="flex flex-col items-start gap-1">
-                            <OrderBadge status={isRejectedOrder ? 'REJECTED' : order.status} />
-                            {order.paymentStatus && (
-                              <small className={`epo-payment-label ${order.paymentReviewRequired ? 'orange' : statusTone(order.paymentStatus)}`}>
-                                {paymentStateLabel(order)}
-                              </small>
-                            )}
-                          </div>
-                        </td>
-
-                        {/* 4. Lý do từ chối */}
-                        <td className="py-3.5 px-3.5 align-middle">
-                          {rejectReasonText ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-semibold leading-tight">
-                              <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
-                              <span>{rejectReasonText}</span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-300 text-xs">—</span>
-                          )}
-                        </td>
-
-                        {/* 5. Giá trị đăng ký */}
-                        <td className="py-3.5 px-4 align-middle text-right whitespace-nowrap">
-                          <div className="flex flex-col items-end gap-0.5">
-                            <strong className="text-slate-900 font-bold text-xs">
-                              {order.total == null ? 'Chưa xác định' : money(order.total)}
-                            </strong>
-                            <small className="text-[10px] text-slate-400">
-                              {draftDateTime(order.updatedAt)}
-                            </small>
-                          </div>
-                        </td>
-
-                        {/* 6. Thao tác */}
-                        <td className="py-3.5 px-4 align-middle text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          <div className="flex items-center justify-end gap-2">
-                            {(matchedGate || validation?.status === 'AUTO_REJECTED' || order.status === 'REJECTED') && (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  let detail = order
-                                  try {
-                                    detail = await serviceOrdersApi.get(order.id)
-                                  } catch { }
-                                  setEportDetail(detail)
-                                  const allGates = [...manifestGeneratedBookings, ...bookings]
-                                  const dConts = (detail.containers || []).map((x) => String(x.containerNumber || '').toUpperCase())
-                                  const dBl = String(detail.content?.source?.blNumber || detail.sourceSnapshot?.blNumber || '').toUpperCase()
-                                  const dBk = String(detail.content?.source?.bookingNumber || detail.sourceSnapshot?.bookingNumber || '').toUpperCase()
-                                  const dRef = String(detail.sourceLabel || detail.content?.source?.referenceNumber || '').toUpperCase()
-                                  const gate =
-                                    matchedGate ||
-                                    (validation?.bookingId ? allGates.find((b) => b.id === validation.bookingId) : null) ||
-                                    allGates.find((b) => {
-                                      const c = String(b.containerId || '').toUpperCase()
-                                      const bl = String(b.cargoDeclarationId || b.billOfLading || '').toUpperCase()
-                                      const bid = String(b.id || '').toUpperCase()
-                                      return (
-                                        (c && dConts.includes(c)) ||
-                                        (bl && bl !== 'N/A' && (bl === dBl || dRef.includes(bl))) ||
-                                        (bid && (bid === dBk || dRef.includes(bid)))
-                                      )
-                                    }) ||
-                                    {
-                                      id: validation?.bookingId || 'CHUA-CO-BOOKING-CONG',
-                                      containerId: dConts[0] || 'Chưa có Cont cổng',
-                                      bookingType: detail.flow === 'IMPORT' ? 'Import' : 'Export',
-                                      billOfLading: 'Chưa có trên Lịch Hẹn Cổng',
-                                      bookingNumber: 'Chưa có trên Lịch Hẹn Cổng',
-                                      company: 'Chưa có Lịch Hẹn Cổng khớp',
-                                      status: 'Pending',
-                                      _noGateBooking: true
-                                    }
-                                  setSelectedBooking(gate)
-                                  setShowContainerDetailModal(false)
-                                  setShowEportSyncPopup(true)
-                                }}
-                                className={`px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer whitespace-nowrap shadow-xs transition ${isRejectedOrder
-                                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200'
-                                  : order.status === 'APPROVED'
-                                    ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
-                                    : 'bg-orange-600 hover:bg-orange-700 text-white'
-                                  }`}
-                              >
-                                {isRejectedOrder
-                                  ? 'Xem đối chiếu ➔'
-                                  : order.status === 'APPROVED'
-                                    ? 'Xem chi tiết ➔'
-                                    : 'Đối chiếu & Duyệt ➔'}
-                              </button>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => setSelectedEportOrderId(order.id)}
-                              aria-label={`Xem chi tiết đơn ${order.number}`}
-                              title="Xem chi tiết đơn"
-                              className="w-8 h-8 rounded-full border border-slate-200 bg-white hover:border-orange-300 hover:text-orange-600 text-slate-400 flex items-center justify-center cursor-pointer shrink-0 transition"
-                            >
-                              <ArrowUpRight size={15} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {eportListTotal > 10 && (
-            <div className="flex items-center justify-between pt-2 text-xs text-slate-600">
-              <span>Trang {eportListPage} / {Math.max(1, Math.ceil(eportListTotal / 10))} · Tổng {eportListTotal} đơn ePort</span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={eportListPage <= 1 || eportListLoading}
-                  onClick={() => setEportListPage(p => Math.max(1, p - 1))}
-                  className="px-3 py-1 rounded border border-slate-300 bg-white disabled:opacity-50 cursor-pointer"
-                >
-                  Trước
-                </button>
-                <button
-                  type="button"
-                  disabled={eportListPage >= Math.ceil(eportListTotal / 10) || eportListLoading}
-                  onClick={() => setEportListPage(p => p + 1)}
-                  className="px-3 py-1 rounded border border-slate-300 bg-white disabled:opacity-50 cursor-pointer"
-                >
-                  Sau
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
+        <EportServiceOrdersTab
+          eportListTotal={eportListTotal}
+          eportListPage={eportListPage}
+          setEportListPage={setEportListPage}
+          eportListSearch={eportListSearch}
+          setEportListSearch={setEportListSearch}
+          eportListStatus={eportListStatus}
+          setEportListStatus={setEportListStatus}
+          eportListPaymentStatus={eportListPaymentStatus}
+          setEportListPaymentStatus={setEportListPaymentStatus}
+          eportListFlow={eportListFlow}
+          setEportListFlow={setEportListFlow}
+          eportListError={eportListError}
+          eportListLoading={eportListLoading}
+          eportListItems={eportListItems}
+          eportValidationMap={eportValidationMap}
+          manifestGeneratedBookings={manifestGeneratedBookings}
+          bookings={bookings}
+          serviceOrdersApi={serviceOrdersApi}
+          loadAllEportRequests={loadAllEportRequests}
+          onOpenOrder={(orderId) => setSelectedEportOrderId(orderId)}
+          onOpenReconciliation={(order, matchedGate, validation) => {
+            setEportDetail(order)
+            const allGates = [...manifestGeneratedBookings, ...bookings]
+            const dConts = (order.containers || []).map((x) => String(x.containerNumber || '').toUpperCase())
+            const dBl = String(order.content?.source?.blNumber || order.sourceSnapshot?.blNumber || '').toUpperCase()
+            const dBk = String(order.content?.source?.bookingNumber || order.sourceSnapshot?.bookingNumber || '').toUpperCase()
+            const dRef = String(order.sourceLabel || order.content?.source?.referenceNumber || '').toUpperCase()
+            const gate =
+              matchedGate ||
+              (validation?.bookingId ? allGates.find((b) => b.id === validation.bookingId) : null) ||
+              allGates.find((b) => {
+                const c = String(b.containerId || '').toUpperCase()
+                const bl = String(b.cargoDeclarationId || b.billOfLading || '').toUpperCase()
+                const bid = String(b.id || '').toUpperCase()
+                return (
+                  (c && dConts.includes(c)) ||
+                  (bl && bl !== 'N/A' && (bl === dBl || dRef.includes(bl))) ||
+                  (bid && (bid === dBk || dRef.includes(bid)))
+                )
+              }) ||
+              {
+                id: validation?.bookingId || 'CHUA-CO-BOOKING-CONG',
+                containerId: dConts[0] || 'Chưa có Cont cổng',
+                bookingType: order.flow === 'IMPORT' ? 'Import' : 'Export',
+                billOfLading: 'Chưa có trên Lịch Hẹn Cổng',
+                bookingNumber: 'Chưa có trên Lịch Hẹn Cổng',
+                company: 'Chưa có Lịch Hẹn Cổng khớp',
+                status: 'Pending',
+                _noGateBooking: true
+              }
+            setSelectedBooking(gate)
+            setShowContainerDetailModal(false)
+            setShowEportSyncPopup(true)
+          }}
+        />
       )}
 
-      {/* ── GATE BOOKING DETAIL MODAL (PHONG CÁCH DỊCH VỤ ePORT — GỌN & THOÁNG) ── */}
-      {showContainerDetailModal && selectedBooking && (
-        <div className="fixed inset-0 z-[85] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5">
-          <div className="bg-white border border-[#e3eaf3] rounded-2xl max-w-4xl w-full shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-xs">
-            {/* 1. Header chuẩn ePort */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-[#edf1f6] bg-[#fafcfe] shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className={`epo-order-icon ${isImportBooking ? 'epo-order-icon--import' : 'epo-order-icon--export'}`}>
-                  <Container size={19} />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-[11px] text-[#7a8fa6] flex-wrap">
-                    <span className="font-semibold text-[#5a7088]">Chi Tiết Container</span>
-                    <span>·</span>
-                    <span className="font-mono font-bold text-blue-700">{selectedBooking.containerId}</span>
-                    <span className="text-slate-300">|</span>
-                    <span className="text-slate-500">Mã Booking:</span>
-                    <span className="font-mono font-semibold text-slate-700">{stripTrailingDigits(selectedBooking.id)}</span>
-                  </div>
-                  <h3 className="text-base font-bold text-[#1e2d3d] mt-0.5 flex items-center gap-2 flex-wrap">
-                    <span className="font-mono">{selectedBooking.containerId}</span>
-                    <span className="text-xs font-medium text-[#627891]">
-                      ({selectedBooking.containerType || `${selectedBooking.size || '40'}${selectedBooking.isReefer ? 'RF' : 'HC'}`} · {isImportBooking ? 'Lấy cont hàng' : 'Hạ cont'})
-                    </span>
-                    <span className="text-slate-300">·</span>
-                    <span className="text-xs font-semibold text-slate-700">{selectedBooking.company || 'Bien Dong Logistics'}</span>
-                  </h3>
-                </div>
-              </div>
+      {/* ── MODAL POPUP KIỂM TRA VỊ TRÍ BÃI CONTAINER & SƠ ĐỒ BÃI TRỰC QUAN ── */}
+      <VesselYardAllocationModal
+        isOpen={Boolean(vesselContainersPopup)}
+        vessel={vesselContainersPopup}
+        onClose={() => setVesselContainersPopup(null)}
+        containerList={popupContainerList}
+        allBookings={manifestGeneratedBookings}
+        yardInventory={yardInventory}
+        blocksData={blocksData}
+        onAcceptAndNext={(v, overrides, conts) => handleAcceptYardAndNext(v, overrides, conts || popupContainerList)}
+      />
 
-              <div className="flex items-center gap-2.5 shrink-0">
-                {selectedBooking.isFromVesselManifest && !isBookingTransportSubmitted(selectedBooking) ? (
-                  <span className="epo-badge orange">
-                    <span />
-                    Chờ vận tải
-                  </span>
-                ) : selectedBooking.status === 'Approved' || selectedBooking.status === 'Ready' ? (
-                  <span className="epo-badge green">
-                    <span />
-                    Đã duyệt
-                  </span>
-                ) : selectedBooking.status === 'Rejected' ? (
-                  <span className="epo-badge red">
-                    <span />
-                    Đã từ chối
-                  </span>
-                ) : (
-                  <span className="epo-badge blue">
-                    <span />
-                    {selectedBooking.status === 'Pending'
-                      ? 'Chờ duyệt'
-                      : selectedBooking.status === 'Under Review'
-                        ? 'Đang kiểm tra'
-                        : 'Vận tải đã gửi · Chờ duyệt'}
-                  </span>
-                )}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowContainerDetailModal(false)
-                    if (!showEportSyncPopup && !selectedEportOrderId) {
-                      setSelectedBooking(null)
-                    }
-                  }}
-                  className="w-8 h-8 rounded-lg border border-[#e3eaf3] text-[#7a8fa6] hover:text-[#1e2d3d] hover:bg-[#f3f6fa] flex items-center justify-center text-lg leading-none cursor-pointer transition"
-                  aria-label="Đóng"
-                >
-                  &times;
-                </button>
-              </div>
-            </div>
+      {/* ── MODAL CHI TIẾT TÀU CẬP CẢNG & BẢN KHAI HÀNG HÓA E-MANIFEST ── */}
+      <VesselManifestDetailModal
+        isOpen={Boolean(selectedVesselManifest)}
+        manifest={selectedVesselManifest}
+        onClose={() => setSelectedVesselManifest(null)}
+        onOpenYardPlanning={(m) => setVesselContainersPopup(m)}
+      />
 
-            {/* 2. Body 2 cột chuẩn epo-detail-layout */}
-            <div className="p-6 overflow-y-auto flex-1">
-              {selectedBooking.status === 'Rejected' && (
-                <div className="mb-4 p-3 rounded-xl bg-[#fcf3f2] border border-[#eddbd8] text-[#ad7a73] flex items-start gap-2">
-                  <span className="material-symbols-outlined text-base shrink-0">error</span>
-                  <div className="text-[11px]">
-                    <strong className="font-bold">Đơn đã bị từ chối:</strong>{' '}
-                    {selectedBooking.rejectionReason || 'Không đạt yêu cầu'}
-                    {selectedBooking.rejectionNote && ` — "${selectedBooking.rejectionNote}"`}
-                  </div>
-                </div>
-              )}
-
-              <div className="epo-detail-layout !p-0">
-                {/* Cột trái: Thông tin hồ sơ sạch sẽ */}
-                <section className="epo-detail-content space-y-4">
-                  {/* Khối 1: Vận tải & Tàu / B/L */}
-                  <div className="border border-[#e6ecf3] rounded-xl p-4 bg-[#fafcfe]">
-                    <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-[#edf1f6]">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-[#7a8fa6]">
-                        Thông tin vận tải &amp; lô hàng
-                      </span>
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setShowCarrierPopup(true)}
-                          className="text-[11px] font-semibold text-[#5a7088] hover:text-orange-600 cursor-pointer"
-                        >
-                          Công ty vận tải ➔
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setShowContainerPopup(true)}
-                          className="text-[11px] font-semibold text-[#5a7088] hover:text-orange-600 cursor-pointer"
-                        >
-                          Chi tiết cont ➔
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 text-[12px]">
-                      <div>
-                        <div className="text-[11px] text-[#8a9bb0]">Công ty vận tải</div>
-                        <div className="font-semibold text-[#1e2d3d] mt-0.5 truncate" title={selectedBooking.company}>
-                          {selectedBooking.company || '—'}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] text-[#8a9bb0]">Điều phối &amp; liên hệ</div>
-                        <div className="font-medium text-[#334155] mt-0.5">
-                          {selectedBooking.isFromVesselManifest && !isBookingTransportSubmitted(selectedBooking) && selectedBooking.status !== 'Approved'
-                            ? 'Chờ bên vận tải gửi xác nhận'
-                            : `${selectedBooking.contactName || selectedBooking.contactPerson || 'Võ Hàng Tàu'} · ${selectedBooking.phone || '0842737474'}`}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] text-[#8a9bb0]">Tàu / Chuyến</div>
-                        <div className="font-medium text-[#334155] mt-0.5">
-                          {selectedBooking.vesselName || 'MAERSK MC-KINNEY MOLLER'}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] text-[#8a9bb0]">Số vận đơn (B/L) · VGM</div>
-                        <div className="font-mono font-medium text-[#334155] mt-0.5">
-                          {selectedBooking.billOfLading || (selectedBooking.cargoDeclarationId && selectedBooking.cargoDeclarationId !== 'N/A' ? selectedBooking.cargoDeclarationId : '') || selectedManifestInfo?.blNumber || 'BL-INB-DAD-2605'}
-                          {' · '}
-                          {selectedBooking.vgm ? `${selectedBooking.vgm} kg` : (selectedBooking.grossWeightKg ? `${selectedBooking.grossWeightKg.toLocaleString()} kg` : '19.800 kg')}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Khối 2: Điều phối cổng & vị trí bãi */}
-                  <div className="border border-[#e6ecf3] rounded-xl p-4 bg-white">
-                    <div className="flex items-center justify-between pb-2.5 mb-3 border-b border-[#edf1f6]">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-[#7a8fa6]">
-                          Điều phối cổng &amp; vị trí bãi
-                        </span>
-                        <span className="font-mono text-[11px] font-bold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                          Cont {selectedBooking.containerId}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setShowVehiclePopup(true)}
-                          className="text-[11px] font-semibold text-[#5a7088] hover:text-orange-600 cursor-pointer"
-                        >
-                          Xe &amp; tài xế ➔
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const targetZone = reservedSlot?.zoneCode || (reservedSlot?.blockCode || 'D')[0]
-                            setSelectedZone(targetZone)
-                            setShowYardBigModal(true)
-                          }}
-                          className="text-[11px] font-semibold text-[#5a7088] hover:text-orange-600 cursor-pointer"
-                        >
-                          Đổi bãi ➔
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2.5 text-[12px]">
-                      <div>
-                        <div className="text-[11px] text-[#8a9bb0]">Biển số xe · Tài xế phụ trách</div>
-                        <div className="font-medium text-[#1e2d3d] mt-0.5">
-                          {(() => {
-                            const vPlate = getGateBookingVehicle(selectedBooking)
-                            const dName = getGateBookingDriver(selectedBooking)
-                            const cId = String(selectedBooking.containerId || '').trim().toUpperCase()
-                            const orderFleetInfo = manifestPortSyncService.getOrderFleet(cId)
-                            const phone = selectedBooking.phone || orderFleetInfo?.phone || ''
-                            if (vPlate) {
-                              return (
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <span className="font-mono font-bold text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200">{vPlate}</span>
-                                  <span className="text-slate-400">·</span>
-                                  <span className="font-bold text-slate-800">{dName || 'Tài xế theo xe'}</span>
-                                  {phone && <span className="text-slate-500 text-[11px]">({phone})</span>}
-                                </div>
-                              )
-                            }
-                            return (
-                              <span className="text-[11px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-medium inline-flex items-center gap-1">
-                                <span>⏳</span>
-                                <span>Chờ bên vận tải điều phối xe &amp; tài xế</span>
-                              </span>
-                            )
-                          })()}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] text-[#8a9bb0]">Cổng · Giờ dự kiến (ETA)</div>
-                        <div className="font-mono font-medium text-[#334155] mt-0.5">
-                          {(selectedBooking.requestedGate || 'Gate 1').replace(/^Gate\s*/i, 'Cổng ')} · {selectedBooking.eta ? selectedBooking.eta.replace('T', ' ').slice(0, 16) : 'Hôm nay 08:30'}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] text-[#8a9bb0]">Vị trí bãi Tiên Sa</div>
-                        <div className="font-mono font-semibold text-[#1e2d3d] mt-0.5">
-                          {(() => {
-                            const slot = reservedSlot || selectedBooking?.autoYardSlot || selectedBooking?.reservedSlot
-                            if (slot?.blockCode && slot?.bay) {
-                              const bStr = String(slot.bay).padStart(2, '0')
-                              const rStr = slot.row ? String(slot.row).padStart(2, '0') : '01'
-                              const tStr = slot.tier || '1'
-                              return `Block ${slot.blockCode} · Bay ${bStr} · Tầng ${tStr} · Hàng ${rStr}`
-                            }
-                            if (selectedBooking?.yardSlot) {
-                              const parsed = manifestPortSyncService.parseSlotCoordinate(selectedBooking.yardSlot)
-                              if (parsed) {
-                                return `Block ${parsed.blockCode} · Bay ${String(parsed.bay).padStart(2, '0')} · Tầng ${parsed.tier} · Hàng ${String(parsed.row).padStart(2, '0')}`
-                              }
-                              return selectedBooking.yardSlot
-                            }
-                            return 'Block D01 · Bay 02 · Tầng 1 · Hàng 01'
-                          })()}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[11px] text-[#8a9bb0]">Chứng từ đính kèm</div>
-                        {(() => {
-                          const realDocs = getBookingRealDocuments(selectedBooking)
-                          const orderDocsCount = realDocs.filter(d => !d.isDriverDoc).length
-                          const fleetDocsCount = realDocs.filter(d => d.isDriverDoc).length
-                          return (
-                            <button
-                              type="button"
-                              onClick={() => setShowDocumentsModal(true)}
-                              className="mt-0.5 text-[12px] font-semibold text-[#2e78a8] hover:underline cursor-pointer text-left"
-                            >
-                              {realDocs.length > 0
-                                ? `${realDocs.length} tệp hồ sơ (${orderDocsCount} chứng từ ePort · ${fleetDocsCount} xe & tài xế) ➔`
-                                : 'Chưa có chứng từ (Chờ đơn ePort) ➔'}
-                            </button>
-                          )
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Khối 3: Đối chiếu ePort (gọn 1 dòng) */}
-                  <div className="border border-[#e6ecf3] rounded-xl px-4 py-3 bg-[#fafcfe] flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="text-[11px] font-semibold text-[#5a7088]">
-                        Đối chiếu Dịch Vụ ePort:{' '}
-                        <span className={
-                          eportComparison?.status === 'matched'
-                            ? 'text-emerald-700'
-                            : eportComparison?.status === 'mismatch'
-                              ? 'text-rose-700'
-                              : 'text-[#627891]'
-                        }>
-                          {eportLoading ? 'Đang kiểm tra...' : (eportComparison?.badgeText || 'Chưa có đơn ePort khớp')}
-                        </span>
-                      </div>
-                      {eportComparison?.order && (
-                        <div className="text-[11px] text-[#7a8fa6] mt-0.5 truncate">
-                          Đơn <span className="font-mono text-[#334155]">{eportComparison.order.number}</span> · {orderStatusLabels[eportComparison.order.status] || eportComparison.order.status} · {paymentStateLabel(eportComparison.order)}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => setShowEportSyncPopup(true)}
-                        className="epc-button secondary !min-h-[32px] !py-1 !px-3 !text-[11px]"
-                      >
-                        Đối chiếu 2 bên
-                      </button>
-                      {eportComparison?.order && (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedEportOrderId(eportComparison.order.id)}
-                          className="epc-button secondary !min-h-[32px] !py-1 !px-3 !text-[11px]"
-                        >
-                          Xem đơn ePort
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </section>
-
-                {/* Cột phải: Sidebar tóm tắt & thao tác chuẩn ePort */}
-                <aside className="epo-order-sidebar">
-                  <div className="epo-sidebar-heading">
-                    <span>
-                      <FileText size={20} />
-                    </span>
-                    <div>
-                      <small>HỒ SƠ ĐĂNG KÝ</small>
-                      <h3>Chi tiết Booking</h3>
-                    </div>
-                  </div>
-
-                  <div className="epo-sidebar-total">
-                    <small>Tổng biểu phí cảng</small>
-                    <strong>{bookingTariffSummary.totalFormatted}</strong>
-                    {orderContainersList.length > 1 && (
-                      <div className="text-[11px] text-slate-600 mt-2 pt-2 border-t border-slate-200 flex flex-col gap-0.5">
-                        <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Tổng 1 Bill ({orderContainersList.length} Cont)</span>
-                        <span className="font-mono font-bold text-emerald-700 text-sm">{totalBillFormatted}</span>
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setShowTariffPopup(true)}
-                      className="text-[11px] text-[#2e78a8] hover:underline font-medium mt-1.5 cursor-pointer text-left block"
-                    >
-                      Xem bảng kê chi tiết ➔
-                    </button>
-                  </div>
-
-                  <dl>
-                    <div>
-                      <dt>Đang xem cont</dt>
-                      <dd className="font-mono font-bold text-blue-700">{selectedBooking.containerId}</dd>
-                    </div>
-                    <div>
-                      <dt>Xe &amp; Tài xế</dt>
-                      <dd className="font-mono text-slate-800 font-semibold">
-                        {getGateBookingVehicle(selectedBooking)
-                          ? `${getGateBookingVehicle(selectedBooking)} · ${getGateBookingDriver(selectedBooking) || 'Tài xế theo xe'}`
-                          : <span className="text-amber-700 font-normal italic">Chờ điều phối xe</span>}
-                      </dd>
-                    </div>
-                    <div>
-                      <dt>Vị trí</dt>
-                      <dd className="font-mono">{reservedSlot?.posId || 'D01-B02-R1-T1'}</dd>
-                    </div>
-                    <div>
-                      <dt>Quy mô lô</dt>
-                      <dd className="font-bold text-slate-800">{orderContainersList.length > 1 ? `${orderContainersList.length} Container (1 Bill)` : '1 Container'}</dd>
-                    </div>
-                    <div>
-                      <dt>Chứng từ</dt>
-                      <dd>{getBookingRealDocuments(selectedBooking).length} tệp</dd>
-                    </div>
-                  </dl>
-
-                  <div className="epo-sidebar-actions">
-                    {selectedBooking.status !== 'Approved' ? (
-                      <button
-                        type="button"
-                        onClick={handleConfirmApproval}
-                        className="epc-button primary"
-                      >
-                        {orderContainersList.length > 1
-                          ? `Phê duyệt Booking (${orderContainersList.length} Cont - 1 Bill)`
-                          : 'Phê duyệt Booking'}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          showToast(`🔄 Đã chuyển sang Lệnh Điều Phối cho Booking ${selectedBooking.id}`)
-                          navigate('/dispatch')
-                        }}
-                        className="epc-button primary"
-                      >
-                        Xem Lệnh Điều Phối ➔
-                      </button>
-                    )}
-
-                    {selectedBooking.status !== 'Rejected' && (
-                      <button
-                        type="button"
-                        onClick={() => setShowRejectModal(true)}
-                        className="epc-button secondary epo-danger-button"
-                      >
-                        Từ chối đơn
-                      </button>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowContainerDetailModal(false)
-                        if (!showEportSyncPopup && !selectedEportOrderId) {
-                          setSelectedBooking(null)
-                        }
-                      }}
-                      className="epc-button secondary"
-                    >
-                      Đóng
-                    </button>
-                  </div>
-                </aside>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
+      {/* ── GATE BOOKING DETAIL MODAL ── */}
+      <GateBookingDetailModal
+        isOpen={Boolean(showContainerDetailModal && selectedBooking)}
+        booking={selectedBooking}
+        onClose={() => {
+          setShowContainerDetailModal(false)
+          if (!showEportSyncPopup && !selectedEportOrderId) {
+            setSelectedBooking(null)
+          }
+        }}
+        isImportBooking={isImportBooking}
+        isBookingTransportSubmitted={isBookingTransportSubmitted}
+        stripTrailingDigits={stripTrailingDigits}
+        getGateBookingVehicle={getGateBookingVehicle}
+        getGateBookingDriver={getGateBookingDriver}
+        getBookingRealDocuments={getBookingRealDocuments}
+        manifestPortSyncService={manifestPortSyncService}
+        reservedSlot={reservedSlot}
+        selectedManifestInfo={selectedManifestInfo}
+        eportComparison={eportComparison}
+        eportLoading={eportLoading}
+        orderStatusLabels={orderStatusLabels}
+        paymentStateLabel={paymentStateLabel}
+        bookingTariffSummary={bookingTariffSummary}
+        totalBillFormatted={totalBillFormatted}
+        orderContainersList={orderContainersList}
+        onOpenCarrier={() => setShowCarrierPopup(true)}
+        onOpenContainerPopup={() => setShowContainerPopup(true)}
+        onOpenVehicle={() => setShowVehiclePopup(true)}
+        onOpenYardPicker={(zone) => {
+          setSelectedZone(zone)
+          setShowYardBigModal(true)
+        }}
+        onOpenDocuments={() => setShowDocumentsModal(true)}
+        onOpenEportSync={() => setShowEportSyncPopup(true)}
+        onOpenEportOrder={(orderId) => setSelectedEportOrderId(orderId)}
+        onOpenTariff={() => setShowTariffPopup(true)}
+      />
 
       {/* ── APPROVE CONFIRMATION MODAL ── */}
-      {showApproveModal && selectedBooking && (() => {
-        const approveTargets = (batchApproveList && batchApproveList.length > 0)
-          ? batchApproveList
-          : (orderContainersList && orderContainersList.length > 0 ? orderContainersList : [selectedBooking])
-        const isMulti = approveTargets.length > 1
-        const billTotalDisplay = isMulti ? totalBillFormatted : bookingTariffSummary.totalFormatted
-
-        return (
-          <div className="fixed inset-0 bg-carbon/80 backdrop-blur-sm z-[95] flex items-center justify-center p-4">
-            <div className={`bg-white rounded-3xl p-6 md:p-8 ${isMulti ? 'max-w-2xl' : 'max-w-md'} w-full space-y-4 shadow-2xl animate-in zoom-in-95 duration-200 font-sans max-h-[90vh] overflow-y-auto`}>
-              {/* Header */}
-              <div className="flex items-center gap-3 border-b border-chalk pb-3">
-                <span className="material-symbols-outlined text-green-600 text-3xl shrink-0">task_alt</span>
-                <div>
-                  <div className="text-[11px] font-mono font-bold text-blue-700">
-                    Lịch Hẹn Cổng · {selectedBooking.id}
-                  </div>
-                  <h3 className="font-heading text-lg font-extrabold text-carbon mt-0.5">
-                    {selectedBooking.containerId} <span className="text-sm font-semibold text-slate-500">({selectedBooking.containerType || '20GP'} · {isImportBooking ? 'Lấy cont hàng' : 'Hạ cont'})</span>
-                  </h3>
-                  <p className="text-xs text-slate mt-0.5">
-                    {isMulti
-                      ? `Phê duyệt toàn bộ ${approveTargets.length} container trong Booking & Gửi 1 Bill Tổng (${billTotalDisplay}) sang Đơn vị Vận tải.`
-                      : 'Xác nhận phê duyệt lịch hẹn xe vào cảng.'}
-                  </p>
-                </div>
-              </div>
-
-              {/* Thông tin đơn / Booking chung */}
-              <div className="bg-fog p-3.5 rounded-2xl border border-chalk space-y-2 text-xs">
-                <div className="flex flex-wrap justify-between items-center gap-1 font-mono">
-                  <span className="text-slate-500 font-sans">Mã Booking:</span>
-                  <strong className="text-carbon font-bold">{selectedBooking.id}</strong>
-                  <span className="text-slate-300">|</span>
-                  <span className="text-slate-500 font-sans">Tàu / Chuyến:</span>
-                  <span className="font-semibold text-slate-800">{selectedBooking.vesselName || 'MAERSK MC-KINNEY MOLLER'} ({selectedBooking.voyageNumber || 'MM-2601S'})</span>
-                </div>
-                <div className="flex flex-wrap justify-between items-center gap-1 text-[11px] pt-1 border-t border-slate-200/60">
-                  <span className="text-slate-500">Đơn vị vận tải:</span>
-                  <strong className="text-slate-800 font-semibold">{selectedBooking.company || 'Bien Dong Logistics'}</strong>
-                  <span className="text-slate-300">|</span>
-                  <span className="text-slate-500">Cổng dự kiến:</span>
-                  <strong className="text-orange-600 font-bold font-mono">{(selectedBooking.requestedGate || 'Gate 1').replace(/^Gate\s*/i, 'Cổng ')} · 08:30</strong>
-                </div>
-              </div>
-
-              {/* Danh sách từng container kèm xe, tài xế & vị trí bãi */}
-              <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white shadow-2xs">
-                <div className="bg-slate-100/90 px-3.5 py-2 border-b border-slate-200 flex items-center justify-between text-[11px] font-bold text-slate-700">
-                  <span className="flex items-center gap-1.5 uppercase tracking-wide">
-                    <span className="material-symbols-outlined text-[16px] text-blue-600">inventory_2</span>
-                    Danh sách {approveTargets.length} Container &amp; Xe phụ trách
-                  </span>
-                  <span className="text-emerald-700 font-semibold">
-                    ✓ Đã đối chiếu ePort &amp; Manifest
-                  </span>
-                </div>
-
-                <div className="divide-y divide-slate-100 max-h-56 overflow-y-auto">
-                  {approveTargets.map((c, idx) => (
-                    <div key={`${c.containerId || 'c'}-${c.id || ''}-${idx}`} className="p-3 hover:bg-slate-50/70 transition-colors">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-extrabold text-slate-900 text-xs">
-                            {c.containerId}
-                          </span>
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-blue-50 text-blue-800 border border-blue-200 font-semibold">
-                            {c.containerType || '20GP'}
-                          </span>
-                          {c.isReefer && (
-                            <span className="text-[9px] px-1 rounded bg-cyan-100 text-cyan-800 border border-cyan-200 font-semibold">
-                              Lạnh
-                            </span>
-                          )}
-                          <span className="text-[11px] font-mono text-slate-500">
-                            B/L: {c.billOfLading || c.cargoDeclarationId || 'BL-INB-DAD-2601'}
-                          </span>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <span className="font-mono font-bold text-emerald-700 text-xs">
-                            {(c.fee || 583200).toLocaleString('vi-VN')} đ
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600">
-                        <div className="flex items-center gap-1">
-                          <span className="text-slate-400">Xe &amp; TX:</span>
-                          <strong className="font-mono text-slate-800">{c.licensePlate || getGateBookingVehicle(c) || '47K1-137.87'}</strong>
-                          <span className="text-slate-400">·</span>
-                          <span className="font-semibold text-slate-800">{c.driverName || getGateBookingDriver(c) || 'Võ Hãng Tàu'}</span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <span className="text-slate-400">Vị trí bãi:</span>
-                          <span className="font-mono font-semibold text-slate-800">{c.yardSlot || 'Block D01 · Bay 02'}</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Box Tổng 1 Bill duy nhất */}
-              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-400/80 rounded-2xl p-4 flex items-center justify-between shadow-xs">
-                <div>
-                  <div className="text-[11px] font-extrabold uppercase tracking-wider text-emerald-900 flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-[18px] text-emerald-700">receipt_long</span>
-                    TỔNG BIỂU PHÍ CẢNG (1 BILL TỔNG · {approveTargets.length} CONTAINER)
-                  </div>
-                  <div className="text-[11px] text-emerald-700 mt-0.5">
-                    Toàn bộ cước THC, phí nâng hạ bãi Tiên Sa và phí cont lạnh được gom thành 1 Bill duy nhất.
-                  </div>
-                </div>
-                <div className="text-right shrink-0 pl-3">
-                  <div className="font-mono text-2xl font-black text-emerald-800 tracking-tight">
-                    {billTotalDisplay}
-                  </div>
-                </div>
-              </div>
-
-              {/* Thông tin đối soát Manifest */}
-              <div className="text-xs text-emerald-950 bg-emerald-50 p-2.5 rounded-xl border border-emerald-300 font-medium flex items-center gap-2">
-                <span className="material-symbols-outlined text-emerald-600 text-base shrink-0">verified</span>
-                <span>
-                  Đã đối chiếu khớp với <strong>Bản khai hàng hóa {selectedManifestInfo?.manifestNumber || 'MNF-2026-003'}</strong> do Hãng tàu gửi sang Cảng. Đủ điều kiện cấp phép vào cổng.
-                </span>
-              </div>
-
-              <p className="text-xs text-blue-900 bg-blue-50 p-2.5 rounded-xl border border-blue-200 font-medium">
-                ℹ️ "Toàn bộ {approveTargets.length} container trong Booking sẽ được chuyển sang Cổng kiểm soát (Gate Officer) để làm thủ tục Check-in, đồng thời gửi 1 Bill Tổng ({billTotalDisplay}) sang Đơn vị Vận tải."
-              </p>
-
-              {/* Nút thao tác */}
-              <div className="flex justify-end gap-3 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowApproveModal(false)}
-                  className="px-4 py-2.5 bg-fog border border-chalk text-slate font-bold rounded-xl text-xs hover:bg-slate-200 cursor-pointer"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmApproval}
-                  className="px-6 py-2.5 bg-green-600 text-white font-extrabold rounded-xl text-xs hover:bg-green-700 shadow-md inline-flex items-center gap-1.5 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-sm">check_circle</span>
-                  <span>Xác nhận Duyệt &amp; Gửi 1 Bill Tổng ({billTotalDisplay}) ➔</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
+      <BookingApproveModal
+        isOpen={Boolean(showApproveModal && selectedBooking)}
+        booking={selectedBooking}
+        batchList={batchApproveList}
+        orderContainersList={orderContainersList}
+        totalBillFormatted={totalBillFormatted}
+        bookingTariffSummary={bookingTariffSummary}
+        isImportBooking={isImportBooking}
+        selectedManifestInfo={selectedManifestInfo}
+        getGateBookingVehicle={getGateBookingVehicle}
+        getGateBookingDriver={getGateBookingDriver}
+        onClose={() => setShowApproveModal(false)}
+        onConfirm={handleConfirmApproval}
+      />
 
       {/* ── REJECT BOOKING MODAL ── */}
-      {showRejectModal && selectedBooking && (
-        <div className="fixed inset-0 bg-carbon/80 backdrop-blur-sm z-[95] flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 md:p-8 max-w-md w-full space-y-5 shadow-2xl animate-in zoom-in-95 duration-200 font-sans">
-            <div className="flex items-center gap-3 border-b border-chalk pb-3">
-              <span className="material-symbols-outlined text-red-600 text-3xl">block</span>
-              <div>
-                <h3 className="font-heading text-xl font-extrabold text-carbon">TỪ CHỐI ĐĂNG KÝ VÀO CỔNG</h3>
-                <p className="text-xs text-slate">Chọn lý do từ chối đăng ký lịch hẹn cảng.</p>
-              </div>
-            </div>
+      <BookingRejectModal
+        isOpen={Boolean(showRejectModal && selectedBooking)}
+        onClose={() => setShowRejectModal(false)}
+        onConfirm={handleConfirmRejection}
+        rejectionReason={rejectionReason}
+        setRejectionReason={setRejectionReason}
+        rejectionNote={rejectionNote}
+        setRejectionNote={setRejectionNote}
+      />
 
-            <div className="space-y-3 text-xs font-bold">
-              <div>
-                <label className="block text-slate uppercase text-[10px] mb-1">Lý do từ chối *</label>
-                <select
-                  value={rejectionReason}
-                  onChange={e => setRejectionReason(e.target.value)}
-                  className="w-full px-3.5 py-2.5 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-red-500 font-bold"
-                >
-                  <option value="">-- Chọn lý do từ chối --</option>
-                  <option value="Sai lệch thông tin ePort và Cổng">Sai lệch thông tin giữa ePort và Cổng cảng (Mã Booking/B/L/Cont)</option>
-                  <option value="Chưa hoàn tất thanh toán phí">Chưa hoàn tất thanh toán biểu phí cảng</option>
-                  <option value="Mã container sai quy chuẩn">Mã container sai quy chuẩn / Không đúng thực tế</option>
-                  <option value="Xe hoặc tài xế không hợp lệ">Xe không hợp lệ / Hết hạn kiểm định hoặc tài xế thiếu bằng</option>
-                  <option value="Chưa duyệt bản khai hàng hóa">Chưa duyệt khai báo hàng hóa / Manifest</option>
-                  <option value="Cổng quá tải hoặc sai khung giờ">Cổng yêu cầu đã đầy dung lượng / Sai khung giờ hẹn</option>
-                  <option value="Lý do khác">Lý do khác</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-slate uppercase text-[10px] mb-1">Ghi chú chi tiết (Optional)</label>
-                <textarea
-                  rows="3"
-                  value={rejectionNote}
-                  onChange={e => setRejectionNote(e.target.value)}
-                  placeholder="Nhập ghi chú giải thích lý do cho Hãng xe..."
-                  className="w-full p-3 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-red-500"
-                ></textarea>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-3 pt-2">
-              <button
-                onClick={() => setShowRejectModal(false)}
-                className="px-4 py-2.5 bg-fog border border-chalk text-slate font-bold rounded-xl text-xs hover:bg-slate-200"
-              >
-                Hủy bỏ
-              </button>
-              <button
-                disabled={!rejectionReason}
-                onClick={handleConfirmRejection}
-                className={`px-6 py-2.5 rounded-xl font-extrabold text-xs shadow-md ${rejectionReason ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                  }`}
-              >
-                Xác nhận Từ chối
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-      {/* POP-UP CHỌN BAY & SLOT TRỰC QUAN (HỖ TRỢ 20FT & 40FT) */}
+      {/* ── POP-UP CHỌN BAY & SLOT TRỰC QUAN ── */}
       <YardSlotReservationModal
-        isOpen={!!pickerBlock}
+        isOpen={Boolean(pickerBlock)}
         onClose={() => setPickerBlock(null)}
         block={pickerBlock}
         booking={selectedBooking}
         currentReservation={reservedSlot}
-        onConfirm={async (slotInfo) => {
-          try {
-            const newTier = Number(slotInfo.tier) || 1
-            const bayStr = String(slotInfo.bay).padStart(2, '0')
-            const rowStr = String(slotInfo.row).padStart(2, '0')
-            const coordinate = `${slotInfo.blockCode}-${bayStr}-${rowStr}-${newTier}`
-
-            // Đồng bộ 4 bên: Smart Yard Pre-Allocation + Danh Sách Container Theo Ngày & Chuyến Tàu + Sơ Đồ Bãi + Lịch Tài Xế Đã Gửi Cho Transport
-            await manifestPortSyncService.syncYardSlotAcrossAll({
-              containerNumber: selectedBooking?.containerId,
-              bookingCode: selectedBooking?.id,
-              manifestId: selectedBooking?.sourceManifestId || selectedBooking?.manifestId,
-              newSlotCoordinate: coordinate,
-              reason: 'Điều độ viên thay đổi vị trí bãi tại Gate Dispatching',
-              vehiclePlate: selectedBooking?.licensePlate,
-              driverName: selectedBooking?.driverName,
-              company: selectedBooking?.company,
-              vesselName: selectedBooking?.vesselName,
-              voyageNumber: selectedBooking?.voyageNumber,
-            })
-
-            const updatedSlot = {
-              ...(reservedSlot || selectedBooking?.autoYardSlot || {}),
-              ...slotInfo,
-              bay: bayStr,
-              row: rowStr,
-              tier: newTier,
-              tierCode: String(newTier),
-              zoneCode: (slotInfo.blockCode || 'A')[0],
-              zoneName: `Khu ${(slotInfo.blockCode || 'A')[0]} · Block ${slotInfo.blockCode}`,
-              autoAssigned: false,
-              coordinate,
-            }
-            setReservedSlot(updatedSlot)
-            setSelectedZone((slotInfo.blockCode || 'A')[0])
-            setSelectedBlock(slotInfo.blockCode || 'A01')
-
-            const updatedBooking = {
-              ...selectedBooking,
-              yardSlot: coordinate,
-              autoYardSlot: updatedSlot,
-              reservedSlot: updatedSlot,
-              slotInfo: updatedSlot,
-              yardBlockCode: slotInfo.blockCode,
-              yardBay: Number(slotInfo.bay),
-              yardRow: Number(slotInfo.row),
-              yardTier: newTier,
-            }
-            setSelectedBooking(updatedBooking)
-            setBookings(prev => prev.map(b => {
-              const isMatch = (selectedBooking?.id && b.id === selectedBooking.id) ||
-                              (selectedBooking?.containerId && b.containerId === selectedBooking.containerId)
-              return isMatch ? { ...b, ...updatedBooking } : b
-            }))
-
-            setYardResVersion(v => v + 1)
-            setManifestSyncVersion(v => v + 1)
-
-            // 2. Gọi các API Backend
-            if (slotInfo.slotId && slotInfo.slotId.length > 10) {
-              await apiClient.post(`/v1/Yard/Slots/${slotInfo.slotId}/Reserve`).catch(() => { })
-            } else {
-              await yardOperationService.reserveSlot({ posId: slotInfo.posId }).catch(() => { })
-            }
-            handleReserveSlot(slotInfo.slotId, slotInfo.blockCode, slotInfo)
-            fetchYardMap()
-            showToast(`🟢 Đã chuyển & đồng bộ container ${selectedBooking?.containerId || ''} sang Block ${slotInfo.blockCode} (${slotInfo.bayDisplay || `Bay ${slotInfo.bay}`}, Tầng ${newTier}, Hàng ${slotInfo.row}) cho cả 4 bên và lịch tài xế!`)
-          } catch (err) {
-            showToast(`❌ Không thể giữ chỗ: ${err.message}`, 'error')
-          }
-        }}
+        onConfirm={handleSlotReservationConfirm}
       />
 
-      {/* DETAIL MODALS */}
+      {/* ── DETAIL MODALS (COMPANY / VEHICLE / DRIVER) ── */}
       <CompanyDetailModal
         isOpen={modalState.type === 'company'}
         companyId={modalState.id}
@@ -5629,172 +3522,20 @@ export default function GateBookingRequests() {
         onClose={() => setModalState({ type: null, id: null })}
       />
 
-      {/* ── POPUP XEM DANH SÁCH BỘ CHỨNG TỪ CONTAINER (ĐỒNG NHẤT 100% VỚI HỒ SƠ ĐƠN DỊCH VỤ ePORT) ── */}
-      {showDocumentsModal && selectedBooking && (() => {
-        const docList = getBookingRealDocuments(selectedBooking)
-        const orderDocs = docList.filter(d => !d.isDriverDoc)
-        const fleetDocs = docList.filter(d => d.isDriverDoc)
-        const renderDocRow = (doc) => {
-          const viewerIdx = docList.indexOf(doc)
-          const hasFileUrl = Boolean(doc.fileUrl || doc.fileReference)
-          return (
-            <div
-              key={doc.id || viewerIdx}
-              className="bg-white border border-blue-100 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 shadow-2xs hover:border-blue-300 transition"
-            >
-              <div className="flex items-center gap-3 min-w-0">
-                <span className={`material-symbols-outlined text-2xl shrink-0 ${doc.isDriverDoc ? 'text-indigo-600' : 'text-blue-600'}`}>
-                  {doc.icon || 'description'}
-                </span>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-xs font-bold text-slate-900">
-                      {doc.title || getDocTypeVi(doc.documentType || doc.type)}
-                    </span>
-                    {doc.isDriverDoc && (
-                      <span className="text-[10px] bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded border border-indigo-200 font-bold">
-                        Hồ sơ Tài xế &amp; Xe
-                      </span>
-                    )}
-                  </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
-                    {doc.scope && <span>{doc.scope}</span>}
-                    {doc.fileName && (
-                      <span className="text-slate-400 font-mono truncate max-w-[260px]" title={doc.fileName}>
-                        · {doc.fileName}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
+      {/* ── POPUP XEM DANH SÁCH BỘ CHỨNG TỪ CONTAINER ── */}
+      <BookingDocumentsModal
+        isOpen={Boolean(showDocumentsModal && selectedBooking)}
+        booking={selectedBooking}
+        onClose={() => setShowDocumentsModal(false)}
+        getBookingRealDocuments={getBookingRealDocuments}
+        getDocTypeVi={getDocTypeVi}
+        onOpenViewer={(idx) => {
+          setDocViewerIndex(idx)
+          setShowDocViewer(true)
+        }}
+      />
 
-              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                <span className={`px-2.5 py-1 rounded-lg text-xs font-bold flex items-center gap-1 border ${(doc.verificationStatus || doc.status) === 'Verified'
-                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                  : (doc.verificationStatus || doc.status) === 'Rejected'
-                    ? 'bg-rose-50 text-rose-800 border-rose-200'
-                    : 'bg-amber-50 text-amber-800 border-amber-200'
-                  }`}>
-                  <span>{(doc.verificationStatus || doc.status) === 'Verified' ? '✓' : '⏳'}</span>
-                  <span>{(doc.verificationStatus || doc.status) === 'Verified' ? 'Đã xác thực' : 'Chờ duyệt'}</span>
-                </span>
-
-                {hasFileUrl ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDocViewerIndex(viewerIdx >= 0 ? viewerIdx : 0)
-                      setShowDocViewer(true)
-                    }}
-                    className="px-3 py-1.5 bg-blue-50/80 hover:bg-blue-100 border border-blue-200 text-blue-700 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer shadow-2xs"
-                  >
-                    <span className="material-symbols-outlined text-sm">open_in_new</span>
-                    <span>Xem tệp</span>
-                  </button>
-                ) : (
-                  <span className="px-2.5 py-1 bg-slate-100 text-slate-400 border border-slate-200 rounded-xl text-[11px] font-medium">
-                    Chưa có ảnh
-                  </span>
-                )}
-              </div>
-            </div>
-          )
-        }
-
-        return (
-          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[95] flex items-center justify-center p-3 sm:p-5">
-            <div className="bg-white rounded-2xl max-w-2xl w-full p-5 sm:p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 text-xs font-sans max-h-[90vh] overflow-y-auto">
-
-              {/* Header Popup */}
-              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-lg">folder_shared</span>
-                  </div>
-                  <div>
-                    <h3 className="font-heading text-sm font-bold text-slate-900">Chi Tiết Bộ Chứng Từ Hồ Sơ</h3>
-                    <p className="text-[11px] text-slate-500">
-                      Mã Booking: <strong className="font-mono text-slate-800">{selectedBooking.id}</strong> • Container: <strong className="font-mono text-blue-700">{selectedBooking.containerId}</strong> • Tàu: {selectedBooking.vesselName || 'EVER GLORY'}
-                    </p>
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowDocumentsModal(false)}
-                  className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
-
-              {docList.length === 0 ? (
-                <div className="p-5 rounded-2xl border border-dashed border-amber-300 bg-amber-50/70 text-center space-y-1.5">
-                  <span className="material-symbols-outlined text-2xl text-amber-600">folder_off</span>
-                  <div className="font-bold text-amber-900 text-xs">Chưa có chứng từ hồ sơ từ đơn Dịch vụ ePort</div>
-                  <p className="text-[11px] text-amber-800">
-                    Container này hiện chưa có đơn Dịch vụ ePort hợp lệ gửi đến Cảng (hoặc các đơn ePort liên quan đã bị từ chối).
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {/* Khối 1: Bộ hồ sơ chứng từ nộp Dispatcher từ đơn ePort */}
-                  {orderDocs.length > 0 && (
-                    <div className="bg-blue-50/40 border border-blue-200 rounded-2xl p-4 space-y-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
-                        <div className="flex items-center gap-2">
-                          <span className="material-symbols-outlined text-blue-600 text-xl">folder_open</span>
-                          <h4 className="text-xs font-black uppercase tracking-wide text-slate-800">
-                            Bộ hồ sơ chứng từ nộp Dispatcher ({orderDocs.length} TỆP)
-                          </h4>
-                        </div>
-                        <span className="px-2.5 py-1 rounded-full bg-blue-100 text-blue-800 font-bold text-[11px] self-start sm:self-auto">
-                          Đồng bộ từ đơn Dịch vụ ePort
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        {orderDocs.map(renderDocRow)}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Khối 2: Hồ sơ pháp lý & Hình ảnh Phương tiện - Tài xế */}
-                  {fleetDocs.length > 0 && (
-                    <div className="bg-indigo-50/40 border border-indigo-200 rounded-2xl p-4 space-y-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-1">
-                        <div className="flex items-center gap-2">
-                          <span className="material-symbols-outlined text-indigo-600 text-xl">badge</span>
-                          <h4 className="text-xs font-black uppercase tracking-wide text-slate-800">
-                            Hồ sơ pháp lý Xe &amp; Tài xế ({fleetDocs.length} GIẤY TỜ)
-                          </h4>
-                        </div>
-                        <span className="px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-800 font-bold text-[11px] self-start sm:self-auto">
-                          Cont {selectedBooking.containerId}
-                        </span>
-                      </div>
-                      <div className="space-y-2">
-                        {fleetDocs.map(renderDocRow)}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Footer */}
-              <div className="flex justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowDocumentsModal(false)}
-                  className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-black transition"
-                >
-                  Đóng
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* MODAL XEM PHÓNG TO HÌNH ẢNH CHỨNG TỪ TỪ DEVELOP */}
+      {/* ── MODAL XEM PHÓNG TO HÌNH ẢNH CHỨNG TỪ ── */}
       <DocumentViewerModal
         isOpen={showDocViewer}
         onClose={() => setShowDocViewer(false)}
@@ -5803,969 +3544,94 @@ export default function GateBookingRequests() {
         booking={selectedBooking}
       />
 
-
-
       {/* ── POPUP XEM CHI TIẾT XE ĐẦU KÉO & TÀI XẾ ── */}
-      {showVehiclePopup && selectedBooking && (() => {
-        const activePlate = getGateBookingVehicle(selectedBooking)
-        const activeDriver = getGateBookingDriver(selectedBooking)
-        const activeTrailer = selectedBooking.trailerPlate || selectedBooking.suggestedTrailer || (activePlate ? '47R-012.88' : null)
-        const activeLicense = selectedBooking.licenseNumber || selectedBooking.suggestedLicense || (activePlate ? 'FC-782910' : null)
+      <BookingVehicleModal
+        isOpen={Boolean(showVehiclePopup && selectedBooking)}
+        booking={selectedBooking}
+        onClose={() => setShowVehiclePopup(false)}
+        getGateBookingVehicle={getGateBookingVehicle}
+        getGateBookingDriver={getGateBookingDriver}
+        reservedSlot={reservedSlot}
+      />
 
-        return (
-          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[95] flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 text-xs font-sans">
-              <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2">
-                  <span className="material-symbols-outlined text-indigo-700 text-xl">local_shipping</span>
-                  <h3 className="font-heading text-sm font-bold text-slate-900">Chi Tiết Phương Tiện &amp; Tài Xế</h3>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowVehiclePopup(false)}
-                  className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
-                >
-                  ✕
-                </button>
-              </div>
+      {/* ── POPUP XEM CHI TIẾT CÔNG TY VẬN TẢI ── */}
+      <BookingCarrierModal
+        isOpen={Boolean(showCarrierPopup && selectedBooking)}
+        booking={selectedBooking}
+        onClose={() => setShowCarrierPopup(false)}
+        isImportBooking={isImportBooking}
+        isBookingTransportSubmitted={isBookingTransportSubmitted}
+        getGateBookingVehicle={getGateBookingVehicle}
+      />
 
-              {!activePlate ? (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 flex items-start gap-2.5">
-                  <span className="material-symbols-outlined text-amber-600 text-lg shrink-0">hourglass_top</span>
-                  <div>
-                    <strong className="font-bold">Đang chờ đơn vị vận tải điều phối xe &amp; tài xế</strong>
-                    <p className="text-[11px] text-amber-700 mt-0.5">
-                      Container đã có vị trí bãi. Thông tin biển số xe đầu kéo, rơ-moóc và tài xế sẽ tự động cập nhật ngay khi đơn vị vận tải tiếp nhận &amp; phân bổ xe.
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-950 flex items-start gap-2.5">
-                  <span className="material-symbols-outlined text-emerald-600 text-lg shrink-0">task_alt</span>
-                  <div>
-                    <strong className="font-bold text-emerald-900">Đã phân bổ xe đầu kéo &amp; tài xế phụ trách</strong>
-                    <p className="text-[11px] text-emerald-700 mt-0.5">
-                      Đội xe {selectedBooking.company || 'Vận tải'} đã tiếp nhận lệnh vận chuyển. Phương tiện và tài xế đạt chuẩn kiểm định an toàn vào Cảng Tiên Sa.
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2.5 font-medium divide-y divide-slate-100">
-                <div className="flex justify-between py-1.5">
-                  <span className="text-slate-500">Biển số đầu kéo:</span>
-                  {activePlate ? (
-                    <span className="font-mono font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                      {activePlate}
-                    </span>
-                  ) : (
-                    <span className="text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                      Chờ điều phối xe
-                    </span>
-                  )}
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-slate-500">Biển số Rơ-moóc:</span>
-                  <span className="font-mono font-bold text-slate-800">
-                    {activeTrailer || 'Chờ phân bổ'}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-slate-500">Hạn đăng kiểm xe:</span>
-                  <span className={activePlate ? "text-emerald-700 font-semibold" : "text-slate-500 italic"}>
-                    {activePlate ? "Còn hạn (Hết hạn 12/2026)" : "Chờ thông tin xe"}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-slate-500">Họ tên tài xế:</span>
-                  <strong className="text-slate-900">
-                    {activeDriver || 'Chờ điều phối tài xế'}
-                  </strong>
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-slate-500">Số GPLX:</span>
-                  <span className="font-mono font-bold text-slate-800">
-                    {activeLicense ? `${activeLicense} (Hạng FC)` : 'Chờ cập nhật'}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-slate-500">Số điện thoại liên hệ:</span>
-                  <span className="font-mono text-slate-800">{selectedBooking.phone || '0905 123 456'} (Điều phối {selectedBooking.company})</span>
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-slate-500">Giờ hẹn đến cổng (ETA):</span>
-                  <span className="font-mono text-orange-700 font-bold">
-                    {selectedBooking.eta ? selectedBooking.eta.replace('T', ' · ').slice(0, 18) : (activePlate ? 'Hôm nay · 08:30' : 'Chờ lịch hẹn')}
-                  </span>
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-slate-500">Cổng đăng ký vào:</span>
-                  <span className="font-bold text-slate-900">{selectedBooking.requestedGate || 'Gate 1 (Cổng Cảng Tiên Sa)'}</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-t border-slate-100">
-                  <span className="text-slate-500 font-bold">Vị trí bãi chỉ định cho tài xế:</span>
-                  <span className="font-mono font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
-                    {selectedBooking.yardSlot || (reservedSlot ? `Block ${reservedSlot.blockCode} · ${reservedSlot.bayDisplay || `Bay ${String(reservedSlot.bay || '02').padStart(2, '0')}`} (${reservedSlot.row}-${reservedSlot.tier})` : 'Block D01 · Bay 02 (1-1)')}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex justify-end pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowVehiclePopup(false)}
-                  className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-black transition"
-                >
-                  Đóng
-                </button>
-              </div>
-            </div>
-          </div>
-        )
-      })()}
-
-      {/* ── POPUP XEM CHI TIẾT CÔNG TY VẬN TẢI (CHUẨN VIBE NHƯ ẢNH MẪU) ── */}
-      {showCarrierPopup && selectedBooking && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[95] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 text-xs font-sans">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-orange-600 text-xl">domain</span>
-                <h3 className="font-heading text-sm font-bold text-slate-900">Chi Tiết Công Ty Vận Tải</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowCarrierPopup(false)}
-                className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Banner thông báo */}
-            {selectedBooking.isFromVesselManifest && !isBookingTransportSubmitted(selectedBooking) && selectedBooking.status !== 'Approved' ? (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-900 flex items-start gap-2.5">
-                <span className="material-symbols-outlined text-amber-600 text-lg shrink-0">hourglass_top</span>
-                <div>
-                  <strong className="font-bold">Chờ Công ty Vận tải gửi thông tin xác nhận</strong>
-                  <p className="text-[11px] text-amber-700 mt-0.5">
-                    Container được đồng bộ từ Bản khai Tàu (Manifest). Các trường liên hệ và xác nhận điều phối được để trống để bên Công ty Vận tải gửi thông tin lên Cảng xác nhận.
-                  </p>
-                </div>
-              </div>
-            ) : (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-900 flex items-start gap-2.5">
-                <span className="material-symbols-outlined text-emerald-600 text-lg shrink-0">verified</span>
-                <div>
-                  <strong className="font-bold">Đơn vị vận tải đã gửi &amp; xác nhận điều phối</strong>
-                  <p className="text-[11px] text-emerald-700 mt-0.5">
-                    Công ty vận tải đã gửi thông tin điều phối và hồ sơ làm thủ tục cổng cho container này lên hệ thống Cảng Tiên Sa.
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-2.5 font-medium divide-y divide-slate-100">
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Tên công ty vận tải:</span>
-                <strong className="text-slate-900 font-bold">
-                  {selectedBooking.isFromVesselManifest && !isBookingTransportSubmitted(selectedBooking) && selectedBooking.status !== 'Approved'
-                    ? (selectedBooking.company ? `${selectedBooking.company} (Chờ gửi xác nhận)` : '—')
-                    : (selectedBooking.company || 'Bien Dong Logistics - Nexus Logistics')}
-                </strong>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Mã doanh nghiệp (MST):</span>
-                <span className="font-mono font-bold text-slate-800">
-                  {selectedBooking.isFromVesselManifest && !isBookingTransportSubmitted(selectedBooking) && selectedBooking.status !== 'Approved'
-                    ? '—'
-                    : (selectedBooking.taxCode || '0401889211')}
-                </span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Người điều phối phụ trách:</span>
-                <strong className="text-slate-900">
-                  {selectedBooking.isFromVesselManifest && !isBookingTransportSubmitted(selectedBooking) && selectedBooking.status !== 'Approved'
-                    ? '—'
-                    : (selectedBooking.contactName || selectedBooking.contactPerson || 'Võ Hàng Tàu (Điều độ Đội xe)')}
-                </strong>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Số điện thoại liên hệ:</span>
-                <span className="font-mono font-bold text-slate-800">
-                  {selectedBooking.isFromVesselManifest && !isBookingTransportSubmitted(selectedBooking) && selectedBooking.status !== 'Approved'
-                    ? '—'
-                    : (selectedBooking.phone || '0842737474')}
-                </span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Email điều phối:</span>
-                <span className="font-mono text-slate-700">
-                  {selectedBooking.isFromVesselManifest && !isBookingTransportSubmitted(selectedBooking) && selectedBooking.status !== 'Approved'
-                    ? '—'
-                    : (selectedBooking.email || 'carrier01@nexusport.vn')}
-                </span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Nghiệp vụ đăng ký:</span>
-                <span className="px-2 py-0.5 rounded bg-orange-50 text-orange-800 border border-orange-200 font-bold text-[11px]">
-                  {isImportBooking ? 'Lấy container hàng (Inbound)' : 'Hạ container rỗng (Outbound)'}
-                </span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Tình trạng xác nhận vận tải:</span>
-                {selectedBooking.isFromVesselManifest && !isBookingTransportSubmitted(selectedBooking) && selectedBooking.status !== 'Approved' ? (
-                  <span className="text-amber-700 font-semibold flex items-center gap-1">
-                    <span>⏳</span>
-                    <span>Chờ bên vận tải gửi xác nhận</span>
-                  </span>
-                ) : (
-                  <span className="text-emerald-700 font-semibold flex items-center gap-1">
-                    <span>✓</span>
-                    <span>Đã gửi thông tin điều phối</span>
-                  </span>
-                )}
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Đội xe liên kết tại cảng:</span>
-                <span className="font-mono font-bold text-slate-800">
-                  {(() => {
-                    const vPlate = getGateBookingVehicle(selectedBooking)
-                    return vPlate ? `Đã gán xe ${vPlate}` : 'Đã đăng ký đội xe SmartGate'
-                  })()}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setShowCarrierPopup(false)}
-                className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-black transition"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── POPUP XEM CHI TIẾT CONTAINER & TÀU BIỂN (CHUẨN VIBE NHƯ ẢNH MẪU) ── */}
-      {showContainerPopup && selectedBooking && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[95] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 text-xs font-sans">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-blue-600 text-xl">directions_boat</span>
-                <h3 className="font-heading text-sm font-bold text-slate-900">Chi Tiết Container &amp; Tàu Biển</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowContainerPopup(false)}
-                className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Banner thông báo chuẩn vibe */}
-            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-blue-900 flex items-start gap-2.5">
-              <span className="material-symbols-outlined text-blue-600 text-lg shrink-0">inventory_2</span>
-              <div>
-                <strong className="font-bold">Container thuộc Bản khai Tàu (Vessel Manifest)</strong>
-                <p className="text-[11px] text-blue-700 mt-0.5">
-                  Thông tin container, niêm chì và vận đơn đường biển đã được số hóa và đồng bộ từ Tàu {selectedBooking.vesselName || 'EVER GLORY'} ({selectedBooking.voyageNumber || selectedBooking.voyageNo || 'V.2024N'}).
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-2.5 font-medium divide-y divide-slate-100">
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Mã số Container ISO:</span>
-                <span className="font-mono font-bold text-blue-900 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
-                  {selectedBooking.containerId}
-                </span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Loại &amp; Kích thước ISO:</span>
-                <span className="font-mono font-bold text-slate-800">{selectedBooking.containerType || `${selectedBooking.size || '40'}${selectedBooking.isReefer ? 'RF (Reefer cont lạnh)' : 'HC (High Cube 40 feet)'}`}</span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Tàu &amp; Chuyến vận chuyển:</span>
-                <strong className="text-slate-900">{selectedBooking.vesselName || 'EVER GLORY'} · ({selectedBooking.voyageNumber || selectedBooking.voyageNo || 'V.2024N'})</strong>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Số Vận đơn (Bill of Lading):</span>
-                <span className="font-mono font-bold text-blue-700">{selectedBooking.billOfLading || (selectedBooking.cargoDeclarationId && selectedBooking.cargoDeclarationId !== 'N/A' ? selectedBooking.cargoDeclarationId : '') || selectedManifestInfo?.blNumber || 'Chưa có B/L'}</span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Số Niêm phong (Seal No):</span>
-                <span className="font-mono font-bold text-slate-800">{selectedBooking.sealNumber || 'EMCU-SEAL-8821'}</span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Khối lượng toàn bộ (VGM):</span>
-                <span className="font-mono font-bold text-emerald-700">{selectedBooking.vgm ? `${selectedBooking.vgm} kg` : '28.450 kg'}</span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Khối lượng vỏ (Tare):</span>
-                <span className="font-mono font-bold text-slate-700">3.850 kg</span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Khối lượng hàng thực (Net):</span>
-                <span className="font-mono font-bold text-slate-900">{selectedBooking.vgm ? `${Math.max(1000, Number(selectedBooking.vgm) - 3850).toLocaleString('vi-VN')} kg` : '24.600 kg'}</span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-500">Thông quan Hải Quan:</span>
-                <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-bold text-[10px]">
-                  ✓ Đã kiểm tra &amp; Thông quan NSW (Luồng Xanh)
-                </span>
-              </div>
-              {((selectedBooking.containerType || '').includes('RF') || selectedBooking.isReefer) && (
-                <div className="flex justify-between py-1.5">
-                  <span className="text-slate-500">Nhiệt độ bảo quản lạnh:</span>
-                  <span className="font-mono font-bold text-cyan-700">-18.0°C (Độ ẩm 85%)</span>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setShowContainerPopup(false)}
-                className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-black transition"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── POPUP XEM CHI TIẾT CONTAINER & TÀU BIỂN ── */}
+      <BookingVesselModal
+        isOpen={Boolean(showContainerPopup && selectedBooking)}
+        booking={selectedBooking}
+        onClose={() => setShowContainerPopup(false)}
+        selectedManifestInfo={selectedManifestInfo}
+      />
 
       {/* ── POPUP XEM CHI TIẾT BIỂU PHÍ DỊCH VỤ CẢNG ── */}
-      {showTariffPopup && selectedBooking && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[95] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 text-xs font-sans">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-purple-700 text-xl">receipt_long</span>
-                <h3 className="font-heading text-sm font-bold text-slate-900">Bảng Kê Chi Tiết Biểu Phí Cảng Tiên Sa</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowTariffPopup(false)}
-                className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
+      <BookingTariffModal
+        isOpen={Boolean(showTariffPopup && selectedBooking)}
+        booking={selectedBooking}
+        onClose={() => setShowTariffPopup(false)}
+        bookingTariffSummary={bookingTariffSummary}
+        activeShiftingFee={activeShiftingFee}
+        activePortTariff={activePortTariff}
+      />
 
-            <div className="p-3 bg-purple-50/60 border border-purple-200 rounded-xl flex justify-between items-center">
-              <div>
-                <span className="text-[10px] uppercase font-bold text-purple-800 block">Tổng Cước &amp; Phí Cảng</span>
-                <span className="text-lg font-extrabold text-orange-600 font-mono">
-                  {bookingTariffSummary.totalFormatted}
-                </span>
-              </div>
-              <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${selectedBooking.paymentStatus === 'Paid'
-                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                : 'bg-amber-50 text-amber-800 border-amber-200'
-                }`}>
-                {selectedBooking.paymentStatus === 'Paid' ? '● Đã thanh toán' : '○ Chờ thanh toán'}
-              </span>
-            </div>
+      {/* ── POPUP LỚN: SƠ ĐỒ PHÂN KHU BÃI TIÊN SA ── */}
+      <BookingYardBigModal
+        isOpen={Boolean(showYardBigModal && selectedBooking)}
+        booking={selectedBooking}
+        onClose={() => setShowYardBigModal(false)}
+        reservedSlot={reservedSlot}
+        selectedZone={selectedZone}
+        setSelectedZone={setSelectedZone}
+        yardZones={YARD_ZONES}
+        combinedBlocks={combinedBlocks}
+        currentZoneBlocks={currentZoneBlocks}
+        onSelectBlock={(block) => {
+          setPickerBlock(block)
+          setShowYardBigModal(false)
+        }}
+      />
 
-            <div className="space-y-2 font-medium divide-y divide-slate-100">
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-600">1. Cước nâng hạ (THC tại bãi):</span>
-                <span className="font-mono font-bold text-slate-900">320.000 VNĐ</span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-600">2. Phí cơ sở vật chất:</span>
-                <span className="font-mono font-bold text-slate-900">100.000 VNĐ</span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-600">3. Phí cân VGM:</span>
-                <span className="font-mono font-bold text-slate-900">70.000 VNĐ</span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-600">4. Phí an ninh bến cảng:</span>
-                <span className="font-mono font-bold text-slate-900">50.000 VNĐ</span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-600">5. Phí đảo chuyển container (Shifting):</span>
-                <span className="font-mono font-bold text-slate-900">
-                  {activeShiftingFee.statusText}
-                </span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-600">6. Phí lưu bãi ({activePortTariff?.storageDays || 3} ngày, miễn phí 5 ngày):</span>
-                <span className="font-mono font-bold text-slate-900">
-                  {activePortTariff?.storageFee ? `${activePortTariff.storageFee.toLocaleString('vi-VN')} VNĐ` : '0 VNĐ'}
-                </span>
-              </div>
-              {((selectedBooking.containerType || '').includes('RF') || selectedBooking.isReefer) && (
-                <div className="flex justify-between py-1.5">
-                  <span className="text-slate-600">7. Phí cắm điện &amp; giám sát Cont Lạnh:</span>
-                  <span className="font-mono font-bold text-slate-900">80.000 VNĐ</span>
-                </div>
-              )}
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-600">Thuế giá trị gia tăng (VAT 8%):</span>
-                <span className="font-mono font-bold text-slate-900">{bookingTariffSummary.vatFormatted}</span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-600">Đơn vị thanh toán:</span>
-                <span className="font-bold text-slate-900">{selectedBooking.company}</span>
-              </div>
-              <div className="flex justify-between py-1.5">
-                <span className="text-slate-600">Mã hóa đơn điện tử:</span>
-                <span className="font-mono font-bold text-blue-700">HD-TS-2026-{selectedBooking.id || '9821'}</span>
-              </div>
-            </div>
+      {/* ── POPUP ĐỐI CHIẾU THỐNG NHẤT 2 BÊN ── */}
+      <ServicePortReconciliationModal
+        isOpen={Boolean(showEportSyncPopup && selectedBooking)}
+        booking={selectedBooking}
+        onClose={() => setShowEportSyncPopup(false)}
+        eportSearchTerm={eportSearchTerm}
+        setEportSearchTerm={setEportSearchTerm}
+        loadEportMatches={loadEportMatches}
+        eportLoading={eportLoading}
+        eportError={eportError}
+        eportOrders={eportOrders}
+        eportComparison={eportComparison}
+        eportValidationMap={eportValidationMap}
+        serviceOrdersApi={serviceOrdersApi}
+        manifestPortSyncService={manifestPortSyncService}
+        setEportDetail={setEportDetail}
+        setManifestSyncVersion={setManifestSyncVersion}
+        setSelectedEportOrderId={setSelectedEportOrderId}
+        setActiveListType={setActiveListType}
+        bookingTariffSummary={bookingTariffSummary}
+        orderContainersList={orderContainersList}
+        onReject={(targetList) => {
+          setBatchApproveList(targetList)
+          setShowRejectModal(true)
+        }}
+        onConfirmApproval={(targetList) => {
+          setShowEportSyncPopup(false)
+          setBatchApproveList(targetList)
+          handleConfirmApproval(targetList)
+        }}
+      />
 
-            <div className="flex justify-end pt-2">
-              <button
-                type="button"
-                onClick={() => setShowTariffPopup(false)}
-                className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-black transition"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── POPUP LỚN: SƠ ĐỒ PHÂN KHU BÃI TIÊN SA (NGUYÊN BẢN SẠCH SẼ) ── */}
-      {showYardBigModal && selectedBooking && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[95] flex items-center justify-center p-3 sm:p-5">
-          <div className="bg-white rounded-3xl max-w-5xl lg:max-w-6xl w-full p-6 sm:p-7 space-y-5 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 text-xs font-sans max-h-[92vh] overflow-y-auto">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3.5">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-700 border border-emerald-200/80 flex items-center justify-center shrink-0">
-                  <span className="material-symbols-outlined text-2xl">grid_view</span>
-                </div>
-                <div>
-                  <h3 className="font-heading text-base font-black text-slate-900">Sơ Đồ Phân Khu Bãi Container Tiên Sa</h3>
-                  <p className="text-xs text-slate-500">Tự động chọn khu theo loại cont và mở sơ đồ Bay &amp; Slot để đổi vị trí</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowYardBigModal(false)}
-                className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 transition cursor-pointer text-sm font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Vị trí hiện tại - Chuẩn như ảnh chụp của user */}
-            {reservedSlot && (
-              <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
-                <div>
-                  <span className="text-[11px] font-extrabold text-emerald-800 uppercase tracking-wide">Vị trí bãi đang xếp chỗ cho Cont {selectedBooking.containerId}:</span>
-                  <div className="text-base font-bold text-slate-900 font-mono mt-1">
-                    Block {reservedSlot.blockCode} • Bay {reservedSlot.bay || '02'} • Tầng {reservedSlot.tier} • Hàng {reservedSlot.row} (POS: {reservedSlot.posId})
-                  </div>
-                </div>
-                <span className="px-3 py-1.5 rounded-xl bg-white border border-emerald-300 text-emerald-800 font-bold text-xs shadow-2xs self-start sm:self-auto">
-                  {reservedSlot.isReefer ? 'Khu Cont Lạnh' : 'Bãi Tiên Sa'}
-                </span>
-              </div>
-            )}
-
-            {/* BƯỚC 1: Chọn Phân Khu Bãi (Zone A ➔ G) - To rõ ràng thấy hết chữ */}
-            <div className="space-y-2.5">
-              <label className="text-xs font-black uppercase tracking-wide text-slate-800 flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-slate-900 text-white inline-flex items-center justify-center text-[11px] font-bold">1</span>
-                <span>Chọn Phân Khu Bãi Cảng Tiên Sa (Zone A ➔ G):</span>
-              </label>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5">
-                {YARD_ZONES.map((zone) => {
-                  const isSelected = selectedZone === zone.code
-                  const count = combinedBlocks.filter((b) => b.sector === zone.code || (b.blockCode || '').toUpperCase().startsWith(zone.code)).length
-
-                  return (
-                    <button
-                      key={zone.code}
-                      type="button"
-                      onClick={() => setSelectedZone(zone.code)}
-                      className={`p-3 sm:p-3.5 rounded-2xl border text-left transition flex flex-col justify-between min-h-[82px] cursor-pointer ${isSelected
-                        ? 'border-2 border-orange-500 bg-orange-50/70 shadow-xs ring-2 ring-orange-500/20'
-                        : 'border-slate-200 bg-slate-50/60 hover:bg-white hover:border-slate-300'
-                        }`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <span className={`text-sm font-black ${isSelected ? 'text-orange-700' : 'text-slate-900'}`}>
-                          {zone.name}
-                        </span>
-                        <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-white text-slate-700 border border-slate-200 shadow-2xs">
-                          {count}
-                        </span>
-                      </div>
-                      <span className={`text-[11px] mt-1.5 font-medium leading-snug break-words ${isSelected ? 'text-orange-800 font-semibold' : 'text-slate-500'}`}>
-                        {zone.desc}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-
-            {/* BƯỚC 2: Các Block thuộc Khu đã chọn - Chuẩn như ảnh chụp của user */}
-            <div className="space-y-2 pt-2 border-t border-slate-100">
-              <label className="text-xs font-bold uppercase tracking-wide text-slate-800 flex items-center gap-1.5">
-                <span className="w-4 h-4 rounded-full bg-slate-800 text-white inline-flex items-center justify-center text-[10px] font-bold">2</span>
-                <span>Các Block thuộc {YARD_ZONES.find((z) => z.code === selectedZone)?.name || `Khu ${selectedZone}`}:</span>
-              </label>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                {currentZoneBlocks.length === 0 ? (
-                  <div className="p-4 rounded-xl bg-slate-50 text-slate-500 text-xs font-medium col-span-full text-center border border-slate-200">
-                    Đang tải danh sách Block thuộc Khu {selectedZone}...
-                  </div>
-                ) : (
-                  currentZoneBlocks.map((block) => {
-                    const code = block.blockCode || block.description || block.id
-                    const totalSlots = block.totalCapacity || (block.slots?.length || 0)
-                    const occupied = block.occupied ?? (block.slots?.filter((s) => s.status === 'occupied').length || 0)
-                    const reserved = block.reserved ?? (block.slots?.filter((s) => s.status === 'reserved').length || 0)
-                    const empty = block.empty ?? Math.max(0, totalSlots - (occupied + reserved))
-                    const isFull = totalSlots > 0 && empty === 0
-
-                    return (
-                      <div
-                        key={block.id || code}
-                        className="p-3.5 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white hover:border-orange-400 hover:shadow-xs transition space-y-2.5 flex flex-col justify-between"
-                      >
-                        <div>
-                          <div className="flex justify-between items-start mb-1">
-                            <span className="font-heading text-sm font-bold text-slate-900 font-mono">
-                              Block {block.blockCode || block.code}
-                            </span>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded ${isFull
-                              ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                              : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                              }`}>
-                              {isFull ? 'Hết chỗ' : `${empty} slot trống`}
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-slate-500">
-                            Sức chứa: {totalSlots} TEU · Đang lưu: {occupied} Cont
-                          </p>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPickerBlock(block)
-                            setShowYardBigModal(false)
-                          }}
-                          className="w-full py-1.5 px-3 rounded-lg bg-slate-900 hover:bg-orange-600 text-white text-xs font-semibold transition shadow-2xs flex items-center justify-center gap-1 cursor-pointer"
-                        >
-                          <span className="material-symbols-outlined text-sm">open_in_new</span>
-                          <span className="material-symbols-outlined text-sm">open_in_new</span>
-                          <span>Chọn Bay &amp; Slot ➔</span>
-                        </button>
-                      </div>
-                    )
-                  })
-                )}
-              </div>
-            </div>
-            <div className="flex justify-end pt-2 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setShowYardBigModal(false)}
-                className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-black transition"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── POPUP ĐỐI CHIẾU THỐNG NHẤT 2 BÊN: DỊCH VỤ ePORT ↔ YÊU CẦU BOOKING CỔNG ── */}
-      {showEportSyncPopup && selectedBooking && (
-        <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-[75] flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-3xl w-full p-6 space-y-4 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150 text-xs font-sans max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3 shrink-0">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-lg">compare_arrows</span>
-                </div>
-                <div>
-                  <h3 className="font-heading text-sm font-bold text-slate-900">
-                    Đối Chiếu Thống Nhất: Dịch Vụ ePort ↔ Yêu Cầu Lịch Hẹn Cổng
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Kiểm tra chéo giữa hồ sơ doanh nghiệp đăng ký trên ePort và đơn điều phối cổng của Cảng Tiên Sa
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowEportSyncPopup(false)}
-                className="w-7 h-7 rounded-lg bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* Thanh tìm kiếm đơn ePort để đối chiếu */}
-            <form
-              onSubmit={(e) => {
-                e.preventDefault()
-                loadEportMatches(eportSearchTerm)
-              }}
-              className="flex flex-col sm:flex-row gap-2 shrink-0"
-            >
-              <input
-                type="text"
-                value={eportSearchTerm}
-                onChange={(e) => setEportSearchTerm(e.target.value)}
-                placeholder="Tìm đơn ePort theo số Container, số B/L, Booking hoặc mã đơn SVO..."
-                className="flex-1 px-3 py-2 rounded-lg border border-slate-300 text-xs focus:outline-none focus:border-blue-500 font-mono"
-              />
-              <button
-                type="submit"
-                disabled={eportLoading}
-                className="px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs cursor-pointer disabled:opacity-60"
-              >
-                {eportLoading ? 'Đang tìm...' : 'Tìm & Đối chiếu'}
-              </button>
-            </form>
-
-            {eportError && (
-              <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-[11px] shrink-0">
-                {eportError}
-              </div>
-            )}
-
-            {/* Chọn nếu có nhiều đơn ePort khớp */}
-            {eportOrders.length > 1 && (
-              <div className="flex items-center gap-2 flex-wrap shrink-0">
-                <span className="text-[11px] font-semibold text-slate-500">Đơn ePort tìm thấy ({eportOrders.length}):</span>
-                {eportOrders.map((o) => (
-                  <button
-                    key={o.id}
-                    type="button"
-                    onClick={async () => {
-                      try {
-                        const d = await serviceOrdersApi.get(o.id)
-                        manifestPortSyncService.saveAllOrderFleets(d)
-                        setEportDetail(d)
-                        setManifestSyncVersion(v => v + 1)
-                      } catch {
-                        manifestPortSyncService.saveAllOrderFleets(o)
-                        setEportDetail(o)
-                        setManifestSyncVersion(v => v + 1)
-                      }
-                    }}
-                    className={`px-2.5 py-1 rounded-lg border text-[11px] font-mono font-bold cursor-pointer transition ${eportComparison?.order?.id === o.id
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                  >
-                    {o.number}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-              {eportComparison?.order ? (
-                <>
-                  {/* Tổng kết khớp hay lệch */}
-                  <div className={`p-3 rounded-xl border flex items-center justify-between gap-3 ${eportComparison.status === 'matched'
-                    ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
-                    : eportComparison.status === 'partial'
-                      ? 'bg-amber-50 border-amber-200 text-amber-900'
-                      : 'bg-rose-50 border-rose-200 text-rose-900'
-                    }`}>
-                    <div className="flex items-center gap-2">
-                      <span className="material-symbols-outlined text-xl">
-                        {eportComparison.status === 'matched' ? 'check_circle' : eportComparison.status === 'partial' ? 'pending' : 'warning'}
-                      </span>
-                      <div>
-                        <div className="font-bold text-xs">{eportComparison.badgeText}</div>
-                        <div className="text-[11px] opacity-85">
-                          Mã đơn ePort: <strong className="font-mono">{eportComparison.order.number}</strong> · Dịch vụ: {eportComparison.order.mainServiceName || 'Đăng ký dịch vụ cảng'}
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedEportOrderId(eportComparison.order.id)}
-                      className="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-black text-white text-[11px] font-bold cursor-pointer shrink-0 inline-flex items-center gap-1"
-                    >
-                      <span>Xem chi tiết đơn ePort</span>
-                      <span className="material-symbols-outlined text-sm">visibility</span>
-                    </button>
-                  </div>
-
-                  {/* Bảng so sánh 2 bên */}
-                  <div className="border border-slate-200 rounded-xl overflow-hidden">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="bg-slate-100 text-slate-600 text-[10px] uppercase tracking-wide border-b border-slate-200">
-                          <th className="py-2.5 px-3 w-[24%]">Tiêu chí đối chiếu</th>
-                          <th className="py-2.5 px-3 w-[32%]">Bên Yêu Cầu Lịch Hẹn Cổng</th>
-                          <th className="py-2.5 px-3 w-[32%]">Bên Dịch Vụ ePort</th>
-                          <th className="py-2.5 px-3 w-[12%] text-center">Kết quả</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-xs">
-                        {eportComparison.checks.map((row) => (
-                          <tr key={row.label} className="hover:bg-slate-50/60">
-                            <td className="py-2.5 px-3 font-semibold text-slate-600">{row.label}</td>
-                            <td className="py-2.5 px-3 font-medium text-slate-900 break-words">
-                              {row.useGateTariff ? (bookingTariffSummary?.totalFormatted || row.gateVal) : row.gateVal}
-                            </td>
-                            <td className="py-2.5 px-3 font-medium text-slate-900 break-words">{row.eportVal}</td>
-                            <td className="py-2.5 px-3 text-center">
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold border ${row.ok
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : 'bg-amber-50 text-amber-800 border-amber-200'
-                                }`}>
-                                {row.ok ? '✓ Khớp' : '⚠ Lệch'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Bảng Chi Tiết Từng Container Trong Booking (Hỗ trợ 1 booking có nhiều cont kèm Biểu phí tiền & xem chi tiết) */}
-                  {eportComparison.containerBreakdown && eportComparison.containerBreakdown.length > 0 && (
-                    <div className="border border-slate-200 rounded-xl overflow-hidden mt-3 shadow-2xs">
-                      <div className="px-3.5 py-2 bg-slate-100 border-b border-slate-200 flex justify-between items-center">
-                        <span className="font-bold text-[11px] uppercase tracking-wide text-slate-700 flex items-center gap-1.5">
-                          <span className="material-symbols-outlined text-base text-blue-600">inventory_2</span>
-                          <span>Danh Sách Container Trong Lô ({eportComparison.containerBreakdown.length} Cont)</span>
-                        </span>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${eportComparison.containerBreakdown.every(c => c.isMatch)
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                          : 'bg-amber-50 text-amber-800 border-amber-200'
-                          }`}>
-                          {eportComparison.containerBreakdown.filter(c => c.isMatch).length}/{eportComparison.containerBreakdown.length} Cont Đã Khớp
-                        </span>
-                      </div>
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-slate-50 text-slate-500 text-[10px] uppercase tracking-wider border-b border-slate-200">
-                            <th className="py-2.5 px-3">Mã Container</th>
-                            <th className="py-2.5 px-3">Mã Vận Đơn (B/L)</th>
-                            <th className="py-2.5 px-3">Vị Trí Bãi</th>
-                            <th className="py-2.5 px-3 text-right">Biểu Phí</th>
-                            <th className="py-2.5 px-3 text-center">Đối Chiếu ePort</th>
-                            <th className="py-2.5 px-3 text-center">Thao Tác</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 text-xs">
-                          {eportComparison.containerBreakdown.map((item, idx) => (
-                            <tr key={`${item.containerNumber || 'cont'}-${item.gateBl || ''}-${idx}`} className="hover:bg-slate-50/50">
-                              <td className="py-2 px-3 font-mono font-bold text-slate-900">
-                                <div>{item.containerNumber}</div>
-                                <div className="text-[10px] text-slate-500 font-sans font-normal">
-                                  {item.containerType} · {item.operation}
-                                </div>
-                              </td>
-                              <td className="py-2 px-3">
-                                <div className="flex flex-col gap-0.5">
-                                  <div className="flex items-center gap-1.5 font-mono text-[11px] font-bold">
-                                    <span className="text-slate-800">{item.gateBl || item.eportBl || 'Chưa có B/L'}</span>
-                                    {item.blMatch ? (
-                                      <span className="inline-flex items-center text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded font-semibold">
-                                        ✓ Khớp
-                                      </span>
-                                    ) : item.gateBl && item.eportBl && item.gateBl.toUpperCase() !== item.eportBl.toUpperCase() ? (
-                                      <span className="inline-flex items-center text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.2 rounded font-semibold" title={`Cổng: ${item.gateBl} ≠ ePort: ${item.eportBl}`}>
-                                        ⚠ Lệch
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                </div>
-                              </td>
-                              <td className="py-2 px-3">
-                                <span className="font-mono text-[11px] text-slate-700">
-                                  {item.yardSlot}
-                                </span>
-                              </td>
-                              <td className="py-2 px-3 text-right font-mono font-bold text-emerald-700">
-                                {(item.fee || 583200).toLocaleString('vi-VN')} đ
-                              </td>
-                              <td className="py-2 px-3 text-center">
-                                {!item.isSubmittedToPort ? (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200" title="Đơn ePort chưa được khách hàng gửi đăng ký về Cảng">
-                                    ⏳ Chưa gửi Cảng
-                                  </span>
-                                ) : item.isMatch ? (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                    ✓ Khớp ePort
-                                  </span>
-                                ) : item.gateBl && item.eportBl && item.gateBl.toUpperCase() !== item.eportBl.toUpperCase() ? (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200" title="Lệch số Vận đơn (B/L) giữa Cổng và ePort">
-                                    ⚠ Lệch B/L
-                                  </span>
-                                ) : item.inEport && !item.inGate ? (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                                    ⚠ Thiếu phía Cổng
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-800 border border-rose-200">
-                                    ✕ Không có trên ePort
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-2 px-3 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    const allKnown = [...manifestGeneratedBookings, ...bookings]
-                                    const found = allKnown.find(b => String(b.containerId || '').trim().toUpperCase() === item.containerNumber) || selectedBooking
-                                    const isRf = (item.containerType || found?.containerType || '').includes('RF') || Boolean(found?.isReefer)
-                                    setSelectedBooking({
-                                      ...found,
-                                      containerId: item.containerNumber,
-                                      containerType: item.containerType || found?.containerType || '20GP',
-                                      isReefer: isRf,
-                                      billOfLading: item.gateBl || item.eportBl || found?.billOfLading,
-                                      yardSlot: item.yardSlot || found?.yardSlot
-                                    })
-                                    setShowContainerDetailModal(true)
-                                  }}
-                                  className="px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-600 hover:text-white font-semibold text-[11px] cursor-pointer inline-flex items-center gap-1 transition border border-blue-200 shadow-2xs"
-                                  title="Xem chi tiết hồ sơ vận tải và điều phối bãi của container này"
-                                >
-                                  <span>Chi tiết</span>
-                                  <span className="material-symbols-outlined text-[12px]">open_in_new</span>
-                                </button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-
-                      {/* Footer Tổng 1 Bill */}
-                      <div className="p-3 bg-slate-50 border-t border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
-                        <div className="text-slate-600 font-medium flex items-center gap-1.5">
-                          <span className="material-symbols-outlined text-base text-emerald-700">receipt_long</span>
-                          <span>Gộp toàn bộ <strong>{eportComparison.containerBreakdown.length} container</strong> trong Booking thành <strong>1 Bill Tổng duy nhất</strong> cho Hãng xe.</span>
-                        </div>
-                        <div className="font-sans text-right shrink-0">
-                          <span className="text-slate-500 mr-1.5">Tổng 1 Bill ({eportComparison.containerBreakdown.length} Cont):</span>
-                          <strong className="text-emerald-700 text-sm font-mono font-black">{totalBillFormatted}</strong>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <div className="p-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 text-center space-y-2">
-                  <span className="material-symbols-outlined text-3xl text-slate-400">search_off</span>
-                  <div className="font-bold text-slate-800">Chưa tìm thấy đơn Dịch vụ ePort khớp với "{eportSearchTerm}"</div>
-                  <p className="text-[11px] text-slate-500 max-w-md mx-auto">
-                    Doanh nghiệp/vận tải có thể chưa tạo đơn dịch vụ ePort cho container <strong className="font-mono">{selectedBooking.containerId}</strong>, hoặc bạn có thể nhập số B/L, số Booking hoặc mã đơn SVO vào ô tìm kiếm phía trên để đối chiếu.
-                  </p>
-                  <div className="flex flex-wrap items-center justify-center gap-2 mt-2">
-                    <button
-                      type="button"
-                      onClick={() => loadEportMatches('EMCU1234567')}
-                      className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1 shadow-xs"
-                    >
-                      <span className="material-symbols-outlined text-sm">bolt</span>
-                      <span>Nạp đơn ePort mẫu 2 Cont (EMCU1234567 &amp; EMCU1234568)</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowEportSyncPopup(false)
-                        setSelectedBooking(null)
-                        setActiveListType('eport')
-                      }}
-                      className="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-black text-white text-xs font-bold cursor-pointer inline-flex items-center gap-1"
-                    >
-                      <span>Xem tất cả đơn Dịch vụ ePort</span>
-                      <span className="material-symbols-outlined text-sm">list_alt</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end items-center gap-2 pt-2 border-t border-slate-100 shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  const targetList = (eportComparison?.matchedGateBookings && eportComparison.matchedGateBookings.length > 0)
-                    ? eportComparison.matchedGateBookings
-                    : [selectedBooking]
-                  setBatchApproveList(targetList)
-                  setShowRejectModal(true)
-                }}
-                className="px-3.5 py-2 bg-rose-50 text-rose-700 hover:bg-rose-600 hover:text-white border border-rose-200 rounded-lg text-xs font-bold cursor-pointer transition inline-flex items-center gap-1 mr-auto shadow-2xs"
-                title="Từ chối đơn và nhập lý do từ chối"
-              >
-                <span className="material-symbols-outlined text-sm">block</span>
-                <span>Từ chối</span>
-              </button>
-              {(() => {
-                const isOrderRejected =
-                  eportComparison?.order?.status === 'REJECTED' ||
-                  eportValidationMap[eportComparison?.order?.id]?.status === 'AUTO_REJECTED'
-                const targetList = (eportComparison?.matchedGateBookings && eportComparison.matchedGateBookings.length > 0)
-                  ? eportComparison.matchedGateBookings
-                  : (orderContainersList.length > 0 ? orderContainersList : [selectedBooking])
-                const orderStatusUpper = String(eportComparison?.order?.status || '').toUpperCase()
-                const hasUnapproved =
-                  selectedBooking.status !== 'Approved' ||
-                  targetList.some(b => b.status !== 'Approved') ||
-                  (orderContainersList || []).some(b => b.status !== 'Approved') ||
-                  (Boolean(eportComparison?.order) && !['APPROVED', 'REJECTED', 'CANCELLED'].includes(orderStatusUpper))
-                if (!hasUnapproved) return null
-                const canAccept = eportComparison?.status === 'matched' && !isOrderRejected && !selectedBooking._noGateBooking
-                return (
-                  <button
-                    type="button"
-                    disabled={!canAccept}
-                    title={canAccept ? '' : 'Không thể duyệt khi dữ liệu 2 bên chưa khớp hoặc đơn ePort đã bị từ chối'}
-                    onClick={() => {
-                      if (!canAccept) return
-                      setShowEportSyncPopup(false)
-                      setBatchApproveList(targetList)
-                      handleConfirmApproval(targetList)
-                    }}
-                    className={`px-4 py-2 rounded-lg text-xs font-bold transition inline-flex items-center gap-1 ${canAccept
-                      ? 'bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer'
-                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                      }`}
-                  >
-                    <span className="material-symbols-outlined text-sm">check_circle</span>
-                    <span>
-                      {targetList.length > 1
-                        ? `Duyệt cả ${targetList.length} Cont & Gửi 1 Bill Tổng ➔`
-                        : 'Duyệt & Gửi Bill sang Vận tải ➔'}
-                    </span>
-                  </button>
-                )
-              })()}
-              <button
-                type="button"
-                onClick={() => setShowEportSyncPopup(false)}
-                className="px-4 py-2 bg-slate-900 text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-black transition"
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── MODAL CHI TIẾT ĐƠN DỊCH VỤ ePORT (XEM & XỬ LÝ TRỰC TIẾP TRONG BOOKING CỔNG) ── */}
+      {/* ── MODAL CHI TIẾT ĐƠN DỊCH VỤ ePORT ── */}
       {selectedEportOrderId && (
         <ServiceOrderDetail
           orderId={selectedEportOrderId}
