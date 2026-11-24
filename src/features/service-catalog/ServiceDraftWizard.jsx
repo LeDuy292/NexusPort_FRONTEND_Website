@@ -1577,11 +1577,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     const seenKeys = new Set()
     const result = []
 
-    const isDemoItem = item => {
-      const bl = String(item?.blNumber || '').toUpperCase()
-      const ref = String(item?.referenceNumber || item?.edoNumber || '').toUpperCase()
-      return bl.includes('DEMO-EPORT') || ref.includes('DEMO-EPORT')
-    }
+    const isDemoItem = () => false
 
     // 1. Quét từ API nguồn (sources.data?.items)
     ;(selectableSourceItems || []).forEach(item => {
@@ -1617,124 +1613,21 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     return result
   }, [form.flow, selectableSourceItems])
 
+  // Chỉ liệt kê vận đơn / booking xuất thật của doanh nghiệp do hệ thống trả về (không trộn bản khai hay booking mẫu lưu trên trình duyệt)
   const allExportSources = useMemo(() => {
-    const isDemoItem = item => {
-      const bl = String(item?.blNumber || '').toUpperCase()
-      const bk = String(item?.bookingNumber || '').toUpperCase()
-      const vs = String(item?.vesselName || '').toUpperCase()
-      return bl.includes('DEMO-EPORT') || bk.includes('DEMO-EPORT') || vs.includes('DEMO EPORT')
-    }
-    const normKey = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
-    const seenKeys = new Set()
+    const normKey = text => String(text || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const isDemoItem = () => false
+    const seen = new Set()
     const result = []
-
-    // Lấy thông tin công ty của tài khoản đăng nhập hiện tại
-    let storedUser = null
-    try {
-      storedUser = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || '{}')
-    } catch {}
-    const userCompany = (storedUser?.companyName || storedUser?.company || storedUser?.carrierName || '').trim()
-    const userCompanyNorm = normKey(userCompany)
-    const isCarrier = ['carrier', 'transport', 'vận tải'].some(r => String(storedUser?.role || '').toLowerCase().includes(r))
-    const matchesCompany = (sourceCompany) => {
-      if (!userCompanyNorm || !isCarrier) return true
-      const scNorm = normKey(sourceCompany)
-      if (!scNorm) return true
-      return scNorm.includes(userCompanyNorm) || userCompanyNorm.includes(scNorm)
-    }
-
-    // 1. Quét từ Gate Bookings xuất khẩu (manifestPortSyncService) của công ty
-    let gateBookings = []
-    try { gateBookings = manifestPortSyncService.getGeneratedGateBookings() || [] } catch { gateBookings = [] }
-    const gbGroups = new Map()
-    gateBookings.forEach(gb => {
-      const isExp = String(gb.direction || gb.flow || gb.operation || '').toUpperCase().includes('EXPORT') ||
-        String(gb.operation || '').toUpperCase() === 'DROPOFF' ||
-        String(gb.bookingType || '').toUpperCase() === 'DROPOFF'
-      if (!isExp || isDemoItem(gb)) return
-      const bCompany = gb.transportCompany || gb.company || gb.carrierProfile?.companyName
-      if (!matchesCompany(bCompany)) return
-
-      const code = gb.blNumber || gb.cargoDeclarationId || gb.billOfLading || gb.bookingNumber || gb.bookingCode
-      const k = normKey(code)
-      if (!k) return
-      if (!gbGroups.has(k)) {
-        gbGroups.set(k, {
-          id: gb.id || code,
-          blNumber: gb.blNumber || gb.cargoDeclarationId || gb.billOfLading || code,
-          bookingNumber: gb.bookingNumber || gb.bookingCode || code,
-          vesselName: gb.vesselName || 'Tàu xuất Hãng tàu',
-          voyageNumber: gb.voyageNumber || 'Chuyến xuất',
-          shippingLine: gb.shippingLine || 'Hãng tàu Quốc tế',
-          containers: [],
-        })
-      }
-      const grp = gbGroups.get(k)
-      const cNo = (gb.containerId || gb.containerNumber || '').trim().toUpperCase()
-      if (cNo && !grp.containers.includes(cNo)) grp.containers.push(cNo)
-    })
-    gbGroups.forEach((val, k) => {
-      if (seenKeys.has(k)) return
-      seenKeys.add(k)
-      result.push({
-        ...val,
-        containerCount: val.containers.length || 1,
-      })
-    })
-
-    // 2. Quét từ API nguồn (selectableSourceItems)
     ;(selectableSourceItems || []).forEach(item => {
       if (!item || isDemoItem(item)) return
-      if (!matchesCompany(item.transportCompany || item.company || item.operatorName)) return
-      const code = item.blNumber || item.bookingNumber
-      const k = normKey(code)
-      if (!k || seenKeys.has(k)) return
-      seenKeys.add(k)
+      const key = normKey(item.blNumber || item.bookingNumber)
+      if (!key || seen.has(key)) return
+      seen.add(key)
       result.push(item)
     })
-
-    // 3. Quét từ Bản khai Manifest xuất khẩu (allExportManifests)
-    ;(allExportManifests || []).forEach(m => {
-      if (!m || isDemoItem(m)) return
-      if (Array.isArray(m.bills) && m.bills.length > 0) {
-        m.bills.forEach(b => {
-          if (!matchesCompany(b.transportCompany || b.consignee || b.shipper || m.transportCompany)) return
-          const code = b.blNumber || m.blNumber || m.bookingNumber
-          const k = normKey(code)
-          if (!k || seenKeys.has(k)) return
-          seenKeys.add(k)
-          result.push({
-            id: `${m.bookingId || code}-${code}`,
-            blNumber: code,
-            bookingNumber: m.bookingNumber || code,
-            vesselName: m.vesselName,
-            voyageNumber: m.voyageNumber,
-            shippingLine: m.shippingLine || m.carrierName || 'Hãng tàu Quốc tế',
-            containerCount: (b.containers || []).length || (m.containers || []).length || 1,
-            containers: b.containers || m.containers || [],
-          })
-        })
-      } else {
-        if (!matchesCompany(m.transportCompany || m.company)) return
-        const code = m.blNumber || m.bookingNumber
-        const k = normKey(code)
-        if (!k || seenKeys.has(k)) return
-        seenKeys.add(k)
-        result.push({
-          id: m.bookingId || code,
-          blNumber: m.blNumber || code,
-          bookingNumber: m.bookingNumber || code,
-          vesselName: m.vesselName,
-          voyageNumber: m.voyageNumber,
-          shippingLine: m.shippingLine || m.carrierName || 'Hãng tàu Quốc tế',
-          containerCount: (m.containers || []).length || 1,
-          containers: m.containers || [],
-        })
-      }
-    })
-
     return result
-  }, [selectableSourceItems, allExportManifests, manifestSyncVersion])
+  }, [selectableSourceItems])
 
   // Lấy toàn bộ mã B/L, Booking, eDO và Container đã được tạo đơn hoặc đặt Booking trong hệ thống
   const bookedContext = useMemo(() => {
@@ -1764,23 +1657,6 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       })
     }
 
-    // 2. Từ Gate Bookings (manifestPortSyncService)
-    try {
-      const gbs = manifestPortSyncService.getGeneratedGateBookings() || []
-      gbs.forEach(b => {
-        const st = String(b.status || '').toLowerCase()
-        if (st === 'cancelled' || st === 'canceled' || st === 'rejected') return
-        const bl = norm(b.cargoDeclarationId || b.blNumber || b.billOfLading)
-        const bk = norm(b.bookingNumber || b.bookingCode || b.id)
-        if (bl) bookedBlSet.add(bl)
-        if (bk) bookedBlSet.add(bk)
-        const cNo = String(b.containerId || b.containerNumber || '').toUpperCase().trim()
-        if (cNo) bookedContSet.add(cNo)
-      })
-    } catch (err) {
-      console.warn('Lỗi đọc gate bookings:', err)
-    }
-
     return { bookedBlSet, bookedContSet }
   }, [ordersListQuery.data, manifestSyncVersion])
 
@@ -1804,7 +1680,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     }
 
     // A. Nếu B/L có danh sách container:
-    const conts = Array.isArray(item.containers) && item.containers.length > 0 ? item.containers : []
+    const conts = Array.isArray(item.containers) && item.containers.length > 0 ? item.containers : (Array.isArray(item.containerNumbers) ? item.containerNumbers : [])
     if (conts.length > 0) {
       const remainingConts = conts.filter(c => {
         const cNo = (typeof c === 'string' ? c : c.containerNumber || c.containerId || '').trim().toUpperCase()
@@ -3150,7 +3026,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                     ? `Chọn Vận đơn (B/L) hoặc Lệnh eDO từ danh sách (${realImportSources.length} Vận đơn chưa booking)`
                                     : 'Không có vận đơn nào chưa booking'}
                               </option>
-                              {realImportSources.map(item => {
+                              {allImportSources.map(item => {
+                                const alreadyBooked = isSourceItemBooked(item)
                                 const conts = (item.containers || [])
                                 const unbooked = conts.length > 0
                                   ? conts.filter(c => {
@@ -3159,8 +3036,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                     }).length
                                   : item.containerCount || 1
                                 return (
-                                  <option key={item.id} value={item.blNumber || item.referenceNumber}>
-                                    {item.blNumber || item.referenceNumber} · {item.vesselName} / {item.voyageNumber} · {unbooked} cont
+                                  <option key={item.id} value={item.blNumber || item.referenceNumber} disabled={alreadyBooked}>
+                                    {item.blNumber || item.referenceNumber} · {item.vesselName} / {item.voyageNumber} · {unbooked} cont{alreadyBooked ? ' · đã có đơn dịch vụ' : ''}
                                   </option>
                                 )
                               })}
@@ -3320,7 +3197,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                     ? `Chọn Vận đơn (B/L) của doanh nghiệp (${realExportSources.length} Vận đơn chưa booking)`
                                     : 'Không có vận đơn nào chưa booking'}
                               </option>
-                              {realExportSources.map(item => {
+                              {allExportSources.map(item => {
+                                const alreadyBooked = isSourceItemBooked(item)
                                 const blText = item.blNumber || item.bookingNumber
                                 const bkExtra = item.bookingNumber && item.bookingNumber !== item.blNumber ? ` (Booking: ${item.bookingNumber})` : ''
                                 const conts = (item.containers || [])
@@ -3331,8 +3209,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                     }).length
                                   : item.containerCount || (item.containers?.length) || 1
                                 return (
-                                  <option key={item.id} value={item.blNumber || item.bookingNumber}>
-                                    {blText}{bkExtra} · Tàu {item.vesselName} ({item.voyageNumber}) · {unbooked} cont
+                                  <option key={item.id} value={item.blNumber || item.bookingNumber} disabled={alreadyBooked}>
+                                    {blText}{bkExtra} · Tàu {item.vesselName} ({item.voyageNumber}) · {unbooked} cont{alreadyBooked ? ' · đã có đơn dịch vụ' : ''}
                                   </option>
                                 )
                               })}
