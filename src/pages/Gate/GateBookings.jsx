@@ -5,6 +5,7 @@ import gateService from '../../services/gateService'
 import GateEntryOrders from '../../features/booking-dispatch/GateEntryOrders'
 import { gateBookingDate } from '../../features/booking-dispatch/gateBookingDate'
 import { formatPlateNumber, matchesPlateSearch } from '../../utils/format'
+import Select from '../../components/ui/Select'
 
 const getRealtimeUrl = () => {
   if (import.meta.env.VITE_REALTIME_URL) return import.meta.env.VITE_REALTIME_URL
@@ -465,7 +466,7 @@ export default function GateBookings() {
           </div>
 
           {/* Status Filter */}
-          <select
+          <Select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-orange-500"
@@ -476,10 +477,10 @@ export default function GateBookings() {
             <option value="Completed">Đã hoàn tất (Completed)</option>
             <option value="Pending">Chờ duyệt (Pending)</option>
             <option value="Canceled">Đã hủy (Canceled)</option>
-          </select>
+          </Select>
 
           {/* Operation Filter */}
-          <select
+          <Select
             value={operationFilter}
             onChange={(e) => setOperationFilter(e.target.value)}
             className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-orange-500"
@@ -487,10 +488,10 @@ export default function GateBookings() {
             <option value="All">Tất cả tác nghiệp</option>
             <option value="Pickup">Lấy Container (Giao vỏ/nhận hàng)</option>
             <option value="Delivery">Hạ Container (Bốc dỡ/gửi)</option>
-          </select>
+          </Select>
 
           {/* Gate Filter */}
-          <select
+          <Select
             value={gateFilter}
             onChange={(e) => setGateFilter(e.target.value)}
             className="px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-orange-500"
@@ -498,7 +499,7 @@ export default function GateBookings() {
             <option value="All">Tất cả cổng</option>
             <option value="GATE-01">GATE-01 · Cổng vào</option>
             <option value="GATE-02">GATE-02 · Cổng ra</option>
-          </select>
+          </Select>
 
         </div>
 

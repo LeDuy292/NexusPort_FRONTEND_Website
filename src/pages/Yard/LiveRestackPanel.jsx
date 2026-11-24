@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import yardRestackService from "../../services/yardRestackService";
+import Select from '../../components/ui/Select'
 
 const getMessage = (error) => error?.response?.data?.detail || error?.response?.data?.message || error?.message || "Không thể kết nối hệ thống bãi.";
 
@@ -164,7 +165,7 @@ export default function LiveRestackPanel({ onTasksChanged, onOpenMap }) {
         </label>
         <label className="text-sm font-bold text-slate-700">
           Đích giao nhận
-          <select
+          <Select
             value={destination}
             onChange={(e) => {
               setDestination(e.target.value);
@@ -174,7 +175,7 @@ export default function LiveRestackPanel({ onTasksChanged, onOpenMap }) {
           >
             <option value="Xe đến lấy tại cổng">Xe đến lấy tại cổng (Hàng nhập pickup)</option>
             <option value="Khu chuẩn bị xếp tàu">Khu chuẩn bị xếp tàu (Hàng xuất bãi)</option>
-          </select>
+          </Select>
         </label>
         <button
           type="button"

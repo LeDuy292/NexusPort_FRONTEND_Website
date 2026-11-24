@@ -4,6 +4,7 @@ import { manifestPortSyncService } from '../../services/manifestPortSyncService'
 import ShippingBadge from './components/ShippingBadge';
 import ShippingPagination from './components/ShippingPagination';
 import { buildVoyageNumber } from './utils/voyageNumber';
+import Select from '../../components/ui/Select'
 
 const TIEN_SA_PORT = 'Cảng Tiên Sa, Đà Nẵng (VNDAD)';
 
@@ -436,7 +437,7 @@ export default function VesselVoyagePage() {
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto font-bold shrink-0">
-              <select
+              <Select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
                 className="w-full sm:w-auto px-3.5 py-2 bg-fog border border-chalk rounded-xl text-xs font-bold text-carbon focus:outline-none focus:border-signal-orange focus:ring-0"
@@ -448,7 +449,7 @@ export default function VesselVoyagePage() {
                 <option value="OPERATING">Đang làm hàng</option>
                 <option value="DEPARTED">Đã rời cảng</option>
                 <option value="COMPLETED">Hoàn tất</option>
-              </select>
+              </Select>
             </div>
           </div>
         ) : (
@@ -520,7 +521,7 @@ export default function VesselVoyagePage() {
                       <td className="py-3.5 px-3 text-slate">{voy.vgmCutOff}</td>
                       <td className="py-3.5 px-3 font-sans">
                         <div className="relative inline-flex items-center">
-                          <select
+                          <Select
                             value={voy.status}
                             disabled={updatingVoyageId === voy.id}
                             onChange={(e) => handleUpdateStatus(voy.id, e.target.value)}
@@ -535,7 +536,7 @@ export default function VesselVoyagePage() {
                             <option value="OPERATING">● Đang làm hàng</option>
                             <option value="DEPARTED">● Đã rời cảng</option>
                             <option value="COMPLETED">● Hoàn tất</option>
-                          </select>
+                          </Select>
                           <span className="material-symbols-outlined text-xs absolute right-1.5 pointer-events-none opacity-60">
                             expand_more
                           </span>
@@ -652,9 +653,9 @@ export default function VesselVoyagePage() {
               <label className="space-y-1"><span className="font-bold text-slate">Quốc tịch</span>
                 <input className="w-full border border-chalk rounded-lg px-3 py-2" value={vesselForm.flag} onChange={(e) => setVesselForm({ ...vesselForm, flag: e.target.value })} placeholder="VD: Panama (PA)" /></label>
               <label className="space-y-1"><span className="font-bold text-slate">Phân loại</span>
-                <select className="w-full border border-chalk rounded-lg px-3 py-2" value={vesselForm.vesselType} onChange={(e) => setVesselForm({ ...vesselForm, vesselType: e.target.value })}>
+                <Select className="w-full border border-chalk rounded-lg px-3 py-2" value={vesselForm.vesselType} onChange={(e) => setVesselForm({ ...vesselForm, vesselType: e.target.value })}>
                   <option>Container Ship</option><option>Feeder</option><option>Bulk Carrier</option><option>Ro-Ro</option>
-                </select></label>
+                </Select></label>
               <label className="col-span-2 space-y-1"><span className="font-bold text-slate">Sức chở (TEU) *</span>
                 <input required type="number" min="1" className="w-full border border-chalk rounded-lg px-3 py-2" value={vesselForm.capacityTeu} onChange={(e) => setVesselForm({ ...vesselForm, capacityTeu: e.target.value })} /></label>
             </div>
@@ -703,7 +704,7 @@ export default function VesselVoyagePage() {
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-[10px] font-bold text-slate uppercase">Tàu biển khai thác *</label>
                     </div>
-                    <select
+                    <Select
                       value={createForm.vesselId}
                       onChange={(e) => handleVesselChange(e.target.value)}
                       className="w-full h-11 px-3 bg-white border border-chalk rounded-lg text-sm font-semibold text-carbon focus:outline-none focus:border-signal-orange"
@@ -711,11 +712,11 @@ export default function VesselVoyagePage() {
                       {vessels.map((v) => (
                         <option key={v.id} value={v.id}>{v.vesselName} · IMO {v.imoNumber}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate uppercase mb-1.5">Cầu bến tiếp nhận *</label>
-                    <select
+                    <Select
                       value={createForm.terminal}
                       onChange={(e) => setCreateForm({ ...createForm, terminal: e.target.value })}
                       className="w-full h-11 px-3 bg-white border border-chalk rounded-lg text-sm font-semibold text-carbon focus:outline-none focus:border-signal-orange"
@@ -723,7 +724,7 @@ export default function VesselVoyagePage() {
                       {TIEN_SA_TERMINALS.map((t) => (
                         <option key={t} value={t}>{t}</option>
                       ))}
-                    </select>
+                    </Select>
                   </div>
                 </div>
               </section>
@@ -760,13 +761,13 @@ export default function VesselVoyagePage() {
                         <span className="truncate">{TIEN_SA_PORT}</span>
                       </div>
                     ) : (
-                      <select
+                      <Select
                         value={createForm.pol}
                         onChange={(e) => setCreateForm({ ...createForm, pol: e.target.value })}
                         className="w-full h-11 px-3 bg-white border border-chalk rounded-lg text-sm font-semibold text-carbon focus:outline-none focus:border-signal-orange"
                       >
                         {STANDARD_PORTS.map((p) => (<option key={p} value={p}>{p}</option>))}
-                      </select>
+                      </Select>
                     )}
                   </div>
 
@@ -782,13 +783,13 @@ export default function VesselVoyagePage() {
                         <span className="truncate">{TIEN_SA_PORT}</span>
                       </div>
                     ) : (
-                      <select
+                      <Select
                         value={createForm.pod}
                         onChange={(e) => setCreateForm({ ...createForm, pod: e.target.value })}
                         className="w-full h-11 px-3 bg-white border border-chalk rounded-lg text-sm font-semibold text-carbon focus:outline-none focus:border-signal-orange"
                       >
                         {STANDARD_PORTS.map((p) => (<option key={p} value={p}>{p}</option>))}
-                      </select>
+                      </Select>
                     )}
                   </div>
                 </div>

@@ -9,6 +9,7 @@ import { manifestPortSyncService } from '../../services/manifestPortSyncService'
 import { yardReservationStore } from '../../services/yardReservationStore'
 import { calculatePortServiceTariff, computeAutoBookingTariff } from '../../utils/portStorageFee'
 import { serviceOrdersApi } from '../../features/service-catalog/serviceOrdersApi'
+import Select from '../../components/ui/Select'
 
 const mapLocalPortBookings = (generated = [], activePaymentCache = {}) => {
   return (generated || []).map((p, idx) => {
@@ -1531,7 +1532,7 @@ export default function BookingManagement() {
                   Tìm kiếm
                 </button>
 
-                <select
+                <Select
                   value={typeFilter}
                   onChange={(e) => {
                     setTypeFilter(e.target.value)
@@ -1545,7 +1546,7 @@ export default function BookingManagement() {
                   <option value="Combined">Chuyến xe kết hợp 2 chiều</option>
                   <option value="Pickup">Nhận container</option>
                   <option value="Dropoff">Giao container</option>
-                </select>
+                </Select>
               </div>
             </form>
 
@@ -1864,7 +1865,7 @@ export default function BookingManagement() {
             <form onSubmit={handleConfirmAssignFleet} className="space-y-4 text-xs">
               <div className="space-y-1">
                 <label className="block font-bold uppercase text-slate-500">1. Container Liên Kết</label>
-                <select
+                <Select
                   value={assignForm.containerId}
                   onChange={(e) => handleAssignContainerChange(e.target.value)}
                   className="w-full p-3 rounded-2xl border border-chalk bg-white font-mono font-bold text-carbon cursor-pointer focus:outline-none focus:ring-0 focus:border-signal-orange"
@@ -1874,12 +1875,12 @@ export default function BookingManagement() {
                       📦 {c.containerNumber} ({c.size} · {c.grossWeightTon || (c.grossWeightKg / 1000)}T)
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div className="space-y-1">
                 <label className="block font-bold uppercase text-slate-500">2. Chọn Xe Đầu Kéo</label>
-                <select
+                <Select
                   value={assignForm.truckId}
                   onChange={(e) => handleAssignTruckChange(e.target.value)}
                   className="w-full p-3 rounded-2xl border border-chalk bg-white font-bold text-carbon cursor-pointer focus:outline-none focus:ring-0 focus:border-signal-orange"
@@ -1889,12 +1890,12 @@ export default function BookingManagement() {
                       🚚 Biển số: {t.plateNumber}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               <div className="space-y-1">
                 <label className="block font-bold uppercase text-slate-500">3. Chọn Tài Xế Phụ Trách</label>
-                <select
+                <Select
                   value={assignForm.driverId}
                   onChange={(e) => {
                     const driverId = e.target.value;
@@ -1912,7 +1913,7 @@ export default function BookingManagement() {
                       👤 {d.fullName} (BLX: {d.licenseClass || 'FC'}) · {d.phone}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
 
               {/* Payload Gauge inside assign modal */}

@@ -236,6 +236,10 @@ export const routeConfig = [
     allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },
   {
+    path: '/dispatcher/yard-incidents',
+    allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
+  },
+  {
     path: '/dispatcher/cameras',
     allowedRoles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
   },

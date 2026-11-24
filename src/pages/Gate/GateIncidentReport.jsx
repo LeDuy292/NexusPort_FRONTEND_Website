@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import Select from '../../components/ui/Select'
 
 const INCIDENT_TYPES = [
   'Xe tải giả mạo giấy tờ / booking không hợp lệ',
@@ -148,10 +149,10 @@ export default function GateIncidentReport() {
 
               <div>
                 <label className="block text-[10px] uppercase text-slate-600 font-extrabold mb-1.5">Loại Sự Cố *</label>
-                <select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}
+                <Select value={form.type} onChange={e => setForm(p => ({ ...p, type: e.target.value }))}
                   className="w-full px-3.5 py-2.5 bg-slate-100 border border-slate-300 rounded-xl font-bold text-sm text-slate-900 focus:outline-none">
                   {INCIDENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
+                </Select>
               </div>
 
               <div>

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { containerService } from "../../services/containerService";
 import { declarationBookingSummary } from "../../utils/declarationBookingSummary";
+import Select from '../../components/ui/Select'
 
 const loadLabel = (value) =>
   ({ full: "Đầy hàng", empty: "Rỗng", unknown: "Chưa xác định" })[value] ||
@@ -95,11 +96,11 @@ export default function CargoDeclaration() {
         </label>
         <label className="space-y-2 text-xs font-bold text-slate">
           <span>Loại trong danh mục</span>
-          <select value={containerTypeId} onChange={event => setContainerTypeId(event.target.value)}
+          <Select value={containerTypeId} onChange={event => setContainerTypeId(event.target.value)}
             className="block rounded-xl border border-chalk bg-fog px-3 py-2.5 text-sm">
             <option value="">Tất cả</option>
             {containerTypes.map(type => <option key={type.id} value={type.id}>{type.code} · {type.description}</option>)}
-          </select>
+          </Select>
         </label>
         <button disabled={loading} className="rounded-xl bg-signal-orange px-5 py-2.5 text-sm font-bold text-white disabled:opacity-50">Tìm kiếm</button>
       </form>

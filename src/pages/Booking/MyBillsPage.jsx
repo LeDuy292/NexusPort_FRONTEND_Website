@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import apiClient from '../../services/apiClient'
 import ImportDocumentTimeline from '../../components/Containers/ImportDocumentTimeline'
 import { btn, card as box, Info, PageHeader, StatCard, Pill, EmptyState, SectionTitle, inputCls, theadCls, thCls } from '../../components/Containers/docUi'
+import Select from '../../components/ui/Select'
 
 const unwrap = res => res.data?.data ?? res.data
 const errorText = err => err?.response?.data?.message || err?.message || 'Không thể xử lý yêu cầu.'
@@ -61,9 +62,9 @@ export default function MyBillsPage() {
           <SectionTitle icon="receipt_long" aside={<span className="text-xs font-mono text-slate">{shown.length} vận đơn</span>}>Danh sách vận đơn</SectionTitle>
           <div className="flex flex-wrap gap-2">
             <input className={`${inputCls} min-w-0 flex-1`} placeholder="Số B/L, chuyến tàu, người gửi, người nhận" value={search} onChange={e => setSearch(e.target.value)} />
-            <select className={`${inputCls} !w-auto`} value={direction} onChange={e => setDirection(e.target.value)}>
+            <Select className={`${inputCls} !w-auto`} value={direction} onChange={e => setDirection(e.target.value)}>
               <option value="">Cả hai chiều</option><option value="EXPORT">Xuất khẩu</option><option value="IMPORT">Nhập khẩu</option>
-            </select>
+            </Select>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[480px] border-collapse text-left text-xs">

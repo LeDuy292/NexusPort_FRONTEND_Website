@@ -1,13 +1,22 @@
 import { useEffect, useState } from 'react'
 import { containerService } from '../../services/containerService'
+import apiClient from '../../services/apiClient'
 
 const empty = { id: '', fullName: '', shortName: '', prefixes: '', userIds: [] }
+const emptyAccount = { email: '', fullName: '', username: '', password: '', sendEmail: true }
+const randomPassword = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'
+  const bytes = crypto.getRandomValues(new Uint32Array(10))
+  return Array.from(bytes, b => chars[b % chars.length]).join('') + '#7'
+}
 const inputClass = 'w-full rounded-xl border border-chalk bg-fog px-3 py-2 text-sm focus:border-signal-orange focus:outline-none'
 
 export default function ShippingLineDirectory() {
   const [lines, setLines] = useState([])
   const [accounts, setAccounts] = useState([])
   const [form, setForm] = useState(empty)
+  const [account, setAccount] = useState(emptyAccount)
+  const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
@@ -29,6 +38,7 @@ export default function ShippingLineDirectory() {
   function edit(line) {
     setError('')
     setNotice('')
+    setAccount(emptyAccount)
     setForm(line ? {
       ...line,
       prefixes: line.prefixes.join(', '),
@@ -50,11 +60,31 @@ export default function ShippingLineDirectory() {
       const line = await containerService.saveShippingLine(id, {
         fullName, shortName, prefixes: prefixes.split(/[\s,;]+/).filter(Boolean), userIds,
       })
+      let message = `Đã lưu hồ sơ ${line.shortName}.`
+      // Tạo tài khoản đăng nhập cho hãng tàu và gửi thông tin về email người nhận
+      if (account.email.trim()) {
+        const res = await apiClient.post('/admin/shipping-line-accounts', {
+          shippingLineId: line.id || id,
+          email: account.email.trim(),
+          fullName: account.fullName.trim(),
+          username: account.username.trim(),
+          password: account.password,
+          sendEmail: account.sendEmail,
+        })
+        const created = res.data?.data
+        message += ` Đã tạo tài khoản ${created.username}`
+        message += created.emailSent
+          ? ` và gửi thông tin đăng nhập tới ${created.email}.`
+          : account.sendEmail
+            ? `, nhưng chưa gửi được email (${created.emailError || 'lỗi không xác định'}). Hãy gửi mật khẩu cho người nhận bằng cách khác.`
+            : '.'
+      }
       setForm(empty)
-      setNotice(`Đã lưu hồ sơ ${line.shortName}.`)
+      setAccount(emptyAccount)
+      setNotice(message)
       await load()
     } catch (error) {
-      setError(error.details ? Object.values(error.details).flat().join(' ') : error.message)
+      setError(error.response?.data?.message || (error.details ? Object.values(error.details).flat().join(' ') : error.message))
     } finally {
       setSaving(false)
     }
@@ -75,7 +105,7 @@ export default function ShippingLineDirectory() {
               <div>
                 <p className="font-bold">{line.shortName}</p>
                 <p className="text-sm">{line.fullName}</p>
-                <p className="mt-1 font-mono text-xs text-slate">{line.prefixes.join(' · ')}</p>
+                <p className="mt-1 tabular-nums text-xs text-slate">{line.prefixes.join(' · ')}</p>
               </div>
               <button type="button" onClick={() => edit(line)} disabled={saving} className="rounded-lg border border-chalk px-3 py-2 text-sm font-bold">Sửa</button>
             </li>)}
@@ -106,6 +136,42 @@ export default function ShippingLineDirectory() {
                 {account.fullName ? `${account.fullName} (${account.username})` : account.username}{!account.isActive && ' · Tạm khóa'}
               </label>)}
               {!availableAccounts.length && <p className="text-xs text-slate">Có thể tạo tài khoản Hãng tàu trong Quản lý người dùng.</p>}
+            </fieldset>
+            <fieldset className="space-y-3 rounded-xl border border-chalk p-3">
+              <legend className="px-1 text-sm font-semibold">Tạo tài khoản đăng nhập mới (không bắt buộc)</legend>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block space-y-1 text-sm font-semibold">
+                  <span>Email người nhận</span>
+                  <input type="email" className={inputClass} placeholder="ten@gmail.com" value={account.email}
+                    onChange={event => setAccount(a => ({ ...a, email: event.target.value }))} />
+                </label>
+                <label className="block space-y-1 text-sm font-semibold">
+                  <span>Họ và tên</span>
+                  <input className={inputClass} maxLength={255} value={account.fullName} onChange={event => setAccount(a => ({ ...a, fullName: event.target.value }))} />
+                </label>
+                <label className="block space-y-1 text-sm font-semibold">
+                  <span>Tên đăng nhập</span>
+                  <input className={inputClass} maxLength={100} placeholder="Để trống: lấy phần trước @ của email" value={account.username}
+                    onChange={event => setAccount(a => ({ ...a, username: event.target.value }))} />
+                </label>
+                <label className="block space-y-1 text-sm font-semibold">
+                  <span>Mật khẩu</span>
+                  <span className="flex gap-2">
+                    <input type={showPassword ? 'text' : 'password'} required={Boolean(account.email.trim())} minLength={6} autoComplete="new-password"
+                      className={inputClass} value={account.password} onChange={event => setAccount(a => ({ ...a, password: event.target.value }))} />
+                    <button type="button" className="shrink-0 rounded-xl border border-chalk px-3 text-xs font-bold"
+                      onClick={() => { setAccount(a => ({ ...a, password: randomPassword() })); setShowPassword(true) }}>Tạo ngẫu nhiên</button>
+                  </span>
+                </label>
+              </div>
+              <label className="flex items-center gap-2 text-sm font-normal">
+                <input type="checkbox" checked={account.sendEmail} onChange={event => setAccount(a => ({ ...a, sendEmail: event.target.checked }))} />
+                Gửi thông tin đăng nhập (tên đăng nhập và mật khẩu) về email người nhận
+              </label>
+              <label className="flex items-center gap-2 text-xs font-normal text-slate">
+                <input type="checkbox" checked={showPassword} onChange={event => setShowPassword(event.target.checked)} />
+                Hiện mật khẩu
+              </label>
             </fieldset>
             <div className="flex gap-2">
               <button className="rounded-xl bg-signal-orange px-4 py-2.5 text-sm font-bold text-white">{saving ? 'Đang lưu…' : 'Lưu hồ sơ'}</button>

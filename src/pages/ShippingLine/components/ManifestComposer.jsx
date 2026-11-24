@@ -6,6 +6,7 @@ import ManifestConfirmDialog from './ManifestConfirmDialog'
 import { clearManifestComposerSession, saveManifestComposerSession } from '../utils/manifestComposerSession'
 import { shippingLineApi, formatApiErrorMessage } from '../api/shippingLineApi'
 import { importDocumentService } from '../../../services/importDocumentService'
+import Select from '../../../components/ui/Select'
 
 const blankContainer = () => ({ containerNumber: '', isoType: '', isoSizeType: '', sealNumber: '', grossWeightKg: '', commodity: '', isReefer: false, lookupStatus: 'idle' })
 const blankBill = () => ({ blNumber: '', shipper: '', consignee: '', containers: [] })
@@ -188,11 +189,11 @@ export default function ManifestComposer({ voyages, initialManifest, importedMan
                           </span>
                         )}
                       </div>
-                      <select required className={`${fieldClass} ${isMatchKey ? 'border-blue-400 bg-blue-50/20' : ''}`} value={current} onChange={e => setEditingBill(b => ({ ...b, [key]: e.target.value }))}>
+                      <Select required className={`${fieldClass} ${isMatchKey ? 'border-blue-400 bg-blue-50/20' : ''}`} value={current} onChange={e => setEditingBill(b => ({ ...b, [key]: e.target.value }))}>
                         <option value="">Chọn công ty vận tải</option>
                         {current && !known && <option value={current}>{current} (chưa đăng ký, chọn lại)</option>}
                         {companies.map(c => <option key={c.id} value={c.companyName}>{c.companyName}{c.taxCode ? ` · MST ${c.taxCode}` : ''}</option>)}
-                      </select>
+                      </Select>
                     </label>
                   )
                 })}
@@ -217,15 +218,15 @@ export default function ManifestComposer({ voyages, initialManifest, importedMan
           ) : (
             <>
               <div className="grid md:grid-cols-2 gap-4">
-                <label className="text-sm font-semibold">Chuyến tàu *<select className={fieldClass} value={form.voyageNumber} onChange={e => { const v = voyages.find(v => v.voyageNumber === e.target.value); update({ voyageNumber: e.target.value, vesselName: v?.vesselName || '' }) }}><option value="">Chọn chuyến tàu</option>
+                <label className="text-sm font-semibold">Chuyến tàu *<Select className={fieldClass} value={form.voyageNumber} onChange={e => { const v = voyages.find(v => v.voyageNumber === e.target.value); update({ voyageNumber: e.target.value, vesselName: v?.vesselName || '' }) }}><option value="">Chọn chuyến tàu</option>
                   {form.voyageNumber && !voyages.some(v => v.voyageNumber === form.voyageNumber) && <option value={form.voyageNumber}>{form.voyageNumber} · {form.vesselName}</option>}
                   {voyages.filter(v => voyageFitsDirection(v, form.direction)).map(v => <option key={v.id || v.voyageNumber} value={v.voyageNumber}>{v.voyageNumber} · {v.vesselName} · {form.direction === 'IMPORT' ? `từ ${v.pol || '—'}` : `đi ${v.pod || '—'}`}</option>)}
-                </select></label>
-                <label className="text-sm font-semibold">Hướng khai<select className={fieldClass} value={form.direction} onChange={e => {
+                </Select></label>
+                <label className="text-sm font-semibold">Hướng khai<Select className={fieldClass} value={form.direction} onChange={e => {
                   const direction = e.target.value
                   const current = voyages.find(v => v.voyageNumber === form.voyageNumber)
                   update(current && voyageFitsDirection(current, direction) ? { direction } : { direction, voyageNumber: '', vesselName: '' })
-                }}><option value="EXPORT">Xuất khẩu</option><option value="IMPORT">Nhập khẩu</option></select></label>
+                }}><option value="EXPORT">Xuất khẩu</option><option value="IMPORT">Nhập khẩu</option></Select></label>
               </div>
               <div className="flex justify-between items-center gap-3"><h3 className="font-bold">{form.bills.length} vận đơn · {total} container</h3><button type="button" className={buttonClass} onClick={() => openBill()}>+ Tạo thêm vận đơn</button></div>
               {!form.bills.length && <div className="p-8 text-center border border-dashed border-chalk rounded-xl text-slate">Thêm vận đơn, sau đó khai báo các container và hàng hóa trong vận đơn đó.</div>}

@@ -8,6 +8,7 @@ import vehicleService from "../../services/vehicleService";
 import { bookingService } from "../../services/bookingService";
 
 import { resolveMediaUrl } from "../../utils/mediaUtils";
+import Select from '../../components/ui/Select'
 
 const DRIVER_DOCUMENTS = ["idCardFrontUrl", "idCardBackUrl", "licenseImageUrl", "licenseBackImageUrl"];
 const DRIVER_ACCOUNT = ["userId", "username", "email", "accountActive", "invitationPending", "emailVerified", "emailVerifiedAt", "invitationExpiresAt", "activeBookingCode", "carrierName"];
@@ -1293,7 +1294,7 @@ export default function DriverManagement() {
               </div>
 
               <div className="flex gap-2 w-full xl:w-auto">
-                <select
+                <Select
                   value={vehicleStatusFilter}
                   onChange={(e) => setVehicleStatusFilter(e.target.value)}
                   className="px-3 py-2 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none cursor-pointer flex-1 xl:w-40 focus:ring-0"
@@ -1302,13 +1303,13 @@ export default function DriverManagement() {
                   <option value="active">Sẵn sàng</option>
                   <option value="inactive">Đã chỉ định</option>
                   <option value="maintenance">Bảo trì</option>
-                </select>
+                </Select>
 
-                <select className="px-3 py-2 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none cursor-pointer flex-1 xl:w-32 focus:ring-0">
+                <Select className="px-3 py-2 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none cursor-pointer flex-1 xl:w-32 focus:ring-0">
                   <option value="ALL">Tất cả Vị trí</option>
                   <option value="GATE">Cổng</option>
                   <option value="YARD">Bãi</option>
-                </select>
+                </Select>
               </div>
             </div>
           </div>
@@ -1839,7 +1840,7 @@ export default function DriverManagement() {
                     <label className="block text-[10px] font-bold text-slate uppercase mb-1">
                       Trạng Thái
                     </label>
-                    <select
+                    <Select
                       value={vehicleEditData.status}
                       onChange={(e) =>
                         setVehicleEditData((f) => ({
@@ -1852,7 +1853,7 @@ export default function DriverManagement() {
                       <option value="active">Sẵn sàng (Active)</option>
                       <option value="inactive">Đã phân công (Inactive)</option>
                       <option value="maintenance">Bảo trì (Maintenance)</option>
-                    </select>
+                    </Select>
                   </div>
 
                   <div className="relative">
@@ -2032,7 +2033,7 @@ export default function DriverManagement() {
                       TÀI XẾ PHỤ TRÁCH
                     </h4>
                     <form onSubmit={handleAssignDriver} className="flex gap-2">
-                      <select
+                      <Select
                         value={driverAssignForm}
                         onChange={(e) => setDriverAssignForm(e.target.value)}
                         className="flex-1 h-10 px-3 border border-chalk rounded-md text-xs text-carbon focus:border-carbon outline-none focus:ring-0"
@@ -2060,7 +2061,7 @@ export default function DriverManagement() {
                                 : ""}
                             </option>
                           ))}
-                      </select>
+                      </Select>
                       <PrimaryButton icon="assignment_ind" size="sm"
                         type="submit"
                         disabled={driverAssignForm === selectedVehicle.driverId}
@@ -2406,7 +2407,7 @@ export default function DriverManagement() {
                           <label className="block text-[10px] font-bold text-slate uppercase mb-1.5 tracking-wider">
                             Trạng Thái
                           </label>
-                          <select
+                          <Select
                             value={editForm.status}
                             onChange={(e) =>
                               setEditForm((f) => ({
@@ -2421,7 +2422,7 @@ export default function DriverManagement() {
                                 {cfg.label}
                               </option>
                             ))}
-                          </select>
+                          </Select>
                         </div>
 
                         <div className="col-span-2 border-t border-chalk mt-1 pt-3"></div>

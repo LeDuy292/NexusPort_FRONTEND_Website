@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { bookingService } from '../../services/bookingService'
 import { containerService } from '../../services/containerService'
+import Select from '../ui/Select'
 
 export default function BookingSourcePicker({ operation, onSelect }) {
   const dropdownId = useId()
@@ -85,7 +86,7 @@ export default function BookingSourcePicker({ operation, onSelect }) {
     <label htmlFor={dropdownId} className="block text-xs font-bold">
       {pickup ? 'Chọn container cần nhận' : 'Chọn container để Booking'}
     </label>
-    <select id={dropdownId} aria-label="Chọn container để Booking" value={selectedKey} disabled={loading || lookingUp}
+    <Select id={dropdownId} aria-label="Chọn container để Booking" value={selectedKey} disabled={loading || lookingUp}
       onChange={e => {
         const row = rows.find(item => keyOf(item) === e.target.value)
         const yardCode = pickup ? row?.yardCode || '' : ''
@@ -101,7 +102,7 @@ export default function BookingSourcePicker({ operation, onSelect }) {
         {pickup && !row.pendingSource && row.yardCode && ` · Lượt ${row.yardCode}`}
         {!pickup && !row.pendingSource && ` · ${row.grossWeightKg == null ? 'Chưa có khối lượng' : `${row.grossWeightKg.toLocaleString()} kg`} · ${row.customerName || 'Chưa có khách hàng'} · Bản khai ${row.declarationId.slice(0, 8)}`}
       </option>)}
-    </select>
+    </Select>
     {!loading && !error && !rows.length && <p className="text-xs">
       {pickup ? 'Chưa có lượt bãi nào đã được cấp quyền nhận cho công ty.'
         : 'Chưa có bản khai hàng phù hợp để đặt lịch. Hãy kiểm tra mục Bản khai hàng của công ty.'}

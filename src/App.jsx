@@ -52,6 +52,7 @@ import VehicleManagement from './pages/Fleet/VehicleManagement'
 import ContainerFlow from './pages/Containers/ContainerFlow'
 import DispatcherDriverManagement from './pages/Drivers/DriverManagement'
 import DispatchHistory from './pages/Dispatch/DispatchHistory'
+import YardIncidents from './pages/Dispatch/YardIncidents'
 import CameraMonitoring from './pages/Camera/CameraMonitoring'
 import GateBookingRequests from './pages/Dispatch/GateBookingRequests'
 
@@ -171,6 +172,7 @@ function App() {
             <Route path="/container-flow" element={<ContainerFlow />} />
             <Route path="/dispatcher/drivers" element={<DispatcherDriverManagement />} />
             <Route path="/dispatch-history" element={<DispatchHistory />} />
+            <Route path="/dispatcher/yard-incidents" element={<YardIncidents />} />
             <Route path="/dispatcher/cameras" element={<CameraMonitoring />} />
           </Route>
 

@@ -37,6 +37,7 @@ import { labels } from './catalogApi'
 import { draftDateTime, draftError, draftSession, serviceDraftKey, serviceDraftsApi } from './serviceDraftsApi'
 import { serviceOrdersApi } from './serviceOrdersApi'
 import { manifestPortSyncService } from '../../services/manifestPortSyncService'
+import Select from '../../components/ui/Select'
 
 const blankSource = () => {
   const d = new Date()
@@ -3194,7 +3195,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                           <label style={{ fontSize: '13px', fontWeight: 500, color: '#334155' }}>
                             Số vận đơn (B/L) hàng xuất <span style={{ color: '#dc2626' }}>*</span>
                           </label>
-                          <select
+                          <Select
                             aria-label="Chọn vận đơn của doanh nghiệp"
                             value=""
                             onChange={event => {
@@ -3221,7 +3222,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                 {item.blNumber || item.bookingNumber} · {item.vesselName} / {item.voyageNumber} · {item.containerCount} cont
                               </option>
                             ))}
-                          </select>
+                          </Select>
                           <span style={{ color: '#64748b', fontSize: '12px' }}>
                             Chọn vận đơn từ danh sách để tự động tra cứu thông tin chuyến tàu và container từ hãng tàu.
                           </span>

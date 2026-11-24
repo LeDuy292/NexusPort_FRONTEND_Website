@@ -4,6 +4,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import ContainerEquipmentSearch from '../Containers/ContainerEquipmentSearch'
 import { containerService } from '../../services/containerService'
 import { readManifestComposerSession } from './utils/manifestComposerSession'
+import Select from '../../components/ui/Select'
 
 const fieldClass = 'w-full rounded-xl border border-chalk bg-fog px-3.5 py-2.5 text-sm outline-none focus:border-signal-orange focus:bg-white'
 const emptyForm = {
@@ -122,12 +123,12 @@ function ContainerRegistrationForm({ initialNumber, onRegistered }) {
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block space-y-1 text-sm font-semibold">
                 <span>Mã ISO kích thước/loại *</span>
-                <select required className={fieldClass} value={form.isoSizeType} onChange={event => changeField('isoSizeType', event.target.value)}>
+                <Select required className={fieldClass} value={form.isoSizeType} onChange={event => changeField('isoSizeType', event.target.value)}>
                   <option value="">Chọn mã ISO</option>
                   {isoTypes.map(option => <option key={option.isoSizeType} value={option.isoSizeType}>
                     {option.isoSizeType} · {option.containerTypeCode} · {option.containerTypeDescription}
                   </option>)}
-                </select>
+                </Select>
               </label>
               <div>
                 {field('containerNumber', 'Số container *', { required: true, placeholder: 'HAMU2515680', autoComplete: 'off', maxLength: 20 })}

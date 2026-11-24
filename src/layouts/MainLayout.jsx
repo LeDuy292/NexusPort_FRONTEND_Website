@@ -3,6 +3,20 @@ import { Link, useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { ROLES, YARD_VISIT_READERS } from '../routes/routeConfig'
 import NotificationCenter from '../components/NotificationCenter'
 
+// Menu của Administrator: chỉ các trang quản trị hệ thống. Các trang tác nghiệp của vai trò khác (điều phối, bãi, cổng, hãng tàu, doanh nghiệp vận tải) được ẩn khỏi menu.
+const ADMIN_MENU_PATHS = new Set([
+  '/dashboard',            // Tổng quan toàn hệ thống
+  '/reports',              // Báo cáo & phân tích
+  '/incidents',            // Theo dõi sự cố
+  '/users',                // Tài khoản & phân quyền vai trò
+  '/admin/carriers',       // Đối tác (doanh nghiệp vận tải)
+  '/admin/shipping-lines', // Danh mục hãng tàu
+  '/admin/gates',          // Cổng bãi
+  '/admin/equipment',      // Thiết bị
+  '/admin/service-catalog',// Danh mục dịch vụ & biểu phí
+  '/admin/billing',        // Billing & thanh toán
+])
+
 const OVERVIEW_PATHS = new Set(['/carrier-portal', '/dashboard', '/yard-staff/dashboard', '/gate/dashboard', '/shipping-line/dashboard'])
 
 // Danh sách các mục trong Sidebar tương ứng với các route
@@ -81,6 +95,12 @@ const sidebarItems = [
     path: '/dispatch-history',
     label: 'Lịch Sử Điều Phối',
     icon: 'history',
+    roles: [ROLES.DISPATCHER],
+  },
+  {
+    path: '/dispatcher/yard-incidents',
+    label: 'Sự Cố Bãi',
+    icon: 'report_problem',
     roles: [ROLES.DISPATCHER],
   },
 
@@ -321,7 +341,7 @@ const ROLE_BADGES = {
 // Các trang tự dựng đầu trang riêng (kèm nút chức năng) hoặc không cần đầu trang: layout không vẽ khối đầu trang
 const PAGES_WITH_OWN_HEADER = new Set([
   '/shipping-line/dashboard', '/shipping-line/voyages', '/shipping-line/manifest', '/shipping-line/import-documents', '/shipping-line/delivery-orders',
-  '/import-documents', '/my-bills', '/services',
+  '/import-documents', '/my-bills', '/services', '/yard-staff/gate-out-preparation',
   '/gate/dashboard', '/gate/incidents', '/gate/history', '/gate/camera',
   '/dispatch', '/dispatch-history', '/dispatcher/cameras',
   // Trang không hiển thị khối đầu trang
@@ -366,10 +386,12 @@ export default function MainLayout({ previewUser = null }) {
     navigate('/login')
   }
 
-  // Lọc các sidebar items được phép hiển thị với vai trò người dùng hiện tại (Administrator thấy tất cả để kiểm thử)
+  // Lọc các sidebar items theo vai trò (Administrator chỉ thấy các trang quản trị trong ADMIN_MENU_PATHS)
   const visibleItems = sidebarItems.filter(item => previewUser
     ? item.path === '/yard'
-    : item.roles.includes(user.role) || (user.role === ROLES.ADMINISTRATOR && item.showForAdmin !== false))
+    : user.role === ROLES.ADMINISTRATOR
+      ? item.roles.includes(ROLES.ADMINISTRATOR) && ADMIN_MENU_PATHS.has(item.path)
+      : item.roles.includes(user.role))
   // Các trang tổng quan luôn nằm đầu menu; thứ tự còn lại giữ nguyên
   const allowedItems = [...visibleItems.filter(item => OVERVIEW_PATHS.has(item.path)), ...visibleItems.filter(item => !OVERVIEW_PATHS.has(item.path))]
 
@@ -517,8 +539,9 @@ export default function MainLayout({ previewUser = null }) {
 
         {/* CONTAINER CONTENT */}
         <main className="flex-1 min-h-0 flex flex-col bg-slate-50 overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable]">
           {showPageHeader && (
-            <div className="px-6 md:px-8 pt-6 flex-shrink-0">
+            <div className="px-6 md:px-8 pt-6 ">
               <div className="bg-white border border-chalk rounded-2xl p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
                 <div>
                   <span className="text-xs font-extrabold bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">{roleBadge}</span>
@@ -529,7 +552,6 @@ export default function MainLayout({ previewUser = null }) {
               </div>
             </div>
           )}
-          <div className="flex-1 min-h-0 overflow-y-auto [scrollbar-gutter:stable]">
             <Outlet />
           </div>
         </main>

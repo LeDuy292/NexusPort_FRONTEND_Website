@@ -3,9 +3,14 @@ import { ROLES } from '../../routes/routeConfig'
 import OperatorDashboard from './OperatorDashboard'
 import DispatcherDashboard from './DispatcherDashboard'
 import YardDashboard from './YardDashboard'
+import AdminDashboard from './AdminDashboard'
 
 export default function DashboardIndex() {
   const user = JSON.parse(localStorage.getItem('user')) || {}
+
+  if (user.role === ROLES.ADMINISTRATOR) {
+    return <AdminDashboard />
+  }
 
   if (user.role === ROLES.DISPATCHER) {
     return <DispatcherDashboard />

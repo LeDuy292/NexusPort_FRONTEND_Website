@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { draftError, serviceDraftsApi } from './serviceDraftsApi'
 import { validContainer } from './serviceDeliveryRules'
 import ServiceTripFleet from './ServiceTripFleet'
+import Select from '../../components/ui/Select'
 
 function Field({ label, required, children, wide = false, hint }) {
   return (
@@ -305,7 +306,7 @@ export function ExportDeclarationFields({ value, index, onChange, onDelete, onVa
         </Field>
 
         <Field label="Loại hàng" required>
-          <select
+          <Select
             aria-label="Loại hàng"
             disabled={sourceLocked}
             value={value?.cargoType || 'General'}
@@ -315,7 +316,7 @@ export function ExportDeclarationFields({ value, index, onChange, onDelete, onVa
             <option value="Reefer">Hàng lạnh (Reefer)</option>
             <option value="Dangerous">Hàng nguy hiểm (DG)</option>
             <option value="OOG">Hàng quá khổ quá tải (OOG)</option>
-          </select>
+          </Select>
         </Field>
 
         <Field label="Trọng lượng (VGM / Gross kg)" required>
@@ -332,14 +333,14 @@ export function ExportDeclarationFields({ value, index, onChange, onDelete, onVa
         </Field>
 
         <Field label="Hàng nội / ngoại" required>
-          <select
+          <Select
             aria-label="Hàng nội ngoại"
             value={value?.tradeType || 'FOREIGN'}
             onChange={e => onChange('tradeType', e.target.value)}
           >
             <option value="FOREIGN">Hàng ngoại</option>
             <option value="DOMESTIC">Hàng nội</option>
-          </select>
+          </Select>
         </Field>
 
         <Field label="Số seal" required>

@@ -5,6 +5,7 @@ import vehicleService from '../../services/vehicleService'
 import { bookingService } from '../../services/bookingService'
 
 import { resolveMediaUrl } from '../../utils/mediaUtils'
+import Select from '../../components/ui/Select'
 
 const STATUS_CONFIG = {
   active: { label: 'Sẵn sàng hoạt động', color: 'bg-green-600 text-white' },
@@ -867,7 +868,7 @@ export default function DriverManagement() {
               </div>
 
               <div className="flex gap-2 w-full xl:w-auto">
-                <select 
+                <Select 
                   value={vehicleStatusFilter}
                   onChange={(e) => setVehicleStatusFilter(e.target.value)}
                   className="px-3 py-2 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none cursor-pointer flex-1 xl:w-40"
@@ -876,15 +877,15 @@ export default function DriverManagement() {
                   <option value="active">Sẵn sàng</option>
                   <option value="inactive">Đã chỉ định</option>
                   <option value="maintenance">Bảo trì</option>
-                </select>
+                </Select>
 
-                <select 
+                <Select 
                   className="px-3 py-2 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none cursor-pointer flex-1 xl:w-32"
                 >
                   <option value="ALL">Tất cả Vị trí</option>
                   <option value="GATE">Cổng</option>
                   <option value="YARD">Bãi</option>
-                </select>
+                </Select>
               </div>
             </div>
           </div>
@@ -1207,12 +1208,12 @@ export default function DriverManagement() {
                   </div>
                   <div>
                     <label className="block text-[10px] font-bold text-slate uppercase mb-1">Trạng Thái</label>
-                    <select value={vehicleEditData.status} onChange={e => setVehicleEditData(f => ({ ...f, status: e.target.value }))}
+                    <Select value={vehicleEditData.status} onChange={e => setVehicleEditData(f => ({ ...f, status: e.target.value }))}
                       className="w-full px-3 h-10 border border-chalk rounded-md text-xs text-carbon focus:outline-none focus:border-carbon bg-white">
                       <option value="active">Sẵn sàng (Active)</option>
                       <option value="inactive">Đã phân công (Inactive)</option>
                       <option value="maintenance">Bảo trì (Maintenance)</option>
-                    </select>
+                    </Select>
                   </div>
                   
                   <div className="relative">
@@ -1304,7 +1305,7 @@ export default function DriverManagement() {
                   <div className="space-y-3">
                     <h4 className="text-[10px] font-bold text-slate uppercase tracking-wider">TÀI XẾ PHỤ TRÁCH</h4>
                     <form onSubmit={handleAssignDriver} className="flex gap-2">
-                      <select 
+                      <Select 
                         value={driverAssignForm} 
                         onChange={e => setDriverAssignForm(e.target.value)}
                         className="flex-1 h-10 px-3 border border-chalk rounded-md text-xs text-carbon focus:border-carbon outline-none"
@@ -1320,7 +1321,7 @@ export default function DriverManagement() {
                             {d.fullName} {d.id === selectedVehicle.driverId ? '(Đang phụ trách)' : ''}
                           </option>
                         ))}
-                      </select>
+                      </Select>
                       <button 
                         type="submit" 
                         disabled={driverAssignForm === selectedVehicle.driverId}
@@ -1471,10 +1472,10 @@ export default function DriverManagement() {
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold text-slate uppercase mb-1.5 tracking-wider">Trạng Thái</label>
-                          <select value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
+                          <Select value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
                             className="w-full h-11 px-3 border border-chalk rounded-xl text-sm text-carbon focus:border-carbon focus:ring-1 focus:ring-carbon outline-none transition-all bg-white">
                             {Object.entries(STATUS_CONFIG).map(([val, cfg]) => <option key={val} value={val}>{cfg.label}</option>)}
-                          </select>
+                          </Select>
                         </div>
                         
                         <div className="col-span-2 border-t border-chalk mt-1 pt-3"></div>

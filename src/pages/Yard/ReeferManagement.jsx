@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import reeferService from '../../services/reeferService';
 import reeferSignalRService from '../../services/reeferSignalRService';
+import Select from '../../components/ui/Select'
 
 export default function ReeferManagement() {
   const [activeTab, setActiveTab] = useState('plugs'); // 'plugs' | 'sessions' | 'requests' | 'alerts'
@@ -1659,7 +1660,7 @@ export default function ReeferManagement() {
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
                     Chuẩn Điện Áp
                   </label>
-                  <select
+                  <Select
                     value={modalForm.voltage_type || '380V-3Ph-32A'}
                     onChange={(e) => setModalForm({ ...modalForm, voltage_type: e.target.value })}
                     className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-xs font-mono text-slate-900 focus:outline-none focus:bg-white focus:border-orange-500"
@@ -1667,7 +1668,7 @@ export default function ReeferManagement() {
                     <option value="380V-3Ph-32A">380V - 3 Pha - 32A</option>
                     <option value="440V-3Ph-32A">440V - 3 Pha - 32A</option>
                     <option value="220V-1Ph-16A">220V - 1 Pha - 16A</option>
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
@@ -1756,7 +1757,7 @@ export default function ReeferManagement() {
                     </span>
                   </div>
                 ) : (
-                  <select
+                  <Select
                     required
                     value={modalForm.container_id || ''}
                     onChange={(e) => {
@@ -1781,7 +1782,7 @@ export default function ReeferManagement() {
                         {cont.target_temperature != null ? ` • Cần: ${cont.target_temperature}°C` : ''}
                       </option>
                     ))}
-                  </select>
+                  </Select>
                 )}
                 {eligibleContainers.length === 0 && !modalForm.container_no ? (
                   <p className="text-[11px] text-amber-600 mt-1">
@@ -1814,7 +1815,7 @@ export default function ReeferManagement() {
                     </span>
                   </div>
                 ) : (
-                  <select
+                  <Select
                     required
                     value={modalForm.plug_id || ''}
                     onChange={(e) => setModalForm({ ...modalForm, plug_id: e.target.value })}
@@ -1830,7 +1831,7 @@ export default function ReeferManagement() {
                           {p.plug_code} ({p.slot_code || 'Bãi R'} - {p.voltage_type})
                         </option>
                       ))}
-                  </select>
+                  </Select>
                 )}
               </div>
 
@@ -2098,7 +2099,7 @@ export default function ReeferManagement() {
 
               <div>
                 <label className="text-xs font-semibold text-slate-700">Lý do ngắt điện *</label>
-                <select
+                <Select
                   value={modalForm.reason || ''}
                   onChange={(e) => setModalForm({ ...modalForm, reason: e.target.value })}
                   className="w-full mt-1 px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg text-sm text-slate-900 focus:outline-none focus:bg-white focus:border-orange-500 focus:ring-1 focus:ring-orange-500"
@@ -2108,7 +2109,7 @@ export default function ReeferManagement() {
                   <option value="Di dời container sang vị trí bãi khác">Di dời container sang vị trí bãi khác</option>
                   <option value="Bảo trì hoặc sự cố nguồn điện">Bảo trì hoặc sự cố nguồn điện</option>
                   <option value="Khác">Lý do khác...</option>
-                </select>
+                </Select>
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
@@ -2142,7 +2143,7 @@ export default function ReeferManagement() {
             <form onSubmit={handleModalSubmit} className="space-y-3.5 mt-4">
               <div>
                 <label className="text-xs font-semibold text-slate-700">Chọn ổ cắm mới đang trống</label>
-                <select
+                <Select
                   required
                   value={modalForm.new_plug_id || ''}
                   onChange={(e) => setModalForm({ ...modalForm, new_plug_id: e.target.value })}
@@ -2156,7 +2157,7 @@ export default function ReeferManagement() {
                         {p.plug_code} ({p.slot_code || 'Bãi R'})
                       </option>
                     ))}
-                </select>
+                </Select>
               </div>
 
               <div>

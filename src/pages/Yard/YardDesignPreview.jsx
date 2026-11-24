@@ -10,8 +10,6 @@ import YardSlotHistoryModal from '../../components/Yard/YardSlotHistoryModal'
 import ContainerYardDetailModal from '../../components/Yard/ContainerYardDetailModal'
 import { yardReservationStore } from '../../services/yardReservationStore'
 import yardDischargeService from '../../services/yardDischargeService'
-import yardRestackService from '../../services/yardRestackService'
-import LiveRestackPanel from './LiveRestackPanel'
 import { padPosition } from '../../features/yard-design/positions'
 import '../../features/yard-design/YardDesignPreview.css'
 
@@ -35,43 +33,11 @@ export default function YardDesignPreview({ previewOnly = false, movement: movem
   const [inventory, setInventory] = useState(null)
   const [inventoryError, setInventoryError] = useState('')
 
-  // Tab navigation & Live Restack Integration
-  const [activeTab, setActiveTab] = useState('map') // 'map' | 'restack'
   const [activeMovement, setActiveMovement] = useState(movement)
-  const [risksCount, setRisksCount] = useState(0)
 
   useEffect(() => {
     setActiveMovement(movement)
   }, [movement])
-
-  useEffect(() => {
-    let active = true
-    const checkRisks = () => {
-      yardRestackService.getRisks()
-        .then(items => {
-          if (active && Array.isArray(items)) setRisksCount(items.length)
-        })
-        .catch(() => {})
-    }
-    checkRisks()
-    const timer = setInterval(checkRisks, 15000)
-    return () => {
-      active = false
-      clearInterval(timer)
-    }
-  }, [])
-
-  const handleOpenMapFromRestack = (from, to, containerId) => {
-    if (from || to) {
-      setActiveMovement({ from, to, containerId })
-      const blk = blockFromPosition(from) || blockFromPosition(to)
-      if (blk) {
-        setCode(blk)
-        setDetail(true)
-      }
-    }
-    setActiveTab('map')
-  }
 
   // State quản lý Modal tra cứu lịch sử Slot & Container
   const [historyModal, setHistoryModal] = useState({
@@ -349,37 +315,6 @@ export default function YardDesignPreview({ previewOnly = false, movement: movem
       <div className="yard-map-page">
         {!embedded && (
           <header className="yard-page-heading">
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2 mt-0.5">
-                <button
-                  type="button"
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                    activeTab === 'map'
-                      ? 'bg-slate-900 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                  onClick={() => setActiveTab('map')}
-                >
-                  Sơ đồ bãi 2D
-                </button>
-                <button
-                  type="button"
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
-                    activeTab === 'restack'
-                      ? 'bg-slate-900 text-white shadow-xs'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                  onClick={() => setActiveTab('restack')}
-                >
-                  <span>Lệnh di chuyển & Đảo bãi</span>
-                  {risksCount > 0 && (
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-white text-[10px] font-black">
-                      {risksCount}
-                    </span>
-                  )}
-                </button>
-              </div>
-            </div>
             <div className="flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -413,16 +348,7 @@ export default function YardDesignPreview({ previewOnly = false, movement: movem
           </header>
         )}
 
-        {activeTab === 'restack' ? (
-          <div className="my-3">
-            <LiveRestackPanel
-              onOpenMap={handleOpenMapFromRestack}
-              onTasksChanged={() => {
-                window.dispatchEvent(new Event('yard-reservation-updated'))
-              }}
-            />
-          </div>
-        ) : (
+        {(
           <>
             {activeMovement && (
               <div className="yard-movement-summary" role="status">

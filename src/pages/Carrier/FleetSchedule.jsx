@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { bookingService } from '../../services/bookingService'
 import PrimaryButton from '../../components/PrimaryButton'
+import Select from '../../components/ui/Select'
 
 const vnDate = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' })
 const time = value => value ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' }) : 'Chưa xác định'
@@ -109,10 +110,10 @@ export default function FleetSchedule({ onAssigned }) {
       </div>
       <div className="flex flex-wrap sm:flex-nowrap gap-2 w-full xl:w-auto min-w-0">
         <label className="flex-1 min-w-0"><span className="sr-only">Ngày xem lịch (giờ Việt Nam)</span><input aria-label="Ngày xem lịch" type="date" value={date} onChange={e => { setDate(e.target.value); setSuccess('') }} className="w-full h-9 px-3 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none" /></label>
-        <select aria-label="Khung giờ" value={period} onChange={e => setPeriod(e.target.value)} className="flex-1 min-w-0 h-9 px-3 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none">
+        <Select aria-label="Khung giờ" value={period} onChange={e => setPeriod(e.target.value)} className="flex-1 min-w-0 h-9 px-3 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none">
           <option value="day">Cả ngày · 00:00 – 24:00</option><option value="morning">Buổi sáng · 06:00 – 12:00</option><option value="afternoon">Buổi chiều · 12:00 – 18:00</option>
-        </select>
-        <select aria-label="Lọc loại nguồn lực" value={resource} onChange={e => setResource(e.target.value)} className="flex-1 min-w-0 h-9 px-3 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none"><option value="all">Tất cả nguồn lực</option><option value="drivers">Có tài xế</option><option value="vehicles">Có phương tiện</option></select>
+        </Select>
+        <Select aria-label="Lọc loại nguồn lực" value={resource} onChange={e => setResource(e.target.value)} className="flex-1 min-w-0 h-9 px-3 bg-fog border border-transparent rounded-lg text-xs font-bold text-carbon focus:bg-white focus:border-carbon outline-none"><option value="all">Tất cả nguồn lực</option><option value="drivers">Có tài xế</option><option value="vehicles">Có phương tiện</option></Select>
       </div>
     </div>
     <p className="text-xs text-slate">Giờ Việt Nam. Nguồn lực rảnh không trùng lịch trong toàn bộ khung giờ chọn và đủ điều kiện hoạt động. Chuyến chưa kết thúc vẫn giữ lịch.</p>
@@ -129,8 +130,8 @@ export default function FleetSchedule({ onAssigned }) {
     {editing && <div className="fixed inset-0 z-[80] bg-carbon/40 backdrop-blur-sm p-4 flex items-center justify-center"><form data-fleet-dialog role="dialog" aria-modal="true" aria-labelledby="fleet-assignment-title" onSubmit={save} className="w-full max-w-lg rounded-2xl bg-white shadow-2xl p-6 space-y-5"><div className="flex justify-between gap-3"><div><h3 id="fleet-assignment-title" className="text-lg font-bold text-carbon">Sửa phân công</h3><p className="text-sm text-slate mt-1">{editing.item.code} · {time(editing.item.startsAt)}</p></div><button ref={closeRef} type="button" aria-label="Đóng" disabled={saving} onClick={() => { editSequence.current++; setEditing(null) }} className="text-slate">✕</button></div>
       <p className="text-xs text-slate">Chọn xe và tài xế rảnh trong lịch hẹn của booking. Hệ thống kiểm tra lại lịch trùng khi lưu. Booking đã vào cảng cần được xử lý theo quy trình vận hành.</p>
       {editing.loading ? <p role="status" className="text-sm text-slate">Đang kiểm tra nguồn lực rảnh…</p> : editing.fleet && <>
-        <label className="block text-sm font-semibold space-y-2">Tài xế<select required disabled={saving} className={fieldClass} value={editing.driverId} onChange={e => setEditing({ ...editing, driverId: e.target.value })}><option value="">Chọn tài xế</option>{editing.fleet.drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.fullName}</option>)}</select></label>
-        <label className="block text-sm font-semibold space-y-2">Phương tiện<select required disabled={saving} className={fieldClass} value={editing.truckId} onChange={e => setEditing({ ...editing, truckId: e.target.value })}><option value="">Chọn phương tiện</option>{editing.fleet.trucks.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.plateNumber}</option>)}</select></label>
+        <label className="block text-sm font-semibold space-y-2">Tài xế<Select required disabled={saving} className={fieldClass} value={editing.driverId} onChange={e => setEditing({ ...editing, driverId: e.target.value })}><option value="">Chọn tài xế</option>{editing.fleet.drivers.map(driver => <option key={driver.id} value={driver.id}>{driver.fullName}</option>)}</Select></label>
+        <label className="block text-sm font-semibold space-y-2">Phương tiện<Select required disabled={saving} className={fieldClass} value={editing.truckId} onChange={e => setEditing({ ...editing, truckId: e.target.value })}><option value="">Chọn phương tiện</option>{editing.fleet.trucks.map(vehicle => <option key={vehicle.id} value={vehicle.id}>{vehicle.plateNumber}</option>)}</Select></label>
       </>}
       {assignmentError && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-800">{assignmentError}</p>}
       <PrimaryButton icon="save" size="md" loading={saving} type="submit" disabled={saving || editing.loading || !editing.fleet?.drivers.some(d => d.id === editing.driverId) || !editing.fleet?.trucks.some(v => v.id === editing.truckId)} className="w-full">{saving ? 'Đang lưu…' : 'Lưu phân công'}</PrimaryButton>
