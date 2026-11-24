@@ -1,259 +1,198 @@
-import React, { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { gateStatusData, waitingVehiclesData } from '../../data/gateOfficerData'
-import gateService from '../../services/gateService'
+import React, { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
+import apiClient from '../../services/apiClient'
+import { Card, Stat, Pill, Empty, ErrorBox, num, fmtDateTime, errText } from '../../components/admin/AdminUi'
+
+const TRIP_TYPE = { pickup: 'Lấy hàng', dropoff: 'Hạ hàng' }
+const BOOKING_STATUS = { approved: { label: 'Đã duyệt', tone: 'blue' }, ready: { label: 'Sẵn sàng', tone: 'green' } }
+const TX_STATUS = {
+  completed: { label: 'Thành công', tone: 'green' }, pending: { label: 'Đang xử lý', tone: 'blue' },
+  blocked: { label: 'Bị chặn', tone: 'red' }, rejected: { label: 'Bị từ chối', tone: 'red' }, failed: { label: 'Thất bại', tone: 'red' },
+}
+const timeOnly = v => (v ? new Date(v).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', hour12: false }) : '—')
+const when = v => (v ? new Date(v).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }) : '—')
 
 export default function GateDashboard() {
-  const navigate = useNavigate()
-  const [stats, setStats] = useState({
-    checkedIn: 0,
-    completed: 0,
-    rejected: 0,
-    waiting: 0,
-    expiredCount: 0,
-    pendingIncidents: 0,
-  })
-  const [todayBookings, setTodayBookings] = useState([])
-  const [loadError,setLoadError]=useState('')
+  const [data, setData] = useState(null)
+  const [error, setError] = useState('')
+  const [loading, setLoading] = useState(true)
 
-
-
-  useEffect(() => {
-    // Tải thống kê thực tế từ API
-    Promise.all([
-      gateService.getBookings({pageSize:150}).then(data=>({data})),
-      gateService.getVerificationHistory().catch(() => ({ data: [] })),
-    ]).then(([bookingRes, verifyRes]) => {
-      const bookings = bookingRes.data?.items || bookingRes.data || []
-      const verifications = verifyRes.data || []
-
-      setTodayBookings(bookings)
-      setStats({
-        checkedIn: bookings.filter(b => b.status === 'Checked-in' || b.status === 'CheckedIn').length,
-        completed: bookings.filter(b => b.status === 'Completed').length,
-        rejected: verifications.filter(v => v.status === 'FAIL').length,
-        waiting: bookings.filter(b => b.status === 'Approved').length,
-        expiredCount: bookings.filter(b => b.status === 'Expired').length,
-        pendingIncidents: 0,
-      })
-    }).catch(error=>setLoadError(error.message||'Không tải được lịch booking cổng.'))
+  const load = useCallback(async () => {
+    try {
+      const res = await apiClient.get('/gate-overview/overview')
+      setData(res.data?.data)
+      setError('')
+    } catch (e) {
+      setError(errText(e))
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
-  const { checkedIn, completed, rejected, waiting, expiredCount, pendingIncidents } = stats
+  useEffect(() => {
+    load()
+    const timer = setInterval(() => { if (document.visibilityState === 'visible') load() }, 20000)
+    return () => clearInterval(timer)
+  }, [load])
 
-  const displayWaitingVehicles = todayBookings.length > 0
-    ? todayBookings.map(b => ({
-        bookingId: b.bookingCode || b.bookingNumber || b.id,
-        vehicle: b.truckType || 'Container Truck (Đầu kéo)',
-        plate: b.licensePlate || b.truckPlateNumber || '—',
-        driver: b.driverName || '—',
-        container: b.containerId || b.containerNumber || b.containers?.[0]?.containerNumber || '—',
-        eta: b.validFrom ? new Date(b.validFrom).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '08:30',
-        gate: 'Cổng A · Làn 01',
-        status: b.status === 'Approved' ? 'On Time' : (b.status === 'Early' ? 'Early' : 'On Time')
-      }))
-    : (waitingVehiclesData || [])
+  if (loading && !data) return <div className="p-8 text-sm text-slate-500">Đang tải số liệu cổng…</div>
+  if (!data) return <div className="p-8"><ErrorBox>{error || 'Không tải được số liệu cổng.'}</ErrorBox></div>
 
-  const statusBadge = (s) => {
-    switch (s) {
-      case 'On Time': return <span className="px-2 py-0.5 bg-green-100 text-green-900 border border-green-300 rounded-full text-[10px] font-bold">Đúng giờ</span>
-      case 'Late': return <span className="px-2 py-0.5 bg-red-100 text-red-900 border border-red-300 rounded-full text-[10px] font-bold">⚠ Trễ giờ</span>
-      case 'Early': return <span className="px-2 py-0.5 bg-blue-100 text-blue-900 border border-blue-300 rounded-full text-[10px] font-bold">Đến sớm</span>
-      default: return null
-    }
-  }
+  const { today, inPort, upcoming, gates, recent, failures, hourly } = data
+  const activeGates = gates.filter(g => g.isActive)
+  const maxHour = Math.max(1, ...hourly.map(h => h.gateIn + h.gateOut))
 
   return (
-    <div className="p-6 md:p-8 w-full font-sans flex flex-col gap-6 bg-slate-50 min-h-screen">
-
-      {/* ── HEADER ── */}
-      <div className="flex justify-between items-center bg-white border border-chalk rounded-2xl p-5 shadow-sm">
+    <div className="p-6 md:p-8 w-full max-w-7xl mx-auto font-sans space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-extrabold bg-orange-100 text-orange-800 px-3 py-0.5 rounded-full uppercase">KHÔNG GIAN NHÂN VIÊN CỔNG</span>
-            <span className="text-xs font-mono text-slate">Cảng Tiên Sa · Đà Nẵng</span>
-          </div>
-          <h2 className="font-heading text-3xl font-extrabold text-carbon">Bảng Điều Khiển Cổng</h2>
-          <p className="text-xs text-slate mt-0.5">Tổng quan hoạt động kiểm soát cổng theo thời gian thực.</p>
+          <h2 className="text-xl font-bold text-slate-900">Tổng quan cổng</h2>
+          <p className="text-xs text-slate-500 mt-0.5">Cập nhật {fmtDateTime(data.generatedAt)} · tự làm mới mỗi 20 giây</p>
+        </div>
+        <div className="flex gap-2">
+          <Link to="/gate" className="px-4 h-9 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold inline-flex items-center">Mở cổng kiểm soát</Link>
+          <button type="button" onClick={load} className="px-4 h-9 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-sm font-semibold text-slate-700 cursor-pointer">Làm mới</button>
         </div>
       </div>
+      <ErrorBox>{error}</ErrorBox>
 
-      {/* ── KPI CARDS ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        <div className="bg-white rounded-2xl border-2 border-amber-400 p-4 shadow-sm space-y-1">
-          <span className="text-[10px] font-extrabold text-amber-900 uppercase">Xe Đang Chờ</span>
-          <div className="text-3xl font-extrabold text-amber-600 font-mono">{waiting}</div>
-          <span className="text-[11px] text-amber-800 font-bold">Chờ vào cổng</span>
-        </div>
-        <div className="bg-white rounded-2xl border border-blue-300 p-4 shadow-sm space-y-1">
-          <span className="text-[10px] font-bold text-slate uppercase">Đang Xử Lý</span>
-          <div className="text-3xl font-extrabold text-blue-600 font-mono">{waiting > 0 ? 1 : 0}</div>
-          <span className="text-[11px] text-blue-700 font-bold">Đang kiểm tra</span>
-        </div>
-        <div className="bg-white rounded-2xl border border-green-300 p-4 shadow-sm space-y-1">
-          <span className="text-[10px] font-bold text-slate uppercase">Checked-in</span>
-          <div className="text-3xl font-extrabold text-green-600 font-mono">{checkedIn}</div>
-          <span className="text-[11px] text-green-700 font-bold">Đã vào cảng</span>
-        </div>
-        <div className="bg-white rounded-2xl border border-chalk p-4 shadow-sm space-y-1">
-          <span className="text-[10px] font-bold text-slate uppercase">Checked-out</span>
-          <div className="text-3xl font-extrabold text-carbon font-mono">{completed}</div>
-          <span className="text-[11px] text-slate font-bold">Đã ra cổng</span>
-        </div>
-        <div className="bg-white rounded-2xl border border-red-300 p-4 shadow-sm space-y-1">
-          <span className="text-[10px] font-bold text-slate uppercase">Bị Từ Chối</span>
-          <div className="text-3xl font-extrabold text-red-600 font-mono">{rejected}</div>
-          <span className="text-[11px] text-red-600 font-bold">Không đủ điều kiện</span>
-        </div>
-        <div className="bg-white rounded-2xl border border-orange-300 p-4 shadow-sm space-y-1">
-          <span className="text-[10px] font-bold text-slate uppercase">Incidents</span>
-          <div className="text-3xl font-extrabold text-signal-orange font-mono">{pendingIncidents}</div>
-          <span className="text-[11px] text-orange-800 font-bold">Cần xử lý</span>
-        </div>
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <Stat label="Xe vào cổng hôm nay" value={num(today.gateIn)} sub="Đã hoàn tất kiểm tra" tone="green" />
+        <Stat label="Xe ra cổng hôm nay" value={num(today.gateOut)} sub="Đã hoàn tất kiểm tra" tone="blue" />
+        <Stat label="Xe đang trong cảng" value={num(inPort.count)} sub="Đã vào, chưa ra cổng" tone="orange" />
+        <Stat label="Lịch hẹn sắp đến" value={num(upcoming.count)} sub="Trong 24 giờ tới" tone="slate" />
+        <Stat label="Lượt bị chặn hôm nay" value={num(today.blocked)} sub={today.blocked ? 'Xem bảng bên dưới' : 'Không có lượt nào bị chặn'} tone={today.blocked ? 'red' : 'slate'} />
       </div>
 
-      {/* ── GATE STATUS + ALERTS ROW ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {data.overdue > 0 && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          <strong>{num(data.overdue)} lịch hẹn</strong> đã quá giờ nhưng xe chưa vào cổng trong 7 ngày qua.
+        </p>
+      )}
 
-        {/* Gate Status Cards */}
-        <div className="lg:col-span-2 space-y-4">
-          <h3 className="font-extrabold text-carbon text-sm uppercase tracking-wider">Trạng Thái Cổng</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {gateStatusData.map(gate => (
-              <div key={gate.id} className={`bg-white rounded-2xl border-2 p-4 shadow-sm space-y-3 ${
-                gate.status === 'Online' ? 'border-green-300' : 'border-slate-300 opacity-70'
-              }`}>
-                <div className="flex justify-between items-center">
-                  <span className="font-extrabold text-carbon text-base">{gate.label}</span>
-                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold flex items-center gap-1 ${
-                    gate.status === 'Online' ? 'bg-green-100 text-green-900 border border-green-300' : 'bg-slate-100 text-slate-700 border border-slate-300'
-                  }`}>
-                    <span className={`w-2 h-2 rounded-full ${gate.status === 'Online' ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></span>
-                    {gate.status}
-                  </span>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <Card title="Trạng thái các cổng" className="lg:col-span-2" right={<Pill tone="green">{activeGates.length} cổng hoạt động</Pill>}>
+          {activeGates.length === 0 ? <Empty>Chưa cấu hình cổng nào.</Empty> : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {activeGates.map(g => (
+                <div key={g.id} className="rounded-xl border border-slate-200 p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-900 truncate">{g.name}</p>
+                      <p className="text-[11px] text-slate-500 truncate">{g.code}{g.location ? ` · ${g.location}` : ''}</p>
+                    </div>
+                    <Pill tone="green">Hoạt động</Pill>
+                  </div>
+                  <dl className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-lg bg-slate-50 py-2"><dt className="text-[10px] text-slate-500">Vào</dt><dd className="text-lg font-bold tabular-nums text-emerald-600">{g.gateIn}</dd></div>
+                    <div className="rounded-lg bg-slate-50 py-2"><dt className="text-[10px] text-slate-500">Ra</dt><dd className="text-lg font-bold tabular-nums text-blue-600">{g.gateOut}</dd></div>
+                    <div className="rounded-lg bg-slate-50 py-2"><dt className="text-[10px] text-slate-500">Bị chặn</dt><dd className={`text-lg font-bold tabular-nums ${g.blocked ? 'text-red-600' : 'text-slate-400'}`}>{g.blocked}</dd></div>
+                  </dl>
+                  <p className="mt-2 text-[11px] text-slate-500">Lượt gần nhất: {g.lastActivityAt ? when(g.lastActivityAt) : 'chưa có hôm nay'}</p>
                 </div>
-                <div className="space-y-1 text-xs font-mono">
-                  <div className="flex justify-between text-slate"><span>Xe đang chờ:</span><strong className="text-carbon">{gate.waiting}</strong></div>
-                  <div className="flex justify-between text-slate"><span>Camera:</span><strong className="text-carbon">{gate.cam}</strong></div>
-                  <div className="flex justify-between text-slate"><span>Nhận diện:</span><strong className={gate.anpr ? 'text-green-700' : 'text-red-700'}>{gate.anpr ? '● Đang chạy' : '○ Ngoại tuyến'}</strong></div>
-                  <div className="flex justify-between text-slate"><span>Nhân viên:</span><strong className="text-carbon text-[11px]">{gate.officer}</strong></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+              ))}
+            </div>
+          )}
+        </Card>
 
-        {/* Alert Panel */}
-        <div className="space-y-3">
-          <h3 className="font-extrabold text-carbon text-sm uppercase tracking-wider">Cảnh Báo Cần Xử Lý</h3>
-          <div className="space-y-2">
-            <div className="bg-red-50 border border-red-300 rounded-xl p-3 text-xs">
-              <div className="font-extrabold text-red-900 flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-sm">emergency_home</span>
-                Phương Tiện Chưa Đăng Ký
-              </div>
-              <div className="text-red-700 mt-0.5">Cổng A — Xe 43C-777.11 không có đăng ký</div>
-            </div>
-            <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 text-xs">
-              <div className="font-extrabold text-amber-900 flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-sm">warning</span>
-                Sai Khớp Số Chì
-              </div>
-              <div className="text-amber-700 mt-0.5">GB-20260811-005 — Số chì niêm phong không khớp</div>
-            </div>
-            <div className="bg-orange-50 border border-orange-300 rounded-xl p-3 text-xs">
-              <div className="font-extrabold text-orange-900 flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-sm">schedule</span>
-                Xe Trễ Giờ Dự Kiến
-              </div>
-              <div className="text-orange-700 mt-0.5">GB-20260811-008 — TRK-022 đến trễ 30 phút</div>
-            </div>
-            {expiredCount > 0 && (
-              <div className="bg-slate-100 border border-slate-300 rounded-xl p-3 text-xs">
-                <div className="font-extrabold text-slate-800 flex items-center gap-1.5">
-                  <span className="material-symbols-outlined text-sm">timer_off</span>
-                  Đăng Ký Hết Hạn
-                </div>
-                <div className="text-slate-600 mt-0.5">{expiredCount} lượt đăng ký đã quá giờ không vào cổng</div>
-              </div>
-            )}
-          </div>
-
-          <button
-            onClick={() => navigate('/gate/incidents')}
-            className="w-full h-10 bg-carbon text-white rounded-xl font-extrabold text-xs hover:bg-black flex items-center justify-center gap-1.5"
-          >
-            <span className="material-symbols-outlined text-sm">report</span>
-            Xem Tất Cả Sự Cố
-          </button>
-        </div>
+        <Card title="Lượt qua cổng theo giờ (hôm nay)">
+          {hourly.length === 0 ? <Empty>Hôm nay chưa có lượt qua cổng.</Empty> : (
+            <ul className="space-y-2">
+              {hourly.map(h => (
+                <li key={h.hour} className="flex items-center gap-3 text-xs">
+                  <span className="w-10 tabular-nums text-slate-500">{String(h.hour).padStart(2, '0')}:00</span>
+                  <div className="flex-1 flex h-3 overflow-hidden rounded-full bg-slate-100">
+                    <div className="bg-emerald-500" style={{ width: `${(h.gateIn / maxHour) * 100}%` }} title={`${h.gateIn} xe vào`} />
+                    <div className="bg-blue-500" style={{ width: `${(h.gateOut / maxHour) * 100}%` }} title={`${h.gateOut} xe ra`} />
+                  </div>
+                  <span className="w-8 text-right tabular-nums font-semibold text-slate-700">{h.gateIn + h.gateOut}</span>
+                </li>
+              ))}
+              <li className="flex gap-4 pt-1 text-[11px] text-slate-500"><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-emerald-500" />Vào</span><span><i className="mr-1 inline-block h-2 w-2 rounded-full bg-blue-500" />Ra</span></li>
+            </ul>
+          )}
+        </Card>
       </div>
 
-      {loadError&&<p role="alert" className="text-red-700">Không tải được dữ liệu cổng: {loadError}</p>}
-      {/* ── VEHICLES WAITING TABLE ── */}
-      <div className="bg-white rounded-2xl border border-chalk shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-chalk flex justify-between items-center">
-          <div>
-            <span className="text-[10px] font-extrabold text-signal-orange uppercase tracking-wider block">HÀNG ĐỢI XE NHẬP CỔNG</span>
-            <h3 className="font-extrabold text-carbon text-base">Xe Đang Chờ Tại Cổng</h3>
-          </div>
-          <button
-            onClick={() => navigate('/gate')}
-            className="px-4 py-2 bg-signal-orange text-white rounded-xl font-extrabold text-xs hover:opacity-95 flex items-center gap-1.5 shadow-sm"
-          >
-            <span className="material-symbols-outlined text-sm">sensor_door</span>
-            Mở Cổng Kiểm Soát
-          </button>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
-            <thead>
-              <tr className="bg-fog border-b border-chalk text-slate font-bold uppercase text-[10px] tracking-wider">
-                <th className="py-3 px-5">Mã Đăng Ký</th>
-                <th className="py-3 px-5">Phương Tiện & Biển Số</th>
-                <th className="py-3 px-5">Tài Xế</th>
-                <th className="py-3 px-5">Container</th>
-                <th className="py-3 px-5">Giờ Dự Kiến</th>
-                <th className="py-3 px-5">Cổng</th>
-                <th className="py-3 px-5">Trạng Thái</th>
-                <th className="py-3 px-5 text-right">Thao Tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-chalk">
-              {displayWaitingVehicles.length > 0 ? (
-                displayWaitingVehicles.map(v => (
-                  <tr key={v.bookingId} className="hover:bg-fog/70">
-                    <td className="py-3.5 px-5 font-mono font-extrabold text-signal-orange">{v.bookingId}</td>
-                    <td className="py-3.5 px-5">
-                      <div className="font-bold text-carbon">{v.vehicle}</div>
-                      <div className="text-[10px] font-mono text-slate">{v.plate}</div>
-                    </td>
-                    <td className="py-3.5 px-5 font-bold text-carbon">{v.driver}</td>
-                    <td className="py-3.5 px-5 font-mono font-bold text-carbon">{v.container}</td>
-                    <td className="py-3.5 px-5 font-mono font-bold text-carbon">{v.eta}</td>
-                    <td className="py-3.5 px-5 font-mono font-bold">{v.gate}</td>
-                    <td className="py-3.5 px-5">{statusBadge(v.status)}</td>
-                    <td className="py-3.5 px-5 text-right">
-                      <button
-                        onClick={() => navigate('/gate')}
-                        className="px-3 py-1.5 bg-amber-500 text-white rounded-lg font-extrabold text-[11px] hover:bg-amber-600 flex items-center gap-1 ml-auto cursor-pointer"
-                      >
-                        <span className="material-symbols-outlined text-sm">fact_check</span>
-                        Xử lý
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={8} className="py-8 text-center text-slate-400 font-mono">
-                    Hiện chưa có xe trong hàng đợi vào cổng
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <Card title="Lịch hẹn sắp đến" right={<Link to="/gate/bookings" className="text-xs font-semibold text-orange-600 hover:underline">Xem tất cả</Link>}>
+          {upcoming.list.length === 0 ? <Empty>Không có lịch hẹn nào trong 24 giờ tới.</Empty> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-xs text-slate-500 border-b border-slate-100"><th className="py-2 font-semibold">Biển số</th><th className="py-2 font-semibold">Tài xế</th><th className="py-2 font-semibold">Loại</th><th className="py-2 font-semibold">Hẹn lúc</th><th className="py-2 font-semibold">Trạng thái</th></tr></thead>
+                <tbody>
+                  {upcoming.list.map(b => {
+                    const st = BOOKING_STATUS[b.status] || { label: b.status, tone: 'slate' }
+                    return (
+                      <tr key={b.id} className="border-b border-slate-50 last:border-0">
+                        <td className="py-2.5 pr-3"><div className="font-semibold text-slate-900 tabular-nums">{b.plate || '—'}</div><div className="text-[11px] text-slate-500 truncate max-w-[160px]" title={b.carrier}>{b.carrier || '—'}</div></td>
+                        <td className="py-2.5 pr-3 text-slate-700">{b.driver || '—'}</td>
+                        <td className="py-2.5 pr-3 text-slate-700">{TRIP_TYPE[b.type] || b.type}</td>
+                        <td className="py-2.5 pr-3 text-slate-600 tabular-nums">{when(b.appointmentStart)}</td>
+                        <td className="py-2.5"><Pill tone={st.tone}>{st.label}</Pill></td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+        <Card title="Xe đang trong cảng" right={<Pill tone="blue">{inPort.count} xe</Pill>}>
+          {inPort.list.length === 0 ? <Empty>Hiện không có xe nào trong cảng.</Empty> : (
+            <ul className="space-y-3">
+              {inPort.list.map(v => (
+                <li key={v.id} className="flex items-center justify-between gap-3 text-sm">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-900 tabular-nums">{v.plate || '—'} <span className="font-normal text-slate-500">· {TRIP_TYPE[v.type] || v.type}</span></p>
+                    <p className="text-[11px] text-slate-500 truncate">{[v.driver, v.carrier].filter(Boolean).join(' · ') || v.code}</p>
+                  </div>
+                  <span className="text-xs text-slate-500 tabular-nums whitespace-nowrap">từ {timeOnly(v.since)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <Card title="Lượt qua cổng gần đây" className="lg:col-span-2" right={<Link to="/gate/history" className="text-xs font-semibold text-orange-600 hover:underline">Lịch sử kiểm soát</Link>}>
+          {recent.length === 0 ? <Empty>Chưa có lượt qua cổng nào.</Empty> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead><tr className="text-left text-xs text-slate-500 border-b border-slate-100"><th className="py-2 font-semibold">Thời gian</th><th className="py-2 font-semibold">Cổng</th><th className="py-2 font-semibold">Biển số</th><th className="py-2 font-semibold">Container</th><th className="py-2 font-semibold">Kết quả</th></tr></thead>
+                <tbody>
+                  {recent.map(t => {
+                    const st = TX_STATUS[t.status] || { label: t.status, tone: 'slate' }
+                    return (
+                      <tr key={t.id} className="border-b border-slate-50 last:border-0">
+                        <td className="py-2.5 pr-3 text-slate-600 tabular-nums whitespace-nowrap">{when(t.checkedAt)}</td>
+                        <td className="py-2.5 pr-3 text-slate-700">{t.gateName || (t.gateType === 'gate_out' ? 'Cổng ra' : 'Cổng vào')}</td>
+                        <td className="py-2.5 pr-3 font-semibold tabular-nums text-slate-900">{t.plate || '—'}</td>
+                        <td className="py-2.5 pr-3 tabular-nums text-slate-700">{t.container || '—'}</td>
+                        <td className="py-2.5"><Pill tone={st.tone}>{st.label}</Pill>{t.blockReason ? <div className="mt-1 max-w-[220px] text-[11px] text-red-700">{t.blockReason}</div> : null}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+
+        <Card title="Đối chiếu không đạt" right={<Link to="/gate/verification" className="text-xs font-semibold text-orange-600 hover:underline">Đối chiếu xe</Link>}>
+          {failures.length === 0 ? <Empty>Không có lượt đối chiếu nào không đạt.</Empty> : (
+            <ul className="space-y-3">
+              {failures.map(f => (
+                <li key={f.id} className="text-sm">
+                  <div className="flex items-center justify-between gap-2"><span className="font-semibold tabular-nums text-slate-900">{f.plate || '—'}</span><span className="text-[11px] text-slate-500 tabular-nums">{when(f.verifiedAt)}</span></div>
+                  <p className="text-[11px] text-red-700 mt-0.5">{f.reason || 'Không đạt điều kiện'}{f.gateCode ? ` · ${f.gateCode}` : ''}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
       </div>
     </div>
   )

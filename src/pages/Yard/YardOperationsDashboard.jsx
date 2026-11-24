@@ -9,8 +9,20 @@ import YardZoneBlockSelectorModal from '../../components/Yard/YardZoneBlockSelec
 import sourceLayout from '../../features/yard-design/tienSaLayout.json'
 import { manifestPortSyncService, computeAutoYardSlot } from '../../services/manifestPortSyncService'
 import { yardReservationStore } from '../../services/yardReservationStore'
+import Select from '../../components/ui/Select'
+
+// Nhân viên bãi không được tự đổi vị trí bãi: chỉ thực hiện khi có lệnh của Dispatcher
+const currentUserRole = () => {
+  try {
+    const raw = localStorage.getItem('user') || sessionStorage.getItem('user')
+    return raw ? JSON.parse(raw)?.role : null
+  } catch {
+    return null
+  }
+}
 
 export default function YardOperationsDashboard() {
+  const canChangeSlot = ['Dispatcher', 'Administrator'].includes(currentUserRole())
   const [toastMessage, setToastMessage] = useState('')
   const [todayDate] = useState(
     new Date().toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' })
@@ -37,7 +49,8 @@ export default function YardOperationsDashboard() {
   const [zoneCurrentSlot, setZoneCurrentSlot] = useState('')
 
   // Bộ lọc Phân Bổ Nghiệp Vụ (AI Explainability Filter Pills)
-  const [aiExplainFilter, setAiExplainFilter] = useState('ALL')
+  const [statusFilter, setStatusFilter] = useState('ALL') // ALL | PENDING | IN_YARD
+  const [reeferOnly, setReeferOnly] = useState(false)
   const [containerSearch, setContainerSearch] = useState('')
 
   const [loadingTasks, setLoadingTasks] = useState(false)
@@ -366,7 +379,7 @@ export default function YardOperationsDashboard() {
           containerNumber,
           manifestId: result.manifestId || selectedPlanId,
           newSlotCoordinate: result.reservedSlot,
-          reason: 'Xác nhận RTG hạ bãi an toàn (IN YARD)',
+          reason: 'Xác nhận RTG hạ bãi an toàn',
           status: 'in_yard',
           vesselName: result.vesselName || activePlan?.vesselName,
           voyageNumber: result.voyageNumber || activePlan?.voyageNumber,
@@ -621,9 +634,9 @@ export default function YardOperationsDashboard() {
       return {
         manifestId: 'ALL',
         manifestNumber: 'ALL-VOYAGES',
-        vesselName: 'Tất Cả Chuyến Tàu Nhập',
-        voyageNumber: `${dischargePlans.length} Chuyến Nhập Đã Duyệt`,
-        berthCode: 'Đa Bến Cảng Tiên Sa',
+        vesselName: 'Tất cả chuyến tàu nhập',
+        voyageNumber: `${dischargePlans.length} chuyến đã duyệt`,
+        berthCode: '',
         direction: 'HÀNG NHẬP KHẨU (IMPORT)',
         totalContainers: allContainersAcrossAllPlans.length,
         inYardCount: inYard,
@@ -699,23 +712,9 @@ export default function YardOperationsDashboard() {
   const filteredPlanContainers = useMemo(() => {
     let result = allPlanContainers
 
-    if (aiExplainFilter === 'REEFER') {
-      result = result.filter(c => c.isRf || c.blockCode.startsWith('D'))
-    } else if (aiExplainFilter === 'HEAVY') {
-      result = result.filter(c => c.isHeavy)
-    } else if (aiExplainFilter === 'IMPORT_STS') {
-      result = result.filter(c => c.blockCode.startsWith('B') || c.blockCode.startsWith('A') || c.blockCode.startsWith('C'))
-    } else if (aiExplainFilter === 'EXPORT_GATE') {
-      result = result.filter(c => c.blockCode.startsWith('F') || c.blockCode.startsWith('E'))
-    } else if (aiExplainFilter === 'SIZE_40') {
-      result = result.filter(c => c.is40)
-    } else if (aiExplainFilter === 'SIZE_20') {
-      result = result.filter(c => c.is20)
-    } else if (aiExplainFilter === 'IN_YARD') {
-      result = result.filter(c => c.dischargeStatus === 'IN_YARD')
-    } else if (aiExplainFilter === 'PENDING') {
-      result = result.filter(c => c.dischargeStatus !== 'IN_YARD')
-    }
+    if (reeferOnly) result = result.filter(c => c.isRf || c.blockCode.startsWith('D'))
+    if (statusFilter === 'IN_YARD') result = result.filter(c => c.dischargeStatus === 'IN_YARD')
+    else if (statusFilter === 'PENDING') result = result.filter(c => c.dischargeStatus !== 'IN_YARD')
 
     if (containerSearch.trim()) {
       const q = containerSearch.trim().toLowerCase()
@@ -729,22 +728,15 @@ export default function YardOperationsDashboard() {
     }
 
     return result
-  }, [allPlanContainers, aiExplainFilter, containerSearch])
+  }, [allPlanContainers, statusFilter, reeferOnly, containerSearch])
 
-  // Counts cho từng filter pill
-  const aiFilterCounts = useMemo(() => {
-    return {
-      ALL: allPlanContainers.length,
-      REEFER: allPlanContainers.filter(c => c.isRf || c.blockCode.startsWith('D')).length,
-      IMPORT_STS: allPlanContainers.filter(c => c.blockCode.startsWith('B') || c.blockCode.startsWith('A') || c.blockCode.startsWith('C')).length,
-      EXPORT_GATE: allPlanContainers.filter(c => c.blockCode.startsWith('F') || c.blockCode.startsWith('E')).length,
-      HEAVY: allPlanContainers.filter(c => c.isHeavy).length,
-      SIZE_40: allPlanContainers.filter(c => c.is40).length,
-      SIZE_20: allPlanContainers.filter(c => c.is20).length,
-      IN_YARD: allPlanContainers.filter(c => c.dischargeStatus === 'IN_YARD').length,
-      PENDING: allPlanContainers.filter(c => c.dischargeStatus !== 'IN_YARD').length,
-    }
-  }, [allPlanContainers])
+  // Số lượng cho các bộ lọc
+  const aiFilterCounts = useMemo(() => ({
+    ALL: allPlanContainers.length,
+    IN_YARD: allPlanContainers.filter(c => c.dischargeStatus === 'IN_YARD').length,
+    PENDING: allPlanContainers.filter(c => c.dischargeStatus !== 'IN_YARD').length,
+    REEFER: allPlanContainers.filter(c => c.isRf || c.blockCode.startsWith('D')).length,
+  }), [allPlanContainers])
 
   return (
     <div className="p-4 md:p-6 lg:p-8 w-full font-sans flex flex-col gap-5 bg-slate-50/60 min-h-screen text-slate-800">
@@ -758,53 +750,88 @@ export default function YardOperationsDashboard() {
       )}
 
 
-      {/* ── 2.5 KẾ HOẠCH DỠ TÀU & PHÂN BỔ BÃI (SMART YARD PRE-ALLOCATION) ── */}
+      {/* Tóm tắt chuyến tàu / kế hoạch dỡ */}
+      {activePlan && (() => {
+        const total = activePlan.totalContainers || 0
+        const pct = (v) => (total ? Math.round((Number(v || 0) / total) * 100) : 0)
+        const allocated = activePlan.allocatedCount || 0
+        const fully = total > 0 && allocated >= total
+        const cells = [
+          { label: 'Đã dỡ cầu cảng', value: activePlan.dischargedCount, sub: activePlan.dischargedCount === total ? 'Đã dỡ toàn bộ' : 'Đang dỡ', bar: pct(activePlan.dischargedCount), color: 'bg-amber-500' },
+          { label: 'Đã hạ bãi', value: activePlan.inYardCount, sub: activePlan.inYardCount === total ? 'Đã vào bãi toàn bộ' : 'Chờ hạ bãi', bar: pct(activePlan.inYardCount), color: 'bg-emerald-500' },
+        ]
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 rounded-2xl border border-slate-200 bg-white divide-y md:divide-y-0 md:divide-x divide-slate-100 overflow-hidden">
+            <div className="p-4 min-w-0">
+              <div className="text-xs font-medium text-slate-500">Chuyến tàu</div>
+              <div className="mt-1 font-bold text-slate-900 truncate" title={activePlan.vesselName}>{activePlan.vesselName}</div>
+              <div className="mt-0.5 text-xs text-slate-500 truncate">{[activePlan.voyageNumber, activePlan.berthCode ? `Bến ${activePlan.berthCode}` : null].filter(Boolean).join(' · ') || '—'}</div>
+            </div>
+            <div className="p-4">
+              <div className="text-xs font-medium text-slate-500">Tổng container</div>
+              <div className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">{total}</div>
+              <div className="mt-0.5 text-xs text-slate-500 tabular-nums">
+                {activePlan.reeferCount > 0 ? `${activePlan.reeferCount} cont lạnh · ` : ''}{(Number(activePlan.totalWeightKg || 0) / 1000).toFixed(1)} tấn
+              </div>
+            </div>
+            <div className="p-4">
+              <div className="text-xs font-medium text-slate-500">Đã chốt vị trí bãi</div>
+              <div className={`mt-1 text-2xl font-bold tabular-nums ${fully ? 'text-emerald-700' : 'text-amber-700'}`}>{allocated}<span className="text-sm font-medium text-slate-400"> / {total}</span></div>
+              <div className={`mt-0.5 text-xs ${fully ? 'text-emerald-700' : 'text-amber-700'}`}>{fully ? 'Đã chốt đủ vị trí' : `Còn ${total - allocated} chưa có vị trí`}</div>
+            </div>
+            {cells.map(c => (
+              <div key={c.label} className="p-4">
+                <div className="text-xs font-medium text-slate-500">{c.label}</div>
+                <div className="mt-1 text-2xl font-bold text-slate-900 tabular-nums">{c.value || 0}<span className="text-sm font-medium text-slate-400"> / {total}</span></div>
+                <div className="mt-1.5 h-1.5 rounded-full bg-slate-100 overflow-hidden"><div className={`h-full rounded-full ${c.color}`} style={{ width: `${c.bar}%` }} /></div>
+                <div className="mt-1 text-xs text-slate-500">{c.sub}</div>
+              </div>
+            ))}
+          </div>
+        )
+      })()}
+
+      {/* ── 2.5 KẾ HOẠCH DỠ TÀU & PHÂN BỔ BÃI ── */}
       <section className="bg-white rounded-2xl border border-slate-200 shadow-xs p-5 flex flex-col gap-4">
 
         {/* Section Header: Title & Action Bar */}
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3 pb-3 border-b border-slate-100">
-          <div>
-            <h2 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
-              <span>Điều Phối Dỡ Tàu &amp; Đặt Chỗ Trước</span>
-              <span className="text-xs font-normal text-slate-400 font-mono">(Smart Yard Pre-Allocation)</span>
-            </h2>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Tự động phân bổ vị trí bãi container theo Manifest và chốt vị trí bãi toàn hệ thống.
-            </p>
+        <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-3 pb-4 border-b border-slate-100">
+          <div className="min-w-0">
+            <h2 className="text-lg font-bold text-slate-900 tracking-tight">Điều phối dỡ tàu và đặt chỗ trước</h2>
           </div>
 
           {/* Toolbar: Vessel Select & Main Actions */}
-          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto">
             {/* Manifest Select */}
-            <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-800 shadow-2xs">
-              <span className="text-slate-400 text-xs">Tàu:</span>
-              <select
+            <div className="flex items-center gap-1.5 bg-white border border-slate-200 px-3 h-9 rounded-lg text-xs font-semibold text-slate-800 min-w-[260px] flex-1 xl:flex-none">
+              <span className="text-slate-400 text-xs">Chuyến:</span>
+              <Select
                 value={selectedPlanId}
                 onChange={e => setSelectedPlanId(e.target.value)}
-                className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer pr-1 max-w-[260px] truncate"
+                className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer pr-1 flex-1 min-w-0 truncate"
               >
                 {dischargePlans.length === 0 ? (
-                  <option value="ALL">TẤT CẢ CÁC CHUYẾN TÀU (Đang tải...)</option>
+                  <option value="ALL">Tất cả chuyến tàu (đang tải…)</option>
                 ) : (
                   <>
                     <option value="ALL">
-                      TẤT CẢ CÁC CHUYẾN TÀU ({allContainersAcrossAllPlans.length} Cont)
+                      Tất cả chuyến tàu ({allContainersAcrossAllPlans.length} cont)
                     </option>
                     {dischargePlans.map((p, idx) => (
                       <option key={`${p.manifestId}-${idx}`} value={p.manifestId}>
-                        {p.vesselName} ({p.voyageNumber}) • {p.totalContainers} Cont • Bến {p.berthCode}
+                        {p.vesselName} ({p.voyageNumber}) · {p.totalContainers} cont · Bến {p.berthCode}
                       </option>
                     ))}
                   </>
                 )}
-              </select>
+              </Select>
             </div>
 
             {/* Run Pre-allocation button */}
             <button
               onClick={() => handlePreAllocate(activePlan?.manifestId)}
               disabled={isPreAllocating || !activePlan}
-              className="px-3.5 py-1.5 bg-slate-900 hover:bg-black text-white rounded-lg text-xs font-bold transition-all shadow-xs active:scale-95 disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+              className="px-3.5 h-9 bg-slate-900 hover:bg-black text-white rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
               {isPreAllocating ? (
                 <>
@@ -814,7 +841,7 @@ export default function YardOperationsDashboard() {
               ) : (
                 <>
                   <span className="material-symbols-outlined text-sm">auto_awesome</span>
-                  <span>Phân Bổ Bãi Tự Động</span>
+                  <span>Phân bổ bãi tự động</span>
                 </>
               )}
             </button>
@@ -829,155 +856,70 @@ export default function YardOperationsDashboard() {
                 setTallyScanResult(null)
                 setTallyModalOpen(true)
               }}
-              className="px-3.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-all shadow-2xs active:scale-95 flex items-center gap-1.5 cursor-pointer"
+              className="px-3.5 h-9 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
             >
               <span className="material-symbols-outlined text-sm text-slate-500">qr_code_scanner</span>
-              <span>Quét Tally Cầu Cảng</span>
+              <span>Quét tally cầu cảng</span>
             </button>
           </div>
         </div>
 
-        {/* Vessel Discharge Quick Metric Cards Grid */}
-        {activePlan && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
-            {/* Card 1: Vessel Info */}
-            <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 flex flex-col justify-between">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Chuyến Tàu &amp; Bến</span>
-                <span className="material-symbols-outlined text-sm text-blue-600">directions_boat</span>
-              </div>
-              <div className="font-bold text-slate-900 text-sm truncate" title={activePlan.vesselName}>
-                {activePlan.vesselName}
-              </div>
-              <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
-                <span>{activePlan.voyageNumber}</span>
-                <span>•</span>
-                <span className="font-semibold text-blue-700 bg-blue-50 px-1 rounded">Bến {activePlan.berthCode || 'B-01'}</span>
-              </div>
-            </div>
-
-            {/* Card 2: Total Containers */}
-            <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 flex flex-col justify-between">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Tổng Container</span>
-                <span className="material-symbols-outlined text-sm text-indigo-600">inventory_2</span>
-              </div>
-              <div className="font-bold text-indigo-950 text-base font-mono">
-                {activePlan.totalContainers} <span className="text-xs font-sans font-normal text-slate-500">Cont</span>
-              </div>
-              <div className="text-[11px] text-slate-500 flex items-center gap-1 mt-0.5">
-                {activePlan.reeferCount > 0 ? (
-                  <span className="text-sky-700 font-semibold bg-sky-50 border border-sky-200/60 px-1.5 py-0.2 rounded text-[10px]">
-                    ❄️ {activePlan.reeferCount} Lạnh
-                  </span>
-                ) : (
-                  <span>100% Cont Thường</span>
-                )}
-                <span className="text-[10px] font-mono text-slate-400">({(Number(activePlan.totalWeightKg || 0) / 1000).toFixed(1)}T)</span>
-              </div>
-            </div>
-
-            {/* Card 3: Allocation Status */}
-            <div className="rounded-xl p-3.5 flex flex-col justify-between border bg-emerald-50/40 border-emerald-200/80">
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Trạng Thái Bãi</span>
-                <span className="material-symbols-outlined text-sm text-emerald-600">
-                  task_alt
-                </span>
-              </div>
-              <div className="font-bold text-sm font-mono flex items-center gap-1.5 text-emerald-800">
-                <span>{activePlan.allocatedCount}/{activePlan.totalContainers} Đã Chốt Bãi</span>
-                <span className="material-symbols-outlined text-xs">verified</span>
-              </div>
-              <div className="text-[11px] mt-0.5">
-                <span className="text-emerald-700 font-medium">Toàn bài đã sẵn sàng</span>
-              </div>
-            </div>
-
-            {/* Card 4: Discharged at Quay */}
-            <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 flex flex-col justify-between">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Đã Dỡ Cầu Cảng</span>
-                <span className="material-symbols-outlined text-sm text-amber-600">forklift</span>
-              </div>
-              <div className="font-bold text-amber-900 text-base font-mono">
-                {activePlan.dischargedCount} <span className="text-xs font-sans font-normal text-slate-500">/ {activePlan.totalContainers}</span>
-              </div>
-              <div className="text-[11px] text-slate-500 mt-0.5">
-                {activePlan.dischargedCount === activePlan.totalContainers ? 'Đã dỡ toàn bộ' : 'Đang dỡ theo ca'}
-              </div>
-            </div>
-
-            {/* Card 5: Safe in Yard */}
-            <div className="bg-slate-50/70 border border-slate-200/80 rounded-xl p-3.5 flex flex-col justify-between">
-              <div className="flex items-center justify-between text-slate-500 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider">Hạ Bãi Hoàn Tất</span>
-                <span className="material-symbols-outlined text-sm text-teal-600">check_circle</span>
-              </div>
-              <div className="font-bold text-teal-900 text-base font-mono">
-                {activePlan.inYardCount} <span className="text-xs font-sans font-normal text-slate-500">/ {activePlan.totalContainers}</span>
-              </div>
-              <div className="text-[11px] text-slate-500 mt-0.5">
-                {activePlan.inYardCount === activePlan.totalContainers ? '100% trong bãi' : 'Chờ RTG hoàn tất'}
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Containers in Manifest Table: Modern, Spaced, No Cut-off Text */}
         {activePlan && (
           <div className="flex flex-col gap-3">
-            {/* Thanh Bộ Lọc Container Đơn Giản, Chuyên Nghiệp */}
-            <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-2.5 bg-slate-50 border border-slate-200 p-2.5 rounded-xl">
-              {/* Filter Pills */}
-              <div className="flex flex-wrap items-center gap-1.5">
-                {[
-                  { key: 'ALL', label: 'Tất cả', count: aiFilterCounts.ALL },
-                  { key: 'REEFER', label: 'Cont lạnh', count: aiFilterCounts.REEFER },
-                  { key: 'IMPORT_STS', label: 'Hàng nhập', count: aiFilterCounts.IMPORT_STS },
-                  { key: 'EXPORT_GATE', label: 'Hàng xuất', count: aiFilterCounts.EXPORT_GATE },
-                  { key: 'HEAVY', label: 'Cont nặng (≥ 22T)', count: aiFilterCounts.HEAVY },
-                  { key: 'SIZE_40', label: 'Cont 40FT', count: aiFilterCounts.SIZE_40 },
-                  { key: 'SIZE_20', label: 'Cont 20FT', count: aiFilterCounts.SIZE_20 },
-                  { key: 'IN_YARD', label: 'Đã hạ bãi', count: aiFilterCounts.IN_YARD },
-                  { key: 'PENDING', label: 'Chờ hạ bãi', count: aiFilterCounts.PENDING },
-                ].map(p => {
-                  const active = aiExplainFilter === p.key
-                  return (
-                    <button
-                      key={p.key}
-                      type="button"
-                      onClick={() => setAiExplainFilter(p.key)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer ${active
-                        ? 'bg-slate-900 text-white shadow-xs'
-                        : 'bg-white hover:bg-slate-100 text-slate-700 border border-slate-200'
-                        }`}
-                    >
-                      <span>{p.label}</span>
-                      <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono ${active ? 'bg-slate-800 text-slate-200' : 'bg-slate-100 text-slate-500'
-                        }`}>
-                        {p.count}
-                      </span>
-                    </button>
-                  )
-                })}
+            {/* Bộ lọc gọn: trạng thái hạ bãi, cont lạnh, tìm kiếm */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex p-1 rounded-xl bg-slate-100" role="tablist" aria-label="Lọc theo trạng thái">
+                  {[
+                    ['ALL', 'Tất cả', aiFilterCounts.ALL],
+                    ['PENDING', 'Chờ hạ bãi', aiFilterCounts.PENDING],
+                    ['IN_YARD', 'Đã hạ bãi', aiFilterCounts.IN_YARD],
+                  ].map(([key, label, count]) => {
+                    const on = statusFilter === key
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        role="tab"
+                        aria-selected={on}
+                        onClick={() => setStatusFilter(key)}
+                        className={`px-3.5 h-8 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer ${on ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
+                      >
+                        <span>{label}</span>
+                        <span className={`tabular-nums text-[11px] px-1.5 rounded-md ${on ? 'bg-slate-900 text-white' : 'bg-slate-200/70 text-slate-500'}`}>{count}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+                {aiFilterCounts.REEFER > 0 && (
+                  <button
+                    type="button"
+                    aria-pressed={reeferOnly}
+                    onClick={() => setReeferOnly(v => !v)}
+                    className={`px-3 h-8 rounded-lg border text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer ${reeferOnly ? 'border-sky-300 bg-sky-50 text-sky-700' : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    Chỉ cont lạnh
+                    <span className="tabular-nums text-[11px] px-1.5 rounded-md bg-slate-100 text-slate-500">{aiFilterCounts.REEFER}</span>
+                  </button>
+                )}
               </div>
 
-              {/* Ô Tìm Kiếm Nhanh */}
-              <div className="relative min-w-[240px]">
-                <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">search</span>
+              <div className="relative w-full lg:w-72">
+                <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-base">search</span>
                 <input
                   type="text"
-                  placeholder="Tìm số cont, B/L, ô bãi..."
+                  placeholder="Tìm số cont, vận đơn, ô bãi…"
                   value={containerSearch}
                   onChange={e => setContainerSearch(e.target.value)}
-                  className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 shadow-2xs"
+                  className="w-full pl-8 pr-8 h-9 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
                 />
                 {containerSearch && (
                   <button
                     type="button"
                     onClick={() => setContainerSearch('')}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                    aria-label="Xóa từ khóa"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
                   >
                     ✕
                   </button>
@@ -994,7 +936,7 @@ export default function YardOperationsDashboard() {
                     <th className="py-3 px-4 w-[16%]">Mã Vận Đơn (B/L)</th>
                     <th className="py-3 px-4 w-[14%]">Trọng Lượng</th>
                     <th className="py-3 px-4 w-[24%]">Vị Trí Đặt Trước (Slot)</th>
-                    <th className="py-3 px-3 text-center w-[10%]">Trạng Thái Dỡ</th>
+                    <th className="py-3 px-3 text-center w-[10%]">Trạng thái</th>
                     <th className="py-3 px-4 text-right">Thao Tác</th>
                   </tr>
                 </thead>
@@ -1091,32 +1033,20 @@ export default function YardOperationsDashboard() {
                             )}
                           </td>
 
-                          {/* 5. Trạng Thái Dỡ */}
+                          {/* 5. Trạng thái (hiển thị tiếng Việt, không dùng mã trạng thái của hệ thống) */}
                           <td className="py-3.5 px-3 text-center align-top">
-                            {isException ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-800 bg-rose-50 border border-rose-300 px-2.5 py-1 rounded-full shadow-2xs">
-                                <span className="material-symbols-outlined text-xs text-rose-600">cancel</span>
-                                NGOẠI LỆ
-                              </span>
-                            ) : isInYard ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full shadow-2xs">
-                                <span className="material-symbols-outlined text-xs text-emerald-600">task_alt</span>
-                                IN YARD
-                              </span>
-                            ) : isDischarged ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-full shadow-2xs">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse"></span>
-                                DISCHARGED
-                              </span>
-                            ) : isAllocated ? (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-800 bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-full shadow-2xs">
-                                RESERVED
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-full">
-                                PLANNED
-                              </span>
-                            )}
+                            {(() => {
+                              const st = isException
+                                ? { label: 'Ngoại lệ', cls: 'text-rose-800 bg-rose-50 border-rose-300' }
+                                : isInYard
+                                  ? { label: 'Đã hạ bãi', cls: 'text-emerald-800 bg-emerald-50 border-emerald-200' }
+                                  : isDischarged
+                                    ? { label: 'Đã dỡ, chờ hạ bãi', cls: 'text-amber-800 bg-amber-50 border-amber-200' }
+                                    : isAllocated
+                                      ? { label: 'Đã đặt chỗ', cls: 'text-indigo-800 bg-indigo-50 border-indigo-200' }
+                                      : { label: 'Chờ xếp vị trí', cls: 'text-slate-600 bg-slate-100 border-slate-200' }
+                              return <span className={`inline-flex items-center text-[11px] font-semibold border px-2.5 py-1 rounded-full whitespace-nowrap ${st.cls}`}>{st.label}</span>
+                            })()}
                           </td>
 
                           {/* 6. Thao Tác (Nút Chính: Đổi Bãi 2D Mở Sơ Đồ Phân Khu Tiên Sa Chuẩn Ảnh) */}
@@ -1152,19 +1082,23 @@ export default function YardOperationsDashboard() {
                                 </button>
                               )}
 
-                              {/* NÚT THAO TÁC CHÍNH: Mở Sơ Đồ Phân Khu Bãi Container Tiên Sa (Zone A ➔ G) */}
-                              <button
-                                onClick={() => {
-                                  setZoneContainer(c)
-                                  setZoneCurrentSlot(resolvedSlot)
-                                  setZoneModalOpen(true)
-                                }}
-                                title="Mở Sơ Đồ Phân Khu Bãi Container Tiên Sa để đổi khu & vị trí"
-                                className="px-3 py-1.5 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-1.5 cursor-pointer active:scale-95"
-                              >
-                                <span className="material-symbols-outlined text-sm">swap_horiz</span>
-                                <span>Đổi Bãi (2D)</span>
-                              </button>
+                              {/* Đổi vị trí bãi: chỉ Dispatcher; nhân viên bãi làm theo lệnh được giao */}
+                              {canChangeSlot ? (
+                                <button
+                                  onClick={() => {
+                                    setZoneContainer(c)
+                                    setZoneCurrentSlot(resolvedSlot)
+                                    setZoneModalOpen(true)
+                                  }}
+                                  title="Mở sơ đồ bãi để đổi khu và vị trí"
+                                  className="px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+                                >
+                                  <span className="material-symbols-outlined text-sm">swap_horiz</span>
+                                  <span>Đổi vị trí</span>
+                                </button>
+                              ) : (
+                                <span className="text-[11px] text-slate-400 whitespace-nowrap" title="Vị trí bãi do Dispatcher quyết định">Theo lệnh Dispatcher</span>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -1304,7 +1238,7 @@ export default function YardOperationsDashboard() {
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Tình Trạng Ngoại Quan
                     </label>
-                    <select
+                    <Select
                       value={tallyCondition}
                       onChange={(e) => setTallyCondition(e.target.value)}
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs"
@@ -1312,7 +1246,7 @@ export default function YardOperationsDashboard() {
                       <option value="GOOD">Tốt / Nguyên vẹn (GOOD)</option>
                       <option value="DAMAGED">Hư hỏng / Móp méo (DAMAGED)</option>
                       <option value="SEAL_BROKEN">Mất / Đứt Seal (SEAL_BROKEN)</option>
-                    </select>
+                    </Select>
                   </div>
 
                   <div>
@@ -1516,7 +1450,7 @@ export default function YardOperationsDashboard() {
                         {tallyScanResult.dischargeStatus === 'IN_YARD' ? (
                           <div className="flex items-center justify-center gap-1.5 py-2.5 bg-emerald-600 text-white font-bold text-xs rounded-xl shadow-xs">
                             <span className="material-symbols-outlined text-sm">task_alt</span>
-                            <span>Đã Hoàn Tất Hạ Bãi (IN YARD)</span>
+                            <span>Đã hoàn tất hạ bãi</span>
                           </div>
                         ) : (
                           <button
@@ -1542,7 +1476,7 @@ export default function YardOperationsDashboard() {
                       <div className="p-4 bg-rose-50/80 border border-rose-300 rounded-xl flex flex-col gap-2.5 shadow-xs">
                         <div className="flex items-center gap-1.5 text-xs font-bold text-rose-900">
                           <span className="material-symbols-outlined text-base text-rose-600">warning</span>
-                          <span>NGOẠI LỆ: CONTAINER KHÔNG CÓ TRONG MANIFEST</span>
+                          <span>Ngoại lệ: container không có trong bản khai</span>
                         </div>
                         <p className="text-xs text-rose-800 leading-relaxed">
                           {tallyScanResult.message}

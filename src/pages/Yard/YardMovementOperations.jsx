@@ -1976,10 +1976,12 @@ export default function YardMovementOperations() {
                     type="text"
                     value={customTargetContInput}
                     onChange={(e) =>
-                      setCustomTargetContInput(e.target.value.toUpperCase())
+                      setCustomTargetContInput(e.target.value)
                     }
-                    placeholder="Nhập mã container hoặc vị trí (VD: B02-02-01-2)"
-                    className="h-9 px-3 rounded-xl border border-slate-300 font-sans tabular-nums font-bold text-xs bg-white text-slate-900 focus:outline-none focus:border-blue-600 w-44"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="Mã container (VD: TGHU9350075)"
+                    className="uppercase h-9 px-3 rounded-xl border border-slate-300 font-sans tabular-nums font-bold text-xs bg-white text-slate-900 focus:outline-none focus:border-blue-600 w-56"
                   />
                   <span className="text-[11px] text-orange-600 font-sans tabular-nums font-bold bg-orange-50 px-2 py-1 rounded-lg border border-orange-200">
                     {activeConflictContainer.location}

@@ -1500,7 +1500,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
   const ordersListQuery = useQuery({
     queryKey: ['service-orders', 'paid-wizard-check'],
-    queryFn: () => serviceOrdersApi.list({ pageSize: 100 }),
+    queryFn: () => serviceOrdersApi.list({ pageSize: 50 }), // backend giới hạn tối đa 50 đơn mỗi trang
     retry: false,
     staleTime: 15000,
   })
@@ -1592,9 +1592,9 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       seenKeys.add(k)
       const conts = item.containers || (item.containerNumber ? [{
         containerNumber: item.containerNumber,
-        typeCode: '40HC',
-        sealNumber: 'SL-88412',
-        grossWeightKg: 24500,
+        typeCode: item.typeCode || '40HC',
+        sealNumber: item.sealNumber || 'SL-88412',
+        grossWeightKg: Number(item.grossWeightKg) || 24500,
         commodity: 'Hàng hóa nhập khẩu',
         blNumber: item.blNumber || code,
       }] : [])
@@ -1613,113 +1613,9 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       })
     })
 
-    // 2. Quét từ manifestPortSyncService (các bản khai đã đồng bộ từ Cảng / Hãng tàu)
-    let allSynced = []
-    try { allSynced = manifestPortSyncService.getSyncedManifests() || [] } catch { allSynced = [] }
-    const importSynced = allSynced.filter(m =>
-      String(m.direction || m.flow || '').toUpperCase() === 'IMPORT' ||
-      m.direction === 'Nhập khẩu'
-    )
-
-    importSynced.forEach(m => {
-      if (!m || isDemoItem(m)) return
-      const rawVoy = m.voyageNumber || ''
-      const cleanVoy = rawVoy.replace(/[^A-Z0-9]/gi, '')
-      const contList = (m.containers && m.containers.length > 0) ? m.containers : (m.records && m.records.length > 0 ? m.records : [])
-
-      if (Array.isArray(m.bills) && m.bills.length > 0) {
-        m.bills.forEach(b => {
-          const code = b.blNumber || b.edoNumber || m.blNumber || `BL-${cleanVoy || 'IMP'}`
-          const k = normKey(code)
-          if (!k || seenKeys.has(k)) return
-          seenKeys.add(k)
-          const bConts = (b.containers && b.containers.length > 0)
-            ? b.containers
-            : contList.filter(c => normKey(c.blNumber) === normKey(code))
-          result.push({
-            id: `${m.manifestId || m.id || code}-${code}`,
-            blNumber: b.blNumber || code,
-            referenceNumber: b.edoNumber || `EDO-${cleanVoy || 'IMP'}`,
-            vesselName: m.vesselName || 'Tàu nhập Hãng tàu',
-            voyageNumber: m.voyageNumber || rawVoy,
-            shippingLine: m.shippingLine || m.carrierName || 'Hãng tàu Quốc tế',
-            containerCount: bConts.length,
-            containers: bConts.map(c => ({
-              containerNumber: c.containerNumber || c.containerId,
-              typeCode: c.isoType || c.typeCode || '40HC',
-              sealNumber: c.sealNumber || 'SL-88412',
-              grossWeightKg: c.grossWeightKg || 24500,
-              commodity: c.cargoDescription || c.commodity || 'Hàng hóa nhập khẩu',
-              blNumber: c.blNumber || b.blNumber || code,
-            })),
-            validUntil: '2026-11-30',
-            emptyReturnDepot: 'Depot Cảng Tiên Sa',
-            dischargePort: m.pod || m.portOfDischarge || 'VNDAD (Cảng Tiên Sa)',
-          })
-        })
-      } else {
-        // Tự động phân tách theo từng B/L riêng biệt để không gộp chung các container của các B/L khác nhau
-        const byBl = new Map()
-        contList.forEach(c => {
-          const bl = c.blNumber || m.blNumber || `BL-${cleanVoy || 'IMP'}`
-          if (!byBl.has(bl)) byBl.set(bl, [])
-          byBl.get(bl).push(c)
-        })
-        byBl.forEach((bConts, bl) => {
-          const k = normKey(bl)
-          if (!k || seenKeys.has(k)) return
-          seenKeys.add(k)
-          result.push({
-            id: `${m.manifestId || m.id || bl}-${bl}`,
-            blNumber: bl,
-            referenceNumber: `EDO-${cleanVoy || 'IMP'}`,
-            vesselName: m.vesselName || 'Tàu nhập Hãng tàu',
-            voyageNumber: m.voyageNumber || rawVoy,
-            shippingLine: m.shippingLine || m.carrierName || 'Hãng tàu Quốc tế',
-            containerCount: bConts.length,
-            containers: bConts.map(c => ({
-              containerNumber: c.containerNumber || c.containerId,
-              typeCode: c.isoType || c.typeCode || '40HC',
-              sealNumber: c.sealNumber || 'SL-88412',
-              grossWeightKg: c.grossWeightKg || 24500,
-              commodity: c.cargoDescription || c.commodity || 'Hàng hóa nhập khẩu',
-              blNumber: c.blNumber || bl,
-            })),
-            validUntil: '2026-11-30',
-            emptyReturnDepot: 'Depot Cảng Tiên Sa',
-            dischargePort: m.pod || m.portOfDischarge || 'VNDAD (Cảng Tiên Sa)',
-          })
-        })
-      }
-    })
-
-    // 3. Tàu nhập chuẩn Demo nếu chưa có (EVERGREEN DEMO 02 - NXP-EVG02-I)
-    const evgKey = normKey('EDO-NXP-EVG02-I')
-    if (!seenKeys.has(evgKey) && !seenKeys.has(normKey('NXP-EVG02-I'))) {
-      seenKeys.add(evgKey)
-      result.push({
-        id: 'IMPORT-EVG02',
-        blNumber: 'BL-NXP-EVG02-I',
-        referenceNumber: 'EDO-NXP-EVG02-I',
-        bookingNumber: 'BK-NXP-EVG02-I',
-        vesselName: 'EVERGREEN DEMO 02',
-        voyageNumber: 'NXP-EVG02-I',
-        shippingLine: 'Evergreen Marine Corp. (EMC)',
-        containerCount: 4,
-        validUntil: '2026-11-30',
-        emptyReturnDepot: 'Depot Cảng Tiên Sa',
-        dischargePort: 'VNDAD (Cảng Tiên Sa)',
-        containers: [
-          { containerNumber: 'EMCU9041235', typeCode: '40HC', sealNumber: 'EMC-89211', grossWeightKg: 26800, commodity: 'Linh kiện điện tử & Viễn thông', blNumber: 'BL-NXP-EVG02-I' },
-          { containerNumber: 'EMCU9041236', typeCode: '40HC', sealNumber: 'EMC-89212', grossWeightKg: 25400, commodity: 'Thiết bị gia dụng cao cấp', blNumber: 'BL-NXP-EVG02-I' },
-          { containerNumber: 'EVER4091823', typeCode: '20GP', sealNumber: 'EMC-78103', grossWeightKg: 21500, commodity: 'Máy móc cơ khí chính xác', blNumber: 'BL-NXP-EVG02-I' },
-          { containerNumber: 'TGHU7123849', typeCode: '40RF', sealNumber: 'EMC-99120', grossWeightKg: 28000, commodity: 'Thực phẩm đông lạnh nhập khẩu', isReefer: true, blNumber: 'BL-NXP-EVG02-I' },
-        ]
-      })
-    }
-
+    // Chỉ liệt kê vận đơn / lệnh eDO thật của doanh nghiệp do hệ thống trả về (không trộn dữ liệu mẫu hay bản khai của công ty khác)
     return result
-  }, [form.flow, selectableSourceItems, manifestSyncVersion])
+  }, [form.flow, selectableSourceItems])
 
   const allExportSources = useMemo(() => {
     const isDemoItem = item => {
@@ -3226,7 +3122,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                             <label style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
                               Chọn Vận đơn (B/L) hoặc Lệnh eDO từ danh sách <span style={{ color: '#dc2626' }}>*</span>
                             </label>
-                            <select
+                            <Select
                               aria-label="Chọn vận đơn hoặc lệnh eDO hàng nhập"
                               value={step1ImportInput}
                               onChange={event => {
@@ -3268,7 +3164,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                   </option>
                                 )
                               })}
-                            </select>
+                            </Select>
                             <span style={{ color: '#64748b', fontSize: '12px' }}>
                               Chọn từ danh sách để tự động điền thông tin tàu và danh sách container hàng nhập.
                             </span>
@@ -3395,7 +3291,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                             <label style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
                               Số vận đơn (B/L) hàng xuất <span style={{ color: '#dc2626' }}>*</span>
                             </label>
-                            <select
+                            <Select
                               aria-label="Chọn vận đơn của doanh nghiệp"
                               value={step1BookingInput || form.source.referenceNumber || form.source.blNumber || ''}
                               onChange={event => {
@@ -3440,7 +3336,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                   </option>
                                 )
                               })}
-                            </select>
+                            </Select>
                             <span style={{ color: '#64748b', fontSize: '12px' }}>
                               Chọn vận đơn từ danh sách để tự động tra cứu thông tin chuyến tàu và container từ hãng tàu.
                             </span>
