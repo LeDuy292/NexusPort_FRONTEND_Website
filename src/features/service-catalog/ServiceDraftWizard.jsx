@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   AlertCircle,
@@ -330,25 +330,90 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
       containers: [],
     } : null
 
-    // Sau đó mới tìm trong bản khai Hãng tàu (không tự sinh dữ liệu giả)
-    if (!matched) matched = allExportManifests.find(b => {
-      const bNum = (b.bookingNumber || '').trim().toUpperCase()
-      const bId = (b.bookingId || '').trim().toUpperCase()
-      const aliases = (b.bookingAliases || []).map(a => String(a).trim().toUpperCase())
+    // Tìm trong Gate Bookings của doanh nghiệp (manifestPortSyncService)
+    if (!matched) {
+      let gateBookings = []
+      try { gateBookings = manifestPortSyncService.getGeneratedGateBookings() || [] } catch { gateBookings = [] }
+      const gbMatches = gateBookings.filter(gb => {
+        const isExp = String(gb.direction || gb.flow || gb.operation || '').toUpperCase().includes('EXPORT') ||
+          String(gb.operation || '').toUpperCase() === 'DROPOFF' ||
+          String(gb.bookingType || '').toUpperCase() === 'DROPOFF'
+        if (!isExp) return false
+        const bBl = norm(gb.blNumber || gb.cargoDeclarationId || gb.billOfLading || '')
+        const bBk = norm(gb.bookingNumber || gb.bookingCode || gb.id || '')
+        return bBl === cleanNorm || bBk === cleanNorm
+      })
+      if (gbMatches.length > 0) {
+        const first = gbMatches[0]
+        matched = {
+          bookingId: first.id || cleanBooking,
+          bookingNumber: first.bookingNumber || first.bookingCode || cleanBooking,
+          blNumber: first.blNumber || first.cargoDeclarationId || first.billOfLading || cleanBooking,
+          vesselName: first.vesselName || 'Tàu xuất Hãng tàu',
+          voyageNumber: first.voyageNumber || 'Chuyến xuất',
+          shippingLine: first.shippingLine || 'Hãng tàu Quốc tế',
+          eta: first.appointmentStart || first.eta || '2026-11-25T08:00:00Z',
+          cyCutoff: first.appointmentEnd || first.cyCutoff || '2026-11-25T18:00:00Z',
+          dischargePort: first.pod || 'VNHPH',
+          containerCount: gbMatches.length,
+          containers: gbMatches.map(gb => ({
+            containerNumber: gb.containerId,
+            typeCode: gb.containerType || '40HC',
+            sealNumber: gb.sealNumber || 'SL-88412',
+            grossWeightKg: gb.grossWeightKg || 25400,
+            commodity: gb.cargoDescription || 'Hàng hóa xuất khẩu',
+            blNumber: gb.cargoDeclarationId || gb.blNumber || cleanBooking,
+          })),
+        }
+      }
+    }
 
-      const bNumNorm = norm(bNum)
-      const bIdNorm = norm(bId)
+    // Sau đó mới tìm trong bản khai Hãng tàu (hỗ trợ cả tìm theo B/L, Bill con hoặc Booking)
+    if (!matched) {
+      for (const b of allExportManifests) {
+        const bNum = (b.bookingNumber || '').trim().toUpperCase()
+        const bId = (b.bookingId || '').trim().toUpperCase()
+        const bBl = (b.blNumber || '').trim().toUpperCase()
+        const aliases = (b.bookingAliases || []).map(a => String(a).trim().toUpperCase())
 
-      return (
-        bNum === cleanBooking ||
-        bId === cleanBooking ||
-        (cleanNorm && (
-          bNumNorm === cleanNorm ||
-          bIdNorm === cleanNorm ||
-          aliases.some(a => norm(a) === cleanNorm)
-        ))
-      )
-    })
+        const bNumNorm = norm(bNum)
+        const bIdNorm = norm(bId)
+        const bBlNorm = norm(bBl)
+
+        const matchedBill = Array.isArray(b.bills)
+          ? b.bills.find(bill => norm(bill.blNumber) === cleanNorm || norm(bill.billOfLading) === cleanNorm)
+          : null
+
+        if (
+          bNum === cleanBooking ||
+          bId === cleanBooking ||
+          bBl === cleanBooking ||
+          matchedBill ||
+          (cleanNorm && (
+            bNumNorm === cleanNorm ||
+            bIdNorm === cleanNorm ||
+            bBlNorm === cleanNorm ||
+            aliases.some(a => norm(a) === cleanNorm)
+          ))
+        ) {
+          const billConts = matchedBill?.containers || b.containers || []
+          matched = {
+            bookingId: b.bookingId || cleanBooking,
+            bookingNumber: b.bookingNumber || cleanBooking,
+            blNumber: matchedBill?.blNumber || b.blNumber || cleanBooking,
+            vesselName: b.vesselName || 'Tàu xuất Hãng tàu',
+            voyageNumber: b.voyageNumber || 'Chuyến xuất',
+            shippingLine: b.shippingLine || b.carrierName || 'Hãng tàu Quốc tế',
+            eta: b.eta || '2026-11-25T08:00:00Z',
+            cyCutoff: b.cyCutoff || b.eta || '2026-11-25T18:00:00Z',
+            dischargePort: b.pod || b.dischargePort || 'VNHPH',
+            containerCount: billConts.length || b.containerCount || 1,
+            containers: billConts,
+          }
+          break
+        }
+      }
+    }
 
     if (!matched) {
       matched = KNOWN_EXPORT_DATABASE.find(b => {
@@ -1435,7 +1500,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
   const ordersListQuery = useQuery({
     queryKey: ['service-orders', 'paid-wizard-check'],
-    queryFn: () => serviceOrdersApi.list({ pageSize: 50 }),
+    queryFn: () => serviceOrdersApi.list({ pageSize: 100 }),
     retry: false,
     staleTime: 15000,
   })
@@ -1505,8 +1570,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
     })
   }, [sources.data?.items, form.flow, ordersListQuery.data, manifestSyncVersion])
 
-  // Danh sách Vận đơn / Lệnh eDO hàng nhập thực tế của doanh nghiệp
-  const realImportSources = useMemo(() => {
+  // Toàn bộ danh sách Vận đơn / Lệnh eDO hàng nhập thực tế trước khi lọc
+  const allImportSources = useMemo(() => {
     if (form.flow !== 'IMPORT') return []
     const normKey = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
     const seenKeys = new Set()
@@ -1655,6 +1720,224 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
 
     return result
   }, [form.flow, selectableSourceItems, manifestSyncVersion])
+
+  const allExportSources = useMemo(() => {
+    const isDemoItem = item => {
+      const bl = String(item?.blNumber || '').toUpperCase()
+      const bk = String(item?.bookingNumber || '').toUpperCase()
+      const vs = String(item?.vesselName || '').toUpperCase()
+      return bl.includes('DEMO-EPORT') || bk.includes('DEMO-EPORT') || vs.includes('DEMO EPORT')
+    }
+    const normKey = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const seenKeys = new Set()
+    const result = []
+
+    // Lấy thông tin công ty của tài khoản đăng nhập hiện tại
+    let storedUser = null
+    try {
+      storedUser = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || '{}')
+    } catch {}
+    const userCompany = (storedUser?.companyName || storedUser?.company || storedUser?.carrierName || '').trim()
+    const userCompanyNorm = normKey(userCompany)
+    const isCarrier = ['carrier', 'transport', 'vận tải'].some(r => String(storedUser?.role || '').toLowerCase().includes(r))
+    const matchesCompany = (sourceCompany) => {
+      if (!userCompanyNorm || !isCarrier) return true
+      const scNorm = normKey(sourceCompany)
+      if (!scNorm) return true
+      return scNorm.includes(userCompanyNorm) || userCompanyNorm.includes(scNorm)
+    }
+
+    // 1. Quét từ Gate Bookings xuất khẩu (manifestPortSyncService) của công ty
+    let gateBookings = []
+    try { gateBookings = manifestPortSyncService.getGeneratedGateBookings() || [] } catch { gateBookings = [] }
+    const gbGroups = new Map()
+    gateBookings.forEach(gb => {
+      const isExp = String(gb.direction || gb.flow || gb.operation || '').toUpperCase().includes('EXPORT') ||
+        String(gb.operation || '').toUpperCase() === 'DROPOFF' ||
+        String(gb.bookingType || '').toUpperCase() === 'DROPOFF'
+      if (!isExp || isDemoItem(gb)) return
+      const bCompany = gb.transportCompany || gb.company || gb.carrierProfile?.companyName
+      if (!matchesCompany(bCompany)) return
+
+      const code = gb.blNumber || gb.cargoDeclarationId || gb.billOfLading || gb.bookingNumber || gb.bookingCode
+      const k = normKey(code)
+      if (!k) return
+      if (!gbGroups.has(k)) {
+        gbGroups.set(k, {
+          id: gb.id || code,
+          blNumber: gb.blNumber || gb.cargoDeclarationId || gb.billOfLading || code,
+          bookingNumber: gb.bookingNumber || gb.bookingCode || code,
+          vesselName: gb.vesselName || 'Tàu xuất Hãng tàu',
+          voyageNumber: gb.voyageNumber || 'Chuyến xuất',
+          shippingLine: gb.shippingLine || 'Hãng tàu Quốc tế',
+          containers: [],
+        })
+      }
+      const grp = gbGroups.get(k)
+      const cNo = (gb.containerId || gb.containerNumber || '').trim().toUpperCase()
+      if (cNo && !grp.containers.includes(cNo)) grp.containers.push(cNo)
+    })
+    gbGroups.forEach((val, k) => {
+      if (seenKeys.has(k)) return
+      seenKeys.add(k)
+      result.push({
+        ...val,
+        containerCount: val.containers.length || 1,
+      })
+    })
+
+    // 2. Quét từ API nguồn (selectableSourceItems)
+    ;(selectableSourceItems || []).forEach(item => {
+      if (!item || isDemoItem(item)) return
+      if (!matchesCompany(item.transportCompany || item.company || item.operatorName)) return
+      const code = item.blNumber || item.bookingNumber
+      const k = normKey(code)
+      if (!k || seenKeys.has(k)) return
+      seenKeys.add(k)
+      result.push(item)
+    })
+
+    // 3. Quét từ Bản khai Manifest xuất khẩu (allExportManifests)
+    ;(allExportManifests || []).forEach(m => {
+      if (!m || isDemoItem(m)) return
+      if (Array.isArray(m.bills) && m.bills.length > 0) {
+        m.bills.forEach(b => {
+          if (!matchesCompany(b.transportCompany || b.consignee || b.shipper || m.transportCompany)) return
+          const code = b.blNumber || m.blNumber || m.bookingNumber
+          const k = normKey(code)
+          if (!k || seenKeys.has(k)) return
+          seenKeys.add(k)
+          result.push({
+            id: `${m.bookingId || code}-${code}`,
+            blNumber: code,
+            bookingNumber: m.bookingNumber || code,
+            vesselName: m.vesselName,
+            voyageNumber: m.voyageNumber,
+            shippingLine: m.shippingLine || m.carrierName || 'Hãng tàu Quốc tế',
+            containerCount: (b.containers || []).length || (m.containers || []).length || 1,
+            containers: b.containers || m.containers || [],
+          })
+        })
+      } else {
+        if (!matchesCompany(m.transportCompany || m.company)) return
+        const code = m.blNumber || m.bookingNumber
+        const k = normKey(code)
+        if (!k || seenKeys.has(k)) return
+        seenKeys.add(k)
+        result.push({
+          id: m.bookingId || code,
+          blNumber: m.blNumber || code,
+          bookingNumber: m.bookingNumber || code,
+          vesselName: m.vesselName,
+          voyageNumber: m.voyageNumber,
+          shippingLine: m.shippingLine || m.carrierName || 'Hãng tàu Quốc tế',
+          containerCount: (m.containers || []).length || 1,
+          containers: m.containers || [],
+        })
+      }
+    })
+
+    return result
+  }, [selectableSourceItems, allExportManifests, manifestSyncVersion])
+
+  // Lấy toàn bộ mã B/L, Booking, eDO và Container đã được tạo đơn hoặc đặt Booking trong hệ thống
+  const bookedContext = useMemo(() => {
+    const norm = str => String(str || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const bookedBlSet = new Set()
+    const bookedContSet = new Set()
+
+    // 1. Từ Service Orders (eport service orders)
+    if (ordersListQuery.data?.items) {
+      ordersListQuery.data.items.forEach(order => {
+        const st = String(order.status || '').toUpperCase()
+        if (st === 'CANCELLED' || st === 'REJECTED') return
+        const bl = norm(order.source?.blNumber)
+        const ref = norm(order.source?.referenceNumber)
+        const bk = norm(order.source?.bookingNumber)
+        if (bl) bookedBlSet.add(bl)
+        if (ref) bookedBlSet.add(ref)
+        if (bk) bookedBlSet.add(bk)
+        if (order.sourceLabel) {
+          const sl = norm(order.sourceLabel)
+          if (sl) bookedBlSet.add(sl)
+        }
+        (order.lines || []).forEach(l => {
+          const num = (l.declaration?.containerNumber || l.containerNumber || '').toUpperCase().trim()
+          if (num) bookedContSet.add(num)
+        })
+      })
+    }
+
+    // 2. Từ Gate Bookings (manifestPortSyncService)
+    try {
+      const gbs = manifestPortSyncService.getGeneratedGateBookings() || []
+      gbs.forEach(b => {
+        const st = String(b.status || '').toLowerCase()
+        if (st === 'cancelled' || st === 'canceled' || st === 'rejected') return
+        const bl = norm(b.cargoDeclarationId || b.blNumber || b.billOfLading)
+        const bk = norm(b.bookingNumber || b.bookingCode || b.id)
+        if (bl) bookedBlSet.add(bl)
+        if (bk) bookedBlSet.add(bk)
+        const cNo = String(b.containerId || b.containerNumber || '').toUpperCase().trim()
+        if (cNo) bookedContSet.add(cNo)
+      })
+    } catch (err) {
+      console.warn('Lỗi đọc gate bookings:', err)
+    }
+
+    return { bookedBlSet, bookedContSet }
+  }, [ordersListQuery.data, manifestSyncVersion])
+
+  const isSourceItemBooked = useCallback((item) => {
+    if (!item) return false
+    const norm = str => String(str || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    const { bookedBlSet, bookedContSet } = bookedContext
+
+    // Nếu B/L này đang được chọn trên form hiện tại thì không ẩn để user thao tác
+    const currentKey = norm(form.source.blNumber || form.source.referenceNumber || step1ImportInput || step1BookingInput)
+    const itemKeys = [
+      item.blNumber,
+      item.referenceNumber,
+      item.bookingNumber,
+      item.id,
+      ...(item.bookingAliases || [])
+    ].map(norm).filter(Boolean)
+
+    if (currentKey && itemKeys.includes(currentKey)) {
+      return false
+    }
+
+    // A. Nếu B/L có danh sách container:
+    const conts = Array.isArray(item.containers) && item.containers.length > 0 ? item.containers : []
+    if (conts.length > 0) {
+      const remainingConts = conts.filter(c => {
+        const cNo = (typeof c === 'string' ? c : c.containerNumber || c.containerId || '').trim().toUpperCase()
+        return cNo && !bookedContSet.has(cNo)
+      })
+      // Nếu tất cả container thuộc B/L này đều đã được booking -> ĐÃ BOOKING -> Ẩn khỏi dropdown!
+      if (remainingConts.length === 0) {
+        return true
+      }
+      return false
+    }
+
+    // B. Nếu B/L không có danh sách container chi tiết:
+    if (itemKeys.some(k => bookedBlSet.has(k))) {
+      return true
+    }
+
+    return false
+  }, [bookedContext, form.source.blNumber, form.source.referenceNumber, step1ImportInput, step1BookingInput])
+
+  // Danh sách Vận đơn / Lệnh eDO hàng nhập hiển thị trên Dropdown (chỉ hiển thị những B/L chưa booking)
+  const realImportSources = useMemo(() => {
+    return (allImportSources || []).filter(item => !isSourceItemBooked(item))
+  }, [allImportSources, isSourceItemBooked])
+
+  // Danh sách Vận đơn / Booking hàng xuất hiển thị trên Dropdown (chỉ hiển thị những B/L chưa booking)
+  const realExportSources = useMemo(() => {
+    return (allExportSources || []).filter(item => !isSourceItemBooked(item))
+  }, [allExportSources, isSourceItemBooked])
 
   const rawContainersForBl = useMemo(() => {
     const currentBl = (form.source.blNumber || step2BlInput || '').trim().toUpperCase()
@@ -1826,8 +2109,8 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
         return false
       }
 
-      // 1. Quét qua realImportSources (bao gồm EVERGREEN DEMO 02 và các bản khai đã gom)
-      ;(realImportSources || []).forEach(item => {
+      // 1. Quét qua allImportSources và realImportSources (bao gồm EVERGREEN DEMO 02 và các bản khai đã gom)
+      ;([...(allImportSources || []), ...(realImportSources || [])]).forEach(item => {
         const iBl = norm(item.blNumber)
         const iEdo = norm(item.referenceNumber || item.edoNumber)
         const iBk = norm(item.bookingNumber)
@@ -2968,61 +3251,27 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                                 {sources.isFetching && !realImportSources.length
                                   ? 'Đang tải vận đơn hàng nhập…'
                                   : realImportSources.length
-                                    ? `Chọn vận đơn (B/L) hoặc eDO của doanh nghiệp (${realImportSources.length})`
-                                    : 'Chưa có vận đơn nhập khẩu nào'}
+                                    ? `Chọn Vận đơn (B/L) hoặc Lệnh eDO từ danh sách (${realImportSources.length} Vận đơn chưa booking)`
+                                    : 'Không có vận đơn nào chưa booking'}
                               </option>
-                              {realImportSources.map(item => (
-                                <option key={item.id} value={item.blNumber || item.referenceNumber}>
-                                  {item.blNumber || item.referenceNumber} · {item.vesselName} / {item.voyageNumber} · {item.containerCount} cont
-                                </option>
-                              ))}
+                              {realImportSources.map(item => {
+                                const conts = (item.containers || [])
+                                const unbooked = conts.length > 0
+                                  ? conts.filter(c => {
+                                      const cNo = (typeof c === 'string' ? c : c.containerNumber || c.containerId || '').trim().toUpperCase()
+                                      return cNo && !bookedContext.bookedContSet.has(cNo)
+                                    }).length
+                                  : item.containerCount || 1
+                                return (
+                                  <option key={item.id} value={item.blNumber || item.referenceNumber}>
+                                    {item.blNumber || item.referenceNumber} · {item.vesselName} / {item.voyageNumber} · {unbooked} cont
+                                  </option>
+                                )
+                              })}
                             </select>
                             <span style={{ color: '#64748b', fontSize: '12px' }}>
                               Chọn từ danh sách để tự động điền thông tin tàu và danh sách container hàng nhập.
                             </span>
-                          </div>
-
-                          {/* 2. HOẶC NHẬP THỦ CÔNG */}
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '4px' }}>
-                            <label style={{ fontSize: '13px', fontWeight: 500, color: '#475569' }}>
-                              Hoặc nhập mã số Vận đơn (B/L) / Lệnh eDO thủ công:
-                            </label>
-                            <div style={{ display: 'flex', gap: '8px' }}>
-                              <input
-                                aria-label="Số vận đơn (B/L) nhập khẩu"
-                                maxLength={100}
-                                value={step1ImportInput}
-                                onChange={event => {
-                                  setStep1ImportInput(event.target.value.toUpperCase())
-                                }}
-                                onKeyDown={event => {
-                                  if (event.key === 'Enter') {
-                                    event.preventDefault()
-                                    handleConfirmImportEdo()
-                                  }
-                                }}
-                                placeholder="Nhập số B/L hoặc số eDO (VD: EDO-NXP-EVG02-I, BL-INB-DAD-2601...)"
-                                style={{
-                                  flex: 1,
-                                  height: '38px',
-                                  padding: '0 12px',
-                                  border: '1px solid #cbd5e1',
-                                  borderRadius: '6px',
-                                  fontSize: '13px',
-                                  fontFamily: 'monospace',
-                                  color: '#0f172a',
-                                  background: '#ffffff',
-                                }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => handleConfirmImportEdo()}
-                                className="epc-button primary"
-                                style={{ height: '38px', padding: '0 20px', fontSize: '13px', fontWeight: 500 }}
-                              >
-                                Kiểm tra
-                              </button>
-                            </div>
                           </div>
 
                           {step1ImportError && (
@@ -3140,92 +3389,62 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                         </span>
                       </div>
 
-                      {!step1BookingConfirmed ? (() => {
-                        const isDemoItem = item => {
-                          const bl = String(item?.blNumber || '').toUpperCase()
-                          const bk = String(item?.bookingNumber || '').toUpperCase()
-                          const vs = String(item?.vesselName || '').toUpperCase()
-                          return bl.includes('DEMO-EPORT') || bk.includes('DEMO-EPORT') || vs.includes('DEMO EPORT')
-                        }
-                        const normKey = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
-                        const seenKeys = new Set()
-                        const realExportSources = []
-                        ;(selectableSourceItems || []).forEach(item => {
-                          if (!item || isDemoItem(item)) return
-                          const code = item.blNumber || item.bookingNumber
-                          const k = normKey(code)
-                          if (!k || seenKeys.has(k)) return
-                          seenKeys.add(k)
-                          realExportSources.push(item)
-                        })
-                        ;(allExportManifests || []).forEach(m => {
-                          if (!m || isDemoItem(m)) return
-                          if (Array.isArray(m.bills) && m.bills.length > 0) {
-                            m.bills.forEach(b => {
-                              const code = b.blNumber || m.blNumber || m.bookingNumber
-                              const k = normKey(code)
-                              if (!k || seenKeys.has(k)) return
-                              seenKeys.add(k)
-                              realExportSources.push({
-                                id: `${m.bookingId || code}-${code}`,
-                                blNumber: code,
-                                bookingNumber: m.bookingNumber || code,
-                                vesselName: m.vesselName,
-                                voyageNumber: m.voyageNumber,
-                                containerCount: (b.containers || []).length || (m.containers || []).length || 1,
-                              })
-                            })
-                          } else {
-                            const code = m.blNumber || m.bookingNumber
-                            const k = normKey(code)
-                            if (!k || seenKeys.has(k)) return
-                            seenKeys.add(k)
-                            realExportSources.push({
-                              id: m.bookingId || code,
-                              blNumber: m.blNumber || code,
-                              bookingNumber: m.bookingNumber || code,
-                              vesselName: m.vesselName,
-                              voyageNumber: m.voyageNumber,
-                              containerCount: (m.containers || []).length || 1,
-                            })
-                          }
-                        })
-                        return (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '640px' }}>
-                          <label style={{ fontSize: '13px', fontWeight: 500, color: '#334155' }}>
-                            Số vận đơn (B/L) hàng xuất <span style={{ color: '#dc2626' }}>*</span>
-                          </label>
-                          <Select
-                            aria-label="Chọn vận đơn của doanh nghiệp"
-                            value=""
-                            onChange={event => {
-                              const code = event.target.value
-                              if (!code) return
-                              setStep1BookingInput(code)
-                              handleConfirmExportBooking(code)
-                            }}
-                            disabled={sources.isFetching && !realExportSources.length}
-                            style={{
-                              height: '38px', padding: '0 10px', border: '1px solid #cbd5e1', borderRadius: '6px',
-                              fontSize: '13px', color: '#0f172a', background: '#ffffff',
-                            }}
-                          >
-                            <option value="">
-                              {sources.isFetching && !realExportSources.length
-                                ? 'Đang tải booking của doanh nghiệp…'
-                                : realExportSources.length
-                                  ? `Chọn vận đơn của doanh nghiệp (${realExportSources.length})`
-                                  : 'Chưa có vận đơn nào còn container để đăng ký dịch vụ'}
-                            </option>
-                            {realExportSources.map(item => (
-                              <option key={item.id} value={item.blNumber || item.bookingNumber}>
-                                {item.blNumber || item.bookingNumber} · {item.vesselName} / {item.voyageNumber} · {item.containerCount} cont
+                      {!step1BookingConfirmed ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxWidth: '640px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                            <label style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
+                              Số vận đơn (B/L) hàng xuất <span style={{ color: '#dc2626' }}>*</span>
+                            </label>
+                            <select
+                              aria-label="Chọn vận đơn của doanh nghiệp"
+                              value={step1BookingInput || form.source.referenceNumber || form.source.blNumber || ''}
+                              onChange={event => {
+                                const code = event.target.value
+                                if (!code) return
+                                setStep1BookingInput(code)
+                                handleConfirmExportBooking(code)
+                              }}
+                              disabled={sources.isFetching && !realExportSources.length}
+                              style={{
+                                width: '100%',
+                                height: '40px',
+                                padding: '0 10px',
+                                border: '1px solid #cbd5e1',
+                                borderRadius: '6px',
+                                fontSize: '13px',
+                                color: '#0f172a',
+                                background: '#ffffff',
+                                cursor: 'pointer',
+                              }}
+                            >
+                              <option value="">
+                                {sources.isFetching && !realExportSources.length
+                                  ? 'Đang tải vận đơn của doanh nghiệp…'
+                                  : realExportSources.length
+                                    ? `Chọn Vận đơn (B/L) của doanh nghiệp (${realExportSources.length} Vận đơn chưa booking)`
+                                    : 'Không có vận đơn nào chưa booking'}
                               </option>
-                            ))}
-                          </Select>
-                          <span style={{ color: '#64748b', fontSize: '12px' }}>
-                            Chọn vận đơn từ danh sách để tự động tra cứu thông tin chuyến tàu và container từ hãng tàu.
-                          </span>
+                              {realExportSources.map(item => {
+                                const blText = item.blNumber || item.bookingNumber
+                                const bkExtra = item.bookingNumber && item.bookingNumber !== item.blNumber ? ` (Booking: ${item.bookingNumber})` : ''
+                                const conts = (item.containers || [])
+                                const unbooked = conts.length > 0
+                                  ? conts.filter(c => {
+                                      const cNo = (typeof c === 'string' ? c : c.containerNumber || c.containerId || '').trim().toUpperCase()
+                                      return cNo && !bookedContext.bookedContSet.has(cNo)
+                                    }).length
+                                  : item.containerCount || (item.containers?.length) || 1
+                                return (
+                                  <option key={item.id} value={item.blNumber || item.bookingNumber}>
+                                    {blText}{bkExtra} · Tàu {item.vesselName} ({item.voyageNumber}) · {unbooked} cont
+                                  </option>
+                                )
+                              })}
+                            </select>
+                            <span style={{ color: '#64748b', fontSize: '12px' }}>
+                              Chọn vận đơn từ danh sách để tự động tra cứu thông tin chuyến tàu và container từ hãng tàu.
+                            </span>
+                          </div>
 
                           {step1BookingError && (
                             <div style={{
@@ -3245,8 +3464,7 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                             </div>
                           )}
                         </div>
-                        )
-                      })() : (
+                      ) : (
                         /* KHI ĐÃ NHẤP OK -> BẢNG THÔNG TIN TÀU BASIC */
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
@@ -3559,178 +3777,72 @@ export default function ServiceDraftWizard({ services = [], initialServiceId, dr
                             </button>
                           </div>
 
-                          {/* BẢNG TÍCH CHỌN CONTAINER BASIC */}
-                          <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '6px', padding: '14px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
-                              <div>
-                                <strong style={{ fontSize: '14px', color: '#1e293b' }}>
-                                  Danh sách Container từ Hãng tàu ({availableContainersForBl.length})
-                                </strong>
-                                <span style={{ fontSize: '12px', color: '#475569', marginLeft: '12px' }}>
-                                  Đã chọn: <strong style={{ color: '#0f172a' }}>{form.lines.length}</strong> / {availableContainersForBl.length} container
-                                </span>
-                              </div>
-
-                              <div style={{ display: 'flex', gap: '8px' }}>
-                                <button
-                                  type="button"
-                                  onClick={handleSelectAllExportContainers}
-                                  style={{
-                                    fontSize: '12px',
-                                    padding: '5px 12px',
-                                    background: '#f8fafc',
-                                    border: '1px solid #cbd5e1',
-                                    borderRadius: '4px',
-                                    color: '#1e293b',
-                                    fontWeight: 600,
-                                    cursor: 'pointer'
-                                  }}
-                                >
-                                  Tích chọn tất cả
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={handleDeselectAllExportContainers}
-                                  style={{
-                                    fontSize: '12px',
-                                    padding: '5px 12px',
-                                    background: '#f8fafc',
-                                    border: '1px solid #cbd5e1',
-                                    borderRadius: '4px',
-                                    color: '#64748b',
-                                    cursor: 'pointer'
-                                  }}
-                                >
-                                  Bỏ chọn tất cả
-                                </button>
-                              </div>
+                          {/* BẢNG TỔNG KẾT VÀ CHỈNH SỬA CÁC CONTAINER ĐÃ CHỌN (LUỒNG NHẬP KHẨU) */}
+                          {form.lines.length === 0 ? (
+                            <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '13px', background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px' }}>
+                              {availableContainersForBl.length === 0 && rawContainersForBl.length > 0 ? (
+                                <div style={{ padding: '16px', background: '#f0fdf4', border: '1px dashed #86efac', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+                                  <span style={{ fontSize: '24px' }}>✅</span>
+                                  <strong style={{ fontSize: '13px', color: '#166534' }}>
+                                    Tất cả {rawContainersForBl.length} container thuộc Vận đơn này đã được đăng ký booking &amp; thanh toán hoàn tất!
+                                  </strong>
+                                  <span style={{ fontSize: '12px', color: '#15803d' }}>
+                                    Không còn container nào chờ khai báo. Vui lòng nhập số B/L khác hoặc nhấn Tiếp tục nếu đã chọn container từ trước.
+                                  </span>
+                                </div>
+                              ) : availableContainersForBl.length > 0 ? (
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                                  <span>Chưa có container nào được chọn trong đơn.</span>
+                                  <button
+                                    type="button"
+                                    onClick={handleSelectAllExportContainers}
+                                    style={{
+                                      fontSize: '12px',
+                                      padding: '6px 14px',
+                                      background: '#0284c7',
+                                      border: 'none',
+                                      borderRadius: '4px',
+                                      color: '#ffffff',
+                                      fontWeight: 600,
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    Tích chọn lại tất cả ({availableContainersForBl.length} container)
+                                  </button>
+                                </div>
+                              ) : (
+                                'Không tìm thấy container nào thuộc số B/L này từ Hãng tàu.'
+                              )}
                             </div>
-
-                            {/* BẢNG HIỂN THỊ CONTAINER */}
-                            {availableContainersForBl.length === 0 ? (
-                              <div style={{ padding: '24px', textAlign: 'center', color: '#64748b', fontSize: '13px' }}>
-                                {rawContainersForBl.length > 0 ? (
-                                  <div style={{ padding: '16px', background: '#f0fdf4', border: '1px dashed #86efac', borderRadius: '8px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
-                                    <span style={{ fontSize: '24px' }}>✅</span>
-                                    <strong style={{ fontSize: '13px', color: '#166534' }}>
-                                      Tất cả {rawContainersForBl.length} container thuộc Vận đơn này đã được đăng ký booking &amp; thanh toán hoàn tất!
-                                    </strong>
-                                    <span style={{ fontSize: '12px', color: '#15803d' }}>
-                                      Không còn container nào chờ khai báo. Vui lòng nhập số B/L khác hoặc nhấn Tiếp tục nếu đã chọn container từ trước.
-                                    </span>
-                                  </div>
-                                ) : (
-                                  'Không tìm thấy container nào thuộc số B/L này từ Hãng tàu.'
+                          ) : (
+                            <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '16px' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
+                                <div>
+                                  <strong style={{ fontSize: '14px', color: '#1e293b' }}>
+                                    Danh sách Container lấy nguyên đã chọn ({form.lines.length} Container)
+                                  </strong>
+                                  <span style={{ fontSize: '12px', color: '#64748b', marginLeft: '12px' }}>
+                                    Tích chọn ô Niêm phong HQ nếu container có chì hải quan
+                                  </span>
+                                </div>
+                                {availableContainersForBl.length > form.lines.length && (
+                                  <button
+                                    type="button"
+                                    onClick={handleSelectAllExportContainers}
+                                    style={{
+                                      fontSize: '12px',
+                                      padding: '4px 10px',
+                                      background: '#f8fafc',
+                                      border: '1px solid #cbd5e1',
+                                      borderRadius: '4px',
+                                      color: '#0284c7',
+                                      fontWeight: 600,
+                                      cursor: 'pointer'
+                                    }}
+                                  >
+                                    Chọn lại tất cả ({availableContainersForBl.length})
+                                  </button>
                                 )}
-                              </div>
-                            ) : (
-                              <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>
-                                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-                                  <thead>
-                                    <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569' }}>
-                                      <th style={{ width: '44px', padding: '9px 12px', textAlign: 'center' }}>
-                                        <input
-                                          type="checkbox"
-                                          checked={availableContainersForBl.length > 0 && form.lines.length === availableContainersForBl.length}
-                                          onChange={e => e.target.checked ? handleSelectAllExportContainers() : handleDeselectAllExportContainers()}
-                                          style={{ cursor: 'pointer' }}
-                                        />
-                                      </th>
-                                      <th style={{ padding: '9px 12px', fontWeight: 600 }}>Số Container</th>
-                                      <th style={{ padding: '9px 12px', fontWeight: 600 }}>Loại</th>
-                                      <th style={{ padding: '9px 12px', fontWeight: 600 }}>Số Chì (Seal)</th>
-                                      <th style={{ padding: '9px 12px', fontWeight: 600 }}>Trọng lượng (kg)</th>
-                                      <th style={{ padding: '9px 12px', fontWeight: 600 }}>Hàng hóa</th>
-                                      <th style={{ padding: '9px 12px', fontWeight: 600 }}>Nơi trả rỗng / Cảng dỡ</th>
-                                      <th style={{ padding: '9px 12px', textAlign: 'center', fontWeight: 600 }}>Niêm phong HQ</th>
-                                    </tr>
-                                  </thead>
-                                  <tbody>
-                                    {availableContainersForBl.map((cont, idx) => {
-                                      const cNum = (cont.containerNumber || '').toUpperCase()
-                                      const matchedLine = form.lines.find(l => {
-                                        const snapNum = snapshots[l.sourceContainerId]?.containerNumber
-                                        const decNum = l.declaration?.containerNumber
-                                        return (snapNum || decNum) === cNum
-                                      })
-                                      const isChecked = Boolean(matchedLine)
-
-                                      return (
-                                        <tr
-                                          key={cont.containerNumber || idx}
-                                          onClick={() => handleToggleExportContainer(cont)}
-                                          style={{
-                                            borderBottom: '1px solid #f1f5f9',
-                                            background: isChecked ? '#f1f5f9' : '#ffffff',
-                                            cursor: 'pointer'
-                                          }}
-                                        >
-                                          <td style={{ padding: '9px 12px', textAlign: 'center' }}>
-                                            <input
-                                              type="checkbox"
-                                              checked={isChecked}
-                                              onChange={() => { }}
-                                              style={{ cursor: 'pointer' }}
-                                            />
-                                          </td>
-                                          <td style={{ padding: '9px 12px' }}>
-                                            <strong style={{ fontFamily: 'monospace', fontSize: '13px', color: isChecked ? '#0f172a' : '#334155' }}>
-                                              {cont.containerNumber}
-                                            </strong>
-                                          </td>
-                                          <td style={{ padding: '9px 12px', color: '#475569' }}>
-                                            {cont.typeCode || '40HC'}
-                                            {cont.isReefer && <span style={{ marginLeft: '4px', color: '#0284c7', fontSize: '11px', fontWeight: 600 }}>(Lạnh)</span>}
-                                            {cont.isDG && <span style={{ marginLeft: '4px', color: '#dc2626', fontSize: '11px', fontWeight: 600 }}>(DG)</span>}
-                                          </td>
-                                          <td style={{ padding: '9px 12px', color: '#475569' }}>
-                                            {cont.sealNumber || '-'}
-                                          </td>
-                                          <td style={{ padding: '9px 12px', color: '#475569' }}>
-                                            {(cont.grossWeightKg || 25000).toLocaleString('vi-VN')} kg
-                                          </td>
-                                          <td style={{ padding: '9px 12px', color: '#475569' }}>
-                                            {cont.commodity || 'Hàng nhập khẩu'}
-                                          </td>
-                                          <td style={{ padding: '9px 12px', color: '#475569' }}>
-                                            {cont.emptyReturnDepot || form.source.emptyReturnDepot || cont.dischargePort || 'Depot Cảng Tiên Sa'}
-                                          </td>
-                                          <td style={{ padding: '9px 12px', textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-                                            <input
-                                              type="checkbox"
-                                              disabled={!isChecked}
-                                              checked={Boolean(matchedLine?.customsSealRequired)}
-                                              onChange={e => {
-                                                if (matchedLine) {
-                                                  changeLine(matchedLine.sourceContainerId, l => ({
-                                                    ...l,
-                                                    customsSealRequired: e.target.checked,
-                                                  }))
-                                                }
-                                              }}
-                                              title={isChecked ? 'Tích nếu container có chì niêm phong Hải quan' : 'Tích chọn container trước'}
-                                              style={{ cursor: isChecked ? 'pointer' : 'not-allowed' }}
-                                            />
-                                          </td>
-                                        </tr>
-                                      )
-                                    })}
-                                  </tbody>
-                                </table>
-                              </div>
-                            )}
-                          </div>
-
-                          {/* BẢNG TỔNG KẾT VÀ CHỈNH SỬA CÁC CONTAINER ĐÃ CHỌN */}
-                          {form.lines.length > 0 && (
-                            <div style={{ background: '#ffffff', border: '1px solid #cbd5e1', borderRadius: '8px', padding: '16px', marginTop: '4px' }}>
-                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                <strong style={{ fontSize: '14px', color: '#1e293b' }}>
-                                  Danh sách Container lấy nguyên đã chọn ({form.lines.length} Container)
-                                </strong>
-                                <span style={{ fontSize: '12px', color: '#64748b' }}>
-                                  Tích chọn ô Niêm phong HQ nếu container có chì hải quan
-                                </span>
                               </div>
 
                               <div style={{ overflowX: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px' }}>

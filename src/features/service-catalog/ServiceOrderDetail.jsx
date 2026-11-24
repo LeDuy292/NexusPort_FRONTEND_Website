@@ -474,11 +474,8 @@ export default function ServiceOrderDetail({ orderId, initialTab = 'information'
           setNotice(`Đã kiểm tra kết quả giao dịch. ${paymentStatusLabels[result.paymentStatus] || 'Kết quả đã được cập nhật'}.`)
         }
       } else if (value.kind === 'CREATE_PAYMENT') {
-        if (result.paymentStatus === 'PAID') {
-          if (!shownSuccess.current) { shownSuccess.current = true; setSuccessOpen(true); onPaymentSuccessShown?.() }
-          await syncPaymentToCarrierBooking(result)
-        }
-        setNotice(result.paymentStatus === 'PAID' ? 'Hệ thống đã xác nhận thanh toán thành công cho đơn dịch vụ.' : result.payment?.checkoutUrl ? 'Đã tạo mã thanh toán VietQR. Quét mã QR hoặc mở cổng thanh toán để tiếp tục.' : 'Yêu cầu thanh toán đã được lưu. Quét mã QR để hoàn tất.')
+        // Chỉ tạo và hiển thị mã QR VietQR để người dùng quét chuyển khoản; không tự động báo thành công ngay.
+        setNotice(result.payment?.checkoutUrl ? 'Đã tạo mã thanh toán VietQR. Quét mã QR hoặc mở cổng thanh toán để chuyển tiền.' : 'Yêu cầu thanh toán đã được lưu. Quét mã QR để chuyển khoản.')
       } else {
         setNotice(`${actionNames[value.kind]} thành công.`)
         if (value.kind === 'REJECT' || value.kind === 'CANCEL') {
