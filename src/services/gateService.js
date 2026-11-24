@@ -2,32 +2,7 @@ import apiClient from './apiClient'
 import nodeApiClient from './nodeApiClient'
 import { webSerialGate, browserCamera } from './webSerialGate'
 
-// Địa chỉ dịch vụ AI / phần cứng. Mặc định theo cấu hình build (thường là dịch vụ trên cloud).
-// Máy tại cổng có cắm ESP32/webcam đặt khóa này để dùng dịch vụ chạy ngay trên máy đó (http://localhost:8000).
-const AI_URL_KEY = 'nexusport_ai_url'
-const LOCAL_AI_URL = 'http://localhost:8000'
-const readAiOverride = () => {
-  try { return (localStorage.getItem(AI_URL_KEY) || '').trim().replace(/\/+$/, '') } catch { return '' }
-}
-const AI_URL = readAiOverride() || import.meta.env.VITE_AI_URL || LOCAL_AI_URL
-export const hardwareSource = {
-  url: AI_URL,
-  isOverridden: Boolean(readAiOverride()),
-  isLocal: /^https?:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(AI_URL),
-  // Chọn máy đang cắm ESP32/webcam: localhost (cùng máy) hoặc địa chỉ máy khác trong mạng, ví dụ http://192.168.1.20:8000
-  choose() {
-    const typed = window.prompt(
-      'Nhập địa chỉ dịch vụ AI của máy đang cắm ESP32/webcam.\nCùng máy: http://localhost:8000\nMáy khác trong mạng: http://192.168.1.20:8000',
-      readAiOverride() || LOCAL_AI_URL,
-    )
-    if (typed == null) return
-    const url = typed.trim().replace(/\/+$/, '')
-    if (!/^https?:\/\/[^\s/]+(:\d+)?$/i.test(url)) { window.alert('Địa chỉ không hợp lệ. Ví dụ: http://192.168.1.20:8000'); return }
-    try { localStorage.setItem(AI_URL_KEY, url) } catch { /* bỏ qua */ }
-    window.location.reload()
-  },
-  useCloud() { try { localStorage.removeItem(AI_URL_KEY) } catch { /* bỏ qua */ } window.location.reload() },
-}
+const AI_URL = import.meta.env.VITE_AI_URL || 'http://localhost:8000'
 
 const aiFetch = async (path, options = {}) => {
   const url = `${AI_URL}${path}`
