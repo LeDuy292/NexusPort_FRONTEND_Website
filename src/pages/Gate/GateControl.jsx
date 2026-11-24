@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import apiClient from '../../services/apiClient'
-import gateService from '../../services/gateService'
+import gateService, { hardwareSource } from '../../services/gateService'
 import { gateOpenSeconds, getGatePassageSimulation } from '../../services/gatePassageSimulationService'
 import { driverSmartRouteService } from '../../services/driverSmartRouteService'
 import { formatPlateNumber, normalizePlate } from '../../utils/format'
@@ -676,6 +676,26 @@ export default function GateControl() {
               <span className={`w-2 h-2 rounded-full ${hwStatus?.esp32?.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
               {hwStatus?.esp32?.connected ? `ESP32 (${hwStatus.esp32.port}): Sẵn sàng` : 'ESP32: Đang kết nối...'}
             </span>
+            {!hwStatus?.esp32?.connected && (
+              <button
+                type="button"
+                onClick={hardwareSource.choose}
+                title={`Đang đọc phần cứng từ: ${hardwareSource.url}. ESP32 cắm vào máy khác sẽ không thấy. Bấm để chọn địa chỉ dịch vụ AI của máy đang cắm ESP32.`}
+                className="text-xs font-bold px-3 py-0.5 rounded-full border border-orange-300 bg-orange-50 text-orange-800 hover:bg-orange-100 cursor-pointer"
+              >
+                Chọn máy có ESP32…
+              </button>
+            )}
+            {hardwareSource.isOverridden && (
+              <button
+                type="button"
+                onClick={hardwareSource.useCloud}
+                title="Quay lại dùng dịch vụ AI mặc định trên cloud"
+                className="text-xs font-bold px-3 py-0.5 rounded-full border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer"
+              >
+                Dùng dịch vụ mặc định
+              </button>
+            )}
           </div>
         </div>
 
