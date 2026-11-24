@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react'
 import ActivateAccount from './pages/Auth/ActivateAccount'
+import LandingPage from './pages/Landing/LandingPage'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './routes/ProtectedRoute'
 import RoleRoute from './routes/RoleRoute'
@@ -112,6 +113,19 @@ function HomeRedirect() {
   return <Navigate to="/unauthorized" replace />
 }
 
+function RootRoute() {
+  const storedUser = localStorage.getItem('user') || sessionStorage.getItem('user')
+  let user = null
+  try {
+    user = storedUser ? JSON.parse(storedUser) : null
+  } catch {
+    user = null
+  }
+
+  if (!user || !user.role) return <LandingPage />
+  return <HomeRedirect />
+}
+
 function App() {
   return (
     <ErrorBoundary>
@@ -119,15 +133,14 @@ function App() {
       <Suspense fallback={<div className="p-8 text-sm text-slate-500">Đang tải…</div>}>
       <Routes>
         {/* Route Công khai */}
+        <Route path="/" element={<RootRoute />} />
+        <Route path="/landing" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/activate-account" element={<ActivateAccount />} />
         {import.meta.env.DEV && <Route element={<MainLayout previewUser={{username:'Bản xem trước',role:ROLES.DISPATCHER}} />}><Route path="/preview/yard" element={<YardDesignPreview previewOnly />} /></Route>}
 
         {/* Tuyến đường được Bảo vệ (Yêu cầu Đăng nhập) */}
         <Route element={<ProtectedRoute />}>
-        
-        {/* Route chuyển hướng trang chủ dựa theo vai trò */}
-        <Route path="/" element={<HomeRedirect />} />
 
         {/* Trang báo lỗi không có quyền truy cập (Fullscreen) */}
         <Route path="/unauthorized" element={<Unauthorized />} />
