@@ -2,9 +2,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import apiClient from '../../services/apiClient'
 import ImportDocumentTimeline from '../../components/Containers/ImportDocumentTimeline'
-import { btn, card as box, Info, PageHeader, StatCard, Pill, EmptyState, SectionTitle, inputCls, theadCls, thCls } from '../../components/Containers/docUi'
+import { btn, card as box, Info, PageHeader, StatCard, Pill, EmptyState, SectionTitle, Pager, inputCls, theadCls, thCls } from '../../components/Containers/docUi'
 import Select from '../../components/ui/Select'
 
+const PAGE_SIZE = 10
 const unwrap = res => res.data?.data ?? res.data
 const errorText = err => err?.response?.data?.message || err?.message || 'Không thể xử lý yêu cầu.'
 const when = value => (value ? new Date(value).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—')
@@ -23,6 +24,8 @@ export default function MyBillsPage() {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [direction, setDirection] = useState('')
+  const [showDone, setShowDone] = useState(false)
+  const [page, setPage] = useState(1)
   const [selected, setSelected] = useState('')
   const [detail, setDetail] = useState(null)
   const alive = useRef(true)
@@ -39,7 +42,12 @@ export default function MyBillsPage() {
     apiClient.get(`/bl-imports/my-bills/${encodeURIComponent(selected)}`).then(res => { if (alive.current) setDetail(unwrap(res)) }).catch(err => { if (alive.current) setError(errorText(err)) })
   }, [selected])
 
-  const shown = bills.filter(b => (!direction || b.direction === direction) && (!search.trim() || `${b.blNumber} ${b.voyageNumber} ${b.shipper} ${b.consignee}`.toLowerCase().includes(search.trim().toLowerCase())))
+  const doneCount = bills.filter(b => b.completed).length
+  const filtered = bills.filter(b => (showDone || !b.completed) && (!direction || b.direction === direction) && (!search.trim() || `${b.blNumber} ${b.voyageNumber} ${b.shipper} ${b.consignee}`.toLowerCase().includes(search.trim().toLowerCase())))
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
+  const currentPage = Math.min(page, pageCount)
+  const shown = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE)
+  useEffect(() => { setPage(1) }, [search, direction, showDone])
 
   return (
     <div className="p-6 md:p-8 w-full font-sans flex flex-col gap-6 bg-slate-50 min-h-screen">
@@ -59,13 +67,19 @@ export default function MyBillsPage() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] items-start">
         <section className={`${box} space-y-4`}>
-          <SectionTitle icon="receipt_long" aside={<span className="text-xs font-mono text-slate">{shown.length} vận đơn</span>}>Danh sách vận đơn</SectionTitle>
+          <SectionTitle icon="receipt_long" aside={<span className="text-xs font-mono text-slate">{filtered.length} vận đơn</span>}>Danh sách vận đơn</SectionTitle>
           <div className="flex flex-wrap gap-2">
             <input className={`${inputCls} min-w-0 flex-1`} placeholder="Số B/L, chuyến tàu, người gửi, người nhận" value={search} onChange={e => setSearch(e.target.value)} />
             <Select className={`${inputCls} !w-auto`} value={direction} onChange={e => setDirection(e.target.value)}>
               <option value="">Cả hai chiều</option><option value="EXPORT">Xuất khẩu</option><option value="IMPORT">Nhập khẩu</option>
             </Select>
           </div>
+          {doneCount > 0 && (
+            <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+              <input type="checkbox" checked={showDone} onChange={e => setShowDone(e.target.checked)} />
+              <span>Hiện cả vận đơn đã hoàn tất ({doneCount}). Mặc định đã ẩn: hàng xuất đã xếp tàu, hàng nhập đã giao khỏi bãi.</span>
+            </label>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[480px] border-collapse text-left text-xs">
               <thead className={theadCls}><tr><th className={thCls}>Số B/L</th><th className={thCls}>Chiều</th><th className={thCls}>Chuyến</th><th className={thCls}>Container</th><th className={thCls}>Trạng thái</th></tr></thead>
@@ -84,6 +98,7 @@ export default function MyBillsPage() {
               </tbody>
             </table>
           </div>
+          <Pager page={currentPage} pageCount={pageCount} total={filtered.length} pageSize={PAGE_SIZE} onChange={setPage} />
         </section>
 
         <section className="space-y-6">
