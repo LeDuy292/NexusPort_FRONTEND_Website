@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import apiClient from '../../services/apiClient'
-import gateService, { hardwareSource } from '../../services/gateService'
+import gateService from '../../services/gateService'
 import { webSerialGate, browserCamera } from '../../services/webSerialGate'
 import { gateOpenSeconds, getGatePassageSimulation } from '../../services/gatePassageSimulationService'
 import { driverSmartRouteService } from '../../services/driverSmartRouteService'
@@ -595,8 +595,9 @@ export default function GateControl() {
     serialScanBusyRef.current = true
     setIsAiScanning(true)
     try {
+      showToast('📸 Cảm biến báo có xe, đang chụp ảnh…')
       const blob = await browserCamera.captureBlob()
-      if (!blob) { showToast('Chưa có hình từ webcam. Hãy cho phép trình duyệt dùng camera.'); return }
+      if (!blob) { showToast('Webcam chưa cho hình. Kiểm tra quyền camera hoặc chương trình khác đang dùng webcam.'); return }
       const gateCode = lane === 'OUT' ? 'GATE_OUT_A' : 'GATE_IN_A'
       const laneCode = lane === 'OUT' ? 'LANE_02' : 'LANE_01'
       const overview = await new Promise(resolve => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.readAsDataURL(blob) })
@@ -797,26 +798,6 @@ export default function GateControl() {
                 {deviceBusy ? 'Đang kết nối…' : 'Kết nối thiết bị (USB)'}
               </button>
             ))}
-            {!hwStatus?.esp32?.connected && (
-              <button
-                type="button"
-                onClick={hardwareSource.choose}
-                title={`Đang đọc phần cứng từ: ${hardwareSource.url}. ESP32 cắm vào máy khác sẽ không thấy. Bấm để chọn địa chỉ dịch vụ AI của máy đang cắm ESP32.`}
-                className="text-xs font-bold px-3 py-0.5 rounded-full border border-orange-300 bg-orange-50 text-orange-800 hover:bg-orange-100 cursor-pointer"
-              >
-                Chọn máy có ESP32…
-              </button>
-            )}
-            {hardwareSource.isOverridden && (
-              <button
-                type="button"
-                onClick={hardwareSource.useCloud}
-                title="Quay lại dùng dịch vụ AI mặc định trên cloud"
-                className="text-xs font-bold px-3 py-0.5 rounded-full border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer"
-              >
-                Dùng dịch vụ mặc định
-              </button>
-            )}
           </div>
         </div>
 
@@ -893,7 +874,7 @@ export default function GateControl() {
           <div className="relative aspect-video rounded-2xl overflow-hidden shadow-xl border-2 border-slate-800 bg-[#070b14] flex items-center justify-center">
             {browserStream && (
               <video
-                ref={el => { if (el && el.srcObject !== browserStream) el.srcObject = browserStream }}
+                ref={el => { if (el && el.srcObject !== browserStream) el.srcObject = browserStream; browserCamera.attach(el) }}
                 autoPlay
                 muted
                 playsInline
