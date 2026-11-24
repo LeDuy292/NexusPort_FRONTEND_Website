@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import apiClient from '../../services/apiClient'
 import gateService, { hardwareSource } from '../../services/gateService'
+import { webSerialGate, browserCamera } from '../../services/webSerialGate'
 import { gateOpenSeconds, getGatePassageSimulation } from '../../services/gatePassageSimulationService'
 import { driverSmartRouteService } from '../../services/driverSmartRouteService'
 import { formatPlateNumber, normalizePlate } from '../../utils/format'
@@ -16,6 +17,10 @@ const DEFAULT_GATES = [
 export default function GateControl() {
   const [iotConnected, setIotConnected] = useState(false)
   const [hwStatus, setHwStatus] = useState(null)
+  const [deviceConnected, setDeviceConnected] = useState(webSerialGate.connected)
+  const [deviceBusy, setDeviceBusy] = useState(false)
+  const [browserStream, setBrowserStream] = useState(browserCamera.stream)
+  const serialScanBusyRef = useRef(false)
   const [currentTime, setCurrentTime] = useState('')
   const [toastMessage, setToastMessage] = useState('')
   const [mode, setMode] = useState('checkin') // 'checkin' | 'checkout'
@@ -483,6 +488,50 @@ export default function GateControl() {
     }
   }
 
+  // Xử lý một lượt quét biển số (từ Socket.IO của dịch vụ AI hoặc từ cổng USB + webcam trong trình duyệt)
+  const processIotScan = async (eventData) => {
+    console.log('📡 [IoT Camera Event Received]', eventData)
+    const plate = eventData?.detectedPlate ? eventData.detectedPlate.trim().toUpperCase() : ''
+    if (!plate || eventData.vehicleDetected === false) return
+    // Camera chưa đọc được biển số: không đối soát, chỉ nhắc nhân viên để tránh báo lỗi và khóa cổng oan.
+    if (plate === 'KHÔNG_NHẬN_DIỆN' || eventData.decision === 'FAIL') {
+      showToast('Chưa đọc được biển số. Đưa xe vào đúng vị trí và chạm cảm biến lại.')
+      return
+    }
+
+    const isOutbound = eventData?.laneCode === 'LANE_02' || eventData?.gateCode === 'GATE_OUT' || eventData?.gateCode === 'GATE_OUT_A' || String(eventData?.lane).toUpperCase() === 'OUT'
+    const targetMode = isOutbound ? 'checkout' : 'checkin'
+
+    // Đồng bộ đúng tab làn xe tương ứng với cảm biến kích hoạt
+    setMode(targetMode)
+    const matchingGate = gateLocationsRef.current.find(g => g.isActive !== false && g.gateType === (isOutbound ? 'gate_out' : 'gate_in'))
+    if (matchingGate) {
+      setSelectedGateId(matchingGate.id)
+    }
+
+    const conf = eventData.plateConfidence ? eventData.plateConfidence * 100 : 98
+    const overview = eventData.overviewImageUrl || null
+    const crop = eventData.vehiclePlateImageUrl || null
+
+    setDetectedPlate(plate)
+    setConfidence(conf)
+    if (overview) setCapturedImage(overview)
+    if (crop) setAiCropImage(crop)
+
+    // Bắt được biển số là tự đối chiếu booking / lệnh vào cổng; chỉ khi xác minh thành công mới gửi lệnh mở (servo xoay).
+    showToast(`🚗 [${isOutbound ? 'CỔNG RA' : 'CỔNG VÀO'}] Nhận diện biển số: "${plate}" (${conf.toFixed(1)}%)`)
+    setIsAiScanning(true)
+    try {
+      await evaluateVerificationRef.current?.(plate, conf, overview, crop, false, {
+        mode: targetMode, gate: matchingGate, physical: !isOutbound,
+      })
+    } finally {
+      setIsAiScanning(false)
+    }
+  }
+  const processIotScanRef = useRef(processIotScan)
+  useEffect(() => { processIotScanRef.current = processIotScan })
+
   // ── LẮNG NGHE SỰ KIỆN QUÉT XE TỪ THIẾT BỊ IOT QUA REALTIME SOCKET.IO ──
   useEffect(() => {
     const realtimeUrl = import.meta.env.VITE_REALTIME_URL || 'http://localhost:3001'
@@ -509,46 +558,7 @@ export default function GateControl() {
       setIotConnected(false)
     })
 
-    socket.on('gate:iot_scan', async (eventData) => {
-      console.log('📡 [IoT Camera Event Received]', eventData)
-      const plate = eventData?.detectedPlate ? eventData.detectedPlate.trim().toUpperCase() : ''
-      if (!plate || eventData.vehicleDetected === false) return
-      // Camera chưa đọc được biển số: không đối soát, chỉ nhắc nhân viên để tránh báo lỗi và khóa cổng oan.
-      if (plate === 'KHÔNG_NHẬN_DIỆN' || eventData.decision === 'FAIL') {
-        showToast('Chưa đọc được biển số. Đưa xe vào đúng vị trí và chạm cảm biến lại.')
-        return
-      }
-
-      const isOutbound = eventData?.laneCode === 'LANE_02' || eventData?.gateCode === 'GATE_OUT' || eventData?.gateCode === 'GATE_OUT_A' || String(eventData?.lane).toUpperCase() === 'OUT'
-      const targetMode = isOutbound ? 'checkout' : 'checkin'
-
-      // Đồng bộ đúng tab làn xe tương ứng với cảm biến kích hoạt
-      setMode(targetMode)
-      const matchingGate = gateLocationsRef.current.find(g => g.isActive !== false && g.gateType === (isOutbound ? 'gate_out' : 'gate_in'))
-      if (matchingGate) {
-        setSelectedGateId(matchingGate.id)
-      }
-
-      const conf = eventData.plateConfidence ? eventData.plateConfidence * 100 : 98
-      const overview = eventData.overviewImageUrl || null
-      const crop = eventData.vehiclePlateImageUrl || null
-
-      setDetectedPlate(plate)
-      setConfidence(conf)
-      if (overview) setCapturedImage(overview)
-      if (crop) setAiCropImage(crop)
-
-      // Bắt được biển số là tự đối chiếu booking / lệnh vào cổng; chỉ khi xác minh thành công mới gửi lệnh mở (servo xoay).
-      showToast(`🚗 [${isOutbound ? 'CỔNG RA' : 'CỔNG VÀO'}] Nhận diện biển số: "${plate}" (${conf.toFixed(1)}%)`)
-      setIsAiScanning(true)
-      try {
-        await evaluateVerificationRef.current?.(plate, conf, overview, crop, false, {
-          mode: targetMode, gate: matchingGate, physical: !isOutbound,
-        })
-      } finally {
-        setIsAiScanning(false)
-      }
-    })
+    socket.on('gate:iot_scan', (eventData) => { void processIotScanRef.current?.(eventData) })
 
     socket.on('gate:barrier_state_changed', (data) => {
       console.log('📡 [Barrier State Event Received]', data)
@@ -574,6 +584,97 @@ export default function GateControl() {
     }
   }, [])
 
+
+  // ── CỔNG USB (Web Serial) VÀ WEBCAM TRONG TRÌNH DUYỆT ───────────────────
+  const refreshHardware = () => {
+    gateService.getHardwareStatus().then(res => { if (res.success) setHwStatus(res.data) })
+  }
+
+  const handleSerialCapture = async (lane) => {
+    if (serialScanBusyRef.current) return
+    serialScanBusyRef.current = true
+    setIsAiScanning(true)
+    try {
+      const blob = await browserCamera.captureBlob()
+      if (!blob) { showToast('Chưa có hình từ webcam. Hãy cho phép trình duyệt dùng camera.'); return }
+      const gateCode = lane === 'OUT' ? 'GATE_OUT_A' : 'GATE_IN_A'
+      const laneCode = lane === 'OUT' ? 'LANE_02' : 'LANE_01'
+      const overview = await new Promise(resolve => { const fr = new FileReader(); fr.onload = () => resolve(fr.result); fr.readAsDataURL(blob) })
+      const res = await gateService.recognizeVehicleImage(blob, gateCode, laneCode)
+      const plateObj = res.success ? res.data?.license_plate : null
+      const plate = plateObj?.plate_number || ''
+      if (!res.success) showToast(`Không đọc được biển số: ${res.error}`)
+      await processIotScanRef.current?.({
+        gateCode, laneCode, lane, cameraId: 'CAM_BROWSER',
+        detectedPlate: plate,
+        plateConfidence: plateObj?.ocr_confidence || plateObj?.confidence || 0,
+        vehicleDetected: res.data?.vehicle?.detected !== false,
+        overviewImageUrl: overview,
+        vehiclePlateImageUrl: plateObj?.plate_image_base64 || null,
+        source: 'Browser_USB',
+        decision: plate ? 'SUCCESS' : 'FAIL',
+      })
+    } finally {
+      serialScanBusyRef.current = false
+      setIsAiScanning(false)
+    }
+  }
+
+  const handleSerialLine = (line) => {
+    if (line === 'CAPTURE_IN' || line === 'CAPTURE_OUT') {
+      void handleSerialCapture(line.endsWith('OUT') ? 'OUT' : 'IN')
+      return
+    }
+    const m = /^STATUS:(OPENED|CLOSED)_(IN|OUT)/i.exec(line)
+    if (m) {
+      const state = m[1].toUpperCase() === 'OPENED' ? 'opened' : 'closed'
+      const lane = m[2].toUpperCase()
+      if (lane === (modeRef.current === 'checkout' ? 'OUT' : 'IN')) {
+        setBarrierState(state)
+        showToast(state === 'opened' ? `🔓 Barie ${lane === 'OUT' ? 'Cổng Ra' : 'Cổng Vào'} đã mở.` : `🔒 Barie ${lane === 'OUT' ? 'Cổng Ra' : 'Cổng Vào'} đã hạ (đóng cổng).`)
+      }
+      // Báo backend để các màn hình khác cùng cập nhật trạng thái barie
+      apiClient.post('/gate/barrier-status', { lane, state, gateCode: lane === 'OUT' ? 'GATE_OUT_A' : 'GATE_IN_A' }).catch(() => {})
+    }
+  }
+  const handleSerialLineRef = useRef(handleSerialLine)
+  useEffect(() => { handleSerialLineRef.current = handleSerialLine })
+
+  useEffect(() => {
+    const offState = webSerialGate.onState(({ connected }) => {
+      setDeviceConnected(connected)
+      showToast(connected ? '🔌 Đã kết nối ESP32 qua USB.' : 'ESP32 đã ngắt kết nối USB.')
+      refreshHardware()
+    })
+    const offCamera = browserCamera.onChange(stream => {
+      setBrowserStream(stream)
+      if (stream) { setCameraActive(true); setCameraLoading(false); setCameraError(null) }
+      refreshHardware()
+    })
+    const offLine = webSerialGate.onLine(line => handleSerialLineRef.current?.(line))
+    // Cắm lại vào máy đã từng cấp quyền: tự kết nối, không cần bấm
+    void webSerialGate.reconnect().then(ok => { if (ok) browserCamera.start().catch(() => {}) })
+    return () => { offState(); offCamera(); offLine() }
+  }, [])
+
+  const connectDevice = async () => {
+    setDeviceBusy(true)
+    try {
+      const ok = await webSerialGate.connect()
+      if (ok) {
+        try { await browserCamera.start() } catch (error) { showToast(`Chưa mở được webcam: ${error.message}`) }
+      }
+    } catch (error) {
+      showToast(error.message || 'Không kết nối được thiết bị USB.')
+    } finally {
+      setDeviceBusy(false)
+    }
+  }
+
+  const disconnectDevice = async () => {
+    await webSerialGate.disconnect()
+    browserCamera.stop()
+  }
 
   // Danh sách checklist kiểm tra
   const normDetected = normalizePlate(detectedPlate)
@@ -676,6 +777,26 @@ export default function GateControl() {
               <span className={`w-2 h-2 rounded-full ${hwStatus?.esp32?.connected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-400'}`} />
               {hwStatus?.esp32?.connected ? `ESP32 (${hwStatus.esp32.port}): Sẵn sàng` : 'ESP32: Đang kết nối...'}
             </span>
+            {webSerialGate.isSupported() && (deviceConnected ? (
+              <button
+                type="button"
+                onClick={disconnectDevice}
+                title="Ngắt kết nối ESP32 và webcam trong trình duyệt"
+                className="text-xs font-bold px-3 py-0.5 rounded-full border border-slate-300 bg-white text-slate-600 hover:bg-slate-50 cursor-pointer"
+              >
+                Ngắt thiết bị USB
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={connectDevice}
+                disabled={deviceBusy}
+                title="Kết nối ESP32 qua cổng USB của máy này và dùng webcam trong trình duyệt (Chrome / Edge). Không cần chạy dịch vụ AI."
+                className="text-xs font-bold px-3 py-0.5 rounded-full border border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100 cursor-pointer disabled:opacity-60"
+              >
+                {deviceBusy ? 'Đang kết nối…' : 'Kết nối thiết bị (USB)'}
+              </button>
+            ))}
             {!hwStatus?.esp32?.connected && (
               <button
                 type="button"
@@ -770,7 +891,16 @@ export default function GateControl() {
 
           {/* Khung hiển thị camera từ AI Service dùng chung với bộ quét cảm biến */}
           <div className="relative aspect-video rounded-2xl overflow-hidden shadow-xl border-2 border-slate-800 bg-[#070b14] flex items-center justify-center">
-            {cameraActive && cameraConnected && (
+            {browserStream && (
+              <video
+                ref={el => { if (el && el.srcObject !== browserStream) el.srcObject = browserStream }}
+                autoPlay
+                muted
+                playsInline
+                className="absolute inset-0 w-full h-full object-cover"
+              />
+            )}
+            {!browserStream && cameraActive && cameraConnected && (
               <img
                 src={`${gateService.getVideoFeedUrl(cameraLane)}&t=gate-control`}
                 alt={`Camera ${cameraLane === 'OUT' ? 'làn ra' : 'làn vào'}`}
