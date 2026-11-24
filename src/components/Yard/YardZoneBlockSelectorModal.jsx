@@ -1,5 +1,6 @@
-import { useState, useMemo, useEffect } from 'react'
-import apiClient from '../../services/apiClient'
+import { useState, useMemo } from 'react'
+import TienSaMap from '../../features/yard-design/TienSaMap'
+import '../../features/yard-design/TienSaMap.css'
 import { yardReservationStore } from '../../services/yardReservationStore'
 import tienSaLayout from '../../features/yard-design/tienSaLayout.json'
 
@@ -11,8 +12,8 @@ export const TIEN_SA_ZONES = [
     subtitle: 'Sau cầu 4–5',
     blockCount: 4,
     blockPrefix: 'A',
-    description: 'Bãi container tiếp giáp bến số 4 & 5',
-    defaultTag: 'Hàng Nhập Bến 4-5'
+    description: 'Bãi gần cầu 4–5 (A01–A04 ưu tiên hàng xuất)',
+    defaultTag: 'Hàng Xuất Gần Cầu 4–5'
   },
   {
     code: 'B',
@@ -20,8 +21,8 @@ export const TIEN_SA_ZONES = [
     subtitle: 'Bãi container 1',
     blockCount: 4,
     blockPrefix: 'B',
-    description: 'Bãi sát mép nước cầu tàu STS',
-    defaultTag: 'Hàng Nhập STS'
+    description: 'B01–B02 sát mép nước cầu 1 (Xuất); B03–B04 bãi trong (Nhập)',
+    defaultTag: 'B01–B02 Xuất Cầu 1 · B03–B04 Nhập'
   },
   {
     code: 'C',
@@ -29,8 +30,8 @@ export const TIEN_SA_ZONES = [
     subtitle: 'Bãi container 2',
     blockCount: 10,
     blockPrefix: 'C',
-    description: 'Khu tập kết container khô trung tâm',
-    defaultTag: 'Bãi Container Khô'
+    description: 'C01–C03 gần cầu 2 (Xuất); C04–C10 bãi trong (Nhập)',
+    defaultTag: 'C01–C03 Xuất Cầu 2 · C04–C10 Nhập'
   },
   {
     code: 'D',
@@ -39,7 +40,7 @@ export const TIEN_SA_ZONES = [
     blockCount: 2,
     blockPrefix: 'D',
     description: 'Bãi chuyên dụng container lạnh có trụ cắm điện 380V/440V',
-    defaultTag: 'Khu Cont Lạnh'
+    defaultTag: 'Khu Cont Lạnh (D01–D02)'
   },
   {
     code: 'E',
@@ -56,8 +57,8 @@ export const TIEN_SA_ZONES = [
     subtitle: 'Bãi tổng hợp 2',
     blockCount: 4,
     blockPrefix: 'F',
-    description: 'Bãi hàng xuất gần cổng Gate 1',
-    defaultTag: 'Hàng Xuất Cổng 1'
+    description: 'Bãi hàng nhập gần cổng Gate 1 giao nhận xe ngoài',
+    defaultTag: 'Hàng Nhập Gần Cổng 1'
   },
   {
     code: 'G',
@@ -89,10 +90,10 @@ export default function YardZoneBlockSelectorModal({
     // Nếu là cont lạnh -> Khu D
     const isRf = container?.isReefer || /RF|RH|R[01]/.test(container?.isoType || container?.containerType || '')
     if (isRf) return 'D'
-    // Nếu là cont xuất -> Khu F
-    if (container?.direction === 'EXPORT') return 'F'
-    // Mặc định Khu A
-    return 'A'
+    // Xuất khẩu: các dãy gần cầu (A01-A04, B01-B02, C01-C03); Nhập khẩu: các block bãi trong (B03-B04, C04-C10)
+    const isImp = container?.direction === 'IMPORT' || String(container?.direction || '').toLowerCase().includes('nhập')
+    if (isImp) return 'C'
+    return 'B'
   }, [currentSlot, container])
 
   const [selectedZone, setSelectedZone] = useState(initialZoneCode)
@@ -121,30 +122,39 @@ export default function YardZoneBlockSelectorModal({
     })
   }, [])
 
-  // Hiện trạng bãi THẬT: số ô đang có container / đã giữ chỗ trên từng block (từ sơ đồ bãi)
-  const [liveStats, setLiveStats] = useState(null)
-  useEffect(() => {
-    if (!isOpen) return undefined
-    let alive = true
-    apiClient.get('/yard/layout')
-      .then((res) => {
-        if (!alive) return
-        const stats = {}
-        ;(res.data?.data?.slots || []).forEach((sl) => {
-          const code = String(sl.block || '').toUpperCase()
-          if (!code) return
-          const st = (stats[code] ||= { total: 0, used: 0, containers: 0 })
-          st.total += 1
-          if (sl.containerNumber || sl.status === 'occupied' || sl.status === 'reserved') st.used += 1
-          if (sl.containerNumber) st.containers += 1
-        })
-        setLiveStats(stats)
-      })
-      .catch(() => { if (alive) setLiveStats(null) })
-    return () => { alive = false }
+  // Đếm số container đang lưu thực tế từ yardReservationStore theo từng Block
+  const blockOccupancy = useMemo(() => {
+    const res = yardReservationStore.getReservationsSync()
+    const counts = {}
+    res.forEach(r => {
+      const b = (r.blockCode || r.block || '').trim().toUpperCase()
+      if (b) {
+        counts[b] = (counts[b] || 0) + 1
+      }
+    })
+    return counts
   }, [isOpen])
 
-  // Lấy các block thuộc phân khu đang chọn (ví dụ Khu A có A01, A02, A03, A04)
+  // Highlight blocks trên bản đồ Tiên Sa theo Zone đang chọn
+  const highlightBlocks = useMemo(() => {
+    const map = {}
+    allBlocks.forEach(b => {
+      const isSelectedZone = b.zonePrefix === selectedZone
+      const occupied = blockOccupancy[b.blockCode] || 0
+      if (isSelectedZone) {
+        map[b.blockCode] = {
+          count: occupied,
+          color: '#f59e0b'
+        }
+      } else if (occupied > 0) {
+        map[b.blockCode] = {
+          count: occupied,
+          color: '#38bdf8'
+        }
+      }
+    })
+    return map
+  }, [allBlocks, selectedZone, blockOccupancy])
   const blocksInSelectedZone = useMemo(() => {
     const filtered = allBlocks.filter(b => b.zonePrefix === selectedZone)
     if (filtered.length > 0) return filtered
@@ -185,7 +195,9 @@ export default function YardZoneBlockSelectorModal({
     const tier = parts[3] ? parts[3].replace(/[^0-9]/g, '') : '1'
     
     const isRf = container?.isReefer || /RF|RH/.test(container?.isoType || '')
-    let tag = isRf ? 'Khu Cont Lạnh' : (b.startsWith('F') ? 'Hàng Xuất Gần Cổng' : (b.startsWith('B') ? 'Hàng Nhập STS' : 'Bãi Container Thường'))
+    const exportBlocks = ['A01', 'A02', 'A03', 'A04', 'B01', 'B02', 'C01', 'C02', 'C03']
+    const isExp = exportBlocks.includes(b)
+    let tag = isRf ? 'Khu Cont Lạnh (D01-D02)' : (isExp ? 'Hàng Xuất (Gần Cầu Tàu)' : 'Hàng Nhập (Bãi Trong)')
     
     return {
       text: `Block ${b} • Bay ${Number(bay)} • Tầng ${tier} • Hàng ${Number(row)}`,
@@ -202,7 +214,7 @@ export default function YardZoneBlockSelectorModal({
       role="dialog"
       aria-modal="true"
     >
-      <div className="bg-white w-full max-w-5xl rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col gap-4 border border-slate-200 max-h-[92vh] overflow-y-auto">
+      <div className="bg-white w-[96vw] max-w-[1550px] h-[94vh] max-h-[94vh] rounded-3xl p-5 sm:p-6 shadow-2xl flex flex-col gap-3.5 border border-slate-200 overflow-hidden">
         
         {/* ── HEADER ── */}
         <div className="flex justify-between items-start pb-1">
@@ -246,102 +258,29 @@ export default function YardZoneBlockSelectorModal({
           </span>
         </div>
 
-        {/* ── MỤC 1: CHỌN PHÂN KHU BÃI CẢNG TIÊN SA (ZONE A ➔ G) ── */}
-        <div className="flex flex-col gap-2">
-          <div className="flex items-center gap-2">
-            <span className="w-5 h-5 rounded-full bg-slate-900 text-white text-[11px] font-black flex items-center justify-center">
-              1
-            </span>
-            <span className="text-xs font-black text-slate-900 uppercase tracking-wide">
-              CHỌN PHÂN KHU BÃI CẢNG TIÊN SA (ZONE A ➔ G):
-            </span>
-          </div>
-
-          {/* Hàng các Thẻ Phân Khu Zone */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2.5">
-            {TIEN_SA_ZONES.map(z => {
-              const isSelected = selectedZone === z.code
-              return (
-                <button
-                  key={z.code}
-                  type="button"
-                  onClick={() => setSelectedZone(z.code)}
-                  className={`p-3 rounded-2xl border text-left transition-all flex flex-col justify-between cursor-pointer relative shadow-2xs ${
-                    isSelected
-                      ? 'bg-[#fff7ed] border-[#f97316] text-[#c2410c] ring-2 ring-orange-400/30'
-                      : 'bg-white border-slate-200/90 text-slate-700 hover:border-slate-300 hover:bg-slate-50/60'
-                  }`}
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className={`font-black text-sm ${isSelected ? 'text-orange-700' : 'text-slate-900'}`}>
-                      {z.label}
-                    </span>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-md border ${
-                      isSelected ? 'bg-orange-100 border-orange-300 text-orange-800' : 'bg-slate-100 border-slate-200 text-slate-600'
-                    }`}>
-                      {z.blockCount}
-                    </span>
-                  </div>
-                  <span className={`text-[11px] leading-tight ${isSelected ? 'text-orange-900 font-medium' : 'text-slate-500'}`}>
-                    {z.subtitle}
-                  </span>
-                </button>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* ── MỤC 2: CÁC BLOCK THUỘC KHU ĐANG CHỌN (Grid 4 cột chuẩn hình) ── */}
-        <div className="flex flex-col gap-2 mt-1">
-          <div className="flex items-center gap-2">
-            <span className="w-5 h-5 rounded-full bg-slate-900 text-white text-[11px] font-black flex items-center justify-center">
-              2
-            </span>
-            <span className="text-xs font-black text-slate-900 uppercase tracking-wide">
-              CÁC BLOCK THUỘC KHU {selectedZone}:
+        {/* ── BẢN ĐỒ BÃI CẢNG TIÊN SA TRỰC QUAN: NHẤP TRỰC TIẾP VÀO BLOCK ĐỂ CHỌN BAY & SLOT ── */}
+        <div className="flex flex-col gap-2 flex-1 min-h-0">
+          <div className="flex flex-wrap items-center justify-between text-xs font-black text-slate-900 uppercase tracking-wide gap-2">
+            <div className="flex items-center gap-2">
+              <span className="material-symbols-outlined text-orange-600 text-lg">map</span>
+              <span>BẢN ĐỒ CẢNG TIÊN SA · NHẤP TRỰC TIẾP VÀO BLOCK ĐỂ CHỌN BAY &amp; SLOT:</span>
+            </div>
+            <span className="text-[11px] font-medium text-slate-500 normal-case">
+              (Nhấp vào bất kỳ Block nào trên bản đồ để mở ngay sơ đồ chọn Bay &amp; Slot của Block đó)
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-            {blocksInSelectedZone.map(b => {
-              const live = liveStats ? liveStats[String(b.blockCode).toUpperCase()] : null
-              const capacity = live?.total || b.capacity || (b.bayModules * b.maxRows * b.maxTiers) || 672
-              const occupied = live ? live.used : null
-              const freeSlots = occupied == null ? null : Math.max(0, capacity - occupied)
-
-              return (
-                <div
-                  key={b.blockCode}
-                  className="p-4 rounded-2xl border border-slate-200 bg-white shadow-2xs hover:border-slate-300 transition-all flex flex-col justify-between"
-                >
-                  <div>
-                    <div className="flex items-center justify-between">
-                      <span className="font-heading font-black text-slate-900 text-base">
-                        Block {b.blockCode}
-                      </span>
-                      <span className="px-2 py-0.5 rounded-md bg-emerald-50 border border-emerald-200 text-emerald-800 font-mono font-bold text-[11px]">
-                        {freeSlots == null ? 'Đang tải…' : `${freeSlots.toLocaleString('vi-VN')} ô trống`}
-                      </span>
-                    </div>
-
-                    <p className="text-xs text-slate-500 mt-1.5 font-medium">
-                      Tổng {capacity.toLocaleString('vi-VN')} ô · Đang dùng {occupied == null ? '—' : occupied.toLocaleString('vi-VN')}
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onSelectBlock?.(b)
-                    }}
-                    className="mt-4 w-full py-2 px-3 bg-[#0f172a] hover:bg-slate-800 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-98"
-                  >
-                    <span className="material-symbols-outlined text-sm">open_in_new</span>
-                    <span>Chọn Bay &amp; Slot ➔</span>
-                  </button>
-                </div>
-              )
-            })}
+          <div className="yard-design-preview flex-1 min-h-0 rounded-2xl overflow-hidden border border-slate-200 shadow-inner bg-slate-50 flex flex-col [&_.tien-sa-design-map]:flex-1 [&_.tien-sa-design-map]:flex [&_.tien-sa-design-map]:flex-col [&_.yard-layout-viewport]:!flex-1 [&_.yard-layout-viewport]:!h-full [&_.yard-layout-viewport]:!min-h-[500px] sm:[&_.yard-layout-viewport]:!min-h-[600px] [&_.yard-map-controls]:!py-2 [&_.yard-map-controls]:!px-3 [&_.yard-layout-legend]:!py-1.5 [&_.yard-layout-legend]:!px-3">
+            <TienSaMap
+              layout={tienSaLayout}
+              selectedCode={currentSlot?.split('-')[0]?.trim()}
+              onSelectArea={(area) => {
+                const targetBlock = allBlocks.find(b => b.blockCode === area.code) || area
+                onSelectBlock?.(targetBlock)
+              }}
+              highlightBlocks={highlightBlocks}
+              operational={true}
+            />
           </div>
         </div>
 

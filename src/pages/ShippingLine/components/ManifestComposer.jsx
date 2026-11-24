@@ -119,7 +119,18 @@ export default function ManifestComposer({ voyages, initialManifest, importedMan
       openContainer(invalidIndex)
       return
     }
-    const bill = { ...editingBill, blNumber: editingBill.blNumber.trim().toUpperCase() }
+    const targetComp = form.direction === 'EXPORT' ? editingBill.shipper : editingBill.consignee
+    const bill = {
+      ...editingBill,
+      blNumber: editingBill.blNumber.trim().toUpperCase(),
+      containers: editingBill.containers.map(c => ({
+        ...c,
+        blNumber: editingBill.blNumber.trim().toUpperCase(),
+        shipper: editingBill.shipper,
+        consignee: editingBill.consignee,
+        transportCompany: targetComp || c.transportCompany || editingBill.consignee || editingBill.shipper,
+      }))
+    }
     if (form.bills.some((b, i) => i !== billIndex && b.blNumber.trim().toUpperCase() === bill.blNumber)) {
       setError('Số vận đơn đã có trong bản khai.'); return
     }
@@ -167,9 +178,18 @@ export default function ManifestComposer({ voyages, initialManifest, importedMan
                 {[['shipper', 'Người gửi hàng'], ['consignee', 'Người nhận hàng']].map(([key, label]) => {
                   const current = editingBill[key]
                   const known = companies.some(c => c.companyName === current)
+                  const isMatchKey = form.direction === 'EXPORT' ? key === 'shipper' : key === 'consignee'
                   return (
-                    <label key={key} className="text-sm font-semibold space-y-1 block">{label} *
-                      <Select required className={fieldClass} value={current} onChange={e => setEditingBill(b => ({ ...b, [key]: e.target.value }))}>
+                    <label key={key} className="text-sm font-semibold space-y-1 block">
+                      <div className="flex items-center justify-between">
+                        <span>{label} *</span>
+                        {isMatchKey && (
+                          <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-1.5 py-0.2 rounded border border-blue-200">
+                            Đối chiếu ePort & Cổng
+                          </span>
+                        )}
+                      </div>
+                      <Select required className={`${fieldClass} ${isMatchKey ? 'border-blue-400 bg-blue-50/20' : ''}`} value={current} onChange={e => setEditingBill(b => ({ ...b, [key]: e.target.value }))}>
                         <option value="">Chọn công ty vận tải</option>
                         {current && !known && <option value={current}>{current} (chưa đăng ký, chọn lại)</option>}
                         {companies.map(c => <option key={c.id} value={c.companyName}>{c.companyName}{c.taxCode ? ` · MST ${c.taxCode}` : ''}</option>)}
@@ -177,6 +197,17 @@ export default function ManifestComposer({ voyages, initialManifest, importedMan
                     </label>
                   )
                 })}
+              </div>
+              <div className="p-3 bg-blue-50/80 border border-blue-200 rounded-lg text-xs text-blue-900 flex items-center gap-2">
+                <span className="font-bold flex items-center gap-1">
+                  <span className="inline-block w-2 h-2 rounded-full bg-blue-600"></span>
+                  Đối Chiếu Thống Nhất ePort ↔ Lịch Hẹn Cổng:
+                </span>
+                <span>
+                  {form.direction === 'IMPORT'
+                    ? 'Hàng nhập khẩu: Cổng và ePort sẽ đối chiếu theo Người nhận hàng (Consignee).'
+                    : 'Hàng xuất khẩu: Cổng và ePort sẽ đối chiếu theo Người gửi hàng (Shipper / Booking).'}
+                </span>
               </div>
               {companyError && <p role="alert" className="text-xs text-red-700">{companyError}</p>}
               {!companyError && companies.length === 0 && <p className="text-xs text-slate">Chưa có công ty nào có tài khoản Transport Company trên hệ thống.</p>}
