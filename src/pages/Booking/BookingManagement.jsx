@@ -267,9 +267,9 @@ export default function BookingManagement() {
     const statusLower = (booking.status || '').toLowerCase()
     const paymentStatusLower = (booking.paymentStatus || '').toLowerCase()
     const isSystemPaid = paymentStatusLower === 'paid' ||
-      statusLower === 'ready' ||
-      statusLower === 'checkedin' ||
-      statusLower === 'completed'
+      Boolean(booking.portBillPaid) ||
+      Boolean(booking.isPaid) ||
+      (matchedPortBill && (matchedPortBill.status === 'PAID' || matchedPortBill.paid || matchedPortBill.status === 'Paid'))
 
     return {
       status: isSystemPaid ? 'Paid' : 'Unpaid',
@@ -319,6 +319,8 @@ export default function BookingManagement() {
   const [paymentBooking, setPaymentBooking] = useState(null)
   const [paymentProcessing, setPaymentProcessing] = useState(false)
   const [copiedPaymentField, setCopiedPaymentField] = useState(null)
+  const [paymentNotice, setPaymentNotice] = useState(null)
+  const [isTestConfirmMode, setIsTestConfirmMode] = useState(false)
 
   // NXP-049: State phân tích tải trọng cho Modal Điều phối
   const [assignPayloadAnalysis, setAssignPayloadAnalysis] = useState(null)
@@ -671,9 +673,7 @@ export default function BookingManagement() {
           (b.id && activePaymentCache[b.id]?.status === 'Paid') ||
           (b.paymentStatus || '').toLowerCase() === 'paid' ||
           Boolean(b.portBillPaid) ||
-          b.status === 'Ready' ||
-          b.status === 'CheckedIn' ||
-          b.status === 'Completed' ||
+          Boolean(b.isPaid) ||
           (b.portBill && (b.portBill.status === 'PAID' || b.portBill.status === 'Paid'))
         return {
           ...b,
@@ -1031,9 +1031,12 @@ export default function BookingManagement() {
     if (!booking) return
     setPaymentBooking(booking)
     setShowPaymentModal(true)
+    setPaymentNotice(null)
+    setIsTestConfirmMode(false)
 
-    // Đồng bộ thông tin cước phí và hóa đơn từ Backend CSDL nếu có ID
-    if (booking.id) {
+    // Đồng bộ thông tin cước phí và hóa đơn từ Backend CSDL nếu có ID hợp lệ (GUID)
+    const isGuid = /^[0-9a-f-]{36}$/i.test(String(booking.id || ''))
+    if (isGuid) {
       try {
         const apiInfo = await bookingService.getPaymentInfo(booking.id)
         if (apiInfo) {
@@ -1063,31 +1066,103 @@ export default function BookingManagement() {
     setTimeout(() => setCopiedPaymentField(null), 2500)
   }
 
-  // Xác nhận đã thanh toán VietQR (đồng bộ qua Backend API CSDL & Napas 24/7)
-  const handleConfirmPayment = async () => {
+  // Tự động kiểm tra đối soát giao dịch định kỳ khi Modal Thanh toán đang mở
+  useEffect(() => {
+    if (!showPaymentModal || !paymentBooking) return
+    const pInfo = getBookingPaymentInfo(paymentBooking)
+    if (pInfo.status === 'Paid') return
+
+    const timer = setInterval(async () => {
+      if (paymentProcessing) return
+      const isGuid = /^[0-9a-f-]{36}$/i.test(String(paymentBooking.id || ''))
+      if (isGuid) {
+        try {
+          const apiInfo = await bookingService.getPaymentInfo(paymentBooking.id)
+          if (apiInfo && (apiInfo.paymentStatus === 'Paid' || apiInfo.paymentStatus === 'PAID')) {
+            handleCompletePayment(apiInfo.transactionRef, apiInfo.invoiceNo)
+          }
+        } catch {}
+      }
+    }, 10000)
+
+    return () => clearInterval(timer)
+  }, [showPaymentModal, paymentBooking?.id, paymentBooking?.bookingCode, paymentProcessing])
+
+  // Kiểm tra giao dịch từ Ngân hàng Napas 24/7
+  const handleCheckPaymentStatus = async () => {
+    if (!paymentBooking) return
+    setPaymentProcessing(true)
+    setPaymentNotice(null)
+    const code = paymentBooking.bookingCode || paymentBooking.id
+    const pInfo = getBookingPaymentInfo(paymentBooking)
+
+    try {
+      let isVerified = false
+      let backendTxn = null
+      let backendInv = null
+
+      const isGuid = /^[0-9a-f-]{36}$/i.test(String(paymentBooking.id || ''))
+      if (isGuid) {
+        try {
+          const apiInfo = await bookingService.getPaymentInfo(paymentBooking.id)
+          if (apiInfo && (apiInfo.paymentStatus === 'Paid' || apiInfo.paymentStatus === 'PAID')) {
+            isVerified = true
+            backendTxn = apiInfo.transactionRef
+            backendInv = apiInfo.invoiceNo
+          }
+        } catch {}
+      }
+
+      // Giả lập thời gian đối soát Napas 247 thực tế (1.2 giây)
+      await new Promise(r => setTimeout(r, 1200))
+
+      if (isVerified) {
+        await handleCompletePayment(backendTxn, backendInv)
+      } else {
+        setPaymentNotice({
+          type: 'warning',
+          message: `Chưa ghi nhận biến động số dư cho nội dung chuyển khoản "NP ${code}" (${pInfo.amount.toLocaleString('vi-VN')} VNĐ). Vui lòng quét mã QR chuyển khoản và thử lại sau ít giây.`
+        })
+        setIsTestConfirmMode(true)
+      }
+    } catch (err) {
+      setPaymentNotice({
+        type: 'warning',
+        message: 'Lỗi kiểm tra đối soát giao dịch: ' + err.message
+      })
+    } finally {
+      setPaymentProcessing(false)
+    }
+  }
+
+  // Hoàn tất ghi nhận thanh toán sau khi đối soát thành công
+  const handleCompletePayment = async (customTxn = null, customInv = null) => {
     if (!paymentBooking) return
     setPaymentProcessing(true)
     try {
       const code = paymentBooking.bookingCode || paymentBooking.id
       const currentInfo = getBookingPaymentInfo(paymentBooking)
-      const txnId = `TXN-NP-${Date.now().toString().slice(-8)}`
+      const txnId = customTxn || `TXN-NP-${Date.now().toString().slice(-8)}`
       const paidDate = new Date().toISOString()
 
-      // Gửi yêu cầu thanh toán tới C# Backend API (lưu vào CSDL invoices & payments)
+      // Gửi yêu cầu thanh toán tới C# Backend API (lưu vào CSDL invoices & payments) nếu có GUID
       let backendTxn = txnId
-      let invoiceNo = `INV-NP-${code}`
-      try {
-        const res = await bookingService.processPayment(paymentBooking.id, {
-          method: 'vietqr',
-          transactionRef: txnId,
-          amount: currentInfo.amount
-        })
-        if (res) {
-          if (res.transactionRef) backendTxn = res.transactionRef
-          if (res.invoiceNo) invoiceNo = res.invoiceNo
+      let invoiceNo = customInv || `INV-NP-${code}`
+      const isGuid = /^[0-9a-f-]{36}$/i.test(String(paymentBooking.id || ''))
+      if (isGuid) {
+        try {
+          const res = await bookingService.processPayment(paymentBooking.id, {
+            method: 'vietqr',
+            transactionRef: txnId,
+            amount: currentInfo.amount
+          })
+          if (res) {
+            if (res.transactionRef) backendTxn = res.transactionRef
+            if (res.invoiceNo) invoiceNo = res.invoiceNo
+          }
+        } catch (err) {
+          console.warn('Backend payment processing fallback:', err?.message)
         }
-      } catch (err) {
-        console.warn('Backend payment processing fallback:', err?.message)
       }
 
       const newPaymentData = {
@@ -1107,9 +1182,6 @@ export default function BookingManagement() {
       if (paymentBooking.bookingCode) rawCache[paymentBooking.bookingCode] = newPaymentData
       if (paymentBooking.id) rawCache[paymentBooking.id] = newPaymentData
       if (code) rawCache[code] = newPaymentData
-      try {
-        /* Read payment state from the API. */
-      } catch { }
 
       updatePaymentCache(paymentBooking.bookingCode, paymentBooking.id, newPaymentData)
 
@@ -1125,7 +1197,6 @@ export default function BookingManagement() {
       }
 
       // Cập nhật booking trong state danh sách:
-      // Nếu booking đang ở Approved hoặc Pending thì chuyển sang Ready (đủ điều kiện để tài xế báo đã đến cổng và điều độ gọi xe)
       setBookings(prev => prev.map(b => {
         if ((b.bookingCode && b.bookingCode === code) || b.id === paymentBooking.id) {
           return {
@@ -1152,14 +1223,19 @@ export default function BookingManagement() {
         status: (prev.status === 'Approved' || prev.status === 'Pending') ? 'Ready' : prev.status
       }))
 
+      setPaymentNotice(null)
+      setIsTestConfirmMode(false)
       showNotification(`Thanh toán cước cảng thành công qua VietQR! Mã GD: ${backendTxn}`, 'success')
-      fetchBookings() // refresh danh sách từ server
+      fetchBookings(true) // refresh danh sách từ server
     } catch (err) {
       showNotification('Không thể hoàn tất thanh toán: ' + err.message, 'error')
     } finally {
       setPaymentProcessing(false)
     }
   }
+
+  // Alias để giữ tương thích
+  const handleConfirmPayment = () => handleCompletePayment()
 
   // 1. Dịch thuật các thuật ngữ nghiệp vụ cảng sang Tiếng Việt
   const getOperationNameVi = (type) => {
@@ -2846,13 +2922,37 @@ export default function BookingManagement() {
                     </div>
                   </div>
 
+                  {/* Banner trạng thái đối soát trực tiếp */}
+                  <div className="flex items-center gap-2.5 p-3 rounded-xl bg-blue-50/80 border border-blue-200 text-blue-900 text-xs">
+                    <span className="material-symbols-outlined text-blue-600 text-lg animate-spin">autorenew</span>
+                    <div>
+                      <strong className="block font-bold">Hệ thống đang tự động lắng nghe đối soát Napas 24/7</strong>
+                      <span className="text-[11px] text-blue-700">Sau khi chuyển khoản thành công trên app ngân hàng, hệ thống sẽ tự động đối soát và phát hành hóa đơn (hoặc bấm nút "Kiểm Tra Giao Dịch Ngay").</span>
+                    </div>
+                  </div>
+
+                  {/* Thông báo kết quả kiểm tra giao dịch */}
+                  {paymentNotice && (
+                    <div className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
+                      paymentNotice.type === 'warning' ? 'bg-amber-50 border-amber-300 text-amber-900' : 'bg-blue-50 border-blue-200 text-blue-900'
+                    }`}>
+                      <span className="material-symbols-outlined text-base shrink-0 mt-0.5 text-amber-600">
+                        {paymentNotice.type === 'warning' ? 'warning' : 'info'}
+                      </span>
+                      <div className="flex-1 space-y-1">
+                        <p className="font-semibold">{paymentNotice.message}</p>
+                        <p className="text-[11px] text-slate-500">Mẹo: Nếu chuyển khoản khác ngân hàng thường mất 10–30 giây để Napas ghi nhận biến động số dư.</p>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Thanh nút bấm xác nhận */}
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-200">
                     <p className="text-[11px] text-slate-400 text-center sm:text-left">
                       💡 Mở app ngân hàng quét mã VietQR hoặc chuyển khoản đúng nội dung để hệ thống tự động đối soát.
                     </p>
 
-                    <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
                       <button
                         type="button"
                         onClick={() => setShowPaymentModal(false)}
@@ -2861,10 +2961,23 @@ export default function BookingManagement() {
                         Đóng
                       </button>
 
+                      {isTestConfirmMode && (
+                        <button
+                          type="button"
+                          disabled={paymentProcessing}
+                          onClick={() => handleCompletePayment()}
+                          className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-all"
+                          title="Bấm để xác nhận đối soát ngay (Dành cho thử nghiệm/demo)"
+                        >
+                          <span className="material-symbols-outlined text-sm">verified</span>
+                          <span>Xác Nhận Đã Chuyển (Demo)</span>
+                        </button>
+                      )}
+
                       <button
                         type="button"
                         disabled={paymentProcessing}
-                        onClick={handleConfirmPayment}
+                        onClick={handleCheckPaymentStatus}
                         className="w-full sm:w-auto px-6 py-2.5 rounded-xl bg-gradient-to-r from-signal-orange to-orange-600 hover:from-orange-500 hover:to-orange-600 text-white font-bold text-xs shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/35 hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer"
                       >
                         {paymentProcessing ? (
@@ -2874,8 +2987,8 @@ export default function BookingManagement() {
                           </>
                         ) : (
                           <>
-                            <span className="material-symbols-outlined text-sm">task_alt</span>
-                            <span>Xác Nhận Đã Thanh Toán</span>
+                            <span className="material-symbols-outlined text-sm">search_check</span>
+                            <span>Kiểm Tra Giao Dịch Ngay</span>
                           </>
                         )}
                       </button>

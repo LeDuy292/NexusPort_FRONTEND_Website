@@ -1192,7 +1192,7 @@ export default function GateBookingRequests() {
             gateFee: 300000,
             handlingFee: 200000,
             totalFee: 500000,
-            paymentStatus: 'Paid',
+            paymentStatus: b.paymentStatus || (b.portBillPaid ? 'Paid' : 'Unpaid'),
             gateCapacity: { gate: 'Gate 1', current: 10, max: 20, status: 'Available' },
             status: b.status,
             createdAt: new Date(b.createdAt).toLocaleString('vi-VN'),
