@@ -1,4 +1,4 @@
-import {useLayoutEffect,useRef,useState} from 'react'
+import {useEffect,useLayoutEffect,useRef,useState} from 'react'
 import {padPosition,slotAddress,slotCoveringModule} from './positions'
 import Select from '../../components/ui/Select'
 
@@ -22,9 +22,52 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
    ? {module:Math.min(area.planning.bayModules-1,Math.floor((bay-1)/2)),row,tier}
    : {module:0,row:1,tier:1}
  })
+ useEffect(() => {
+  if (!focusPosition) return
+  const match = /^[A-G]\d{2}[.-](\d{1,3})[.-](\d{1,3})[.-](\d{1,2})$/i.exec(String(focusPosition || ''))
+  if (match) {
+    const bay = Number(match[1]), row = Number(match[2]), tier = Number(match[3])
+    if (bay > 0 && row >= 1 && row <= area.planning.rows && tier >= 1 && tier <= area.planning.tiers) {
+      setSelection({
+        module: Math.min(area.planning.bayModules - 1, Math.floor((bay - 1) / 2)),
+        row,
+        tier
+      })
+    }
+  }
+ }, [focusPosition, area.planning.rows, area.planning.tiers, area.planning.bayModules])
  const {bayModules,rows,tiers,lengthBasis}=area.planning
  const live=Array.isArray(inventorySlots)
- const activeSlot=slotCoveringModule(inventorySlots,selection.module,selection.row,selection.tier)
+ const isItem40 = (item) => {
+   if (!item) return false
+   const sizeNum = Number(item.containerLengthFt || item.size || 0)
+   if (sizeNum === 20) return false
+   if (sizeNum === 40 || sizeNum === 45) return true
+
+   const t = String(item.containerType || item.isoType || item.type || '').toUpperCase()
+   if (t.includes('20') || /^2[0-9A-Z]/.test(t) || t.includes('22G') || t.includes('22R') || t.includes('20GP') || t.includes('20DC')) return false
+   if (t.includes('40') || t.includes('45') || /^4[0-9A-Z]/.test(t) || t.includes('42G') || t.includes('45G') || t.includes('40HC') || t.includes('40GP')) return true
+
+   const bayNum = Number(item.bay || 0)
+   if (bayNum > 0 && bayNum % 2 !== 0) return false // Bay lẻ = 20ft
+   if (bayNum > 0 && bayNum % 2 === 0) return true  // Bay chẵn = 40ft
+
+   return item.moduleSpan === 2
+ }
+
+ const activeSlot = inventorySlots?.find(s => {
+  if (Number(s.row) !== Number(selection.row) || Number(s.tier) !== Number(selection.tier)) return false
+  const isCont40 = isItem40(s)
+  const bayNum = Number(s.bay)
+  if (isCont40) {
+    const startMod = bayNum % 2 === 0 ? Math.floor(bayNum / 2) - 1 : Math.floor((bayNum - 1) / 2)
+    return selection.module === startMod || selection.module === startMod + 1
+  } else {
+    // Container 20ft: module tương ứng với bay lẻ (index = (bay - 1) / 2)
+    const targetMod = Math.floor((bayNum - 1) / 2)
+    return selection.module === targetMod
+  }
+ }) || null
  const address=activeSlot?{bay:activeSlot.bay,code:`${area.code}.${padPosition(activeSlot.bay)}.${padPosition(activeSlot.row)}.${activeSlot.tier}`,modules:Array.from({length:activeSlot.moduleSpan},(_,i)=>(activeSlot.moduleStart+i)*2-1)}:slotAddress(area,selection.module,selection.row,selection.tier,size)
  const displayedSize=activeSlot?.containerLengthFt||size
  const chooseSize=value=>{setSize(value);setSelection(current=>({...current,module:Math.min(current.module,bayModules-(value===40?2:1))}))}
@@ -83,12 +126,23 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
               return null;
             }
 
-            const stored = inventorySlots?.find(s => 
-              s.row === row && 
-              s.tier === selection.tier && 
-              (s.status === 'reserved' || s.status === 'occupied' || Boolean(s.containerNumber)) &&
-              ((s.moduleSpan === 2 && (index === s.moduleStart - 1 || index === s.moduleStart)) || Number(s.bay) === index * 2 + 1 || Number(s.bay) === index * 2 + 2)
-            ) || slotCoveringModule(inventorySlots, index, row, selection.tier);
+            const stored = inventorySlots?.find(s => {
+              if (Number(s.row) !== Number(row) || Number(s.tier) !== Number(selection.tier)) return false;
+              if (s.status !== 'reserved' && s.status !== 'occupied' && s.status !== 'in_yard' && !s.containerNumber && !s.tag) return false;
+
+              const isCont40 = isItem40(s);
+              const bayNum = Number(s.bay);
+
+              if (isCont40) {
+                // Container 40ft: Bắt đầu tại startMod và chiếm 2 ô
+                const startMod = bayNum % 2 === 0 ? Math.floor(bayNum / 2) - 1 : Math.floor((bayNum - 1) / 2);
+                return index === startMod;
+              } else {
+                // Container 20ft: module tương ứng với bay lẻ (index = (bay - 1) / 2)
+                const targetMod = Math.floor((bayNum - 1) / 2);
+                return index === targetMod;
+              }
+            });
 
             const contNumber = stored?.containerNumber || stored?.reservedContainerNumber;
             const isReserved = stored?.status === 'reserved';
@@ -100,7 +154,7 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
 
             // Xác định container 40ft (2 ô) hay 20ft (1 ô)
             const is40 = hasContainer
-              ? (Number(stored.containerLengthFt) === 40 || Number(stored.size) === 40 || stored.moduleSpan === 2 || (stored.containerType && String(stored.containerType).includes('40')))
+              ? isItem40(stored)
               : (size === 40 && isSelectedEmpty);
             
             const span = is40 ? 2 : 1;
@@ -121,11 +175,25 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
               gridStyle.gridColumn = `span ${span}`;
             }
 
+            const isDt = Boolean(stored?.tag === 'ĐT' || stored?.isPendingPlacement);
+
             if (hasContainer) {
               // 1. NƠI CÓ CONTAINER HOẶC CONTAINER ĐẶT CHỖ (MÀU RIÊNG BIỆT)
               const status = (stored?.status || '').toLowerCase();
-              if (status === 'reserved') {
-                // Đã đặt chỗ: Màu vàng hổ phách
+              if (isDt) {
+                // Chuẩn bị hạ đặt (ĐT): Màu vàng hổ phách sáng rực rỡ, phát sáng
+                gridStyle = {
+                  ...gridStyle,
+                  background: '#fef08a',
+                  borderColor: selected ? '#d97706' : '#eab308',
+                  borderWidth: selected ? '2.5px' : '2px',
+                  borderStyle: 'solid',
+                  borderRadius: span > 1 ? '8px' : '4px',
+                  boxShadow: selected ? '0 0 0 3px rgba(245, 158, 11, 0.55)' : '0 0 8px rgba(234, 179, 8, 0.5)',
+                  zIndex: selected ? 10 : 3,
+                };
+              } else if (isReserved || status === 'reserved') {
+                // Đã đặt chỗ từ trước: Màu vàng hổ phách nhẹ
                 gridStyle = {
                   ...gridStyle,
                   background: '#fef3c7',
@@ -137,7 +205,7 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
                   zIndex: selected ? 10 : 2,
                 };
               } else {
-                // Đang lưu bãi (In Yard / Occupied / Toàn bộ container trong bãi): Thống nhất 1 màu xám
+                // Đang lưu bãi (In Yard / Occupied / Đã ở trong bãi): Màu xám
                 gridStyle = {
                   ...gridStyle,
                   background: '#d9dde2',
@@ -163,15 +231,31 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
               };
             }
 
-            // Nhãn chữ trong ô: ghi 'CONT'
-            // Nơi có cont ghi 'CONT', còn kích trỏ chuột vào ô trống thì ghi 20 hoặc 40
-            const containerLabel = hasContainer ? 'CONT' : (selected ? (size === 40 ? '40' : '20') : '');
+            // Đếm số tầng có container tại vị trí này để hỗ trợ hiển thị chồng tầng
+            const tiersAtPos = (inventorySlots || []).filter(s => {
+              if (Number(s.row) !== Number(row)) return false;
+              if (s.status !== 'reserved' && s.status !== 'occupied' && s.status !== 'in_yard' && !s.containerNumber && !s.tag) return false;
+              const isCont40 = isItem40(s);
+              const bayNum = Number(s.bay);
+              if (isCont40) {
+                const startMod = bayNum % 2 === 0 ? Math.floor(bayNum / 2) - 1 : Math.floor((bayNum - 1) / 2);
+                return index === startMod;
+              } else {
+                return index === Math.floor((bayNum - 1) / 2);
+              }
+            });
+            const stackCount = tiersAtPos.length;
+
+            // Nhãn chữ trong ô: Nếu chuẩn bị hạ đặt (isDt) thì ghi 'ĐT' (kèm số tầng T1/T2 nếu chồng tầng), còn cont khác thì 'CONT'
+            const containerLabel = hasContainer 
+              ? (isDt ? (stackCount > 1 ? `ĐT (T${selection.tier})` : 'ĐT') : (stackCount > 1 ? `CONT (T${selection.tier})` : 'CONT'))
+              : (selected ? (size === 40 ? '40' : '20') : '');
 
             return <button
               type="button"
               key={index}
               style={gridStyle}
-              title={hasContainer ? `${contNumber || 'Container'} · ${stored.containerLengthFt || (span * 20)}ft · ${stored?.status === 'reserved' ? 'Đã giữ vị trí' : 'Đang lưu bãi'} · Bay ${padPosition(displayBay)} Row ${padPosition(row)} Tier ${selection.tier}` : `Bay ${padPosition(displayBay)} Row ${padPosition(row)} Tier ${selection.tier} (${size}ft - Ô trống)`}
+              title={hasContainer ? `${contNumber || 'Container'} · ${stored.containerLengthFt || (span * 20)}ft · ${stored?.status === 'reserved' ? 'Đã giữ vị trí' : 'Đang lưu bãi'} · Bay ${padPosition(displayBay)} Row ${padPosition(row)} Tier ${selection.tier}${stackCount > 1 ? ` (Chồng ${stackCount} tầng)` : ''}` : `Bay ${padPosition(displayBay)} Row ${padPosition(row)} Tier ${selection.tier} (${size}ft - Ô trống)`}
               aria-label={`Bay ${padPosition(displayBay)} Row ${padPosition(row)}`}
               aria-pressed={selected}
               className={[selected ? 'chosen-slot' : '', hasContainer ? `inventory-${stored.status || 'occupied'}` : ''].join(' ')}
@@ -221,7 +305,7 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
                   fontSize: span > 1 ? '11px' : '9.5px',
                   fontFamily: 'monospace',
                   color: hasContainer 
-                    ? (isReserved ? '#92400e' : '#1e293b')
+                    ? (isDt ? '#854d0e' : (isReserved ? '#92400e' : '#1e293b'))
                     : '#334155',
                   letterSpacing: '0.3px',
                   whiteSpace: 'nowrap',
@@ -342,17 +426,35 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
     <label className="yard-tier-select">Chọn tier<Select aria-label="Chọn tier" value={selection.tier} onChange={event=>setSelection(current=>({...current,tier:Number(event.target.value)}))}>{Array.from({length:tiers},(_,i)=><option key={i+1} value={i+1}>Tier {i+1}</option>)}</Select></label>
 </div><div>    <div className="yard-tier-profile" aria-label="Mặt cắt tầng">
       {Array.from({length:tiers},(_,i)=>tiers-i).map(tier => {
-        const tierSlot = inventorySlots?.find(s => 
-          s.row === selection.row && 
-          s.tier === tier && 
-          (s.status === 'reserved' || s.status === 'occupied' || Boolean(s.containerNumber)) &&
-          ((s.moduleSpan === 2 && (selection.module === s.moduleStart - 1 || selection.module === s.moduleStart)) || Number(s.bay) === selection.module * 2 + 1 || Number(s.bay) === selection.module * 2 + 2)
-        ) || slotCoveringModule(inventorySlots, selection.module, selection.row, tier);
+        const tierSlot = inventorySlots?.find(s => {
+          if (Number(s.row) !== Number(selection.row) || Number(s.tier) !== Number(tier)) return false;
+          if (s.status !== 'reserved' && s.status !== 'occupied' && s.status !== 'in_yard' && !s.containerNumber && !s.tag) return false;
+          const isCont40 = isItem40(s);
+          const bayNum = Number(s.bay);
+          if (isCont40) {
+            const startMod = bayNum % 2 === 0 ? Math.floor(bayNum / 2) - 1 : Math.floor((bayNum - 1) / 2);
+            return selection.module === startMod || selection.module === startMod + 1;
+          } else {
+            const targetMod = Math.floor((bayNum - 1) / 2);
+            return selection.module === targetMod;
+          }
+        }) || null;
 
         const hasCont = Boolean(tierSlot && (tierSlot.status === 'reserved' || tierSlot.status === 'occupied' || (Boolean(tierSlot.containerNumber) && tierSlot.status !== 'empty')));
         const isReserved = tierSlot?.status === 'reserved';
-        const is40 = hasCont && (Number(tierSlot.containerLengthFt) === 40 || Number(tierSlot.size) === 40 || tierSlot.moduleSpan === 2 || (tierSlot.containerType && String(tierSlot.containerType).includes('40')));
+        const isDtTier = Boolean(tierSlot?.tag === 'ĐT' || tierSlot?.isPendingPlacement);
+        const is40 = hasCont && isItem40(tierSlot);
         const isSelected = selection.tier === tier;
+
+        const tierBg = hasCont
+          ? (isDtTier ? '#fef08a' : (isReserved ? '#fef3c7' : '#e2e8f0'))
+          : (isSelected ? '#e0f2fe' : '#fafcfd');
+        const tierBorder = isSelected
+          ? '#0284c7'
+          : (hasCont ? (isDtTier ? '#eab308' : (isReserved ? '#f59e0b' : '#94a3b8')) : '#cbd5e1');
+        const tierColor = hasCont
+          ? (isDtTier ? '#854d0e' : (isReserved ? '#92400e' : '#1e293b'))
+          : (isSelected ? '#0369a1' : '#64748b');
 
         return (
           <button 
@@ -368,27 +470,27 @@ export default function BlockDetail({area,onBack,maxModules=32,inventorySlots,on
               fontSize: '11px',
               fontWeight: isSelected ? 700 : 500,
               borderRadius: '4px',
-              background: hasCont ? (isReserved ? '#fef3c7' : '#e2e8f0') : (isSelected ? '#e0f2fe' : '#fafcfd'),
-              borderColor: isSelected ? '#0284c7' : (hasCont ? (isReserved ? '#f59e0b' : '#94a3b8') : '#cbd5e1'),
+              background: tierBg,
+              borderColor: tierBorder,
               borderWidth: isSelected ? '2px' : '1px',
               borderStyle: hasCont ? 'solid' : 'dashed',
-              color: hasCont ? (isReserved ? '#92400e' : '#1e293b') : (isSelected ? '#0369a1' : '#64748b'),
+              color: tierColor,
               cursor: 'pointer',
               transition: 'all 0.15s ease',
               width: '100%'
             }}
-            title={hasCont ? `Tier ${tier}: Có container (${is40 ? '40ft' : '20ft'})` : `Tier ${tier}: Ô trống`}
+            title={hasCont ? `Tier ${tier}: Có container (${isDtTier ? 'Chuẩn bị hạ đặt [ĐT]' : (isReserved ? 'Đã đặt trước' : 'Đang lưu bãi')})` : `Tier ${tier}: Ô trống`}
           >
             <span>Tier {tier}</span>
             <span style={{
               fontSize: '9px',
               padding: '1px 5px',
               borderRadius: '3px',
-              background: hasCont ? (isReserved ? '#fde68a' : '#cbd5e1') : 'transparent',
+              background: hasCont ? (isDtTier ? '#fde68a' : (isReserved ? '#fef08a' : '#cbd5e1')) : 'transparent',
               fontWeight: 700,
-              color: hasCont ? (isReserved ? '#78350f' : '#334155') : '#94a3b8'
+              color: tierColor
             }}>
-              {hasCont ? (is40 ? '40ft' : '20ft') : 'Trống'}
+              {hasCont ? (isDtTier ? 'ĐT' : (isReserved ? 'ĐÃ GIỮ' : (is40 ? '40ft' : '20ft'))) : 'Trống'}
             </span>
           </button>
         );

@@ -53,7 +53,7 @@ export function StatCard({ label, value, hint, tone = 'text-carbon', active, onC
       className={`text-left bg-white rounded-2xl border p-4 shadow-sm space-y-1 ${active ? 'border-signal-orange ring-1 ring-signal-orange' : 'border-chalk'} ${onClick ? 'cursor-pointer hover:bg-fog/60' : ''}`}
     >
       <span className="block text-[10px] font-bold text-slate uppercase tracking-wider">{label}</span>
-      <span className="block text-3xl font-extrabold font-mono text-carbon">{value}</span>
+      <span className="block text-3xl font-extrabold tabular-nums text-carbon">{value}</span>
       {hint && <span className={`block text-[11px] font-bold ${tone}`}>{hint}</span>}
     </Tag>
   )
@@ -92,3 +92,28 @@ export function EmptyState({ icon = 'inbox', title, children }) {
 
 export const thCls = 'py-3 px-3 text-left whitespace-nowrap'
 export const theadCls = 'bg-fog text-slate font-bold uppercase text-[10px] border-b border-chalk'
+
+/** Phân trang gọn cho danh sách: Trước / số trang / Sau. */
+export function Pager({ page, pageCount, total, pageSize, onChange }) {
+  if (pageCount <= 1) return null
+  const from = (page - 1) * pageSize + 1
+  const to = Math.min(total, page * pageSize)
+  const pages = []
+  for (let i = 1; i <= pageCount; i += 1) {
+    if (i === 1 || i === pageCount || Math.abs(i - page) <= 1) pages.push(i)
+    else if (pages[pages.length - 1] !== '…') pages.push('…')
+  }
+  const nav = 'h-8 min-w-8 px-2 rounded-lg border text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
+  return (
+    <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-chalk pt-3">
+      <span className="text-xs text-slate tabular-nums">{from}–{to} / {total}</span>
+      <div className="flex items-center gap-1">
+        <button type="button" className={`${nav} border-chalk bg-white hover:bg-fog`} disabled={page <= 1} onClick={() => onChange(page - 1)} aria-label="Trang trước">‹</button>
+        {pages.map((p, i) => p === '…'
+          ? <span key={`gap-${i}`} className="px-1 text-xs text-slate">…</span>
+          : <button key={p} type="button" onClick={() => onChange(p)} className={`${nav} ${p === page ? 'border-signal-orange bg-signal-orange text-white' : 'border-chalk bg-white hover:bg-fog text-carbon'}`}>{p}</button>)}
+        <button type="button" className={`${nav} border-chalk bg-white hover:bg-fog`} disabled={page >= pageCount} onClick={() => onChange(page + 1)} aria-label="Trang sau">›</button>
+      </div>
+    </div>
+  )
+}

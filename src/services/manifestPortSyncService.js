@@ -12,6 +12,7 @@
 import { yardReservationStore } from './yardReservationStore'
 import { shippingLineApi } from '../pages/ShippingLine/api/shippingLineApi'
 import yardDischargeService from './yardDischargeService'
+import { resolveTargetBlock, isContainer20 } from './yardPlanningRules'
 
 const STORAGE_KEY = 'nexusport_synced_manifests_v12'
 const GENERATED_BOOKINGS_KEY = 'nexusport_manifest_gate_bookings_v12'
@@ -211,48 +212,111 @@ export function computeAutoYardSlot(container, direction = 'EXPORT', index = 0, 
     cargoCategory = 'Container lạnh (Reefer)'
     badgeTheme = 'cyan'
   } else if (isDG) {
-    zoneCode = 'E'
-    zoneName = 'Khu E · Bãi Hàng Nguy Hiểm (DG Hazmat)'
-    blockCode = 'E01'
+    zoneCode = 'C'
+    zoneName = 'Khu C · Bãi Container Tổng Hợp / Nguy Hiểm'
+    blockCode = 'C01'
     cargoCategory = `Cont Nguy Hiểm (${dg || 'IMO'})`
     badgeTheme = 'rose'
   } else if (direction === 'IMPORT') {
-    // HÀNG NHẬP: Dỡ từ tàu xuống bãi -> Đặt GẦN BIỂN / CẦU TÀU (Khu A sát Cầu 4-5) để cẩu bốc dỡ ngay
-    zoneCode = 'A'
-    zoneName = 'Khu A · Bãi Cont Nhập Khẩu Sát Cầu Tàu 4–5 (Gần Biển)'
-    blockCode = 'A01'
-    cargoCategory = 'Cont Khô Nhập Khẩu (Dỡ Tàu Gần Biển)'
+    // HÀNG NHẬP: Ưu tiên gần cổng trước (chọn C10 lùi dần về C04, rồi qua B04 và B03)
+    zoneCode = 'C'
+    zoneName = 'Khu C · Bãi Cont Nhập Khẩu (Gần cổng C10 lùi dần C04, B04, B03)'
+    blockCode = 'C10'
+    cargoCategory = 'Cont Khô Nhập Khẩu'
     badgeTheme = 'blue'
   } else {
-    // HÀNG XUẤT: Xe tải từ ngoài vào hạ hàng hoặc lấy hàng -> Đặt GẦN CỔNG GATE (Khu F / Khu E sát Cổng Gate 1) để xe dễ vào/ra, TUYỆT ĐỐI TRÁNH khu C01 gần biển
-    zoneCode = 'F'
-    zoneName = 'Khu F · Bãi Cont Xuất Khẩu Sát Cổng Gate 1 (Dễ Giao Nhận)'
-    blockCode = (index % 2 === 0) ? 'F01' : 'E01'
-    cargoCategory = 'Cont Khô Xuất Khẩu (Sát Cổng Gate 1)'
+    // HÀNG XUẤT: Xếp vào các dãy gần cầu tàu (A01-A04, B01-B02, C01-C03) -> mặc định B01
+    zoneCode = 'B'
+    zoneName = 'Khu B · Bãi Cont Xuất Khẩu Gần Cầu Tàu STS (B01–B02)'
+    blockCode = 'B01'
+    cargoCategory = 'Cont Khô Xuất Khẩu'
     badgeTheme = 'emerald'
   }
 
-  // Phân bổ ô bãi không va chạm (Collision-free placement):
-  // - Đối với cont 40ft: Mỗi cont chiếm 2 bay 20ft liền kề (Bay chẵn: 02, 06, 10, 14, 18, 22, 26, 30).
-  // - Đối với cont 20ft: Bay lẻ: 01, 03, 05, 07, 09, 11, 13, 15...
-  const bayNum = is20 ? (1 + (index % 16) * 2) : (2 + (index % 8) * 4)
-  const bayStr = String(bayNum).padStart(2, '0')
-  const rowNum = is20 ? (Math.floor(index / 16) + 1) : (Math.floor(index / 8) + 1)
-  const rowStr = String(rowNum).padStart(2, '0')
+  // Phân bổ ô bãi không va chạm và xếp dồn lại (Compact & Collision-free placement):
+  // Đếm thứ tự container 20ft và 40ft trong cùng Block:
+  let inBlock20Idx = 0
+  let inBlock40Idx = 0
 
-  // Quy tắc xếp tầng (Tier stacking rule):
-  // - Cont nặng (>= 22 tấn): Ưu tiên Tier 1 (hạ đất vững chắc, trọng tâm thấp chống lật)
-  // - Cont trung bình (16 - 22 tấn): Tier 1 hoặc Tier 2
-  // - Cont nhẹ (< 16 tấn): Tier 2 hoặc Tier 3
-  let tierNum = 1
-  if (isHeavy) {
-    tierNum = 1
-  } else if (grossWeightKg > 16000) {
-    tierNum = (index % 2 === 0) ? 1 : 2
+  // 1. Kiểm tra số container đã có sẵn trong Block từ yardReservationStore (tránh đè lên tàu khác):
+  let existingStore40 = 0
+  let existingStore20 = 0
+  try {
+    const contKey = String(container?.containerNumber || container?.containerId || '').trim().toUpperCase()
+    const storeRes = yardReservationStore.getReservations() || []
+    storeRes.forEach(r => {
+      const rBlock = r.blockCode || r.block
+      if (rBlock === blockCode) {
+        const rCont = String(r.containerNo || r.containerId || '').trim().toUpperCase()
+        if (contKey && rCont === contKey) return
+        const rSize = Number(r.size || r.containerLengthFt) || 40
+        if (rSize === 20) existingStore20 += 1
+        else existingStore40 += 1
+      }
+    })
+  } catch {}
+
+  if (Array.isArray(contextList) && contextList.length > 0) {
+    let count20 = 0
+    let count40 = 0
+    contextList.slice(0, index).forEach((item) => {
+      const itemIso = String(item?.isoType || item?.containerType || '').toUpperCase()
+      const itemRf = Boolean(item?.isReefer) || /RF|RH|R[01]/.test(itemIso) || String(item?.tempRequired || '').includes('-')
+      const itemDg = String(item?.dgClass || '').includes('IMO') || String(item?.dgClass || '').includes('Class')
+      const itemBlock = itemRf ? 'D01' : (itemDg ? 'C01' : (direction === 'IMPORT' ? 'C10' : 'B01'))
+      if (itemBlock === blockCode) {
+        const itemIs20 = itemIso.startsWith('20')
+        if (itemIs20) count20 += 1
+        else count40 += 1
+      }
+    })
+    inBlock20Idx = existingStore20 + count20
+    inBlock40Idx = existingStore40 + count40
   } else {
-    tierNum = 2 + (index % 2)
+    inBlock20Idx = existingStore20 + (is20 ? index : 0)
+    inBlock40Idx = existingStore40 + (is20 ? 0 : index)
   }
-  if (tierNum > 3) tierNum = 3
+
+  let bayNum = 2
+  let rowNum = 1
+  let tierNum = 1
+
+  if (!is20) {
+    // XẾP CONT 40FT TRƯỚC (Hàng 1, 2, 3... - ƯU TIÊN):
+    // Dồn 2 tầng (Tier 1 và Tier 2 đè lên nhau) theo từng Row để tiết kiệm bãi
+    const stackIdx = Math.floor(inBlock40Idx / 2)
+    const isTopTier = (inBlock40Idx % 2 === 1)
+    rowNum = (stackIdx % 6) + 1
+    const bayOffset = Math.floor(stackIdx / 6)
+    bayNum = 2 + bayOffset * 4
+    tierNum = isTopTier ? 2 : 1
+  } else {
+    // XẾP CONT 20FT SAU (Tiếp tục từ hàng tiếp theo sau khi đã xếp hết cont 40ft, TUYỆT ĐỐI KHÔNG TRÙNG VỊ TRÍ):
+    // Ghép đôi 2 con 20ft chung 1 row (Bay 01 và Bay 03) để tiết kiệm diện tích
+    let totalBlock40 = 0
+    if (Array.isArray(contextList) && contextList.length > 0) {
+      contextList.forEach(item => {
+        const itemIso = String(item?.isoType || item?.containerType || '').toUpperCase()
+        const itemRf = Boolean(item?.isReefer) || /RF|RH|R[01]/.test(itemIso) || String(item?.tempRequired || '').includes('-')
+        const itemDg = String(item?.dgClass || '').includes('IMO') || String(item?.dgClass || '').includes('Class')
+        const itemBlock = itemRf ? 'D01' : (itemDg ? 'C01' : (direction === 'IMPORT' ? 'C10' : 'B01'))
+        if (itemBlock === blockCode && !(itemIso.startsWith('20') || itemIso.includes('20') || Number(item?.size) === 20)) {
+          totalBlock40 += 1
+        }
+      })
+    }
+    const total40Rows = Math.ceil(totalBlock40 / 2) // Mỗi hàng chứa tối đa 2 cont 40ft (chồng 2 tầng)
+    const pairIdx = Math.floor(inBlock20Idx / 2)
+    const isSecondInPair = (inBlock20Idx % 2 === 1)
+    const effectiveRowIdx = total40Rows + pairIdx
+    rowNum = (effectiveRowIdx % 6) + 1
+    const bayOffset = Math.floor(effectiveRowIdx / 6)
+    bayNum = (isSecondInPair ? 3 : 1) + bayOffset * 4
+    tierNum = 1
+  }
+
+  const bayStr = String(bayNum).padStart(2, '0')
+  const rowStr = String(rowNum).padStart(2, '0')
 
   const posId = `${blockCode}-B${bayStr}-R${rowNum}-T${tierNum}`
   const defaultGate = 'Gate 1'
@@ -265,7 +329,7 @@ export function computeAutoYardSlot(container, direction = 'EXPORT', index = 0, 
     reasons.push('Khu lạnh Block D01 có ổ cắm điện (+25đ)')
   } else if (isDG) {
     score += 20
-    reasons.push(`Khu cách ly hàng nguy hiểm Block E01 (+20đ)`)
+    reasons.push(`Khu cách ly hàng nguy hiểm Block C01 (+20đ)`)
   } else if (direction === 'IMPORT') {
     score += 20
     reasons.push('Hàng nhập dỡ từ tàu đặt gần Biển / Cầu tàu 4–5 bốc dỡ thuận lợi (+20đ)')
@@ -431,26 +495,19 @@ export const PERMANENT_APPROVED_MANIFESTS_KEY = 'nexusport_permanent_approved_ma
 export function extractManifestIdentifiers(m) {
   if (!m) return []
   if (typeof m === 'string') return [m.toUpperCase().trim()]
+  const rawDir = String(m.direction || m.payload?.direction || '').toUpperCase()
+  const dir = (rawDir === 'IMPORT' || rawDir === 'NHẬP KHẨU') ? 'IMPORT' : 'EXPORT'
   const list = [
     m.id,
     m.manifestId,
     m.manifestNumber,
-    m.voyageNumber,
-    m.voyageInfo?.voyageNumber,
-    m.payload?.voyageNumber,
-    m.payload?.voyageInfo?.voyageNumber,
-    m.vesselName,
-    m.voyageInfo?.vesselName,
-    m.payload?.vesselName,
-    m.payload?.voyageInfo?.vesselName,
+    m.voyageNumber ? `${dir}:${m.voyageNumber}` : null,
+    m.voyageInfo?.voyageNumber ? `${dir}:${m.voyageInfo.voyageNumber}` : null,
+    m.payload?.voyageNumber ? `${dir}:${m.payload.voyageNumber}` : null,
+    m.payload?.voyageInfo?.voyageNumber ? `${dir}:${m.payload.voyageInfo.voyageNumber}` : null,
     m.bookingNumber,
     m.nswRef,
   ]
-  if (Array.isArray(m.containers)) {
-    m.containers.forEach(c => {
-      if (c?.containerNumber) list.push(c.containerNumber)
-    })
-  }
   return list.filter(Boolean).map(k => String(k).toUpperCase().trim())
 }
 
@@ -853,9 +910,29 @@ export const manifestPortSyncService = {
       const trailer = trip.trailerPlate || trip.vehicle?.trailerPlate
       const vehicle = trip.vehicle
       const driverSnapshot = trip.driver
+      const appointmentStart = trip.appointmentStart || content.plannedAt || null
+      const appointmentEnd = trip.appointmentEnd || null
+      const eportOrderId = order.id || order.draftId || null
+      const eportOrderNumber = order.number || null
+      const isOrderPaid = String(order.paymentStatus || '').toUpperCase() === 'PAID'
+      const isOrderApproved = ordStatus === 'APPROVED' || String(order.approvalStatus || '').toUpperCase() === 'APPROVED' || isOrderPaid
 
       if (contNum && (plate || driver || orderDocuments.length > 0)) {
-        const fleetData = { plate, driver, phone, license, idCard, trailer, vehicle, driverSnapshot, documents: orderDocuments }
+        const fleetData = {
+          plate,
+          driver,
+          phone,
+          license,
+          idCard,
+          trailer,
+          vehicle,
+          driverSnapshot,
+          appointmentStart,
+          appointmentEnd,
+          eportOrderId,
+          eportOrderNumber,
+          documents: orderDocuments,
+        }
         this.saveOrderFleet(contNum, fleetData)
 
         // Lưu thêm 4 số cuối của container để map với booking code (ví dụ: BK-EG2605W-5749 khớp với 5749)
@@ -874,12 +951,20 @@ export const manifestPortSyncService = {
           if (!matches) return b
 
           const docsNeedUpdate = orderDocuments.length > 0 && JSON.stringify(b.eportDocuments || []) !== JSON.stringify(orderDocuments)
+          const targetStatus = isOrderPaid
+            ? 'Ready'
+            : (isOrderApproved ? (b.status === 'Ready' ? 'Ready' : 'Approved') : (b.status === 'WaitingTransport' ? 'Pending' : b.status))
           const needsUpdate =
+            !b.transportSubmitted ||
+            b.status !== targetStatus ||
             (plate && (b.licensePlate !== plate || b.suggestedPlate !== plate)) ||
             (driver && (b.driverName !== driver || b.suggestedDriver !== driver)) ||
             (phone && b.phone !== phone) ||
             (license && b.licenseNumber !== license) ||
             (trailer && b.trailerPlate !== trailer) ||
+            (appointmentStart && b.appointmentStart !== appointmentStart) ||
+            (appointmentEnd && b.appointmentEnd !== appointmentEnd) ||
+            (eportOrderId && b.eportOrderId !== eportOrderId) ||
             docsNeedUpdate
 
           if (!needsUpdate) return b
@@ -889,13 +974,20 @@ export const manifestPortSyncService = {
           }
           return {
             ...b,
-            ...(plate ? { suggestedPlate: plate, licensePlate: plate } : {}),
+            transportSubmitted: true,
+            status: targetStatus,
+            ...(plate ? { suggestedPlate: plate, licensePlate: plate, vehiclePlate: plate } : {}),
             ...(driver ? { suggestedDriver: driver, driverName: driver } : {}),
             ...(phone ? { phone } : {}),
             ...(license ? { licenseNumber: license } : {}),
             ...(trailer ? { trailerPlate: trailer } : {}),
             ...(driverSnapshot ? { driverSnapshot } : {}),
             ...(vehicle ? { vehicleSnapshot: vehicle } : {}),
+            ...(appointmentStart ? { appointmentStart, eta: appointmentStart } : {}),
+            ...(appointmentEnd ? { appointmentEnd } : {}),
+            ...(eportOrderId ? { eportOrderId } : {}),
+            ...(eportOrderNumber ? { eportOrderNumber } : {}),
+            ...(isOrderPaid ? { portBillPaid: true, paymentStatus: 'Paid' } : {}),
             ...(orderDocuments.length > 0 ? { eportDocuments: orderDocuments, documents: orderDocuments } : {}),
           }
         })
@@ -1018,9 +1110,27 @@ export const manifestPortSyncService = {
     const trailer = matchedTrip?.trailerPlate || matchedTrip?.vehicle?.trailerPlate || null
     const vehicle = matchedTrip?.vehicle || null
     const driverSnapshot = matchedTrip?.driver || null
+    const appointmentStart = matchedTrip?.appointmentStart || content.plannedAt || null
+    const appointmentEnd = matchedTrip?.appointmentEnd || null
+    const eportOrderId = order.id || order.draftId || null
+    const eportOrderNumber = order.number || null
 
     if (plate || driver || orderDocuments.length > 0) {
-      return { plate, driver, phone, license, idCard, trailer, vehicle, driverSnapshot, documents: orderDocuments }
+      return {
+        plate,
+        driver,
+        phone,
+        license,
+        idCard,
+        trailer,
+        vehicle,
+        driverSnapshot,
+        appointmentStart,
+        appointmentEnd,
+        eportOrderId,
+        eportOrderNumber,
+        documents: orderDocuments,
+      }
     }
     return null
   },
@@ -1038,29 +1148,53 @@ export const manifestPortSyncService = {
       })))
     }
 
-    const findBlForCont = (cNo) => {
+    const isImportManifest = String(rm.direction || rm.flow || '').toUpperCase() === 'IMPORT' || rm.direction === 'Nhập khẩu'
+    const findBillForCont = (cNo, cBl) => {
       if (Array.isArray(rm.bills)) {
+        if (cBl) {
+          const byBl = rm.bills.find(b => String(b.blNumber || '').trim().toUpperCase() === String(cBl).trim().toUpperCase())
+          if (byBl) return byBl
+        }
         for (const b of rm.bills) {
           if (b.containers?.some(c => (c.containerNumber || c.containerId || '').trim().toUpperCase() === cNo)) {
-            return b.blNumber
+            return b
           }
         }
       }
-      return rm.blNumber || rm.bills?.[0]?.blNumber || ''
+      return null
+    }
+
+    const findBlForCont = (cNo) => {
+      const b = findBillForCont(cNo)
+      return b?.blNumber || rm.blNumber || rm.bills?.[0]?.blNumber || ''
     }
 
     const mappedContainers = rawContainers.map((r, idx) => {
-      const carrierProfile = TRANSPORT_COMPANIES_POOL[Math.floor(idx / 2) % TRANSPORT_COMPANIES_POOL.length]
       const cNo = (r.containerNumber || r.container_no || '').trim().toUpperCase()
+      const bill = findBillForCont(cNo, r.blNumber)
+      const shipper = r.shipper || bill?.shipper || ''
+      const consignee = r.consignee || bill?.consignee || ''
+      // ĐỐI CHIẾU THỐNG NHẤT:
+      // Hàng xuất (EXPORT): Doanh nghiệp đối chiếu là Người gửi hàng (Shipper / Booking)
+      // Hàng nhập (IMPORT): Doanh nghiệp đối chiếu là Người nhận hàng (Consignee)
+      const assignedCompany = isImportManifest
+        ? (consignee || r.transportCompany || shipper)
+        : (shipper || r.transportCompany || consignee)
+
+      const carrierProfile =
+        TRANSPORT_COMPANIES_POOL.find(p => p.companyName === assignedCompany) ||
+        TRANSPORT_COMPANIES_POOL.find(p => p.companyName === r.transportCompany) ||
+        TRANSPORT_COMPANIES_POOL[Math.floor(idx / 2) % TRANSPORT_COMPANIES_POOL.length]
+
       return {
         containerNumber: cNo,
         isoType: r.isoType || '40HC',
         sealNumber: r.sealNumber || '',
-        blNumber: r.blNumber || findBlForCont(cNo) || rm.blNumber || '',
-        shipper: r.shipper || '',
-        consignee: r.consignee || '',
+        blNumber: r.blNumber || bill?.blNumber || findBlForCont(cNo) || rm.blNumber || '',
+        shipper: shipper || carrierProfile.companyName,
+        consignee: consignee || carrierProfile.companyName,
         isReefer: Boolean(r.isReefer || r.cargoType === 'REEFER' || /RF|RH|R[01]/.test(r.isoType || '')),
-        transportCompany: r.transportCompany || carrierProfile.companyName,
+        transportCompany: assignedCompany || r.transportCompany || carrierProfile.companyName,
         suggestedDriver: r.driverName || null,
         suggestedPlate: r.licensePlate || null,
         suggestedTrailer: r.trailerPlate || null,
@@ -1122,6 +1256,7 @@ export const manifestPortSyncService = {
       portApprovedAt: rm.portApprovedAt || (isApproved ? (rm.portApprovedAt || new Date().toISOString()) : null),
       portApprovedBy: rm.portApprovedBy || (isApproved ? 'Dispatcher Cảng Tiên Sa (Trần Hữu Long)' : null),
       vesselStatus: rm.vesselStatus || 'BERTHED',
+      bills: rm.bills || [],
       containers: mappedContainers,
       generatedBookings: rm.generatedBookings || null,
     }
@@ -1361,17 +1496,25 @@ export const manifestPortSyncService = {
               ? { ...item.autoYardSlot, ...matchedRes }
               : (item.autoYardSlot || {})
 
+            const isImport = String(item.direction || '').toUpperCase() === 'IMPORT' || item.direction === 'Nhập khẩu' || item.bookingType === 'Import' || String(item.voyageNumber || '').endsWith('I')
             const isRf = (item.containerType || '').includes('RF') || item.isReefer
             const isDg = item.isDG || (item.dgClass && !item.dgClass.includes('Non-DG'))
-            const is20 = (item.containerType || '').includes('20')
-            const bayNum = slot.bay || slot.bayCode || (is20 ? (1 + (idx % 16) * 2) : (2 + (idx % 8) * 4))
+            const is20 = isContainer20(item)
+
+            // Đồng bộ chuẩn theo quy tắc quy hoạch bãi Cảng Tiên Sa (Hàng nhập ưu tiên C10 lùi dần, hàng xuất A/B/C)
+            const targetBlock = resolveTargetBlock(item, isImport ? 'IMPORT' : 'EXPORT')
+            let blockCode = slot.blockCode
+            if (!blockCode || blockCode.startsWith('E') || blockCode.startsWith('F') || (isImport && (blockCode === 'A01' || blockCode === 'B01'))) {
+              blockCode = targetBlock
+            }
+
+            let bayNum = slot.bay || (is20 ? (1 + (idx * 2) % 15) : (2 + (idx * 2) % 16))
             const bayStr = String(bayNum).padStart(2, '0')
-            const rowNum = slot.row || (is20 ? (Math.floor(idx / 16) + 1) : (Math.floor(idx / 8) + 1))
+            let rowNum = slot.row || ((idx % 4) + 1)
             const rowStr = String(rowNum).padStart(2, '0')
-            const tierNum = slot.tier || 1
-            const blockCode = slot.blockCode || (isRf ? 'D01' : (isDg ? 'E01' : (item.direction === 'IMPORT' ? 'B01' : 'A01')))
-            const autoGate = 'Gate 1'
-            const formattedSlot = `Block ${blockCode} · Bay ${bayStr} (${rowNum}-${tierNum})`
+            const grossKg = Number(item.grossWeightKg || 22000)
+            const tierNum = slot.tier || (grossKg >= 22000 ? 1 : 2)
+            const formattedSlot = `Khu ${blockCode} · Bay ${bayStr} (R${rowStr}-T${tierNum})`
 
             if (item.requestedGate !== 'Gate 1' || slot.gate !== 'Gate 1') {
               hasBookingsMigrated = true
@@ -1380,6 +1523,7 @@ export const manifestPortSyncService = {
             const updatedSlot = {
               ...slot,
               blockCode,
+              block: blockCode,
               bay: Number(bayNum) || 2,
               bayCode: bayStr,
               bayDisplay: `Bay ${bayStr}`,
@@ -1389,8 +1533,10 @@ export const manifestPortSyncService = {
               tierCode: String(tierNum),
               gate: 'Gate 1',
               gateDisplay: 'Gate 1 (Cổng Cảng Tiên Sa)',
-              slotName: `Khu ${blockCode} · Bay ${bayStr} (R${rowStr}-T${tierNum})`,
+              slotName: formattedSlot,
               fullLocation: formattedSlot,
+              coordinate: `${blockCode}-${bayStr}-${rowStr}-${tierNum}`,
+              posId: `${blockCode}-B${bayStr}-R${rowNum}-T${tierNum}`,
             }
 
             // Tự động đồng bộ vị trí vào yardReservationStore để Sơ đồ bãi luôn hiển thị đủ container
@@ -1457,6 +1603,17 @@ export const manifestPortSyncService = {
               if (orderFleet.trailer) vTrailer = orderFleet.trailer
               if (orderFleet.driverSnapshot) item.driverSnapshot = orderFleet.driverSnapshot
               if (orderFleet.vehicle) item.vehicleSnapshot = orderFleet.vehicle
+              if (orderFleet.appointmentStart) {
+                item.appointmentStart = orderFleet.appointmentStart
+                item.eta = item.eta || orderFleet.appointmentStart
+              }
+              if (orderFleet.appointmentEnd) item.appointmentEnd = orderFleet.appointmentEnd
+              if (orderFleet.eportOrderId) item.eportOrderId = orderFleet.eportOrderId
+              if (orderFleet.eportOrderNumber) item.eportOrderNumber = orderFleet.eportOrderNumber
+              if (vPlate || vDriver) {
+                isSubmitted = true
+                if (restoredStatus === 'WaitingTransport') restoredStatus = 'Pending'
+              }
             }
 
             const cleanRealDocs = (docs) => (Array.isArray(docs) ? docs : []).filter(
@@ -1842,10 +1999,12 @@ export const manifestPortSyncService = {
     const now = new Date().toISOString().replace('T', ' ').slice(0, 19)
     let approvedManifest = null
 
+    const hasExactIdMatch = list.some(m => m.manifestId === manifestId || m.id === manifestId || m.manifestNumber === manifestId)
     const updated = list.map(m => {
-      const isTarget = m.manifestId === manifestId || m.id === manifestId || m.manifestNumber === manifestId ||
-        m.voyageNumber === manifestId || (m.vesselName && String(manifestId).includes(m.vesselName))
-      if (isTarget) {
+      const isTarget = hasExactIdMatch
+        ? (m.manifestId === manifestId || m.id === manifestId || m.manifestNumber === manifestId)
+        : (m.voyageNumber === manifestId || (m.vesselName && String(manifestId).includes(m.vesselName)))
+      if (isTarget && !approvedManifest) {
         // Tự động sắp xếp các container trên tàu theo đúng quy luật phân bổ bãi cảng
         const sourceConts = (m.containers && m.containers.length > 0)
           ? m.containers
@@ -1905,15 +2064,30 @@ export const manifestPortSyncService = {
       const sortedContainers = sortContainersForYardAllocation(approvedManifest.containers)
       approvedManifest.containers = sortedContainers
 
-      const isImport = approvedManifest.direction === 'IMPORT'
+      const isImport = String(approvedManifest.direction || '').toUpperCase() === 'IMPORT' || approvedManifest.direction === 'Nhập khẩu'
+      const dirTag = isImport ? 'IMP' : 'EXP'
       newGateBookings = sortedContainers.map((c, idx) => {
+        const bill = (approvedManifest.bills || []).find(b =>
+          (c.blNumber && String(b.blNumber).trim().toUpperCase() === String(c.blNumber).trim().toUpperCase()) ||
+          b.containers?.some(bc => String(bc.containerNumber || bc.containerId).trim().toUpperCase() === String(c.containerNumber).trim().toUpperCase())
+        )
+        const shipper = c.shipper || bill?.shipper || ''
+        const consignee = c.consignee || bill?.consignee || ''
+        // ĐỐI CHIẾU THỐNG NHẤT THEO LOẠI HÀNG:
+        // - Hàng xuất: Người gửi booking / hàng (Shipper)
+        // - Hàng nhập: Người nhận hàng (Consignee)
+        const assignedCompany = isImport
+          ? (consignee || c.transportCompany || shipper)
+          : (shipper || c.transportCompany || consignee)
+
         const carrierProfile =
+          TRANSPORT_COMPANIES_POOL.find(p => p.companyName === assignedCompany) ||
           TRANSPORT_COMPANIES_POOL.find(p => p.companyName === c.transportCompany) ||
           TRANSPORT_COMPANIES_POOL[idx % TRANSPORT_COMPANIES_POOL.length]
 
         const shortVoyage = (approvedManifest.voyageNumber || 'V26').replace(/[^A-Z0-9]/gi, '')
         const contSuffix = (c.containerNumber || `00${idx + 1}`).slice(-4)
-        const bookingCode = `BK-${shortVoyage}-${contSuffix}`
+        const bookingCode = `BK-${dirTag}-${shortVoyage}-${contSuffix}`
 
         // NẾU TÀU ĐÃ CÓ KẾ HOẠCH DỠ BÃI SMART YARD PRE-ALLOCATION (ĐÃ CÓ SẴN VỊ TRÍ PHÂN BỔ):
         // CHỈ lấy vị trí nếu đã được bấm Phân Bổ Bãi Tự Động (isPreAllocated === true)
@@ -1962,8 +2136,15 @@ export const manifestPortSyncService = {
           }
         }
 
-        // Tự động phân bổ bãi trực tiếp theo chuẩn quy tắc Cảng Tiên Sa (Không dùng bãi đệm tạm Khu A)
-        if (!autoYardSlot || autoYardSlot.isTemporaryBuffer || autoYardSlot.allocationScore === 50) {
+        // Tự động phân bổ bãi trực tiếp theo chuẩn quy tắc Cảng Tiên Sa (Ưu tiên giữ vị trí đã được điều độ xếp/đổi bãi)
+        const existingStoredRes = yardReservationStore.getReservation(c.containerNumber)
+        if (existingStoredRes && existingStoredRes.blockCode) {
+          autoYardSlot = {
+            ...existingStoredRes,
+            slotName: existingStoredRes.slotName || `Khu ${existingStoredRes.blockCode} · Bay ${String(existingStoredRes.bay).padStart(2, '0')} (R${String(existingStoredRes.row).padStart(2, '0')}-T${existingStoredRes.tier})`,
+            fullLocation: existingStoredRes.fullLocation || `Block ${existingStoredRes.blockCode} · Bay ${String(existingStoredRes.bay).padStart(2, '0')} · Row ${String(existingStoredRes.row).padStart(2, '0')} · Tier ${existingStoredRes.tier}`
+          }
+        } else if (!autoYardSlot || autoYardSlot.isTemporaryBuffer || autoYardSlot.allocationScore === 50) {
           autoYardSlot = computeAutoYardSlot(c, approvedManifest.direction || (isImport ? 'IMPORT' : 'EXPORT'), idx, sortedContainers)
         }
 
@@ -1974,7 +2155,7 @@ export const manifestPortSyncService = {
             containerId: c.containerNumber,
             containerNo: c.containerNumber,
             bookingCode,
-            company: c.transportCompany || carrierProfile.companyName,
+            company: assignedCompany || carrierProfile.companyName,
             vesselName: approvedManifest.vesselName,
             voyageNumber: approvedManifest.voyageNumber,
           })
@@ -1998,7 +2179,10 @@ export const manifestPortSyncService = {
           vesselEta: approvedManifest.eta || null,
           vesselEtaDate: approvedManifest.etaDate || (approvedManifest.eta ? String(approvedManifest.eta).split(' ')[0] : null),
           etaDate: approvedManifest.etaDate || (approvedManifest.eta ? String(approvedManifest.eta).split(' ')[0] : null),
-          company: c.transportCompany || carrierProfile.companyName,
+          company: assignedCompany || carrierProfile.companyName,
+          companyName: assignedCompany || carrierProfile.companyName,
+          shipper: shipper || (isImport ? 'Người gửi hàng quốc tế' : assignedCompany || carrierProfile.companyName),
+          consignee: consignee || (isImport ? assignedCompany || carrierProfile.companyName : 'Người nhận hàng quốc tế'),
           companyId: carrierProfile.companyId,
           contactName: carrierProfile.contactPerson,
           phone: carrierProfile.phone,
@@ -2099,10 +2283,12 @@ export const manifestPortSyncService = {
     unregisterPermanentlyApprovedManifest(manifestId)
     const list = this.getSyncedManifests()
     let targetManifestNumber = null
+    const hasExactIdMatch = list.some(m => m.manifestId === manifestId || m.id === manifestId || m.manifestNumber === manifestId)
     const updated = list.map(m => {
-      const isTarget = m.manifestId === manifestId || m.id === manifestId || m.manifestNumber === manifestId ||
-        m.voyageNumber === manifestId || (m.vesselName && String(manifestId).includes(m.vesselName))
-      if (isTarget) {
+      const isTarget = hasExactIdMatch
+        ? (m.manifestId === manifestId || m.id === manifestId || m.manifestNumber === manifestId)
+        : (m.voyageNumber === manifestId || (m.vesselName && String(manifestId).includes(m.vesselName)))
+      if (isTarget && !targetManifestNumber) {
         unregisterPermanentlyApprovedManifest(m)
         targetManifestNumber = m.manifestNumber
         return {

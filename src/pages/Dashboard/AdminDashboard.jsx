@@ -87,7 +87,6 @@ export default function AdminDashboard() {
           </dl>
           <div className="mt-4 flex flex-wrap gap-2">
             <Link to="/reports" className="px-3 h-9 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold inline-flex items-center">Xem báo cáo</Link>
-            <Link to="/incidents" className="px-3 h-9 rounded-lg border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold inline-flex items-center">Sự cố</Link>
           </div>
         </Card>
       </div>

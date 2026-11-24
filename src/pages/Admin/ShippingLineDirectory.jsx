@@ -46,6 +46,24 @@ export default function ShippingLineDirectory() {
     } : empty)
   }
 
+  // Đặt lại mật khẩu ngẫu nhiên và gửi lại thông tin đăng nhập về email của tài khoản
+  async function resend(accountItem) {
+    if (!window.confirm(`Đặt lại mật khẩu của ${accountItem.username} và gửi thông tin đăng nhập mới về email của tài khoản này?`)) return
+    setError('')
+    setNotice('')
+    setSaving(true)
+    try {
+      const res = (await apiClient.post(`/admin/shipping-line-accounts/${accountItem.id}/resend`, {})).data?.data
+      setNotice(res.emailSent
+        ? `Đã đặt lại mật khẩu và gửi thông tin đăng nhập tới ${res.email}.`
+        : `Đã đặt lại mật khẩu của ${res.username} nhưng chưa gửi được email (${res.emailError || 'lỗi không xác định'}). Mật khẩu mới: ${res.newPassword} — hãy gửi cho người nhận bằng cách khác.`)
+    } catch (e) {
+      setError(e.response?.data?.message || e.message)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   function field(key, value) {
     setForm(previous => ({ ...previous, [key]: value }))
   }
@@ -130,11 +148,18 @@ export default function ShippingLineDirectory() {
             </label>
             <fieldset className="max-h-44 space-y-2 overflow-y-auto rounded-xl border border-chalk p-3">
               <legend className="text-sm font-semibold">Tài khoản Hãng tàu</legend>
-              {availableAccounts.map(account => <label key={account.id} className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={form.userIds.includes(account.id)} onChange={event => field('userIds',
-                  event.target.checked ? [...form.userIds, account.id] : form.userIds.filter(id => id !== account.id))} />
-                {account.fullName ? `${account.fullName} (${account.username})` : account.username}{!account.isActive && ' · Tạm khóa'}
-              </label>)}
+              {availableAccounts.map(account => <div key={account.id} className="flex items-center justify-between gap-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={form.userIds.includes(account.id)} onChange={event => field('userIds',
+                    event.target.checked ? [...form.userIds, account.id] : form.userIds.filter(id => id !== account.id))} />
+                  {account.fullName ? `${account.fullName} (${account.username})` : account.username}{!account.isActive && ' · Tạm khóa'}
+                </label>
+                {form.id && account.shippingLineId === form.id && (
+                  <button type="button" className="shrink-0 rounded-lg border border-chalk px-2.5 py-1 text-xs font-bold" onClick={() => resend(account)}>
+                    Gửi lại mật khẩu
+                  </button>
+                )}
+              </div>)}
               {!availableAccounts.length && <p className="text-xs text-slate">Có thể tạo tài khoản Hãng tàu trong Quản lý người dùng.</p>}
             </fieldset>
             <fieldset className="space-y-3 rounded-xl border border-chalk p-3">

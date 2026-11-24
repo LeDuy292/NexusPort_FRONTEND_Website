@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useDispatchBoard } from './useDispatchBoard'
 import { updateDispatch } from './dispatchService'
-import { awaitingTrip, dateTime as time, displayState, stateOf, statusLabel, tripStepLabel, vietnamDate } from './dispatchPresentation'
+import { dateTime as time, displayState, stateOf, statusLabel, vietnamDate } from './dispatchPresentation'
 import './DispatchBoard.css'
 import './dispatchTheme.css'
 import { SmartRouteDetail } from './SmartRouteMonitor'
@@ -115,7 +115,6 @@ export default function DispatchBoard() {
               <div><strong>{formatPlateNumber(booking.truckPlate) || 'Chưa gán xe'}</strong><span>{booking.driverName}</span><small>{booking.bookingCode}</small></div>
               <div><span className="arrival-status">{label}</span>
                 <small>Giờ hẹn: {time(booking.appointmentStart)}</small>
-                {inQueue && <small className={'arrival-step ' + (booking.coordination?.tripConfirmed ? 'done' : 'todo')}>{booking.coordination?.tripConfirmed ? '✓' : '○'} {tripStepLabel(booking)}</small>}
                 {booking.gateEntryOrder?.revokedAt
                   ? <small>Thu hồi lệnh: {time(booking.gateEntryOrder.revokedAt)}</small>
                   : booking.gateEntryOrder?.issuedAt && <small>Gọi vào cổng: {time(booking.gateEntryOrder.issuedAt)}</small>}
@@ -158,7 +157,7 @@ export default function DispatchBoard() {
             <div><dt>Xe</dt><dd>{formatPlateNumber(selected.truckPlate) || 'Chưa gán'}</dd></div>
             <div><dt>Công ty</dt><dd>{selected.carrierName}</dd></div>
             {selected.description && <div><dt>Vị trí bãi</dt><dd>{selected.description}</dd></div>}
-            <div><dt>Thao tác</dt><dd>{selected.bookingType?.toLowerCase() === 'pickup' ? 'Lấy container' : 'Giao container'}</dd></div>
+            <div><dt>Thao tác tại bãi</dt><dd>{selected.bookingType?.toLowerCase() === 'pickup' ? 'Nhận container' : 'Giao container'}</dd></div>
             {selected.dispatch?.callExpiresAt && <div><dt>Hạn phản hồi</dt><dd>{time(selected.dispatch.callExpiresAt)}</dd></div>}
             {selected.dispatch?.acknowledgedAt && <div><dt>Đã nhận lệnh</dt><dd>{time(selected.dispatch.acknowledgedAt)}</dd></div>}
             {selected.gateEntryOrder&&<div><dt>Lệnh vào cổng</dt><dd>{({pending_ack:'Chờ tài xế nhận lệnh',active:'Được phép vào',expired:'Hết hạn',consumed:'Đã Gate In',revoked:'Đã thu hồi'})[selected.gateEntryOrder.status]||selected.gateEntryOrder.status} · Hạn {time(selected.gateEntryOrder.validUntil)}</dd></div>}
@@ -168,7 +167,6 @@ export default function DispatchBoard() {
             {selected.containers.map(c => <div key={c.id}><strong>{c.containerNo}</strong> · {c.containerType || '—'}<small>{c.cargoType || 'Chưa khai báo hàng'} · {c.grossWeightKg == null ? 'Chưa có tải trọng' : Number(c.grossWeightKg).toLocaleString('vi-VN') + ' kg'}</small></div>)}
             {!selected.containers.length && <p className="arrival-muted">Chưa có container liên kết.</p>}
           </div>
-          {awaitingTrip(selected) && <div className="arrival-message" aria-live="polite">Tài xế chưa xác nhận chuyến vận chuyển. Xe sẽ hiện "Đã đến cổng" sau khi tài xế xác nhận chuyến và báo đã đến cổng.</div>}
           {selected.dispatch?.message && <div className="arrival-message" aria-live="polite">{selected.dispatch.message}</div>}
           <details className="dispatch-intervention"><summary>Can thiệp điều phối / gọi thủ công</summary>
           <label className="arrival-note">Hướng dẫn / lý do chờ
@@ -179,7 +177,7 @@ export default function DispatchBoard() {
           {!selected.coordination.canCall && <p className="arrival-muted">{selectedState === 'acknowledged'
             ? 'Xe đã có lệnh vào cổng. Khi lệnh hết hạn, hệ thống trả xe về sẵn sàng để gọi lại.'
             : selectedState === 'called' ? 'Đã gửi lệnh gọi, đang chờ tài xế nhận trên app trong 10 phút.'
-            : 'Chỉ gọi khi tài xế đã xác nhận chuyến, báo đã đến cổng (từ 3 ngày trước giờ hẹn) và không còn thời gian chờ thêm.'}</p>}
+            : 'Có thể gọi xe khi tài xế đã báo đến cổng và sẵn sàng, trong khung điều phối từ 3 ngày trước giờ hẹn và sau thời gian chờ thêm.'}</p>}
           <div className="arrival-delay"><label>Chờ thêm (phút)<input type="number" min="1" max="120" value={minutes} onChange={e => setMinutes(e.target.value)} /></label>
             <button type="button" disabled={busy || !canDelay || !note.trim() || Boolean(detailError)} onClick={() => void act('delay')}>Báo chờ thêm</button></div>
           {(['called','acknowledged'].includes(selectedState) || selected.dispatch?.holdUntil) && <button type="button" disabled={busy || Boolean(detailError)} onClick={() => void act('release')}>Thu hồi lệnh / bỏ thời gian chờ</button>}

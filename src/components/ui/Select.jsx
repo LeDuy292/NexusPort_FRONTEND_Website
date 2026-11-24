@@ -129,7 +129,12 @@ export default function Select({
       if (triggerRef.current?.contains(e.target) || panelRef.current?.contains(e.target)) return
       close()
     }
-    const onMove = (e) => { if (!panelRef.current?.contains(e.target)) close() }
+    // Chỉ đóng khi vùng chứa ô chọn (hoặc cả trang) cuộn; cuộn của phần tử khác không liên quan thì bỏ qua
+    const onMove = (e) => {
+      if (panelRef.current?.contains(e.target)) return
+      const t = e.target
+      if (t === document || t === document.documentElement || t === document.body || (t.contains && t.contains(triggerRef.current))) close()
+    }
     document.addEventListener('mousedown', onDown)
     window.addEventListener('resize', close)
     window.addEventListener('scroll', onMove, true)
@@ -247,7 +252,8 @@ export default function Select({
             )
           })}
         </ul>,
-        document.body,
+        // Trong hộp thoại <dialog> (showModal) mọi thứ bên ngoài bị vô hiệu và nằm dưới lớp trên cùng: phải vẽ danh sách ngay trong hộp thoại
+        triggerRef.current?.closest('dialog') || document.body,
       )}
     </div>
   )

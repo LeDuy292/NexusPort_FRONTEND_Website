@@ -33,6 +33,7 @@ export default function TienSaMap({
   navigation,
   operational = false,
   movement,
+  highlightBlocks = null,
 }) {
   const design = useMemo(() => cleanDesign(layout), [layout]);
   const [source, setSource] = useState("design");
@@ -55,7 +56,7 @@ export default function TienSaMap({
   const geometryAngle = -STRAIGHT_ANGLE;
   const upright = (x, y) =>
     geometryAngle ? `rotate(${-geometryAngle} ${x} ${y})` : undefined;
-  const frame = { x: 260, y: 270, width: 1490, height: 970 };
+  const frame = { x: 230, y: 240, width: 1580, height: 1040 };
   const view = image
     ? { x: 0, y: 0, width: layout.width, height: layout.height }
     : frame;
@@ -77,7 +78,6 @@ export default function TienSaMap({
   };
   const startDrag = (event) => {
     if (
-      zoom === 1 ||
       event.button !== 0 ||
       (onSelectArea && event.target.closest("[data-map-item]"))
     )
@@ -97,22 +97,31 @@ export default function TienSaMap({
   const moveDrag = (event) => {
     if (!drag.current) return;
     const item = drag.current;
+    const dx = (event.clientX - item.x) * item.scale;
+    const dy = (event.clientY - item.y) * item.scale;
+    const maxPanX = Math.max(350, view.width * (1 - 0.7 / zoom));
+    const maxPanY = Math.max(400, view.height * (1 - 0.7 / zoom));
     setPan({
-      x: Math.max(
-        0,
-        Math.min(
-          view.width - view.width / zoom,
-          item.pan.x - (event.clientX - item.x) * item.scale,
-        ),
-      ),
-      y: Math.max(
-        0,
-        Math.min(
-          view.height - view.height / zoom,
-          item.pan.y - (event.clientY - item.y) * item.scale,
-        ),
-      ),
+      x: Math.max(-350, Math.min(maxPanX, item.pan.x - dx)),
+      y: Math.max(-250, Math.min(maxPanY, item.pan.y - dy)),
     });
+  };
+
+  const handleWheel = (event) => {
+    event.preventDefault();
+    if (event.ctrlKey || event.metaKey) {
+      const delta = -event.deltaY * 0.002;
+      changeZoom(zoom + delta);
+    } else {
+      const box = viewport.current?.getBoundingClientRect();
+      const scale = box ? Math.max(view.width / zoom / box.width, view.height / zoom / box.height) : 1;
+      const maxPanX = Math.max(350, view.width * (1 - 0.7 / zoom));
+      const maxPanY = Math.max(400, view.height * (1 - 0.7 / zoom));
+      setPan((prev) => ({
+        x: Math.max(-350, Math.min(maxPanX, prev.x + (event.shiftKey ? event.deltaY : event.deltaX) * scale)),
+        y: Math.max(-250, Math.min(maxPanY, prev.y + event.deltaY * scale)),
+      }));
+    }
   };
   return (
     <section className="tien-sa-design-map" aria-label="Mặt bằng cảng Tiên Sa">
@@ -202,7 +211,8 @@ export default function TienSaMap({
       </div>
       <div
         ref={viewport}
-        className={`yard-layout-viewport ${zoom > 1 ? "can-pan" : ""}`}
+        className="yard-layout-viewport can-pan"
+        onWheel={handleWheel}
       >
         <svg
           className="yard-layout-drawing"
@@ -405,7 +415,9 @@ export default function TienSaMap({
                   proposed = area.geometryStatus === "proposed",
                   active = selectedCode === area.code,
                   movementFrom = movement?.fromBlock === area.code,
-                  movementTo = movement?.toBlock === area.code;
+                  movementTo = movement?.toBlock === area.code,
+                  highlightInfo = highlightBlocks ? highlightBlocks[area.code] : null,
+                  isHighlighted = Boolean(highlightInfo);
                 const divisions = area.planning.bayModules,
                   rows = area.planning.rows;
                 return (
@@ -423,15 +435,35 @@ export default function TienSaMap({
                   >
                     <polygon
                       points={points(shape)}
-                      fill={movementFrom ? "#93c5fd" : movementTo ? "#6ee7b7" : (proposed ? "#f1e5cc" : "#dcebe3")}
-                      stroke={movementFrom ? "#2563eb" : movementTo ? "#059669" : active ? "#173e48" : proposed ? "#b8995e" : "#6e9e8a"}
-                      strokeWidth={movementFrom || movementTo ? 4 : active ? 2.5 : 1}
+                      fill={
+                        movementFrom
+                          ? "#93c5fd"
+                          : movementTo
+                          ? "#6ee7b7"
+                          : isHighlighted
+                          ? (active ? "#fde047" : "#fef08a")
+                          : (proposed ? "#f1e5cc" : "#dcebe3")
+                      }
+                      stroke={
+                        movementFrom
+                          ? "#2563eb"
+                          : movementTo
+                          ? "#059669"
+                          : active
+                          ? "#0f172a"
+                          : isHighlighted
+                          ? "#d97706"
+                          : proposed
+                          ? "#b8995e"
+                          : "#6e9e8a"
+                      }
+                      strokeWidth={movementFrom || movementTo ? 4 : active ? 3 : isHighlighted ? 2.5 : 1}
                     />
                     {Array.from({ length: rows - 1 }, (_, i) => (
                       <path
                         key={`row-${i}`}
                         d={`M${pointInArea(area, 0, (i + 1) / rows).join(" ")} L${pointInArea(area, 1, (i + 1) / rows).join(" ")}`}
-                        stroke={proposed ? "#ceb98c" : "#a2c1af"}
+                        stroke={isHighlighted ? "#ca8a04" : proposed ? "#ceb98c" : "#a2c1af"}
                         strokeWidth=".5"
                       />
                     ))}
@@ -439,7 +471,7 @@ export default function TienSaMap({
                       <path
                         key={`bay-${i}`}
                         d={`M${pointInArea(area, (i + 1) / divisions, 0).join(" ")} L${pointInArea(area, (i + 1) / divisions, 1).join(" ")}`}
-                        stroke={proposed ? "#ceb98c" : "#a2c1af"}
+                        stroke={isHighlighted ? "#ca8a04" : proposed ? "#ceb98c" : "#a2c1af"}
                         strokeWidth=".5"
                       />
                     ))}
@@ -450,16 +482,54 @@ export default function TienSaMap({
                         width="32"
                         height="24"
                         rx="3"
-                        fill={movementFrom ? "#2563eb" : movementTo ? "#059669" : active ? "#173e48" : "#fffffff2"}
+                        fill={
+                          movementFrom
+                            ? "#2563eb"
+                            : movementTo
+                            ? "#059669"
+                            : active
+                            ? "#173e48"
+                            : isHighlighted
+                            ? "#b45309"
+                            : "#fffffff2"
+                        }
                       />
                       <text
                         x={center[0]}
                         y={center[1] + 5}
                         textAnchor="middle"
+                        fill={isHighlighted || active || movementFrom || movementTo ? "#ffffff" : undefined}
                         className={`yard-block-label ${active || movementFrom || movementTo ? "active" : ""}`}
                       >
                         {area.code}
                       </text>
+
+                      {/* Đánh dấu ĐT (Chuẩn bị đặt) trên Block có container */}
+                      {isHighlighted && (
+                        <g>
+                          <rect
+                            x={center[0] - 22}
+                            y={center[1] - 30}
+                            width="44"
+                            height="16"
+                            rx="4"
+                            fill="#d97706"
+                            stroke="#ffffff"
+                            strokeWidth="1.2"
+                          />
+                          <text
+                            x={center[0]}
+                            y={center[1] - 18}
+                            textAnchor="middle"
+                            fill="#ffffff"
+                            fontSize="9"
+                            fontWeight="900"
+                            fontFamily="monospace"
+                          >
+                            ĐT ({highlightInfo?.count || 1})
+                          </text>
+                        </g>
+                      )}
                     </g>
                   </g>
                 );

@@ -48,6 +48,32 @@ function dedupAndValidate(list) {
     if (!isDuplicate) deduped.unshift(item);
   }
 
+  // Chuẩn hóa xếp tầng (Stacking rule): Tầng 1 (nền bãi) bắt buộc phải có cont trước khi lên tầng 2.
+  // Không bao giờ để container lơ lửng ở tầng 2 khi tầng 1 trống
+  const posTierMap = new Map();
+  deduped.forEach(item => {
+    const block = item.blockCode || item.block || '';
+    const bay = Number(item.bay) || 1;
+    const row = Number(item.row) || 1;
+    const key = `${block}-${bay}-${row}`;
+    if (!posTierMap.has(key)) posTierMap.set(key, []);
+    posTierMap.get(key).push(item);
+  });
+
+  posTierMap.forEach((itemsAtPos) => {
+    itemsAtPos.sort((a, b) => (Number(a.tier) || 1) - (Number(b.tier) || 1));
+    itemsAtPos.forEach((item, idx) => {
+      const correctTier = idx + 1; // 1, 2, 3...
+      item.tier = correctTier;
+      if (item.tierCode) item.tierCode = String(correctTier);
+      const padB = String(item.bay).padStart(2, '0');
+      const padR = String(item.row).padStart(2, '0');
+      const block = item.blockCode || item.block || '';
+      item.slotCode = `${block}.${padB}.${padR}.${correctTier}`;
+      item.posId = `${block}-B${padB}-R${item.row}-T${correctTier}`;
+    });
+  });
+
   return deduped;
 }
 
@@ -176,6 +202,11 @@ export const yardReservationStore = {
       console.warn('Add reservation error:', err);
       return null;
     }
+  },
+
+  // Alias để tương thích an toàn với các component gọi saveReservation
+  saveReservation: async (reservation, options = {}) => {
+    return yardReservationStore.addReservation(reservation, options);
   },
 
   // Xóa một reservation dựa trên posId

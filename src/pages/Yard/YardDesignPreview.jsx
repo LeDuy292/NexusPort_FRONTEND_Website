@@ -185,9 +185,13 @@ export default function YardDesignPreview({ previewOnly = false, movement: movem
     }
 
     const syntheticSlots = uniqueRes.map((r) => {
-      const size = Number(r.size) || 40
-      const bayNum = Number(r.bay)
-      const moduleStart = size === 40 ? Math.floor(bayNum / 2) : Math.ceil(bayNum / 2)
+      const is20 = (r.containerType && String(r.containerType).includes('20')) || Number(r.size) === 20 || Number(r.containerLengthFt) === 20
+      const size = is20 ? 20 : (Number(r.size) || 40)
+      let bayNum = Number(r.bay)
+      if (size === 20 && bayNum % 4 === 3) {
+        bayNum -= 2 // Cont 20ft tính số 1, không tính số sau (kiểu 1 và 3 thì lấy số 1)
+      }
+      const moduleStart = size === 40 ? Math.floor(bayNum / 2) : Math.floor((bayNum - 1) / 2)
       const contNo = (r.containerNo || r.containerId || '').trim().toUpperCase()
       const slotCode1 = `${r.blockCode}-${String(bayNum).padStart(2, '0')}-${String(r.row).padStart(2, '0')}-${r.tier}`.toUpperCase()
       const slotCode2 = `${r.blockCode}.${padPosition(bayNum)}.${padPosition(r.row)}.${r.tier}`.toUpperCase()
