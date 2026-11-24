@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { zoneViolation } from '../../features/yard-design/zoneRules'
 import TienSaMap from '../../features/yard-design/TienSaMap'
 import '../../features/yard-design/TienSaMap.css'
 import { yardReservationStore } from '../../services/yardReservationStore'
@@ -97,6 +98,8 @@ export default function YardZoneBlockSelectorModal({
   }, [currentSlot, container])
 
   const [selectedZone, setSelectedZone] = useState(initialZoneCode)
+  // Quy tắc phân khu: cont lạnh chỉ vào khu lạnh, cont thường không vào khu lạnh
+  const [zoneWarning, setZoneWarning] = useState('')
 
   // Danh sách các block thực tế từ Bản đồ Cảng Tiên Sa
   const allBlocks = useMemo(() => {
@@ -270,12 +273,19 @@ export default function YardZoneBlockSelectorModal({
             </span>
           </div>
 
+          {zoneWarning && (
+            <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-semibold text-red-800">{zoneWarning}</div>
+          )}
+
           <div className="yard-design-preview flex-1 min-h-0 rounded-2xl overflow-hidden border border-slate-200 shadow-inner bg-slate-50 flex flex-col [&_.tien-sa-design-map]:flex-1 [&_.tien-sa-design-map]:flex [&_.tien-sa-design-map]:flex-col [&_.yard-layout-viewport]:!flex-1 [&_.yard-layout-viewport]:!h-full [&_.yard-layout-viewport]:!min-h-[500px] sm:[&_.yard-layout-viewport]:!min-h-[600px] [&_.yard-map-controls]:!py-2 [&_.yard-map-controls]:!px-3 [&_.yard-layout-legend]:!py-1.5 [&_.yard-layout-legend]:!px-3">
             <TienSaMap
               layout={tienSaLayout}
               selectedCode={currentSlot?.split('-')[0]?.trim()}
               onSelectArea={(area) => {
                 const targetBlock = allBlocks.find(b => b.blockCode === area.code) || area
+                const violation = zoneViolation(container, targetBlock.blockCode || targetBlock.code || area.code)
+                if (violation) { setZoneWarning(violation); return }
+                setZoneWarning('')
                 onSelectBlock?.(targetBlock)
               }}
               highlightBlocks={highlightBlocks}

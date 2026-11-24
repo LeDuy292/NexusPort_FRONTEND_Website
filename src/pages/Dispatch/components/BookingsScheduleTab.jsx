@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import ShippingPagination from '../../ShippingLine/components/ShippingPagination'
+import Select from '../../../components/ui/Select'
 
 export default function BookingsScheduleTab({
   kpiStats = {},
@@ -123,7 +124,7 @@ export default function BookingsScheduleTab({
       {/* ── THANH TÌM KIẾM & BỘ LỌC ── */}
       <div className="epo-worklist p-4">
         <div className="flex flex-wrap items-center gap-2.5 text-xs font-bold">
-          <div className="relative flex-1 sm:w-64 min-w-[200px]">
+          <div className="relative w-full lg:flex-1 lg:max-w-md min-w-[220px]">
             <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-slate text-base">search</span>
             <input
               type="text"
@@ -143,43 +144,43 @@ export default function BookingsScheduleTab({
             )}
           </div>
 
-          <select
+          <Select
             value={operationFilter}
             onChange={e => setOperationFilter?.(e.target.value)}
-            className="h-9 px-3 bg-fog/60 hover:bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange cursor-pointer"
+            className="w-full sm:w-44 h-9 px-3 bg-fog/60 hover:bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange cursor-pointer"
           >
             <option value="All">Mọi nghiệp vụ</option>
-            <option value="Pickup">Lấy cont (Pickup)</option>
-            <option value="Delivery">Hạ cont (Delivery)</option>
-          </select>
+            <option value="Pickup">Lấy container</option>
+            <option value="Delivery">Hạ container</option>
+          </Select>
 
-          <select
+          <Select
             value={selectedVesselFilter}
             onChange={e => setSelectedVesselFilter?.(e.target.value)}
-            className="h-9 px-3 bg-fog/60 hover:bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange max-w-[220px] truncate cursor-pointer"
-            title="Lọc theo Tàu"
+            className="h-9 px-3 bg-fog/60 hover:bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange w-full sm:w-60 truncate cursor-pointer"
+            title="Lọc theo chuyến tàu"
           >
             <option value="All">Tất cả chuyến tàu ({availableVessels.length})</option>
             {availableVessels.map(v => (
               <option key={v.key || v.manifestNumber || v.vesselName} value={v.manifestNumber || v.vesselName}>
-                🚢 {v.label}
+                {v.label}
               </option>
             ))}
-          </select>
+          </Select>
 
-          <select
+          <Select
             value={dateFilter}
             onChange={e => setDateFilter?.(e.target.value)}
-            className="h-9 px-3 bg-fog/60 hover:bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange cursor-pointer"
-            title="Lọc theo Ngày"
+            className="w-full sm:w-44 h-9 px-3 bg-fog/60 hover:bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-signal-orange cursor-pointer"
+            title="Lọc theo ngày"
           >
             <option value="All">Tất cả các ngày ({availableDates.length})</option>
             {availableDates.map(d => (
               <option key={d} value={d}>
-                📅 {d}
+                {d}
               </option>
             ))}
-          </select>
+          </Select>
         </div>
       </div>
 
@@ -193,10 +194,9 @@ export default function BookingsScheduleTab({
                   <span className="material-symbols-outlined text-lg">calendar_month</span>
                 </div>
                 <div>
-                  <span className="epo-caption">PHÂN BỔ THEO NGÀY &amp; CHUYẾN TÀU</span>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h2>Danh Sách Container Theo Ngày &amp; Chuyến Tàu</h2>
-                    <span className="epo-result-count">{filteredBookings.length} Cont</span>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                    <h2>Danh sách container theo ngày và chuyến tàu</h2>
+                    <span className="epo-result-count">{filteredBookings.length} cont</span>
                     {activeVesselObj && (
                       <span className="epo-badge blue">
                         <span />

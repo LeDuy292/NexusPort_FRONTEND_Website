@@ -5,6 +5,7 @@ import { manifestPortSyncService } from '../../services/manifestPortSyncService'
 import { resolveTargetBlock, isContainer20, getContainerKey } from '../../services/yardPlanningRules'
 import tienSaLayout from '../../features/yard-design/tienSaLayout.json'
 import Select from '../ui/Select'
+import { allowedBlocksFor, zoneViolation } from '../../features/yard-design/zoneRules'
 import apiClient from '../../services/apiClient'
 
 // Helper tính mảng module (0-indexed) mà container chiếm dụng dựa trên Bay & Size
@@ -46,6 +47,12 @@ export default function YardSlotReservationModal({
     }))
   }, [])
 
+  // Chỉ cho chọn block đúng khu của container: lạnh -> khu lạnh, thường -> khu thường
+  const zoneBlocks = useMemo(() => {
+    const allowed = allowedBlocksFor(booking, availableBlocks)
+    return allowed.length ? allowed : availableBlocks
+  }, [booking, availableBlocks])
+
   // Hiện trạng bãi THẬT: tải sơ đồ bãi mỗi lần mở để biết ô nào đang có container / đã giữ chỗ
   const [liveSlots, setLiveSlots] = useState(null)
   useEffect(() => {
@@ -61,12 +68,14 @@ export default function YardSlotReservationModal({
   const [activeBlock, setActiveBlock] = useState(block)
 
   useEffect(() => {
-    if (block) {
-      setActiveBlock(block)
+    // Block được truyền vào sai khu thì đổi sang block đầu tiên đúng khu
+    const wanted = block && !zoneViolation(booking, block.blockCode || block.code) ? block : (zoneBlocks[0] || block)
+    if (wanted) {
+      setActiveBlock(wanted)
     } else if (availableBlocks.length > 0 && !activeBlock) {
       setActiveBlock(availableBlocks[0])
     }
-  }, [block, isOpen, availableBlocks])
+  }, [block, isOpen, availableBlocks, zoneBlocks, booking]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Determine default container size from booking (e.g. '40FT HC' -> 40, '20FT' -> 20)
   const isDefault40 = useMemo(() => {
@@ -389,6 +398,12 @@ export default function YardSlotReservationModal({
   const handleConfirmReservation = () => {
     if (!selection || conflictContainer) return
 
+    const wrongZone = zoneViolation(booking, currentBlockCode)
+    if (wrongZone) {
+      setWarningMessage(`❌ ${wrongZone}`)
+      return
+    }
+
     // Kiểm tra an toàn xếp tầng lần cuối trước khi xác nhận
     if (currentTier > 1) {
       if (size === 40) {
@@ -501,7 +516,7 @@ export default function YardSlotReservationModal({
                 }}
                 className="bg-white text-xs font-black font-mono text-orange-700 border border-orange-200 rounded-lg px-2.5 py-1 focus:outline-none focus:ring-2 focus:ring-orange-500 cursor-pointer shadow-xs"
               >
-                {availableBlocks.map(b => (
+                {zoneBlocks.map(b => (
                   <option key={b.blockCode} value={b.blockCode}>
                     Block {b.blockCode} {b.zone ? `· Khu ${b.zone}` : ''}
                   </option>

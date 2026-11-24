@@ -74,16 +74,6 @@ export default function ManifestBillIssuance({ manifest }) {
     } catch (err) { if (alive.current) setError(errorText(err)) } finally { if (alive.current) setBusy('') }
   }
 
-  const syncContainers = async blNumber => {
-    setBusy(`s-${blNumber}`); setError('')
-    try {
-      const result = unwrap(await apiClient.post(`/bl-imports/manifests/${manifest.id}/bills/${encodeURIComponent(blNumber)}/sync-containers`))
-      if (!alive.current) return
-      const left = result.undeclaredContainers?.length ? ` Chưa gắn được: ${result.undeclaredContainers.join(', ')} (chưa đăng ký thiết bị hoặc thiếu trọng lượng).` : ''
-      setNotice(`Đã đồng bộ container của vận đơn ${result.blNumber} sang ePort: thêm ${result.added} container.${left}`)
-    } catch (err) { if (alive.current) setError(errorText(err)) } finally { if (alive.current) setBusy('') }
-  }
-
   const reconcile = async blNumber => {
     setBusy(`r-${blNumber}`); setError('')
     try { const result = unwrap(await apiClient.get(`/bl-imports/bills/${encodeURIComponent(blNumber)}/reconcile`)); if (alive.current) setRecon(result) } catch (err) { if (alive.current) setError(errorText(err)) } finally { if (alive.current) setBusy('') }
@@ -116,7 +106,6 @@ export default function ManifestBillIssuance({ manifest }) {
                   <td className="py-3 px-3"><div className="flex flex-wrap gap-2">
                     {!b.issued && <button type="button" className={btnPrimary} disabled={!b.canIssue || Boolean(busy)} onClick={() => open(b)}>Phát hành</button>}
                     {b.issued && <button type="button" className={btnSoft} onClick={() => { setViewing(b); setIssuing(null) }}>Xem vận đơn</button>}
-                    {b.issued && data.direction !== 'IMPORT' && <button type="button" className={btn} disabled={Boolean(busy)} onClick={() => syncContainers(b.blNumber)}>{busy === `s-${b.blNumber}` ? 'Đang đồng bộ…' : 'Đồng bộ container'}</button>}
                     <button type="button" className={btn} disabled={Boolean(busy)} onClick={() => reconcile(b.blNumber)}>{busy === `r-${b.blNumber}` ? 'Đang đối chiếu…' : 'Đối chiếu cảng'}</button>
                   </div></td>
                 </tr>

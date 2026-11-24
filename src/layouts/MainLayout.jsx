@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, Suspense } from 'react'
 import { Link, useNavigate, useLocation, Outlet } from 'react-router-dom'
 import { ROLES, YARD_VISIT_READERS } from '../routes/routeConfig'
 import NotificationCenter from '../components/NotificationCenter'
@@ -7,7 +7,6 @@ import NotificationCenter from '../components/NotificationCenter'
 const ADMIN_MENU_PATHS = new Set([
   '/dashboard',            // Tổng quan toàn hệ thống
   '/reports',              // Báo cáo & phân tích
-  '/incidents',            // Theo dõi sự cố
   '/users',                // Tài khoản & phân quyền vai trò
   '/admin/carriers',       // Đối tác (doanh nghiệp vận tải)
   '/admin/shipping-lines', // Danh mục hãng tàu
@@ -318,12 +317,6 @@ const sidebarItems = [
     icon: 'manage_accounts',
     roles: [ROLES.ADMINISTRATOR],
   },
-  {
-    path: '/incidents',
-    label: 'AI & Sự Cố',
-    icon: 'warning',
-    roles: [ROLES.DISPATCHER, ROLES.ADMINISTRATOR],
-  },
 ]
 
 
@@ -410,7 +403,7 @@ export default function MainLayout({ previewUser = null }) {
   if (user.role === ROLES.DRIVER) {
     return (
       <div className="w-full min-h-screen bg-fog overflow-y-auto font-sans antialiased">
-        <Outlet />
+        <Suspense fallback={<div className="p-8 text-sm text-slate-500">Đang tải trang…</div>}><Outlet /></Suspense>
       </div>
     )
   }
@@ -552,7 +545,7 @@ export default function MainLayout({ previewUser = null }) {
               </div>
             </div>
           )}
-            <Outlet />
+            <Suspense fallback={<div className="p-8 text-sm text-slate-500">Đang tải trang…</div>}><Outlet /></Suspense>
           </div>
         </main>
       </div>

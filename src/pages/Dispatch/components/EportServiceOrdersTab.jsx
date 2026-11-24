@@ -5,6 +5,7 @@ import { money } from '../../../features/service-catalog/catalogApi'
 import { draftDateTime } from '../../../features/service-catalog/serviceDraftsApi'
 import { orderStatusLabels, paymentStatusLabels, paymentStateLabel, statusTone } from '../../../features/service-catalog/serviceOrdersApi'
 import { companiesMatch } from '../GateBookingRequests'
+import Select from '../../../components/ui/Select'
 
 export default function EportServiceOrdersTab({
   eportListTotal = 0,
@@ -61,7 +62,7 @@ export default function EportServiceOrdersTab({
         </div>
         <label>
           <span className="epc-sr-only">Trạng thái đơn</span>
-          <select
+          <Select
             value={eportListStatus}
             onChange={(e) => {
               setEportListStatus(e.target.value)
@@ -74,11 +75,11 @@ export default function EportServiceOrdersTab({
               .map(([val, label]) => (
                 <option key={val} value={val}>{label}</option>
               ))}
-          </select>
+          </Select>
         </label>
         <label>
           <span className="epc-sr-only">Trạng thái thanh toán</span>
-          <select
+          <Select
             value={eportListPaymentStatus}
             onChange={(e) => {
               setEportListPaymentStatus(e.target.value)
@@ -89,11 +90,11 @@ export default function EportServiceOrdersTab({
             {['UNPAID', 'PENDING', 'PAID', 'FAILED', 'NOT_REQUIRED'].map((val) => (
               <option key={val} value={val}>{paymentStatusLabels[val] || val}</option>
             ))}
-          </select>
+          </Select>
         </label>
         <label>
           <span className="epc-sr-only">Luồng hàng</span>
-          <select
+          <Select
             value={eportListFlow}
             onChange={(e) => {
               setEportListFlow(e.target.value)
@@ -103,7 +104,7 @@ export default function EportServiceOrdersTab({
             <option value="">Mọi luồng hàng</option>
             <option value="EXPORT">Hàng xuất</option>
             <option value="IMPORT">Hàng nhập</option>
-          </select>
+          </Select>
         </label>
       </form>
 

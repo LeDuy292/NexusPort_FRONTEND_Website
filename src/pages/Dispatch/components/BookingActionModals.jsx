@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react'
 import TienSaMap from '../../../features/yard-design/TienSaMap'
 import '../../../features/yard-design/TienSaMap.css'
 import tienSaLayout from '../../../features/yard-design/tienSaLayout.json'
+import Select from '../../../components/ui/Select'
 
 /**
  * Phê duyệt Lịch hẹn xe vào cảng
@@ -204,7 +205,7 @@ export function BookingRejectModal({
         <div className="space-y-3 text-xs font-bold">
           <div>
             <label className="block text-slate uppercase text-[10px] mb-1">Lý do từ chối *</label>
-            <select
+            <Select
               value={rejectionReason}
               onChange={e => setRejectionReason?.(e.target.value)}
               className="w-full px-3.5 py-2.5 bg-fog border border-chalk rounded-xl text-carbon focus:outline-none focus:border-red-500 font-bold"
@@ -217,7 +218,7 @@ export function BookingRejectModal({
               <option value="Chưa duyệt bản khai hàng hóa">Chưa duyệt khai báo hàng hóa / Manifest</option>
               <option value="Cổng quá tải hoặc sai khung giờ">Cổng yêu cầu đã đầy dung lượng / Sai khung giờ hẹn</option>
               <option value="Lý do khác">Lý do khác</option>
-            </select>
+            </Select>
           </div>
 
           <div>

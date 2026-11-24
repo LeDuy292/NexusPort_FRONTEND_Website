@@ -65,7 +65,7 @@ const TASK_TYPE_CFG = {
 function StatusBadge({ status }) {
   const cfg = STATUS_CFG[status] || STATUS_CFG.IN_PROGRESS
   return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border ${cfg.badge}`}>
+    <span className={`inline-flex items-center gap-1.5 whitespace-nowrap px-2.5 py-1 rounded-full text-[11px] font-bold border ${cfg.badge}`}>
       <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`}></span>{cfg.label}
     </span>
   )
@@ -279,13 +279,13 @@ export default function DispatchHistory() {
               <thead>
                 <tr className="border-b border-chalk text-[10px] uppercase text-slate font-bold tracking-wider bg-fog/50">
                   <th className="px-5 py-3 text-left">Giờ</th>
-                  <th className="px-4 py-3 text-left">Phương Tiện</th>
-                  <th className="px-4 py-3 text-left">Tài Xế</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Phương tiện</th>
+                  <th className="px-4 py-3 text-left">Tài xế</th>
                   <th className="px-4 py-3 text-left">Container</th>
                   <th className="px-4 py-3 text-left">Loại</th>
-                  <th className="px-4 py-3 text-left">Điểm Đến</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Điểm đến</th>
                   <th className="px-4 py-3 text-left">Dispatcher</th>
-                  <th className="px-4 py-3 text-left">Trạng Thái</th>
+                  <th className="px-4 py-3 text-left whitespace-nowrap">Trạng thái</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-chalk">
@@ -302,8 +302,8 @@ export default function DispatchHistory() {
                     onClick={() => setDrawerItem(d)}
                     className={`hover:bg-orange-50/50 cursor-pointer transition-colors ${drawerItem?.id === d.id ? 'bg-orange-50 border-l-2 border-signal-orange' : ''}`}>
                     <td className="px-5 py-3.5">
-                      <div className="font-bold text-carbon">{d.time}</div>
-                      <div className="text-[10px] text-slate font-mono">{d.date}</div>
+                      <div className="font-bold text-carbon whitespace-nowrap">{d.time}</div>
+                      <div className="text-[10px] text-slate font-mono whitespace-nowrap">{d.date}</div>
                     </td>
                     <td className="px-4 py-3.5">
                       <div className="font-bold text-carbon">{d.vehicle}</div>
@@ -313,9 +313,9 @@ export default function DispatchHistory() {
                       <div className="text-carbon">{d.driver}</div>
                       <div className="text-[10px] text-slate font-mono">{d.driverId}</div>
                     </td>
-                    <td className="px-4 py-3.5 font-mono font-bold text-graphite">{d.container}</td>
+                    <td className="px-4 py-3.5 font-mono font-bold text-graphite whitespace-nowrap">{d.container}</td>
                     <td className="px-4 py-3.5">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${TASK_TYPE_CFG[d.taskType]?.color}`}>
+                      <span className={`inline-flex items-center whitespace-nowrap px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${TASK_TYPE_CFG[d.taskType]?.color}`}>
                         {d.taskLabel}
                       </span>
                     </td>
@@ -323,7 +323,7 @@ export default function DispatchHistory() {
                       <div className="truncate text-[11px]">{d.destination}</div>
                     </td>
                     <td className="px-4 py-3.5 text-slate text-[11px]">{d.dispatcher}</td>
-                    <td className="px-4 py-3.5"><StatusBadge status={d.status} /></td>
+                    <td className="px-4 py-3.5 whitespace-nowrap"><StatusBadge status={d.status} /></td>
                   </tr>
                 ))}
               </tbody>

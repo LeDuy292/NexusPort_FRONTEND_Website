@@ -36,15 +36,6 @@ const TIEN_SA_TERMINALS = [
   'Bến số 4 (TS-04) - Cảng Tiên Sa',
 ];
 
-const VOYAGE_STATUS_STYLES = {
-  SCHEDULED: 'bg-slate-100 text-slate-700 border-slate-300',
-  IN_TRANSIT: 'bg-blue-50 text-blue-700 border-blue-300',
-  BERTHED: 'bg-emerald-50 text-emerald-700 border-emerald-300',
-  OPERATING: 'bg-indigo-50 text-indigo-700 border-indigo-300',
-  DEPARTED: 'bg-slate-100 text-slate-600 border-slate-300',
-  COMPLETED: 'bg-emerald-50 text-emerald-800 border-emerald-300',
-};
-
 // Helpers for DateTime conversion
 function toLocalDatetimeInput(dateStr) {
   if (!dateStr) return '';
@@ -226,7 +217,11 @@ export default function VesselVoyagePage() {
     try {
       setUpdatingVoyageId(voyageId);
       await shippingLineApi.updateVoyage(voyageId, { status: newStatus });
-      setVoyages(prev => prev.map(v => v.id === voyageId ? { ...v, status: newStatus } : v));
+      // Chuyến đã rời cảng / hoàn tất tự ẩn khỏi danh sách "đang hoạt động" (muốn xem lại thì chọn bộ lọc trạng thái)
+      const finished = ['DEPARTED', 'COMPLETED'].includes(newStatus)
+      setVoyages(prev => (finished && !statusFilter
+        ? prev.filter(v => v.id !== voyageId)
+        : prev.map(v => v.id === voyageId ? { ...v, status: newStatus } : v)));
 
       // Đồng bộ trạng thái chuyến tàu sang Cảng Tiên Sa
       const targetVoy = voyages.find(v => v.id === voyageId);
@@ -526,9 +521,7 @@ export default function VesselVoyagePage() {
                             disabled={updatingVoyageId === voy.id}
                             onChange={(e) => handleUpdateStatus(voy.id, e.target.value)}
                             title="Bấm để chọn chuyển đổi trạng thái chuyến tàu"
-                            className={`text-[10px] font-bold py-1 pl-2.5 pr-6 rounded-full border cursor-pointer appearance-none focus:outline-none transition-all shadow-2xs ${
-                              VOYAGE_STATUS_STYLES[voy.status] || 'bg-slate-100 text-slate-700 border-slate-300'
-                            } ${updatingVoyageId === voy.id ? 'opacity-50 pointer-events-none' : 'hover:brightness-95'}`}
+                            className="w-44 min-w-[11rem]"
                           >
                             <option value="SCHEDULED">● Kế hoạch</option>
                             <option value="IN_TRANSIT">● Đang hành trình</option>
@@ -537,9 +530,6 @@ export default function VesselVoyagePage() {
                             <option value="DEPARTED">● Đã rời cảng</option>
                             <option value="COMPLETED">● Hoàn tất</option>
                           </Select>
-                          <span className="material-symbols-outlined text-xs absolute right-1.5 pointer-events-none opacity-60">
-                            expand_more
-                          </span>
                         </div>
                       </td>
                     </tr>

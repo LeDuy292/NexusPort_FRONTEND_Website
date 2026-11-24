@@ -320,7 +320,13 @@ export function planAllManifestContainers(rawContainerList = [], direction = 'EX
 
   // 1. Phân loại block chuẩn (B01 cho khô xuất, C10 lùi dần cho khô nhập, D01 cho lạnh, C01 cho nguy hiểm)
   const occupancyTracker = {}
-  rawContainerList.forEach(c => {
+  // Gom cont cùng chuyến tàu đứng cạnh nhau (sắp xếp ổn định theo chuyến, cả hàng xuất và hàng nhập) để được xếp liền kề trong bãi
+  const voyageKeyOf = (c) => String(c.voyageNumber || c.voyage || c.manifestNumber || c.vesselName || '').trim().toUpperCase()
+  const planningOrder = rawContainerList
+    .map((c, i) => ({ c, i, k: voyageKeyOf(c) }))
+    .sort((x, y) => (x.k < y.k ? -1 : x.k > y.k ? 1 : x.i - y.i))
+    .map(x => x.c)
+  planningOrder.forEach(c => {
     const targetBlock = resolveTargetBlock(c, direction, occupancyTracker)
     occupancyTracker[targetBlock] = (occupancyTracker[targetBlock] || 0) + 1
     if (!highlightBlocks[targetBlock]) {

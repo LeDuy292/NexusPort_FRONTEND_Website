@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react'
 import ActivateAccount from './pages/Auth/ActivateAccount'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import ProtectedRoute from './routes/ProtectedRoute'
@@ -8,70 +9,70 @@ import SessionListener from './components/SessionListener'
 import ErrorBoundary from './components/ErrorBoundary'
 
 // Import các trang đã di chuyển
-import BerthOps from './pages/Ships/BerthOps'
-import CargoDeclaration from './pages/Containers/CargoDeclaration'
-import DamageReport from './pages/Containers/DamageReport'
-import ContainerManagement from './pages/Containers/ContainerManagement'
-import ContainerRegistration from './pages/ShippingLine/ContainerRegistration'
-import ShippingLineDirectory from './pages/Admin/ShippingLineDirectory'
-import EquipmentDispatch from './pages/Dispatch/EquipmentDispatch'
+const BerthOps = lazy(() => import('./pages/Ships/BerthOps'))
+const CargoDeclaration = lazy(() => import('./pages/Containers/CargoDeclaration'))
+const DamageReport = lazy(() => import('./pages/Containers/DamageReport'))
+const ContainerManagement = lazy(() => import('./pages/Containers/ContainerManagement'))
+const ContainerRegistration = lazy(() => import('./pages/ShippingLine/ContainerRegistration'))
+const ShippingLineDirectory = lazy(() => import('./pages/Admin/ShippingLineDirectory'))
+const EquipmentDispatch = lazy(() => import('./pages/Dispatch/EquipmentDispatch'))
 
 // Import các trang hệ thống
 import Login from './pages/Auth/Login'
 import Unauthorized from './pages/Auth/Unauthorized'
-import OperatorDashboard from './pages/Dashboard/OperatorDashboard'
-import BookingManagement from './pages/Booking/BookingManagement'
-import YardDesignPreview from './pages/Yard/YardDesignPreview'
-import UserRoleManagement from './pages/Users/UserRoleManagement'
-import CarrierPortal from './pages/Carrier/CarrierPortal'
-import CarrierStaffManagement from './pages/Carrier/CarrierStaffManagement'
-import DashboardIndex from './pages/Dashboard/DashboardIndex'
-import GateControl from './pages/Gate/GateControl'
-import GateDashboard from './pages/Gate/GateDashboard'
-import GateBookings from './pages/Gate/GateBookings'
-import GateVerification from './pages/Gate/GateVerification'
-import ContainerVerification from './pages/Gate/ContainerVerification'
-import GateIncidents from './pages/Gate/GateIncidents'
-import GateHistory from './pages/Gate/GateHistory'
-import GateCameras from './pages/Gate/GateCameras'
-import ReportsAnalytics from './pages/Reports/ReportsAnalytics'
-import IncidentManagement from './pages/Incident/IncidentManagement'
-import DriverManagement from './pages/Carrier/DriverManagement'
-import YardOperations from './pages/Yard/YardOperations'
-import YardOperationsDashboard from './pages/Yard/YardOperationsDashboard'
-import YardMovementOperations from './pages/Yard/YardMovementOperations'
-import ContainerGateOutPreparation from './pages/Yard/ContainerGateOutPreparation'
-import ContainerDetail from './pages/Yard/ContainerDetail'
-import YardReceiving from './pages/Yard/YardReceiving'
-import ReeferManagement from './pages/Yard/ReeferManagement'
-import DriverPortalContainer from './pages/Driver/DriverPortalContainer'
+const OperatorDashboard = lazy(() => import('./pages/Dashboard/OperatorDashboard'))
+const BookingManagement = lazy(() => import('./pages/Booking/BookingManagement'))
+const YardDesignPreview = lazy(() => import('./pages/Yard/YardDesignPreview'))
+const UserRoleManagement = lazy(() => import('./pages/Users/UserRoleManagement'))
+const CarrierPortal = lazy(() => import('./pages/Carrier/CarrierPortal'))
+const CarrierStaffManagement = lazy(() => import('./pages/Carrier/CarrierStaffManagement'))
+const DashboardIndex = lazy(() => import('./pages/Dashboard/DashboardIndex'))
+const GateControl = lazy(() => import('./pages/Gate/GateControl'))
+const GateDashboard = lazy(() => import('./pages/Gate/GateDashboard'))
+const GateBookings = lazy(() => import('./pages/Gate/GateBookings'))
+const GateVerification = lazy(() => import('./pages/Gate/GateVerification'))
+const ContainerVerification = lazy(() => import('./pages/Gate/ContainerVerification'))
+const GateIncidents = lazy(() => import('./pages/Gate/GateIncidents'))
+const GateHistory = lazy(() => import('./pages/Gate/GateHistory'))
+const GateCameras = lazy(() => import('./pages/Gate/GateCameras'))
+const ReportsAnalytics = lazy(() => import('./pages/Reports/ReportsAnalytics'))
+const IncidentManagement = lazy(() => import('./pages/Incident/IncidentManagement'))
+const DriverManagement = lazy(() => import('./pages/Carrier/DriverManagement'))
+const YardOperations = lazy(() => import('./pages/Yard/YardOperations'))
+const YardOperationsDashboard = lazy(() => import('./pages/Yard/YardOperationsDashboard'))
+const YardMovementOperations = lazy(() => import('./pages/Yard/YardMovementOperations'))
+const ContainerGateOutPreparation = lazy(() => import('./pages/Yard/ContainerGateOutPreparation'))
+const ContainerDetail = lazy(() => import('./pages/Yard/ContainerDetail'))
+const YardReceiving = lazy(() => import('./pages/Yard/YardReceiving'))
+const ReeferManagement = lazy(() => import('./pages/Yard/ReeferManagement'))
+const DriverPortalContainer = lazy(() => import('./pages/Driver/DriverPortalContainer'))
 
 // Import các trang Dispatcher Control Center
-import VehicleDispatch from './pages/Dispatch/VehicleDispatch'
-import VehicleManagement from './pages/Fleet/VehicleManagement'
-import ContainerFlow from './pages/Containers/ContainerFlow'
-import DispatcherDriverManagement from './pages/Drivers/DriverManagement'
-import DispatchHistory from './pages/Dispatch/DispatchHistory'
-import YardIncidents from './pages/Dispatch/YardIncidents'
-import CameraMonitoring from './pages/Camera/CameraMonitoring'
-import GateBookingRequests from './pages/Dispatch/GateBookingRequests'
+const VehicleDispatch = lazy(() => import('./pages/Dispatch/VehicleDispatch'))
+const VehicleManagement = lazy(() => import('./pages/Fleet/VehicleManagement'))
+const ContainerFlow = lazy(() => import('./pages/Containers/ContainerFlow'))
+const DispatcherDriverManagement = lazy(() => import('./pages/Drivers/DriverManagement'))
+const DispatchHistory = lazy(() => import('./pages/Dispatch/DispatchHistory'))
+const YardIncidents = lazy(() => import('./pages/Dispatch/YardIncidents'))
+const CameraMonitoring = lazy(() => import('./pages/Camera/CameraMonitoring'))
+const GateBookingRequests = lazy(() => import('./pages/Dispatch/GateBookingRequests'))
 
 // Import các trang Admin Portal
-import CarrierManagement from './pages/Admin/CarrierManagement'
-import TransportCompanyManagement from './pages/Admin/TransportCompanyManagement'
-import GateManagement from './pages/Admin/GateManagement'
-import EquipmentManagement from './pages/Admin/EquipmentManagement'
-import BillingChargesManagement from './pages/Admin/BillingChargesManagement'
+const CarrierManagement = lazy(() => import('./pages/Admin/CarrierManagement'))
+const TransportCompanyManagement = lazy(() => import('./pages/Admin/TransportCompanyManagement'))
+const GateManagement = lazy(() => import('./pages/Admin/GateManagement'))
+const EquipmentManagement = lazy(() => import('./pages/Admin/EquipmentManagement'))
+const BillingChargesManagement = lazy(() => import('./pages/Admin/BillingChargesManagement'))
 
 // Import phân hệ Hãng tàu (Shipping Line)
-import ShippingDashboard from './pages/ShippingLine/ShippingDashboard'
-import VesselVoyagePage from './pages/ShippingLine/VesselVoyagePage'
-import ManifestManagementPage from './pages/ShippingLine/ManifestManagementPage'
-import DeliveryOrderPage from './pages/ShippingLine/DeliveryOrderPage'
-import ImportDocumentsPage from './pages/ShippingLine/ImportDocumentsPage'
-import ImportDocumentsCompanyPage from './pages/Booking/ImportDocumentsCompanyPage'
-import MyBillsPage from './pages/Booking/MyBillsPage'
-import ServiceCatalogPage from './features/service-catalog/ServiceCatalogPage'
+const ShippingDashboard = lazy(() => import('./pages/ShippingLine/ShippingDashboard'))
+const VesselVoyagePage = lazy(() => import('./pages/ShippingLine/VesselVoyagePage'))
+const ManifestManagementPage = lazy(() => import('./pages/ShippingLine/ManifestManagementPage'))
+const DeliveryOrderPage = lazy(() => import('./pages/ShippingLine/DeliveryOrderPage'))
+const ImportDocumentsPage = lazy(() => import('./pages/ShippingLine/ImportDocumentsPage'))
+const ImportDocumentsCompanyPage = lazy(() => import('./pages/Booking/ImportDocumentsCompanyPage'))
+const MyBillsPage = lazy(() => import('./pages/Booking/MyBillsPage'))
+const ServiceCatalogPage = lazy(() => import('./features/service-catalog/ServiceCatalogPage'))
 
 // Component chuyển hướng trang chủ dựa trên vai trò (Role-based Home Redirect)
 function HomeRedirect() {
@@ -115,6 +116,7 @@ function App() {
   return (
     <ErrorBoundary>
       <SessionListener />
+      <Suspense fallback={<div className="p-8 text-sm text-slate-500">Đang tải…</div>}>
       <Routes>
         {/* Route Công khai */}
         <Route path="/login" element={<Login />} />
@@ -264,6 +266,7 @@ function App() {
       {/* Route không tồn tại ➔ Chuyển về trang chủ */}
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+      </Suspense>
     </ErrorBoundary>
   )
 }
