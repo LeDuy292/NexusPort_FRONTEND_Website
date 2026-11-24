@@ -255,6 +255,15 @@ export default function GateControl() {
   }
 
   const manualBarrier = async (action) => {
+    if (action === 'open' && mode === 'checkin') {
+      try {
+        await commandBarrier('open', 'manual', null, 'Kiểm tra mở barie thủ công', selectedGate, true)
+        showToast('Đã gửi lệnh mở barie cổng vào tới ESP32.')
+      } catch (error) {
+        showToast(error.message)
+      }
+      return
+    }
     // 1. Luôn ưu tiên cập nhật trạng thái Barie ngay lập tức trên UI (không bị chặn)
     const nextState = action === 'open' ? 'opened' : 'closed'
     setBarrierState(nextState)
@@ -262,34 +271,48 @@ export default function GateControl() {
 
     // Gửi tín hiệu điều khiển phần cứng ESP32 (Servo SG90 / Buzzer) theo làn Vào/Ra
     const targetLane = mode === 'checkout' ? 'OUT' : 'IN'
-    try {
-      if (action === 'open') {
-        const res = await gateService.manualBarrierOpen(targetLane)
-        if (res?.success) {
-          showToast(`Đã mở barie ${mode === 'checkout' ? 'Cổng Ra' : 'Cổng Vào'}.`)
-        } else {
-          showToast(res?.error || `Đã gửi lệnh mở barie ${mode === 'checkout' ? 'Cổng Ra' : 'Cổng Vào'}.`)
-        }
-      } else {
-        const res = await gateService.manualBarrierClose(targetLane)
-        if (res?.success) {
-          showToast(`Đã hạ barie ${mode === 'checkout' ? 'Cổng Ra' : 'Cổng Vào'}.`)
-        } else {
-          showToast(res?.error || `Đã gửi lệnh hạ barie ${mode === 'checkout' ? 'Cổng Ra' : 'Cổng Vào'}.`)
-        }
-      }
-    } catch (err) {
-      showToast(`Lỗi gửi lệnh barie: ${err.message}`)
+    if (action === 'open') {
+      void gateService.manualBarrierOpen(targetLane).catch(() => {})
+    } else {
+      void gateService.manualBarrierClose(targetLane).catch(() => {})
     }
 
     // Xóa bỏ bất kỳ chu trình mô phỏng treo nào trong bộ nhớ
     try {
-      getGatePassageSimulation().clear()
       const user = JSON.parse(localStorage.getItem('user') || sessionStorage.getItem('user') || 'null')
       const acc = user?.id || user?.userId || user?.username || user?.email || 'anonymous'
       sessionStorage.removeItem(`gate:${acc}:nexusport.gate-passage-simulation.v1`)
       sessionStorage.removeItem('nexusport.gate-passage-simulation.v1')
     } catch (_) {}
+
+    showToast(`Đã ${action === 'open' ? 'mở' : 'hạ'} barie cổng (${selectedGate?.name || 'Cổng kiểm soát'}).`)
+
+    // 2. Gửi tín hiệu điều khiển tới Backend / IoT controller trong nền
+    try {
+      setBarrierBusy(true)
+      const mappedGateCode = selectedGate?.code === 'GATE_OUT' || selectedGate?.code === 'GATE-02' ? 'GATE-02' : 'GATE-01'
+      const requestId = globalThis.crypto?.randomUUID?.() || 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const n = Math.floor(Math.random() * 16)
+        return (c === 'x' ? n : (n & 3) | 8).toString(16)
+      })
+
+      await gateService.commandBarrier({
+        requestId,
+        gateCode: mappedGateCode,
+        lane: targetLane,
+        skipHardware: true,
+        action,
+        source: 'manual',
+        verificationRecordId: passageEvidence?.verificationRecordId || null,
+        reason: manualReason.trim() || 'Thao tác thủ công của nhân viên trực cổng'
+      }).catch(err => {
+        console.warn('Backend barrier command notice:', err)
+      })
+    } catch (err) {
+      console.warn('Manual barrier background notice:', err)
+    } finally {
+      setBarrierBusy(false)
+    }
   }
 
   const nextVehicle=async()=>{
@@ -782,23 +805,13 @@ export default function GateControl() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center bg-slate-100 border border-slate-200 rounded-xl overflow-hidden text-xs font-bold">
             <button
-              type="button"
+              disabled={verificationBusy || isAiScanning || gateOutBusy || barrierBusy || physicalPassagePending}
               onClick={() => {
-                try {
-                  getGatePassageSimulation().clear()
-                } catch (_) {}
-                simulationLockRef.current = false
                 setMode('checkin')
                 setProcessingStatus('idle')
                 setBarrierState('closed')
-                setPassageEvidence(null)
-                setDetectedPlate('')
-                setActiveBooking(null)
-                setSimulation(null)
-                setVerificationBusy(false)
-                setIsAiScanning(false)
               }}
-              className={`px-4 py-2.5 transition-all cursor-pointer ${
+              className={`px-4 py-2.5 transition-all ${
                 mode === 'checkin'
                   ? 'bg-orange-500 text-white font-black shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -807,23 +820,13 @@ export default function GateControl() {
               Cổng Vào
             </button>
             <button
-              type="button"
+              disabled={verificationBusy || isAiScanning || gateOutBusy || barrierBusy || physicalPassagePending}
               onClick={() => {
-                try {
-                  getGatePassageSimulation().clear()
-                } catch (_) {}
-                simulationLockRef.current = false
                 setMode('checkout')
                 setProcessingStatus('idle')
                 setBarrierState('closed')
-                setPassageEvidence(null)
-                setDetectedPlate('')
-                setActiveBooking(null)
-                setSimulation(null)
-                setVerificationBusy(false)
-                setIsAiScanning(false)
               }}
-              className={`px-4 py-2.5 transition-all cursor-pointer ${
+              className={`px-4 py-2.5 transition-all ${
                 mode === 'checkout'
                   ? 'bg-slate-900 text-white font-black shadow-sm'
                   : 'text-slate-600 hover:text-slate-900'
@@ -1259,7 +1262,7 @@ export default function GateControl() {
                 <button
                   type="button"
                   onClick={() => void manualBarrier('open')}
-                  disabled={barrierState === 'opened'}
+                  disabled={barrierState !== 'closed' || barrierBusy || verificationBusy || gateOutBusy || physicalPassagePending}
                   className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
                   title="Mở barie cho xe qua"
                 >

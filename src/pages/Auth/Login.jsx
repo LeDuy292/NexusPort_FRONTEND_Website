@@ -609,16 +609,6 @@ export default function Login() {
         </svg>
       </div>
 
-      {/* Nút quay lại trang chủ Landing Page */}
-      <button
-        type="button"
-        onClick={() => navigate('/')}
-        className="absolute top-5 left-5 sm:top-6 sm:left-6 z-30 flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 hover:border-[#ff682c]/40 text-xs font-semibold text-slate-300 hover:text-white transition-all backdrop-blur-md group shadow-lg"
-      >
-        <span className="material-symbols-outlined text-[16px] group-hover:-translate-x-0.5 transition-transform text-[#ff682c]">arrow_back</span>
-        <span>Về trang chủ</span>
-      </button>
-
       {/* Main Container */}
       <div className="relative z-10 min-h-screen flex">
 
@@ -683,21 +673,11 @@ export default function Login() {
           <div className="w-full max-w-[490px]">
 
             {/* Mobile Header */}
-            <div className="flex items-center justify-between gap-2 mb-8 lg:hidden">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 bg-[#ff682c] rounded-lg flex items-center justify-center">
-                  <span className="material-symbols-outlined text-white text-[18px]">anchor</span>
-                </div>
-                <span className="text-[22px] font-bold tracking-tight text-white">NexusPort<span className="text-[#ff682c]">.</span></span>
+            <div className="flex items-center gap-2 mb-8 lg:hidden">
+              <div className="w-8 h-8 bg-[#ff682c] rounded-lg flex items-center justify-center">
+                <span className="material-symbols-outlined text-white text-[18px]">anchor</span>
               </div>
-              <button
-                type="button"
-                onClick={() => navigate('/')}
-                className="flex items-center gap-1 text-xs text-slate-300 hover:text-white px-2.5 py-1.5 rounded-lg bg-white/5 border border-white/10"
-              >
-                <span className="material-symbols-outlined text-sm text-[#ff682c]">arrow_back</span>
-                <span>Trang chủ</span>
-              </button>
+              <span className="text-[22px] font-bold tracking-tight text-white">NexusPort<span className="text-[#ff682c]">.</span></span>
             </div>
 
             {/* Glass Card */}

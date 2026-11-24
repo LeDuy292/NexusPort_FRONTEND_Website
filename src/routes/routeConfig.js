@@ -61,10 +61,6 @@ export const routeConfig = [
 
   // Public Routes
   {
-    path: '/landing',
-    isPublic: true,
-  },
-  {
     path: '/login',
     isPublic: true,
   },
