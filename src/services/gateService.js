@@ -1,5 +1,6 @@
 import apiClient from './apiClient'
 import nodeApiClient from './nodeApiClient'
+import { webSerialGate, browserCamera } from './webSerialGate'
 
 // Địa chỉ dịch vụ AI / phần cứng. Mặc định theo cấu hình build (thường là dịch vụ trên cloud).
 // Máy tại cổng có cắm ESP32/webcam đặt khóa này để dùng dịch vụ chạy ngay trên máy đó (http://localhost:8000).
@@ -87,6 +88,16 @@ export const gateService = {
     return (await apiClient.post('/v1/Gate/barrier-commands', payload)).data
   },
   async openAuthorizedInboundBarrier(commandId) {
+    if (webSerialGate.connected) {
+      // Chế độ USB trong trình duyệt: xin backend xác nhận lệnh còn hiệu lực rồi ghi thẳng xuống ESP32
+      try {
+        await apiClient.post(`/gate/barrier-commands/${encodeURIComponent(commandId)}/claim-hardware`)
+      } catch (error) {
+        throw new Error(error.response?.status === 409 ? 'Lệnh mở barie đã hết hạn, đã dùng hoặc chưa hợp lệ' : (error.message || 'Không xác thực được lệnh mở barie'))
+      }
+      await webSerialGate.send('OPEN_IN')
+      return { success: true, message: 'Đã gửi lệnh mở barie qua USB' }
+    }
     const { data } = await aiClient.post('/api/v1/gate/barrier/open/in', { commandId })
     if (!data.success) throw new Error(data.message || 'Chưa gửi được lệnh mở barie tới ESP32.')
     return data
@@ -243,6 +254,8 @@ export const gateService = {
   },
 
   async setCameraPreview(lane = 'IN', enabled = true) {
+    // Webcam đang lấy trong trình duyệt: không cần dịch vụ AI mở camera
+    if (browserCamera.active) return { success: true, data: { preview_enabled: enabled, source: 'browser' } }
     try {
       const action = enabled ? 'start' : 'stop'
       const res = await aiClient.post(`/api/v1/gate/camera/${action}?lane=${lane}`)
@@ -253,15 +266,37 @@ export const gateService = {
   },
 
   async getHardwareStatus() {
+    let base = null
     try {
-      const res = await aiClient.get('/api/v1/gate/hardware-status')
-      return { success: true, data: res.data }
+      base = (await aiClient.get('/api/v1/gate/hardware-status')).data
     } catch (err) {
-      return { success: false, error: err.message }
+      if (!webSerialGate.connected && !browserCamera.active) return { success: false, error: err.message }
     }
+    if (webSerialGate.connected || browserCamera.active) {
+      // ESP32 và webcam đang nối trực tiếp với trình duyệt: ghi đè phần cứng báo bởi dịch vụ AI (trên cloud không có thiết bị)
+      const merged = { ...(base || {}) }
+      if (webSerialGate.connected) {
+        merged.esp32 = { port: webSerialGate.label || 'USB', baud_rate: 115200, connected: true, thread_alive: true }
+        merged.barrier = webSerialGate.barrier()
+      }
+      if (browserCamera.active) {
+        merged.camera_in = { index: 0, enabled: true, connected: true }
+        merged.camera_out = { index: 0, enabled: true, connected: true }
+      }
+      return { success: true, data: merged }
+    }
+    return { success: true, data: base }
   },
 
   async manualBarrierOpen(lane = 'IN') {
+    if (webSerialGate.connected) {
+      try {
+        await webSerialGate.send(String(lane).toUpperCase() === 'OUT' ? 'OPEN_OUT' : 'OPEN_IN')
+        return { success: true, data: { success: true, source: 'usb' } }
+      } catch (err) {
+        return { success: false, error: err.message }
+      }
+    }
     try {
       const endpoint = String(lane).toUpperCase() === 'OUT' ? '/api/v1/gate/barrier/open/out' : '/api/v1/gate/barrier/open/in'
       const res = await aiClient.post(endpoint)
@@ -272,6 +307,14 @@ export const gateService = {
   },
 
   async manualBarrierClose(lane = 'IN') {
+    if (webSerialGate.connected) {
+      try {
+        await webSerialGate.send(String(lane).toUpperCase() === 'OUT' ? 'CLOSE_OUT' : 'CLOSE_IN')
+        return { success: true, data: { success: true, source: 'usb' } }
+      } catch (err) {
+        return { success: false, error: err.message }
+      }
+    }
     try {
       const endpoint = String(lane).toUpperCase() === 'OUT' ? '/api/v1/gate/barrier/close/out' : '/api/v1/gate/barrier/close/in'
       const res = await aiClient.post(endpoint)
@@ -282,6 +325,14 @@ export const gateService = {
   },
 
   async manualBarrierFail(lane = 'IN') {
+    if (webSerialGate.connected) {
+      try {
+        await webSerialGate.send(String(lane).toUpperCase() === 'OUT' ? 'FAIL_OUT' : 'FAIL_IN')
+        return { success: true, data: { success: true, source: 'usb' } }
+      } catch (err) {
+        return { success: false, error: err.message }
+      }
+    }
     try {
       const endpoint = String(lane).toUpperCase() === 'OUT' ? '/api/v1/gate/barrier/fail/out' : '/api/v1/gate/barrier/fail/in'
       const res = await aiClient.post(endpoint)
