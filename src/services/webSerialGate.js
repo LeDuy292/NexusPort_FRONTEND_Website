@@ -156,43 +156,71 @@ if (typeof navigator !== 'undefined' && 'serial' in navigator) {
 // ── Webcam trong trình duyệt ────────────────────────────────────────────────
 let stream = null
 let probe = null
+let displayEl = null
+let starting = null
 const cameraListeners = new Set()
 const emitCamera = () => cameraListeners.forEach(fn => { try { fn(stream) } catch { /* bỏ qua */ } })
+
+const hasFrame = video => Boolean(video && video.videoWidth > 0 && video.videoHeight > 0)
+const waitFor = (test, timeoutMs) => new Promise(resolve => {
+  const startedAt = Date.now()
+  const tick = () => (test() ? resolve(true) : Date.now() - startedAt > timeoutMs ? resolve(false) : setTimeout(tick, 80))
+  tick()
+})
 
 export const browserCamera = {
   isSupported() { return typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia) },
   get stream() { return stream },
   get active() { return Boolean(stream && stream.active) },
   onChange(fn) { cameraListeners.add(fn); return () => cameraListeners.delete(fn) },
+  /** Gắn thẻ <video> đang hiển thị trên trang để chụp đúng khung hình người dùng đang thấy. */
+  attach(el) { displayEl = el || null },
 
   async start() {
     if (this.active) return stream
+    if (starting) return starting
     if (!this.isSupported()) throw new Error('Trình duyệt không hỗ trợ webcam.')
-    stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false })
-    probe = document.createElement('video')
-    probe.muted = true
-    probe.playsInline = true
-    probe.srcObject = stream
-    await probe.play().catch(() => {})
-    stream.getVideoTracks().forEach(track => track.addEventListener('ended', () => { stream = null; probe = null; emitCamera() }))
-    emitCamera()
-    return stream
+    starting = (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false })
+        // Thẻ video ẩn nhưng nằm trong trang (video tách khỏi trang có thể không giải mã khung hình)
+        probe = document.createElement('video')
+        probe.muted = true
+        probe.playsInline = true
+        probe.autoplay = true
+        probe.setAttribute('aria-hidden', 'true')
+        probe.style.cssText = 'position:fixed;left:-9999px;top:0;width:2px;height:2px;opacity:0;pointer-events:none'
+        document.body.appendChild(probe)
+        probe.srcObject = stream
+        await probe.play().catch(() => {})
+        await waitFor(() => hasFrame(probe), 4000)
+        stream.getVideoTracks().forEach(track => track.addEventListener('ended', () => { this.stop() }))
+        emitCamera()
+        return stream
+      } finally {
+        starting = null
+      }
+    })()
+    return starting
   },
 
   stop() {
     stream?.getTracks().forEach(track => track.stop())
     stream = null
+    if (probe) { probe.srcObject = null; probe.remove() }
     probe = null
     emitCamera()
   },
 
-  /** Chụp khung hình hiện tại thành ảnh JPEG. */
+  /** Chụp khung hình hiện tại thành ảnh JPEG (ưu tiên khung đang hiển thị, đợi tối đa 2 giây nếu webcam chưa cho hình). */
   async captureBlob(quality = 0.92) {
-    if (!probe || !probe.videoWidth) return null
+    await waitFor(() => hasFrame(displayEl) || hasFrame(probe), 2000)
+    const source = hasFrame(displayEl) ? displayEl : hasFrame(probe) ? probe : null
+    if (!source) return null
     const canvas = document.createElement('canvas')
-    canvas.width = probe.videoWidth
-    canvas.height = probe.videoHeight
-    canvas.getContext('2d').drawImage(probe, 0, 0, canvas.width, canvas.height)
+    canvas.width = source.videoWidth
+    canvas.height = source.videoHeight
+    canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height)
     return new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', quality))
   },
 }
